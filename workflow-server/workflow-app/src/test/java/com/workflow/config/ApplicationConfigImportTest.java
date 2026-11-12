@@ -92,8 +92,24 @@ class ApplicationConfigImportTest {
             var identity = Binder.get(environment).bind("workflow.identity", IdentityWriteProperties.class).get();
             assertThat(identity.getScanPackages()).containsExactly("com.workflow.biz");
             assertThat(identity.getSources()).isEmpty();
+            assertThat(identity.getRawDataMaxBytes()).isEqualTo(262144);
+            assertThat(identity.getRawDataMaxBatchBytes()).isEqualTo(8388608);
             assertThat(environment.containsProperty("ui.release-resolution.ttl-seconds")).isFalse();
         });
+    }
+
+    @Test
+    void bindsRawDataLimitsFromEnvironmentAndSourceRequirementFromConfiguration() {
+        context(Map.of("WORKFLOW_IDENTITY_RAW_DATA_MAX_BYTES", "4096", "WORKFLOW_IDENTITY_RAW_DATA_MAX_BATCH_BYTES", "32768"))
+                .withPropertyValues("workflow.identity.sources.directory.raw-data-required=true")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var identity = Binder.get(context.getEnvironment()).bind("workflow.identity", IdentityWriteProperties.class).get();
+                    assertThat(identity.getRawDataMaxBytes()).isEqualTo(4096);
+                    assertThat(identity.getRawDataMaxBatchBytes()).isEqualTo(32768);
+                    assertThat(identity.getSources().get("directory").isRawDataRequired()).isTrue();
+                    assertThat(new IdentityWriteProperties.Source().isRawDataRequired()).isFalse();
+                });
     }
 
     /** 验证各补齐分组的部署变量及显式来源可覆盖默认值，空来源映射不能阻止后续接入。 */

@@ -1,1068 +1,198 @@
 package com.workflow.admin.identity.position.application;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.admin.identity.position.api.error.PositionErrorCode;
 import com.workflow.admin.identity.position.api.error.PositionManagementException;
 import com.workflow.admin.identity.position.api.request.PositionRequests;
-import com.workflow.admin.identity.position.api.response.PositionViews;
-import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentBatchMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionMapper;
-import com.workflow.admin.identity.position.infrastructure.persistence.record.PositionAssignmentViewRow;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.SysPosition;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.SysPositionAssignment;
-import com.workflow.admin.identity.position.infrastructure.persistence.record.SysPositionAssignmentBatch;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
 import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
-/**
- * 组织任职的唯一写入口。
- *
- * <p>所有写操作遵循“职务 ID、组织 ID、用户 ID”的固定锁顺序，随后查询
- * 区间重叠并写入。首条任职也会锁定稳定存在的职务和组织行，因此在
- * READ_COMMITTED 下不依赖空结果间隙锁。</p>
- */
+/** 当前组织职务关系的唯一写入口；不维护任命批次、预约或历史记录。 */
 @Service
 @RequiredArgsConstructor
 public class PositionAssignmentService {
-
     public static final String UNIT_LEADER = "UNIT_LEADER";
-    private static final int MAX_BATCH_SIZE = 200;
-
     private final SysPositionMapper positionMapper;
     private final SysPositionAssignmentMapper assignmentMapper;
-    private final SysPositionAssignmentBatchMapper batchMapper;
     private final SysOrganizationMapper organizationMapper;
     private final SysUserMapper userMapper;
     private final PositionOrganizationScopeService scopeService;
-    private final ObjectMapper objectMapper;
 
     /**
-     * 使用正式提交同一校验器执行只读预检；结果只具提示意义，提交仍会
-     * 在加锁后重新验证全部条件。
+     * 原子替换一个组织内某职务的当前人员集合，保存后立即生效。
+     * 按职务、组织、用户顺序加锁，防止单人职务被并发写入多人。
+     * expectedUserIds 必须是编辑时读取的集合；同一目标集合的重复提交直接成功。
      *
-     * @param request 本次请求，后续经校验后用于处理预检查
-     * @return 处理后的预检查结果，供调用方继续处理
-     */
-    @Transactional(readOnly = true)
-    public PositionViews.PrecheckResult precheck(
-            PositionRequests.AssignmentBatch request) {
-        PreparedBatch prepared = prepare(request);
-        Map<String, SysPosition> positions = mapPositions(
-                positionMapper.selectByCodes(prepared.positionCodes()));
-        List<PositionViews.PrecheckItem> results = new ArrayList<>();
-        List<PreparedItem> accepted = new ArrayList<>();
-        for (PreparedItem item : prepared.items()) {
-            try {
-                scopeService.requireVisible(item.organizationUnitId());
-                SysPosition position = requirePosition(
-                        positions, item.positionCode());
-                SysOrganization organization = organizationMapper.selectById(
-                        item.organizationUnitId());
-                SysUser user = userMapper.selectById(item.userId());
-                validateTarget(position, organization, user, item);
-                validatePairwise(position, accepted, item);
-                validateDatabaseOverlap(position, item, null, false,
-                        prepared.reason());
-                accepted.add(item);
-                results.add(new PositionViews.PrecheckItem(
-                        item.index(), true, null, "预检通过"));
-            } catch (PositionManagementException exception) {
-                results.add(new PositionViews.PrecheckItem(
-                        item.index(), false, exception.errorCode().name(),
-                        exception.getMessage()));
-            }
-        }
-        return new PositionViews.PrecheckResult(
-                results.stream().allMatch(PositionViews.PrecheckItem::valid),
-                List.copyOf(results));
-    }
-
-    /**
-     * 处理批次{@code assign}，并将结果传给后续步骤。
-     *
-     * @param request 本次请求，后续经校验后用于处理批次{@code assign}
-     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
-     * @return 处理后的批次{@code assign}结果，供调用方继续处理
+     * @param request 目标职务、组织及完整人员集合；空集合清空当前人员
+     * @throws PositionManagementException 范围越权、对象停用、人数不符或集合已变化时抛出
      */
     @Transactional(rollbackFor = Exception.class)
-    @SystemAudit(
-            module = AuditModule.SYSTEM,
-            action = AuditAction.CONFIGURE,
-            operation = "批量任命或转任组织职务",
-            risk = AuditRiskLevel.CRITICAL,
-            required = true,
-            targetType = "SYS_POSITION_ASSIGNMENT_BATCH",
-            captureArguments = true,
-            captureResult = true)
-    public PositionViews.BatchAssignmentResult batchAssign(
-            PositionRequests.AssignmentBatch request,
-            String idempotencyKey) {
-        PreparedBatch prepared = prepare(request);
-        String normalizedKey = requireIdempotencyKey(idempotencyKey);
-        String actorId = requireActorId();
-
-        // 锁顺序是跨单笔、批量、转任和负责人快捷入口共享的并发契约。
-        Map<String, SysPosition> positions = mapPositions(
-                positionMapper.selectForUpdateByCodes(
-                        prepared.positionCodes()));
-        Map<String, SysOrganization> organizations = mapOrganizations(
-                organizationMapper.selectForUpdateByIds(
-                        prepared.organizationUnitIds()));
-        List<String> lockedUserIds = new ArrayList<>(prepared.userIds());
-        if (!lockedUserIds.contains(actorId)) {
-            lockedUserIds.add(actorId);
+    @SystemAudit(module = AuditModule.SYSTEM, action = AuditAction.CONFIGURE,
+            operation = "设置职务人员", risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_POSITION_ASSIGNMENT", captureArguments = true)
+    public void setMembers(PositionRequests.SetMembers request) {
+        if (request == null || !StringUtils.hasText(request.positionCode())
+                || !StringUtils.hasText(request.organizationUnitId())) {
+            throw error(400, PositionErrorCode.ASSIGNMENT_INVALID, "职务和组织不能为空");
         }
-        lockedUserIds.sort(String::compareTo);
-        Map<String, SysUser> users = mapUsers(
-                userMapper.selectForUpdateByIds(lockedUserIds));
-        if (!users.containsKey(actorId)) {
-            throw forbidden("当前操作人不存在");
+        Set<String> desired = normalizedUsers(request.userIds());
+        Set<String> expected = normalizedUsers(request.expectedUserIds());
+        String code = request.positionCode().trim().toUpperCase(Locale.ROOT);
+        SysPosition found = positionMapper.selectByCode(code);
+        if (found == null) throw error(404, PositionErrorCode.POSITION_NOT_FOUND, "职务不存在");
+        SysPosition position = positionMapper.selectForUpdate(found.getId());
+        SysOrganization unit = organizationMapper.selectForUpdate(request.organizationUnitId());
+        scopeService.requireVisible(request.organizationUnitId());
+        if (position == null) throw error(404, PositionErrorCode.POSITION_NOT_FOUND, "职务不存在");
+        if (unit == null) throw error(404, PositionErrorCode.ORGANIZATION_UNIT_NOT_FOUND, "组织不存在");
+        List<SysPositionAssignment> current = current(position.getId(), unit.getId());
+        Set<String> currentUsers = new TreeSet<>(current.stream().map(SysPositionAssignment::getUserId).toList());
+        // 比较完整集合而非仅靠页面按钮禁用，防止过期页面覆盖其他管理员的新设置。
+        if (!currentUsers.equals(desired) && !currentUsers.equals(expected)) {
+            throw error(409, PositionErrorCode.ASSIGNMENT_REVISION_CONFLICT, "职务人员已变化，请刷新后重试");
         }
-
-        String requestHash = hash(prepared);
-        SysPositionAssignmentBatch existing = batchMapper.selectByKey(
-                actorId, normalizedKey);
-        if (existing != null) {
-            if (!requestHash.equals(existing.getRequestHash())) {
-                throw conflict(
-                        PositionErrorCode.IDEMPOTENCY_KEY_REUSED,
-                        "Idempotency-Key 已用于不同批量请求");
+        if (desired.isEmpty()) {
+            assignmentMapper.delete(Wrappers.<SysPositionAssignment>lambdaQuery()
+                    .eq(SysPositionAssignment::getPositionId, position.getId())
+                    .eq(SysPositionAssignment::getOrganizationUnitId, unit.getId()));
+        } else {
+            validateTarget(position, unit, desired);
+            if (currentUsers.equals(desired)) return;
+            String actor = UserContext.getUserId();
+            LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+            for (SysPositionAssignment relation : current) {
+                if (!desired.contains(relation.getUserId())) assignmentMapper.deleteById(relation.getId());
             }
-            return new PositionViews.BatchAssignmentResult(
-                    normalizedKey, true,
-                    readAssignmentIds(existing.getAssignmentIdsJson()));
-        }
-
-        List<PreparedItem> accepted = new ArrayList<>();
-        for (PreparedItem item : prepared.items()) {
-            // 数据范围在事务锁获取后再次校验，不能信任预检或锁前结果。
-            scopeService.requireVisible(item.organizationUnitId());
-            SysPosition position = requirePosition(
-                    positions, item.positionCode());
-            SysOrganization organization = organizations.get(
-                    item.organizationUnitId());
-            SysUser user = users.get(item.userId());
-            validateTarget(position, organization, user, item);
-            validatePairwise(position, accepted, item);
-            accepted.add(item);
-        }
-
-        List<String> assignmentIds = new ArrayList<>();
-        Set<String> leaderUnits = new LinkedHashSet<>();
-        for (PreparedItem item : prepared.items()) {
-            SysPosition position = positions.get(item.positionCode());
-            validateDatabaseOverlap(
-                    position, item, null, true, prepared.reason());
-            SysPositionAssignment assignment = insertAssignment(
-                    position, item, actorId);
-            assignmentIds.add(assignment.getId());
-            if (UNIT_LEADER.equals(position.getPositionCode())) {
-                leaderUnits.add(item.organizationUnitId());
+            for (String userId : desired) {
+                if (currentUsers.contains(userId)) continue;
+                SysPositionAssignment relation = new SysPositionAssignment();
+                relation.setPositionId(position.getId());
+                relation.setOrganizationUnitId(unit.getId());
+                relation.setUserId(userId);
+                relation.setRevision(1);
+                relation.setCreatedBy(actor);
+                relation.setUpdatedBy(actor);
+                relation.setCreateTime(now);
+                relation.setUpdateTime(now);
+                assignmentMapper.insert(relation);
             }
         }
-        LocalDateTime now = utcNow();
-        leaderUnits.forEach(unitId -> refreshLeaderProjection(unitId, now));
-
-        SysPositionAssignmentBatch batch = new SysPositionAssignmentBatch();
-        batch.setIdempotencyKey(normalizedKey);
-        batch.setRequestHash(requestHash);
-        batch.setAssignmentIdsJson(writeAssignmentIds(assignmentIds));
-        batch.setCreatedBy(actorId);
-        batch.setCreateTime(now);
-        batchMapper.insert(batch);
-        return new PositionViews.BatchAssignmentResult(
-                normalizedKey, false, List.copyOf(assignmentIds));
+        if (UNIT_LEADER.equals(position.getPositionCode())) refreshLeaderProjection(unit.getId());
     }
 
     /**
-     * 撤销位置分配；后续读取或执行将使用更新后的状态。
-     *
-     * @param assignmentId 分配ID，后续用于撤销位置分配时定位或关联目标
-     * @param request 本次请求，后续经校验后用于撤销位置分配
+     * 删除一条当前关系，不生成撤销记录；已创建的审批任务不会因此改派。
+     * 与集合保存遵循相同锁顺序，revision 防止删除已被替换的数据。
      */
     @Transactional(rollbackFor = Exception.class)
-    @SystemAudit(
-            module = AuditModule.SYSTEM,
-            action = AuditAction.DELETE,
-            operation = "撤销组织职务任职",
-            risk = AuditRiskLevel.CRITICAL,
-            required = true,
-            targetType = "SYS_POSITION_ASSIGNMENT",
-            targetIdArg = 0,
-            captureArguments = true)
-    public void revoke(
-            String assignmentId,
-            PositionRequests.RevokeAssignment request) {
-        if (request == null) {
-            throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    "请求不能为空");
+    @SystemAudit(module = AuditModule.SYSTEM, action = AuditAction.DELETE,
+            operation = "移除职务人员", risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_POSITION_ASSIGNMENT", targetIdArg = 0)
+    public void remove(String id, PositionRequests.RemoveAssignment request) {
+        SysPositionAssignment relation = assignmentMapper.selectById(id);
+        if (relation == null) return; // DELETE 可重复执行，删除后没有任职墓碑。
+        SysPosition position = positionMapper.selectForUpdate(relation.getPositionId());
+        organizationMapper.selectForUpdate(relation.getOrganizationUnitId());
+        scopeService.requireVisible(relation.getOrganizationUnitId());
+        SysPositionAssignment current = assignmentMapper.selectMemberForUpdate(id);
+        if (current == null) return;
+        if (request == null || request.revision() == null || !request.revision().equals(current.getRevision())) {
+            throw error(409, PositionErrorCode.ASSIGNMENT_REVISION_CONFLICT, "职务人员已变化，请刷新后重试");
         }
-        String reason = requiredReason(request.reason());
-        SysPositionAssignment snapshot = assignmentMapper.selectById(assignmentId);
-        if (snapshot == null) {
-            throw assignmentNotFound();
-        }
-        SysPosition position = positionMapper.selectForUpdate(
-                snapshot.getPositionId());
-        SysOrganization organization = organizationMapper.selectForUpdate(
-                snapshot.getOrganizationUnitId());
-        SysPositionAssignment current = assignmentMapper.selectForUpdate(
-                assignmentId);
-        if (position == null || organization == null || current == null) {
-            throw assignmentNotFound();
-        }
-        scopeService.requireVisible(current.getOrganizationUnitId());
-        requireAssignmentRevision(request.revision(), current);
-        if (current.getRevokedAt() != null) {
-            throw conflict(
-                    PositionErrorCode.ASSIGNMENT_REVISION_CONFLICT,
-                    "任职已撤销，请刷新后重试");
-        }
-        LocalDateTime now = utcNow();
-        LocalDateTime revokedAt = now.isBefore(current.getEffectiveFrom())
-                ? current.getEffectiveFrom() : now;
-        LocalDateTime effectiveTo = current.getEffectiveTo();
-        if (current.getEffectiveFrom().isBefore(now)
-                && (effectiveTo == null || effectiveTo.isAfter(now))) {
-            effectiveTo = now;
-        }
-        int changed = assignmentMapper.revoke(
-                current.getId(), revokedAt, effectiveTo, reason,
-                requireActorId(), current.getRevision());
-        requireAssignmentChanged(changed);
-        if (UNIT_LEADER.equals(position.getPositionCode())) {
-            refreshLeaderProjection(current.getOrganizationUnitId(), now);
+        assignmentMapper.deleteById(id);
+        if (position != null && UNIT_LEADER.equals(position.getPositionCode())) {
+            refreshLeaderProjection(relation.getOrganizationUnitId());
         }
     }
 
-    /**
-     * 更新时段；后续读取或执行将使用更新后的状态。
-     *
-     * @param assignmentId 分配ID，后续用于更新时段时定位或关联目标
-     * @param request 本次请求，后续经校验后用于更新时段
-     */
-    @Transactional(rollbackFor = Exception.class)
-    @SystemAudit(
-            module = AuditModule.SYSTEM,
-            action = AuditAction.UPDATE,
-            operation = "调整组织职务任职有效期",
-            risk = AuditRiskLevel.CRITICAL,
-            required = true,
-            targetType = "SYS_POSITION_ASSIGNMENT",
-            targetIdArg = 0,
-            captureArguments = true)
-    public void updatePeriod(
-            String assignmentId,
-            PositionRequests.UpdateAssignmentPeriod request) {
-        if (request == null) {
-            throw invalid(PositionErrorCode.ASSIGNMENT_PERIOD_INVALID,
-                    "请求不能为空");
-        }
-        requiredReason(request.reason());
-        SysPositionAssignment snapshot = assignmentMapper.selectById(assignmentId);
-        if (snapshot == null) {
-            throw assignmentNotFound();
-        }
-        SysPosition position = positionMapper.selectForUpdate(
-                snapshot.getPositionId());
-        SysOrganization organization = organizationMapper.selectForUpdate(
-                snapshot.getOrganizationUnitId());
-        SysPositionAssignment current = assignmentMapper.selectForUpdate(
-                assignmentId);
-        if (position == null || organization == null || current == null) {
-            throw assignmentNotFound();
-        }
-        scopeService.requireVisible(current.getOrganizationUnitId());
-        requireAssignmentRevision(request.revision(), current);
-        if (current.getRevokedAt() != null) {
-            throw conflict(
-                    PositionErrorCode.ASSIGNMENT_REVISION_CONFLICT,
-                    "已撤销任职不可调整有效期");
-        }
-        LocalDateTime from = request.effectiveFrom() == null
-                ? current.getEffectiveFrom() : utc(request.effectiveFrom());
-        LocalDateTime to = request.effectiveTo() == null
-                ? null : utc(request.effectiveTo());
-        validatePeriod(from, to);
-        LocalDateTime now = utcNow();
-        if (!current.getEffectiveFrom().isAfter(now)
-                && !current.getEffectiveFrom().equals(from)) {
-            throw invalid(
-                    PositionErrorCode.ASSIGNMENT_PERIOD_INVALID,
-                    "已生效任职不能修改开始时间");
-        }
-        if (current.getEffectiveTo() != null
-                && !current.getEffectiveTo().isAfter(now)) {
-            throw invalid(
-                    PositionErrorCode.ASSIGNMENT_PERIOD_INVALID,
-                    "已结束任职不能修改历史有效期");
-        }
-        if (to != null && !to.isAfter(now)) {
-            throw invalid(
-                    PositionErrorCode.ASSIGNMENT_PERIOD_INVALID,
-                    "新的结束时间必须晚于当前时间");
-        }
-        PreparedItem changedItem = new PreparedItem(
-                0, position.getPositionCode(), current.getOrganizationUnitId(),
-                current.getUserId(), from, to,
-                Boolean.TRUE.equals(current.getIsPrimary()),
-                current.getSortOrder() == null ? 0 : current.getSortOrder(),
-                false);
-        validateDatabaseOverlap(
-                position, changedItem, current.getId(), false,
-                request.reason());
-        requireAssignmentChanged(assignmentMapper.updatePeriod(
-                current.getId(), from, to, requireActorId(),
-                current.getRevision()));
-        if (UNIT_LEADER.equals(position.getPositionCode())) {
-            refreshLeaderProjection(current.getOrganizationUnitId(), now);
-        }
+    /** 当前负责人关系是唯一权威来源；在写事务内刷新兼容字段，无需定时生效对账。 */
+    private void refreshLeaderProjection(String unitId) {
+        // 投影显示当前设置的人员；用户或单位停用由审批查询单独过滤，避免保留定时同步任务。
+        List<SysPositionAssignment> holders = current(positionMapper.selectByCode(UNIT_LEADER).getId(), unitId);
+        SysUser user = holders.isEmpty() ? null : userMapper.selectById(holders.get(0).getUserId());
+        organizationMapper.updateLeaderProjection(unitId, user == null ? null : user.getId(),
+                user == null ? null : StringUtils.hasText(user.getNickname()) ? user.getNickname() : user.getUsername());
     }
 
-    /**
-     * 清空组织负责人等价于撤销当前有效 UNIT_LEADER 任职，旧 leader 字段
-     * 仅由本方法的投影刷新，不再作为权威写入口。
-     *
-     * @param unitId 单元ID，后续用于清理当前{@code leader}时定位或关联目标
-     * @param reason 原因，作为 {@code requiredReason} 的输入影响后续处理
-     */
-    @Transactional(rollbackFor = Exception.class)
-    @SystemAudit(
-            module = AuditModule.SYSTEM,
-            action = AuditAction.DELETE,
-            operation = "清空组织负责人",
-            risk = AuditRiskLevel.CRITICAL,
-            required = true,
-            targetType = "SYS_ORGANIZATION_LEADER",
-            targetIdArg = 0,
-            captureArguments = true)
-    public void clearCurrentLeader(String unitId, String reason) {
-        String normalizedReason = requiredReason(reason);
-        scopeService.requireVisible(unitId);
-        SysPosition position = positionMapper.selectByCode(UNIT_LEADER);
-        if (position == null) {
-            throw new PositionManagementException(
-                    404, PositionErrorCode.POSITION_NOT_FOUND,
-                    "内置负责人职务不存在");
-        }
-        position = positionMapper.selectForUpdate(position.getId());
-        SysOrganization organization = organizationMapper.selectForUpdate(unitId);
-        if (organization == null) {
-            throw new PositionManagementException(
-                    404, PositionErrorCode.ORGANIZATION_UNIT_NOT_FOUND,
-                    "组织节点不存在");
-        }
-        LocalDateTime now = utcNow();
-        for (PositionAssignmentViewRow row : assignmentMapper.selectEffectiveRows(
-                UNIT_LEADER, unitId, now)) {
-            SysPositionAssignment assignment = assignmentMapper.selectForUpdate(
-                    row.getId());
-            LocalDateTime revokedAt = now.isBefore(assignment.getEffectiveFrom())
-                    ? assignment.getEffectiveFrom() : now;
-            LocalDateTime effectiveTo = assignment.getEffectiveFrom().isBefore(now)
-                    ? now : assignment.getEffectiveTo();
-            requireAssignmentChanged(assignmentMapper.revoke(
-                    assignment.getId(), revokedAt, effectiveTo,
-                    normalizedReason, requireActorId(), assignment.getRevision()));
-        }
-        refreshLeaderProjection(unitId, now);
+    /** 当前集合包含停用人员，便于管理员移除；审批查询另行过滤启用状态。 */
+    private List<SysPositionAssignment> current(String positionId, String unitId) {
+        return assignmentMapper.selectMembersForUpdate(positionId, unitId);
     }
 
-    /**
-     * 根据权威的当前 UNIT_LEADER 任职单向刷新旧负责人字段。
-     *
-     * @param unitId 单元ID，后续用于处理刷新{@code leader}投影时定位或关联目标
-     * @param asOf {@code as}，作为 {@code assignmentMapper.selectEffectiveRows} 的输入影响后续处理
-     */
-    public void refreshLeaderProjection(String unitId, LocalDateTime asOf) {
-        List<PositionAssignmentViewRow> holders =
-                assignmentMapper.selectEffectiveRows(UNIT_LEADER, unitId, asOf);
-        if (holders.isEmpty()) {
-            organizationMapper.updateLeaderProjection(unitId, null, null);
-            return;
-        }
-        PositionAssignmentViewRow leader = holders.get(0);
-        String displayName = StringUtils.hasText(leader.getNickname())
-                ? leader.getNickname() : leader.getUsername();
-        organizationMapper.updateLeaderProjection(
-                unitId, leader.getUserId(), displayName);
-    }
-
-    /**
-     * 校验数据库{@code overlap}；不满足约束时阻止后续处理。
-     *
-     * @param position 位置，作为 {@code assignmentMapper.selectOverlaps} 的输入影响后续处理
-     * @param item 条目，作为 {@code closeReplacedAssignments} 的输入影响后续处理
-     * @param excludeAssignmentId 排除分配ID，后续用于校验数据库{@code overlap}时定位或关联目标
-     * @param applyReplacement 应用{@code replacement}，供本方法校验数据库{@code overlap}时使用
-     * @param reason 原因，供本方法校验数据库{@code overlap}时使用
-     */
-    private void validateDatabaseOverlap(
-            SysPosition position,
-            PreparedItem item,
-            String excludeAssignmentId,
-            boolean applyReplacement,
-            String reason) {
-        List<SysPositionAssignment> overlaps = assignmentMapper.selectOverlaps(
-                position.getId(), item.organizationUnitId(),
-                item.effectiveFrom(), item.effectiveTo(), excludeAssignmentId);
-        SysPositionAssignment sameUser = overlaps.stream()
-                .filter(value -> item.userId().equals(value.getUserId()))
-                .findFirst().orElse(null);
-        if (sameUser != null) {
-            throw conflict(
-                    PositionErrorCode.ASSIGNMENT_PERIOD_OVERLAPPED,
-                    "同一用户已有重叠任职区间");
-        }
-        if (SysPosition.HolderMode.SINGLE.name().equals(position.getHolderMode())) {
-            if (!overlaps.isEmpty() && !item.replaceExisting()) {
-                throw conflict(
-                        PositionErrorCode.SINGLE_POSITION_OCCUPIED,
-                        "单人职务已有重叠任职人，必须显式选择转任");
-            }
-            if (applyReplacement && !overlaps.isEmpty()) {
-                closeReplacedAssignments(overlaps, item.effectiveFrom(), reason);
-            }
-            return;
-        }
-        if (item.primary() && overlaps.stream()
-                .anyMatch(value -> Boolean.TRUE.equals(value.getIsPrimary()))) {
-            throw conflict(
-                    PositionErrorCode.PRIMARY_HOLDER_CONFLICT,
-                    "多人职务在同一时点只能有一名主职人员");
-        }
-    }
-
-    /**
-     * 转任时，已开始事实缩短到新任职开始；尚未开始的预约事实使用撤销
-     * 标记保留。这样不会生成 effectiveTo <= effectiveFrom 的非法区间。
-     *
-     * @param overlaps {@code overlaps}，供本方法处理关闭{@code replaced}分配集合时使用
-     * @param replacementFrom {@code replacement}起始，供本方法处理关闭{@code replaced}分配集合时使用
-     * @param reason 原因，供本方法处理关闭{@code replaced}分配集合时使用
-     */
-    private void closeReplacedAssignments(
-            List<SysPositionAssignment> overlaps,
-            LocalDateTime replacementFrom,
-            String reason) {
-        String actor = requireActorId();
-        for (SysPositionAssignment existing : overlaps) {
-            int changed;
-            if (existing.getEffectiveFrom().isBefore(replacementFrom)) {
-                changed = assignmentMapper.closeAt(
-                        existing.getId(), replacementFrom, actor,
-                        existing.getRevision());
-            } else {
-                changed = assignmentMapper.revoke(
-                        existing.getId(), existing.getEffectiveFrom(),
-                        existing.getEffectiveTo(), "转任：" + reason,
-                        actor, existing.getRevision());
-            }
-            requireAssignmentChanged(changed);
-        }
-    }
-
-    /**
-     * 插入分配；后续读取或执行将使用更新后的状态。
-     *
-     * @param position 位置，作为 {@code assignment.setPositionId} 的输入影响后续处理
-     * @param item 条目，作为 {@code assignment.setOrganizationUnitId} 的输入影响后续处理
-     * @param actor 操作人，作为 {@code assignment.setCreatedBy} 的输入影响后续处理
-     * @return 插入后的分配结果，供调用方继续处理
-     */
-    private SysPositionAssignment insertAssignment(
-            SysPosition position,
-            PreparedItem item,
-            String actor) {
-        LocalDateTime now = utcNow();
-        SysPositionAssignment assignment = new SysPositionAssignment();
-        assignment.setPositionId(position.getId());
-        assignment.setOrganizationUnitId(item.organizationUnitId());
-        assignment.setUserId(item.userId());
-        assignment.setIsPrimary(item.primary());
-        assignment.setSortOrder(item.sortOrder());
-        assignment.setEffectiveFrom(item.effectiveFrom());
-        assignment.setEffectiveTo(item.effectiveTo());
-        assignment.setRevision(1);
-        assignment.setCreatedBy(actor);
-        assignment.setUpdatedBy(actor);
-        assignment.setCreateTime(now);
-        assignment.setUpdateTime(now);
-        assignmentMapper.insert(assignment);
-        return assignment;
-    }
-
-    /**
-     * 校验{@code pairwise}；不满足约束时阻止后续处理。
-     *
-     * @param position 位置，供本方法校验{@code pairwise}时使用
-     * @param accepted {@code accepted}，供本方法校验{@code pairwise}时使用
-     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
-     */
-    private void validatePairwise(
-            SysPosition position,
-            List<PreparedItem> accepted,
-            PreparedItem candidate) {
-        for (PreparedItem other : accepted) {
-            if (!candidate.positionCode().equals(other.positionCode())
-                    || !candidate.organizationUnitId().equals(
-                            other.organizationUnitId())
-                    || !overlaps(candidate, other)) {
-                continue;
-            }
-            if (candidate.userId().equals(other.userId())) {
-                throw conflict(
-                        PositionErrorCode.ASSIGNMENT_PERIOD_OVERLAPPED,
-                        "批量请求中同一用户存在重叠任职区间");
-            }
-            if (SysPosition.HolderMode.SINGLE.name().equals(position.getHolderMode())) {
-                throw conflict(
-                        PositionErrorCode.SINGLE_POSITION_OCCUPIED,
-                        "批量请求中单人职务存在重叠任职人");
-            }
-            if (candidate.primary() && other.primary()) {
-                throw conflict(
-                        PositionErrorCode.PRIMARY_HOLDER_CONFLICT,
-                        "批量请求中多人职务存在重叠主职");
-            }
-        }
-    }
-
-    /**
-     * 判断{@code overlaps}条件是否成立，供调用方选择后续分支。
-     *
-     * @param first 首个，供本方法处理{@code overlaps}时使用
-     * @param second {@code second}，供本方法处理{@code overlaps}时使用
-     * @return {@code overlaps}条件成立时为 true，否则为 false
-     */
-    private boolean overlaps(PreparedItem first, PreparedItem second) {
-        return (second.effectiveTo() == null
-                || first.effectiveFrom().isBefore(second.effectiveTo()))
-                && (first.effectiveTo() == null
-                    || second.effectiveFrom().isBefore(first.effectiveTo()));
-    }
-
-    /**
-     * 校验目标；不满足约束时阻止后续处理。
-     *
-     * @param position 位置，供本方法校验目标时使用
-     * @param organization 组织，作为 {@code requireUserWithinTargetUnit} 的输入影响后续处理
-     * @param user 目标用户信息，后续用于权限计算或业务规则判断
-     * @param item 条目，作为 {@code validatePeriod} 的输入影响后续处理
-     */
-    private void validateTarget(
-            SysPosition position,
-            SysOrganization organization,
-            SysUser user,
-            PreparedItem item) {
+    /** 保存集合前校验对象状态、人数及人员归属；清空关系允许处理已停用对象。 */
+    private void validateTarget(SysPosition position, SysOrganization unit, Set<String> users) {
         if (!SysPosition.Status.ENABLED.name().equals(position.getStatus())) {
-            throw conflict(PositionErrorCode.POSITION_STATUS_INVALID,
-                    "职务已停用");
+            throw error(409, PositionErrorCode.POSITION_STATUS_INVALID, "职务已停用");
         }
-        if (organization == null) {
-            throw new PositionManagementException(
-                    404, PositionErrorCode.ORGANIZATION_UNIT_NOT_FOUND,
-                    "组织节点不存在");
+        if (!SysOrganization.Status.ENABLED.getValue().equals(unit.getStatus())) {
+            throw error(409, PositionErrorCode.ORGANIZATION_UNIT_DISABLED, "组织已停用");
         }
-        if (!SysOrganization.Status.ENABLED.getValue().equals(
-                organization.getStatus())) {
-            throw conflict(PositionErrorCode.ORGANIZATION_UNIT_DISABLED,
-                    "组织节点已禁用");
+        if (!"ANY".equals(position.getApplicableUnitType())
+                && !position.getApplicableUnitType().equalsIgnoreCase(unit.getType())) {
+            throw error(409, PositionErrorCode.POSITION_UNIT_TYPE_MISMATCH, "职务不适用于该组织类型");
         }
-        String organizationType = organization.getType().toUpperCase(Locale.ROOT);
-        if (!SysPosition.ApplicableUnitType.ANY.name().equals(
-                position.getApplicableUnitType())
-                && !position.getApplicableUnitType().equals(organizationType)) {
-            throw conflict(
-                    PositionErrorCode.POSITION_UNIT_TYPE_MISMATCH,
-                    "职务不适用于目标组织节点类型");
+        if ("SINGLE".equals(position.getHolderMode()) && users.size() > 1) {
+            throw error(409, PositionErrorCode.SINGLE_POSITION_OCCUPIED, "该职务只能设置一名人员");
         }
-        if (user == null) {
-            throw new PositionManagementException(
-                    404, PositionErrorCode.USER_NOT_FOUND, "任职用户不存在");
-        }
-        if (!SysUser.Status.ENABLED.getValue().equals(user.getStatus())) {
-            throw conflict(PositionErrorCode.USER_DISABLED, "任职用户已禁用");
-        }
-        requireUserWithinTargetUnit(user, organization);
-        validatePeriod(item.effectiveFrom(), item.effectiveTo());
-        if (SysPosition.HolderMode.SINGLE.name().equals(position.getHolderMode())
-                && !item.primary()) {
-            throw invalid(
-                    PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    "单人职务必须标记为主职");
+        for (String userId : users) {
+            SysUser user = userMapper.selectForUpdate(userId);
+            if (user == null) throw error(404, PositionErrorCode.USER_NOT_FOUND, "职务人员不存在");
+            if (!SysUser.Status.ENABLED.getValue().equals(user.getStatus())) {
+                throw error(409, PositionErrorCode.USER_DISABLED, "职务人员已停用");
+            }
+            requireUserWithinTargetUnit(user, unit);
         }
     }
 
-    /**
-     * 保守 V1 不开放跨单位兼任：用户的部门（无部门时使用组织）必须位于
-     * 目标单位子树内。该规则与管理员自身数据范围同时生效，防止仅凭功能
-     * 权限把范围外用户任命到本范围单位。
-     *
-     * @param user 目标用户信息，后续用于权限计算或业务规则判断
-     * @param target 目标，供本方法校验并获取用户{@code within}目标单元时使用
-     */
-    private void requireUserWithinTargetUnit(
-            SysUser user,
-            SysOrganization target) {
-        String currentId = StringUtils.hasText(user.getDeptId())
-                ? user.getDeptId() : user.getOrgId();
-        if (!StringUtils.hasText(currentId)) {
-            throw forbidden("任职用户未配置组织或部门归属");
-        }
-        Set<String> visited = new LinkedHashSet<>();
-        for (int depth = 0; depth < 32; depth++) {
+    /** 不开放跨单位兼任：用户当前归属必须位于目标单位子树内，同时遵守管理员数据范围。 */
+    private void requireUserWithinTargetUnit(SysUser user, SysOrganization target) {
+        String currentId = StringUtils.hasText(user.getDeptId()) ? user.getDeptId() : user.getOrgId();
+        Set<String> visited = new HashSet<>();
+        for (int depth = 0; depth < 32 && StringUtils.hasText(currentId); depth++) {
             if (!visited.add(currentId)) {
-                throw conflict(
-                        PositionErrorCode.ORGANIZATION_HIERARCHY_INVALID,
-                        "任职用户组织父链存在环");
+                throw error(409, PositionErrorCode.ORGANIZATION_HIERARCHY_INVALID, "人员组织父链存在环");
             }
-            if (target.getId().equals(currentId)) {
-                return;
-            }
+            if (target.getId().equals(currentId)) return;
             SysOrganization current = organizationMapper.selectById(currentId);
-            if (current == null) {
-                throw conflict(
-                        PositionErrorCode.ORGANIZATION_HIERARCHY_INVALID,
-                        "任职用户组织父链存在悬空节点");
-            }
-            String parentId = current.getParentId();
-            if (!StringUtils.hasText(parentId) || "0".equals(parentId)) {
-                break;
-            }
-            currentId = parentId;
+            if (current == null) break;
+            currentId = current.getParentId();
+            if ("0".equals(currentId)) break;
         }
-        throw forbidden("任职用户不属于目标组织节点子树");
+        throw error(403, PositionErrorCode.ORGANIZATION_SCOPE_FORBIDDEN, "职务人员不属于目标组织范围");
     }
 
-    /**
-     * 准备位置分配；结果供调用方的后续步骤使用。
-     *
-     * @param request 本次请求，后续经校验后用于准备位置分配
-     * @return 准备后的位置分配结果，供调用方继续处理
-     */
-    private PreparedBatch prepare(PositionRequests.AssignmentBatch request) {
-        if (request == null || request.items() == null
-                || request.items().isEmpty()) {
-            throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    "至少需要一条任职记录");
+    /** 对输入去重并稳定排序，重复保存不会新增关系，同时保证用户行锁的固定顺序。 */
+    private Set<String> normalizedUsers(List<String> users) {
+        if (users == null || users.size() > 200 || users.stream().anyMatch(value -> !StringUtils.hasText(value))) {
+            throw error(400, PositionErrorCode.ASSIGNMENT_INVALID, "人员集合必填且最多包含 200 人");
         }
-        if (request.items().size() > MAX_BATCH_SIZE) {
-            throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    "单次最多处理 200 条任职记录");
-        }
-        if (Boolean.FALSE.equals(request.atomic())) {
-            throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    "V1 批量任命只支持全量原子提交");
-        }
-        String reason = requiredReason(request.reason());
-        List<PreparedItem> items = new ArrayList<>();
-        for (int index = 0; index < request.items().size(); index++) {
-            PositionRequests.AssignmentItem source = request.items().get(index);
-            if (source == null) {
-                throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                        "第 " + index + " 条任职不能为空");
-            }
-            String positionCode = requiredText(
-                    source.positionCode(), "职务编码")
-                    .toUpperCase(Locale.ROOT);
-            LocalDateTime from = source.effectiveFrom() == null
-                    ? null : utc(source.effectiveFrom());
-            LocalDateTime to = source.effectiveTo() == null
-                    ? null : utc(source.effectiveTo());
-            validatePeriod(from, to);
-            items.add(new PreparedItem(
-                    index,
-                    positionCode,
-                    requiredText(source.organizationUnitId(), "组织节点"),
-                    requiredText(source.userId(), "任职用户"),
-                    from,
-                    to,
-                    Boolean.TRUE.equals(source.isPrimary()),
-                    nonNegative(source.sortOrder()),
-                    Boolean.TRUE.equals(source.replaceExisting())));
-        }
-        List<String> codes = items.stream().map(PreparedItem::positionCode)
-                .distinct().sorted().toList();
-        List<String> units = items.stream().map(PreparedItem::organizationUnitId)
-                .distinct().sorted().toList();
-        List<String> users = items.stream().map(PreparedItem::userId)
-                .distinct().sorted().toList();
-        return new PreparedBatch(
-                reason, List.copyOf(items), codes, units, users);
+        return new TreeSet<>(users.stream().map(String::trim).toList());
     }
 
-    /**
-     * 整理映射{@code positions}数据，供调用方遍历或继续处理。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 映射{@code positions}键值结果，供调用方继续处理
-     */
-    private Map<String, SysPosition> mapPositions(List<SysPosition> values) {
-        Map<String, SysPosition> result = new HashMap<>();
-        values.forEach(value -> result.put(value.getPositionCode(), value));
-        return result;
-    }
-
-    /**
-     * 整理映射{@code organizations}数据，供调用方遍历或继续处理。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 映射{@code organizations}键值结果，供调用方继续处理
-     */
-    private Map<String, SysOrganization> mapOrganizations(
-            List<SysOrganization> values) {
-        Map<String, SysOrganization> result = new HashMap<>();
-        values.forEach(value -> result.put(value.getId(), value));
-        return result;
-    }
-
-    /**
-     * 整理映射用户集合数据，供调用方遍历或继续处理。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 映射用户集合键值结果，供调用方继续处理
-     */
-    private Map<String, SysUser> mapUsers(List<SysUser> values) {
-        Map<String, SysUser> result = new HashMap<>();
-        values.forEach(value -> result.put(value.getId(), value));
-        return result;
-    }
-
-    /**
-     * 校验并获取位置；不满足约束时阻止后续处理。
-     *
-     * @param positions {@code positions}，供本方法校验并获取位置时使用
-     * @param code 编码，后续用于校验并获取位置时定位或关联目标
-     * @return 校验并获取后的位置结果，供调用方继续处理
-     */
-    private SysPosition requirePosition(
-            Map<String, SysPosition> positions,
-            String code) {
-        SysPosition position = positions.get(code);
-        if (position == null) {
-            throw new PositionManagementException(
-                    404, PositionErrorCode.POSITION_NOT_FOUND,
-                    "职务不存在: " + code);
-        }
-        return position;
-    }
-
-    /**
-     * 校验时段；不满足约束时阻止后续处理。
-     *
-     * @param from 起始，供本方法校验时段时使用
-     * @param to 截止，供本方法校验时段时使用
-     */
-    private void validatePeriod(LocalDateTime from, LocalDateTime to) {
-        if (from == null || (to != null && !to.isAfter(from))) {
-            throw invalid(
-                    PositionErrorCode.ASSIGNMENT_PERIOD_INVALID,
-                    "任职结束时间必须晚于开始时间");
-        }
-    }
-
-    /**
-     * 校验并获取分配修订版本；不满足约束时阻止后续处理。
-     *
-     * @param requested 请求，供本方法校验并获取分配修订版本时使用
-     * @param current 当前，供本方法校验并获取分配修订版本时使用
-     * @return 校验并获取后的分配修订版本结果，供调用方继续处理
-     */
-    private int requireAssignmentRevision(
-            Integer requested,
-            SysPositionAssignment current) {
-        if (requested == null || !requested.equals(current.getRevision())) {
-            throw conflict(
-                    PositionErrorCode.ASSIGNMENT_REVISION_CONFLICT,
-                    "任职已被其他管理员修改，请刷新后重试");
-        }
-        return requested;
-    }
-
-    /**
-     * 校验并获取分配已变更；不满足约束时阻止后续处理。
-     *
-     * @param changed 已变更，供本方法校验并获取分配已变更时使用
-     */
-    private void requireAssignmentChanged(int changed) {
-        if (changed != 1) {
-            throw conflict(
-                    PositionErrorCode.ASSIGNMENT_REVISION_CONFLICT,
-                    "任职已被其他管理员修改，请刷新后重试");
-        }
-    }
-
-    /**
-     * 构造分配非已找到异常，供调用方区分失败原因。
-     *
-     * @return 处理后的分配非已找到结果，供调用方继续处理
-     */
-    private PositionManagementException assignmentNotFound() {
-        return new PositionManagementException(
-                404, PositionErrorCode.ASSIGNMENT_NOT_FOUND, "任职不存在");
-    }
-
-    /**
-     * 校验并获取幂等键；不满足约束时阻止后续处理。
-     *
-     * @param value 待校验并获取幂等键的原始输入，结果供调用方继续使用
-     * @return 校验并获取后的幂等键文本，供调用方比较或展示
-     */
-    private String requireIdempotencyKey(String value) {
-        if (!StringUtils.hasText(value)) {
-            throw invalid(PositionErrorCode.IDEMPOTENCY_KEY_REQUIRED,
-                    "Idempotency-Key 不能为空");
-        }
-        String normalized = value.trim();
-        if (normalized.length() > 128) {
-            throw invalid(PositionErrorCode.IDEMPOTENCY_KEY_REQUIRED,
-                    "Idempotency-Key 不能超过 128 个字符");
-        }
-        return normalized;
-    }
-
-    /**
-     * 生成必填原因文本，供后续匹配或展示。
-     *
-     * @param value 待处理必填原因的原始输入，结果供调用方继续使用
-     * @return 处理后的必填原因文本，供调用方比较或展示
-     */
-    private String requiredReason(String value) {
-        String reason = requiredText(value, "变更原因");
-        if (reason.length() > 500) {
-            throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    "变更原因不能超过 500 个字符");
-        }
-        return reason;
-    }
-
-    /**
-     * 生成必填文本文本，供后续匹配或展示。
-     *
-     * @param value 待处理必填文本的原始输入，结果供调用方继续使用
-     * @param label 标签，后续用于处理必填文本时匹配或展示
-     * @return 处理后的必填文本文本，供调用方比较或展示
-     */
-    private String requiredText(String value, String label) {
-        if (!StringUtils.hasText(value)) {
-            throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    label + "不能为空");
-        }
-        return value.trim();
-    }
-
-    /**
-     * 处理非{@code negative}，并将结果传给后续步骤。
-     *
-     * @param value 待处理非{@code negative}的原始输入，结果供调用方继续使用
-     * @return 处理后的非{@code negative}结果，供调用方继续处理
-     */
-    private int nonNegative(Integer value) {
-        int normalized = value == null ? 0 : value;
-        if (normalized < 0) {
-            throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
-                    "排序不能小于 0");
-        }
-        return normalized;
-    }
-
-    /**
-     * 校验并获取操作人ID；不满足约束时阻止后续处理。
-     *
-     * @return 校验并获取后的操作人ID文本，供调用方比较或展示
-     */
-    private String requireActorId() {
-        String actorId = UserContext.getUserId();
-        if (!StringUtils.hasText(actorId)) {
-            throw forbidden("用户未登录");
-        }
-        return actorId;
-    }
-
-    /**
-     * 生成哈希文本，供后续匹配或展示。
-     *
-     * @param request 本次请求，后续经校验后用于处理哈希
-     * @return 处理后的哈希文本，供调用方比较或展示
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private String hash(PreparedBatch request) {
-        StringBuilder canonical = new StringBuilder(request.reason());
-        request.items().forEach(item -> canonical.append('|')
-                .append(item.positionCode()).append('|')
-                .append(item.organizationUnitId()).append('|')
-                .append(item.userId()).append('|')
-                .append(item.effectiveFrom()).append('|')
-                .append(item.effectiveTo()).append('|')
-                .append(item.primary()).append('|')
-                .append(item.sortOrder()).append('|')
-                .append(item.replaceExisting()));
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(canonical.toString().getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("JVM 不支持 SHA-256", exception);
-        }
-    }
-
-    /**
-     * 写入分配ID 集合；后续读取或执行将使用更新后的状态。
-     *
-     * @param assignmentIds 分配ID 集合，作为 {@code objectMapper.writeValueAsString} 的输入影响后续处理
-     * @return 写入后的分配ID 集合文本，供调用方比较或展示
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private String writeAssignmentIds(List<String> assignmentIds) {
-        try {
-            return objectMapper.writeValueAsString(assignmentIds);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("无法保存批量任命幂等结果", exception);
-        }
-    }
-
-    /**
-     * 读取分配ID 集合；查询结果供调用方展示或继续处理。
-     *
-     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
-     * @return 位置分配集合，供调用方遍历或展示
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private List<String> readAssignmentIds(String json) {
-        try {
-            return objectMapper.readValue(json, new TypeReference<>() { });
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("批量任命幂等结果损坏", exception);
-        }
-    }
-
-    /**
-     * 处理UTC，并将结果传给后续步骤。
-     *
-     * @param value 待处理UTC的原始输入，结果供调用方继续使用
-     * @return 处理后的UTC结果，供调用方继续处理
-     */
-    private LocalDateTime utc(OffsetDateTime value) {
-        return LocalDateTime.ofInstant(value.toInstant(), ZoneOffset.UTC);
-    }
-
-    /**
-     * 处理UTC当前时间，并将结果传给后续步骤。
-     *
-     * @return 处理后的UTC当前时间结果，供调用方继续处理
-     */
-    private LocalDateTime utcNow() {
-        return LocalDateTime.now(ZoneOffset.UTC);
-    }
-
-    /**
-     * 构造无效输入异常，阻止后续业务处理。
-     *
-     * @param code 编码，后续用于处理无效时定位或关联目标
-     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
-     * @return 处理后的无效结果，供调用方继续处理
-     */
-    private PositionManagementException invalid(
-            PositionErrorCode code,
-            String message) {
-        return new PositionManagementException(400, code, message);
-    }
-
-    /**
-     * 构造业务冲突异常，供调用方刷新或重试。
-     *
-     * @param code 编码，后续用于处理冲突时定位或关联目标
-     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
-     * @return 处理后的冲突结果，供调用方继续处理
-     */
-    private PositionManagementException conflict(
-            PositionErrorCode code,
-            String message) {
-        return new PositionManagementException(409, code, message);
-    }
-
-    /**
-     * 构造权限不足异常，供调用方停止当前操作。
-     *
-     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
-     * @return 处理后的禁止结果，供调用方继续处理
-     */
-    private PositionManagementException forbidden(String message) {
-        return new PositionManagementException(
-                403, PositionErrorCode.ORGANIZATION_SCOPE_FORBIDDEN, message);
-    }
-
-    /**
-     * 封装已准备批次的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param reason 原因，保存在对象中供后续校验、查询或展示
-     * @param items 条目，保存在对象中供后续校验、查询或展示
-     * @param positionCodes 位置编码集合，保存在对象中供后续校验、查询或展示
-     * @param organizationUnitIds 组织单元ID 集合，保存在对象中供后续校验、查询或展示
-     * @param userIds 用户ID 集合，保存在对象中供后续校验、查询或展示
-     */
-    private record PreparedBatch(
-            String reason,
-            List<PreparedItem> items,
-            List<String> positionCodes,
-            List<String> organizationUnitIds,
-            List<String> userIds) {
-    }
-
-    /**
-     * 封装已准备条目的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param index 索引，保存在对象中供后续校验、查询或展示
-     * @param positionCode 位置编码，后续用于处理已准备条目时定位或关联目标
-     * @param organizationUnitId 组织单元ID，后续用于处理已准备条目时定位或关联目标
-     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
-     * @param effectiveFrom 有效起始，保存在对象中供后续校验、查询或展示
-     * @param effectiveTo 有效截止，保存在对象中供后续校验、查询或展示
-     * @param primary 主要，保存在对象中供后续校验、查询或展示
-     * @param sortOrder 排序权重，后续用于稳定展示顺序
-     * @param replaceExisting 替换已有，保存在对象中供后续校验、查询或展示
-     */
-    private record PreparedItem(
-            int index,
-            String positionCode,
-            String organizationUnitId,
-            String userId,
-            LocalDateTime effectiveFrom,
-            LocalDateTime effectiveTo,
-            boolean primary,
-            int sortOrder,
-            boolean replaceExisting) {
+    private PositionManagementException error(int status, PositionErrorCode code, String message) {
+        return new PositionManagementException(status, code, message);
     }
 }

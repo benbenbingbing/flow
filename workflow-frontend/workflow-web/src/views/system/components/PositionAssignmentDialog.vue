@@ -1,178 +1,40 @@
 <template>
-  <el-dialog
-    :model-value="modelValue"
-    :title="dialogTitle"
-    width="680px"
-    append-to-body
-    destroy-on-close
-    :close-on-click-modal="false"
-    @update:model-value="emit('update:modelValue', $event)"
-    @open="initialize"
-  >
-    <el-alert
-      title="任职变更只影响尚未创建的后续审批任务，已生成任务不会自动改派。"
-      type="info"
-      :closable="false"
-      show-icon
-      class="assignment-dialog__impact"
-    />
-
-    <el-form
-      ref="formRef"
-      :model="form"
-      :rules="rules"
-      label-width="104px"
-    >
-      <el-form-item label="任职用户" prop="userIds">
-        <div v-if="lockedUser" class="assignment-dialog__locked-value">
-          <el-tag>{{ userLabel(lockedUser) }}</el-tag>
-        </div>
-        <UserSelector
-          v-else
-          v-model="form.userIds"
-          multiple
-          value-key="id"
-          placeholder="请选择任职用户"
-          title="选择任职用户"
-          @change="clearPrecheck"
-        />
-        <div class="assignment-dialog__tip">单次最多选择 200 人。</div>
+  <el-dialog :model-value="modelValue" title="设置职务人员" width="620px" append-to-body destroy-on-close
+    :close-on-click-modal="false" @update:model-value="emit('update:modelValue', $event)" @open="initialize" @closed="invalidate">
+    <el-alert title="保存后立即生效，已生成的审批任务保持原办理人。" type="info" :closable="false" show-icon />
+    <el-table v-if="lockedUser && userAssignments.length" :data="userAssignments" class="current-positions">
+      <el-table-column prop="organizationUnitName" label="组织或部门" />
+      <el-table-column prop="positionName" label="当前职务" />
+      <el-table-column label="操作" width="80">
+        <template #default="{ row }"><el-button link type="danger" :disabled="submitting" @click="removeCurrent(row)">移除</el-button></template>
+      </el-table-column>
+    </el-table>
+    <el-form label-width="100px" class="member-form" v-loading="loading">
+      <el-form-item v-if="lockedUser" label="人员">{{ lockedUser.nickname || lockedUser.username }}</el-form-item>
+      <el-form-item label="组织或部门" required>
+        <el-tree-select v-model="form.organizationUnitId" :data="organizationTree" node-key="id"
+          :props="{ label: 'orgName', children: 'children' }" check-strictly filterable default-expand-all
+          :disabled="Boolean(lockedUnit) || submitting" placeholder="请选择组织或部门" style="width: 100%" @change="loadMembers" />
       </el-form-item>
-
-      <el-form-item label="职务" prop="positionCode">
-        <el-select
-          v-model="form.positionCode"
-          filterable
-          placeholder="请选择启用职务"
-          style="width: 100%"
-          :disabled="Boolean(lockedPosition)"
-          @change="handlePositionChange"
-        >
-          <el-option
-            v-for="position in selectablePositionOptions"
-            :key="position.positionCode"
-            :label="position.positionName"
-            :value="position.positionCode"
-          >
-            <span>{{ position.positionName }}</span>
-            <span class="assignment-dialog__option-code">{{ position.positionCode }}</span>
-          </el-option>
+      <el-form-item label="职务" required>
+        <el-select v-model="form.positionCode" filterable :disabled="Boolean(lockedPosition) || submitting"
+          placeholder="请选择职务" style="width: 100%" @change="loadMembers">
+          <el-option v-for="position in selectablePositions" :key="position.positionCode"
+            :label="position.positionName" :value="position.positionCode" />
         </el-select>
       </el-form-item>
-
-      <el-form-item label="组织节点" prop="organizationUnitId">
-        <div v-if="lockedUnit" class="assignment-dialog__locked-value">
-          <el-tag type="success">{{ unitLabel(lockedUnit) }}</el-tag>
-        </div>
-        <el-tree-select
-          v-else
-          v-model="form.organizationUnitId"
-          :data="filteredOrganizationTree"
-          :props="organizationTreeProps"
-          node-key="id"
-          check-strictly
-          filterable
-          clearable
-          default-expand-all
-          placeholder="请选择职务作用的组织或部门"
-          style="width: 100%"
-          @change="handleOrganizationUnitChange"
-        />
-        <div class="assignment-dialog__tip">组织节点是任职作用域，不能只选择职务而省略。</div>
-      </el-form-item>
-
-      <el-row :gutter="16">
-        <el-col :span="12">
-          <el-form-item label="生效时间" prop="effectiveFromLocal">
-            <el-date-picker
-              v-model="form.effectiveFromLocal"
-              type="datetime"
-              placeholder="请选择生效时间"
-              format="YYYY-MM-DD HH:mm"
-              style="width: 100%"
-              @change="clearPrecheck"
-            />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="结束时间" prop="effectiveToLocal">
-            <el-date-picker
-              v-model="form.effectiveToLocal"
-              type="datetime"
-              placeholder="长期有效"
-              format="YYYY-MM-DD HH:mm"
-              clearable
-              style="width: 100%"
-              @change="clearPrecheck"
-            />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="16">
-        <el-col :span="12">
-          <el-form-item label="主职">
-            <el-switch v-model="form.isPrimary" @change="clearPrecheck" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="排序">
-            <el-input-number
-              v-model="form.sortOrder"
-              :min="0"
-              :max="9999"
-              controls-position="right"
-              style="width: 100%"
-              @change="clearPrecheck"
-            />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-form-item v-if="selectedPosition?.holderMode === 'SINGLE'" label="占用处理">
-        <el-checkbox v-model="form.replaceExisting" @change="clearPrecheck">
-          已有任职人时转任，并结束原任职
-        </el-checkbox>
-      </el-form-item>
-
-      <el-form-item label="任命原因" prop="reason">
-        <el-input
-          v-model="form.reason"
-          type="textarea"
-          :rows="2"
-          maxlength="500"
-          show-word-limit
-          placeholder="请输入任命或转任原因，便于审计追溯"
-          @input="clearPrecheck"
-        />
+      <el-form-item v-if="!lockedUser" label="当前人员">
+        <UserSelector v-if="selectedPosition?.holderMode === 'SINGLE'" v-model="singleUserId" value-key="id"
+          :disabled="!membersLoaded || submitting" placeholder="请选择人员，清空可移除" title="选择职务人员" />
+        <UserSelector v-else v-model="form.userIds" multiple value-key="id" :disabled="!membersLoaded || submitting"
+          placeholder="请选择人员，清空可移除全部" title="选择职务人员" />
       </el-form-item>
     </el-form>
-
-    <el-alert
-      v-if="precheckState === 'passed'"
-      :title="precheckSummary"
-      type="success"
-      :closable="false"
-      show-icon
-    />
-    <el-alert
-      v-else-if="precheckState === 'failed'"
-      :title="precheckSummary"
-      type="error"
-      :closable="false"
-      show-icon
-    />
-
+    <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button :loading="prechecking" @click="runPrecheck">预检</el-button>
-      <el-button
-        type="primary"
-        :loading="submitting"
-        :disabled="precheckState !== 'passed'"
-        @click="submit"
-      >
-        {{ form.replaceExisting ? '确认转任' : '确认任命' }}
+      <el-button type="primary" :loading="submitting" :disabled="!membersLoaded || loading" @click="submit">
+        {{ lockedUser ? '设置职务' : '保存' }}
       </el-button>
     </template>
   </el-dialog>
@@ -180,294 +42,117 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import UserSelector from '@/components/UserSelector.vue'
 import { getOrgTree } from '@/api/system/org'
-import { createIdempotentSubmissionKeyTracker } from '@/shared/idempotent-submission'
-import {
-  batchAssignPositions,
-  getEnabledPositions,
-  precheckPositionAssignments
-} from '@/api/system/position'
+import { getEnabledPositions, getOrganizationPositionAssignments, getUserPositionAssignments,
+  removePositionAssignment, setPositionMembers } from '@/api/system/position'
 
-const props = defineProps({
-  modelValue: { type: Boolean, default: false },
-  lockedUser: { type: Object, default: null },
-  lockedUnit: { type: Object, default: null },
-  lockedPosition: { type: Object, default: null },
-  transfer: { type: Boolean, default: false }
-})
-
+const props = defineProps({ modelValue: Boolean, lockedUser: { type: Object, default: null },
+  lockedUnit: { type: Object, default: null }, lockedPosition: { type: Object, default: null } })
 const emit = defineEmits(['update:modelValue', 'saved'])
-const formRef = ref()
-const positionOptions = ref<any[]>([])
 const organizationTree = ref<any[]>([])
-const prechecking = ref(false)
+const positionOptions = ref<any[]>([])
+const userAssignments = ref<any[]>([])
+const loading = ref(false)
 const submitting = ref(false)
-const precheckState = ref<'idle' | 'passed' | 'failed'>('idle')
-const precheckSummary = ref('')
-const submissionKeyTracker = createIdempotentSubmissionKeyTracker()
-
-const form = reactive({
-  userIds: [] as string[],
-  positionCode: '',
-  organizationUnitId: '',
-  effectiveFromLocal: new Date(),
-  effectiveToLocal: null as Date | null,
-  isPrimary: true,
-  sortOrder: 0,
-  replaceExisting: false,
-  reason: ''
+const membersLoaded = ref(false)
+const loadError = ref('')
+const expectedUserIds = ref<string[]>([])
+const form = reactive({ organizationUnitId: '', positionCode: '', userIds: [] as string[] })
+let sequence = 0
+const selectedPosition = computed(() => positionOptions.value.find(p => p.positionCode === form.positionCode))
+const singleUserId = computed({ get: () => form.userIds[0] || '', set: value => { form.userIds = value ? [value] : [] } })
+const selectedUnit = computed(() => {
+  const find = (nodes: any[]): any => {
+    for (const node of nodes) { if (node.id === form.organizationUnitId) return node; const match = find(node.children || []); if (match) return match }
+  }
+  return find(organizationTree.value)
 })
+const selectablePositions = computed(() => positionOptions.value.filter(position => !selectedUnit.value
+  || position.applicableUnitType === 'ANY' || position.applicableUnitType.toLowerCase() === selectedUnit.value.type))
 
-const rules = {
-  userIds: [{
-    validator: (_rule: unknown, value: string[], callback: (error?: Error) => void) => {
-      const values = effectiveUserIds.value
-      if (!values.length) return callback(new Error('请选择任职用户'))
-      if (values.length > 200) return callback(new Error('单次最多任命 200 人'))
-      if (selectedPosition.value?.holderMode === 'SINGLE' && values.length > 1) {
-        return callback(new Error('单人职务一次只能任命一名用户'))
-      }
-      callback()
-    },
-    trigger: 'change'
-  }],
-  positionCode: [{ required: true, message: '请选择职务', trigger: 'change' }],
-  organizationUnitId: [{ required: true, message: '请选择组织节点', trigger: 'change' }],
-  effectiveFromLocal: [{ required: true, message: '请选择生效时间', trigger: 'change' }],
-  effectiveToLocal: [{
-    validator: (_rule: unknown, value: Date | null, callback: (error?: Error) => void) => {
-      if (value && form.effectiveFromLocal
-          && new Date(value).getTime() <= new Date(form.effectiveFromLocal).getTime()) {
-        callback(new Error('结束时间必须晚于生效时间'))
-        return
-      }
-      callback()
-    },
-    trigger: 'change'
-  }],
-  reason: [{ required: true, message: '请输入任命原因', trigger: 'blur' }]
-}
-
-const dialogTitle = computed(() => props.transfer ? '转任职务' : '新增任职')
-const effectiveUserIds = computed(() => props.lockedUser?.id
-  ? [String(props.lockedUser.id)]
-  : form.userIds.map(String).filter(Boolean))
-const selectedPosition = computed(() => positionOptions.value.find(item =>
-  item.positionCode === form.positionCode) || props.lockedPosition)
-
-const flatOrganizationUnits = computed(() => {
-  const result: any[] = []
-  const walk = (nodes: any[]) => (nodes || []).forEach(node => {
-    result.push(node)
-    walk(node.children || [])
-  })
-  walk(organizationTree.value)
-  return result
-})
-const selectedOrganizationUnit = computed(() => props.lockedUnit
-  || flatOrganizationUnits.value.find(unit => String(unit.id) === String(form.organizationUnitId)))
-const selectablePositionOptions = computed(() => {
-  const unitType = String(selectedOrganizationUnit.value?.type || '').toUpperCase()
-  if (!unitType) return positionOptions.value
-  return positionOptions.value.filter(position =>
-    position.applicableUnitType === 'ANY'
-    || position.applicableUnitType === unitType)
-})
-
-const organizationTreeProps = {
-  label: 'orgName',
-  value: 'id',
-  children: 'children',
-  disabled: 'selectionDisabled'
-}
-
-const filteredOrganizationTree = computed(() => {
-  const applicableType = selectedPosition.value?.applicableUnitType || 'ANY'
-  const decorate = (nodes: any[]): any[] => (nodes || []).map(node => ({
-    ...node,
-    selectionDisabled: applicableType !== 'ANY'
-      && String(node.type || '').toUpperCase() !== applicableType,
-    children: decorate(node.children || [])
-  }))
-  return decorate(organizationTree.value)
-})
-
-function userLabel(user: any) {
-  return user?.nickname || user?.username || user?.name || user?.id || '当前用户'
-}
-
-function unitLabel(unit: any) {
-  return unit?.displayPath || unit?.orgName || unit?.name || unit?.id || '当前组织节点'
-}
-
-function clearPrecheck() {
-  precheckState.value = 'idle'
-  precheckSummary.value = ''
-  submissionKeyTracker.clear()
-}
-
+/** 关闭和切换条件均使旧请求失效，防止慢响应覆盖新选择或提交错误范围的人员。 */
+function invalidate() { sequence++; membersLoaded.value = false }
 async function initialize() {
-  Object.assign(form, {
-    userIds: props.lockedUser?.id ? [String(props.lockedUser.id)] : [],
-    positionCode: props.lockedPosition?.positionCode || '',
-    organizationUnitId: props.lockedUnit?.id || '',
-    effectiveFromLocal: new Date(),
-    effectiveToLocal: null,
-    isPrimary: true,
-    sortOrder: 0,
-    replaceExisting: props.transfer,
-    reason: ''
-  })
-  clearPrecheck()
-  const [positions, organizations] = await Promise.all([
-    getEnabledPositions(),
-    // 组织管理入口已锁定目标节点，无需为任职弹窗重新读取整个组织目录。
-    props.lockedUnit ? Promise.resolve([]) : getOrgTree()
-  ])
-  positionOptions.value = Array.isArray(positions)
-    ? positions
-    : positions?.records || positions?.list || []
-  if (props.lockedPosition?.positionCode
-      && !positionOptions.value.some(item =>
-        item.positionCode === props.lockedPosition.positionCode)) {
-    positionOptions.value.unshift(props.lockedPosition)
-  }
-  organizationTree.value = Array.isArray(organizations)
-    ? organizations
-    : organizations?.records || organizations?.list || []
-}
-
-function handlePositionChange() {
-  const selected = selectedPosition.value
-  const unitType = String(selectedOrganizationUnit.value?.type || '').toUpperCase()
-  if (selected && unitType && selected.applicableUnitType !== 'ANY'
-      && selected.applicableUnitType !== unitType) {
-    form.positionCode = ''
-    ElMessage.warning('所选职务不适用于当前组织节点类型')
-  }
-  clearPrecheck()
-}
-
-function handleOrganizationUnitChange() {
-  const selected = selectedPosition.value
-  const unitType = String(selectedOrganizationUnit.value?.type || '').toUpperCase()
-  if (selected && unitType && selected.applicableUnitType !== 'ANY'
-      && selected.applicableUnitType !== unitType) {
-    form.positionCode = ''
-    ElMessage.warning('当前组织节点类型不适用于已选职务，请重新选择')
-  }
-  clearPrecheck()
-}
-
-function buildRequest() {
-  const effectiveFrom = new Date(form.effectiveFromLocal).toISOString()
-  const effectiveTo = form.effectiveToLocal
-    ? new Date(form.effectiveToLocal).toISOString()
-    : null
-  return {
-    atomic: true,
-    reason: form.reason.trim(),
-    items: effectiveUserIds.value.map(userId => ({
-      positionCode: form.positionCode,
-      organizationUnitId: form.organizationUnitId,
-      userId,
-      effectiveFrom,
-      effectiveTo,
-      isPrimary: form.isPrimary,
-      sortOrder: form.sortOrder,
-      replaceExisting: form.replaceExisting
-    }))
-  }
-}
-
-function normalizePrecheck(result: any) {
-  const items = Array.isArray(result)
-    ? result
-    : result?.items || result?.results || []
-  const explicitlyValid = result?.valid ?? result?.passed ?? result?.success
-  const errors = items.filter((item: any) =>
-    item?.valid === false || item?.passed === false || item?.success === false)
-  return {
-    valid: explicitlyValid === false ? false : errors.length === 0,
-    items,
-    errors
-  }
-}
-
-async function runPrecheck() {
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return false
-  // 主动重新预检表示开始新的提交周期，后续重试复用本次通过后生成的键。
-  submissionKeyTracker.clear()
-  const request = buildRequest()
-  prechecking.value = true
+  invalidate()
+  const current = sequence
+  loading.value = true
+  loadError.value = ''
+  Object.assign(form, { organizationUnitId: props.lockedUnit?.id || props.lockedUser?.deptId || props.lockedUser?.orgId || '',
+    positionCode: props.lockedPosition?.positionCode || '', userIds: [] })
+  userAssignments.value = []
   try {
-    const normalized = normalizePrecheck(
-      await precheckPositionAssignments(request)
-    )
-    precheckState.value = normalized.valid ? 'passed' : 'failed'
-    precheckSummary.value = normalized.valid
-      ? `预检通过，将处理 ${effectiveUserIds.value.length} 条任职。`
-      : normalized.errors.map((item: any) =>
-          item.message || item.errorMessage || item.errorCode || '任职冲突'
-        ).join('；') || '预检未通过，请检查任职范围和有效期。'
-    if (normalized.valid) submissionKeyTracker.keyFor(request)
-    return normalized.valid
+    const [tree, positions, user] = await Promise.all([getOrgTree(), getEnabledPositions(),
+      props.lockedUser ? getUserPositionAssignments(props.lockedUser.id) : Promise.resolve(null)])
+    if (current !== sequence) return
+    organizationTree.value = Array.isArray(tree) ? tree : []
+    positionOptions.value = Array.isArray(positions) ? positions : []
+    userAssignments.value = user?.assignments || []
+    loading.value = false
+    await loadMembers()
   } catch (error: any) {
-    precheckState.value = 'failed'
-    precheckSummary.value = error?.message || '预检失败，请重试。'
-    return false
-  } finally {
-    prechecking.value = false
+    if (current === sequence) { loadError.value = error?.message || '职务数据加载失败'; loading.value = false }
   }
+}
+
+/** 编辑前读取完整集合供后台并发检查；用户入口只添加本人，保留同职务的其他人员。 */
+async function loadMembers() {
+  invalidate()
+  form.userIds = []
+  expectedUserIds.value = []
+  loadError.value = ''
+  if (!selectablePositions.value.some(position => position.positionCode === form.positionCode)) form.positionCode = ''
+  if (!form.organizationUnitId || !form.positionCode) { loading.value = false; return }
+  const current = sequence
+  loading.value = true
+  try {
+    const result = await getOrganizationPositionAssignments(form.organizationUnitId)
+    if (current !== sequence) return
+    expectedUserIds.value = (result.assignments || []).filter((row: any) => row.positionCode === form.positionCode).map((row: any) => row.userId)
+    form.userIds = [...expectedUserIds.value]
+    membersLoaded.value = true
+  } catch (error: any) {
+    if (current === sequence) loadError.value = error?.message || '当前人员加载失败'
+  } finally { if (current === sequence) loading.value = false }
 }
 
 async function submit() {
-  if (precheckState.value !== 'passed') return
+  if (!membersLoaded.value || loading.value || submitting.value) return
+  let userIds = [...form.userIds]
+  if (props.lockedUser) {
+    userIds = selectedPosition.value?.holderMode === 'SINGLE' ? [props.lockedUser.id]
+      : [...new Set([...expectedUserIds.value, props.lockedUser.id])]
+    if (selectedPosition.value?.holderMode === 'SINGLE' && expectedUserIds.value.some(id => id !== props.lockedUser.id)) {
+      try { await ElMessageBox.confirm('该职务已有人员，保存后将替换为当前用户。', '更换职务人员', { type: 'warning' }) }
+      catch { return }
+    }
+  }
   submitting.value = true
   try {
-    const request = buildRequest()
-    await batchAssignPositions(request, submissionKeyTracker.keyFor(request))
-    ElMessage.success(form.replaceExisting ? '职务转任成功' : '职务任命成功')
-    submissionKeyTracker.clear()
+    await setPositionMembers({ positionCode: form.positionCode, organizationUnitId: form.organizationUnitId,
+      userIds, expectedUserIds: expectedUserIds.value })
+    ElMessage.success('职务人员已保存')
     emit('saved')
     emit('update:modelValue', false)
-  } finally {
-    submitting.value = false
-  }
+  } finally { submitting.value = false }
+}
+
+/** 移除当前用户的一条职务关系，不影响该组织同职务的其他人员。 */
+async function removeCurrent(row: any) {
+  try { await ElMessageBox.confirm(`移除「${row.organizationUnitName} · ${row.positionName}」？`, '移除职务', { type: 'warning' }) }
+  catch { return }
+  submitting.value = true
+  try {
+    await removePositionAssignment(row.id, row.revision)
+    userAssignments.value = (await getUserPositionAssignments(props.lockedUser.id)).assignments || []
+    await loadMembers()
+    emit('saved')
+  } finally { submitting.value = false }
 }
 </script>
 
 <style scoped>
-.assignment-dialog__impact {
-  margin-bottom: 16px;
-}
-
-.assignment-dialog__locked-value {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-}
-
-.assignment-dialog__tip,
-.assignment-dialog__option-code {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.assignment-dialog__tip {
-  margin-top: 4px;
-}
-
-.assignment-dialog__option-code {
-  margin-left: 10px;
-}
-
-@media (max-width: 760px) {
-  :deep(.el-dialog) {
-    width: 94vw !important;
-  }
-}
+.member-form { margin-top: 20px; }
+.current-positions { margin-top: 12px; }
 </style>

@@ -15,15 +15,17 @@
         </div>
       </template>
 
-      <div class="organization-layout">
-        <aside class="organization-sidebar">
-          <div class="sidebar-title">组织架构</div>
-          <OrganizationNavigationTree
-            ref="navigationRef"
-            :model-value="currentId"
-            @select="navigateTo"
-          />
-        </aside>
+      <ResizableTreeLayout class="organization-layout" sidebar-label="组织树宽度">
+        <template #sidebar>
+          <aside class="organization-sidebar">
+            <div class="sidebar-title">组织架构</div>
+            <OrganizationNavigationTree
+              ref="navigationRef"
+              :model-value="currentId"
+              @select="navigateTo"
+            />
+          </aside>
+        </template>
         <main class="organization-content">
           <el-breadcrumb separator="/" class="organization-breadcrumb">
             <el-breadcrumb-item @click="navigateTo({ id: '0' })">全部组织</el-breadcrumb-item>
@@ -104,7 +106,7 @@
                   size="small"
                   @click="openPositionAssignment(row)"
                 >
-                  职务任命
+                  设置职务人员
                 </el-button>
                 <el-button type="danger" link size="small" @click="handleDelete(row)">
                   删除
@@ -123,7 +125,7 @@
             @size-change="handlePageSizeChange"
           />
         </main>
-      </div>
+      </ResizableTreeLayout>
     </el-card>
     
     <!-- 新增/编辑弹窗 -->
@@ -183,7 +185,7 @@
               <UserSelector
                 v-model="form.leaderId"
                 value-key="id"
-                placeholder="清空表示撤销负责人"
+                placeholder="清空可移除负责人"
                 title="选择负责人"
                 :disabled="!canAssignPosition || leaderSubmitting"
               />
@@ -194,14 +196,14 @@
                 :disabled="!canAssignPosition || !leaderDirty"
                 @click="saveOrganizationLeader"
               >
-                {{ form.leaderId ? '确认转任' : '确认撤销' }}
+                保存负责人
               </el-button>
             </div>
             <div class="field-help">
-              负责人是内置 UNIT_LEADER 职务的独立快捷入口，必须在此单独确认；组织保存接口不再写 leaderId。
+              设置后立即生效，已生成的审批任务保持原办理人。
             </div>
           </template>
-          <div v-else class="field-help">请先创建组织节点，再通过负责人或职务任命入口维护 UNIT_LEADER。</div>
+          <div v-else class="field-help">请先保存组织，再设置负责人。</div>
         </el-form-item>
         <el-form-item label="联系电话">
           <el-input v-model="form.phone" :disabled="!!form.sourceInfo" placeholder="请输入联系电话" />
@@ -225,6 +227,7 @@
         <el-form-item label="描述">
           <el-input v-model="form.description" :disabled="!!form.sourceInfo" type="textarea" :rows="3" placeholder="请输入描述" />
         </el-form-item>
+        <IdentitySourceSnapshotViewer v-if="dialogVisible && form.sourceInfo" target-type="ORGANIZATION" :target-id="form.id" />
         <IdentityExtensionForm v-if="dialogVisible" ref="extensionFormRef" target-type="ORGANIZATION" :target-id="form.id" />
       </el-form>
       <template #footer>
@@ -258,6 +261,7 @@
 
 <script setup>
 import IdentityExtensionForm from '@/views/system/components/IdentityExtensionForm.vue'
+import IdentitySourceSnapshotViewer from '@/views/system/components/IdentitySourceSnapshotViewer.vue'
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, OfficeBuilding, House } from '@element-plus/icons-vue'
@@ -269,7 +273,7 @@ import { useUserStore } from '@/stores/user'
 import { updateOrganizationLeader } from '@/api/system/position'
 import { getOrganizationBusinessLevelOptions, getOrganizationPage, getOrganizationAncestors } from '@/api/system/org'
 import OrganizationNavigationTree from '@/views/system/components/OrganizationNavigationTree.vue'
-import { createIdempotentSubmissionKeyTracker } from '@/shared/idempotent-submission'
+import ResizableTreeLayout from '@/views/system/components/ResizableTreeLayout.vue'
 
 const userStore = useUserStore()
 const canAssignPosition = computed(() => userStore.isSuperAdmin
@@ -302,7 +306,6 @@ const positionAssignmentUnit = ref(null)
 const businessLevelOptions = ref([])
 const originalLeaderId = ref('')
 const leaderSubmitting = ref(false)
-const leaderSubmissionKeyTracker = createIdempotentSubmissionKeyTracker()
 const leaderDirty = computed(() => isEdit.value
   && String(form.leaderId || '') !== String(originalLeaderId.value || ''))
 
@@ -509,47 +512,19 @@ async function handlePositionAssignmentSaved() {
   await refreshOrganizations()
 }
 
-/**
- * 负责人维护调用任职领域专用入口，避免组织元数据接口与 UNIT_LEADER
- * 同时成为权威来源；清空 userId 会撤销当前有效负责人任职。
- */
+/** 负责人直接保存当前关系；已读取的人员集合用于检测并发修改。 */
 async function saveOrganizationLeader() {
   if (!isEdit.value || !leaderDirty.value || !canAssignPosition.value) return
+  leaderSubmitting.value = true
   try {
-    const action = form.leaderId ? '转任负责人' : '撤销负责人'
-    const result = await ElMessageBox.prompt(
-      `请输入${action}原因，任职变化只影响尚未创建的后续审批任务。`,
-      action,
-      {
-        type: form.leaderId ? 'warning' : 'error',
-        inputType: 'textarea',
-        inputPlaceholder: `请输入${action}原因`,
-        inputValidator: value => Boolean(String(value || '').trim()) || '原因不能为空',
-        confirmButtonText: `确认${action}`,
-        cancelButtonText: '取消'
-      }
-    )
-    leaderSubmitting.value = true
-    const request = {
+    await updateOrganizationLeader(form.id, {
       userId: form.leaderId || null,
-      reason: String(result.value).trim()
-    }
-    await updateOrganizationLeader(
-      form.id,
-      request,
-      leaderSubmissionKeyTracker.keyFor({ unitId: form.id, ...request })
-    )
-    leaderSubmissionKeyTracker.clear()
+      expectedUserIds: originalLeaderId.value ? [originalLeaderId.value] : []
+    })
     originalLeaderId.value = String(form.leaderId || '')
-    ElMessage.success(form.leaderId ? '负责人已转任' : '负责人已撤销')
+    ElMessage.success('负责人已保存')
     await refreshOrganizations()
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') {
-      console.error('负责人任职维护失败:', error)
-    }
-  } finally {
-    leaderSubmitting.value = false
-  }
+  } finally { leaderSubmitting.value = false }
 }
 
 function handleTypeChange(type) {
@@ -657,14 +632,7 @@ onMounted(() => {
   gap: 10px;
 }
 
-.organization-layout {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 20px;
-}
-
 .organization-sidebar {
-  border-right: 1px solid var(--el-border-color-light);
   padding-right: 16px;
   min-width: 0;
 }
@@ -735,12 +703,7 @@ onMounted(() => {
 }
 
 @media (max-width: 1000px) {
-  .organization-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .organization-sidebar {
-    border-right: 0;
     border-bottom: 1px solid var(--el-border-color-light);
     padding: 0 0 16px;
   }

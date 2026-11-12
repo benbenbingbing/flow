@@ -2,7 +2,7 @@
 
 文档版本：1.8；整理日期：2026-10-08。
 
-2026-11-10 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V129，均包含 200 张平台及 Flowable 表、2,796 个字段。此次补齐组织父链就绪状态、来源父级外部引用及待关联子级索引，相关表的字段与规则见第 9 章。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的表数、字段数仍是历史核对记录，当前建库结构以对应数据库的 `.sql` 文件为准。
+2026-11-12 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V131，均包含 200 张平台及 Flowable 表、2,792 个字段。V130 职务管理收敛为当前人员关系；V131 增加身份来源最新原文快照，相关字段与业务规则见第 9 章。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的统计仍是历史核对记录。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
@@ -110,8 +110,7 @@
 - [9. 组织身份与访问控制](#9-组织身份与访问控制)
   - [9.1 sys_organization 组织部门表](#91-sys_organization-组织部门表)
   - [9.2 sys_position 全局职务定义表](#92-sys_position-全局职务定义表)
-  - [9.3 sys_position_assignment 组织职务任职表](#93-sys_position_assignment-组织职务任职表)
-  - [9.4 sys_position_assignment_batch 职务批量任命回执表](#94-sys_position_assignment_batch-职务批量任命回执表)
+  - [9.3 sys_position_assignment 当前组织职务人员关系表](#93-sys_position_assignment-当前组织职务人员关系表)
   - [9.5 sys_user 系统用户表](#95-sys_user-系统用户表)
   - [9.6 sys_role 系统角色表](#96-sys_role-系统角色表)
   - [9.7 sys_group 系统用户组表](#97-sys_group-系统用户组表)
@@ -123,6 +122,7 @@
   - [9.13 auth_refresh_session 浏览器刷新会话表](#913-auth_refresh_session-浏览器刷新会话表)
   - [9.14 sys_identity_source_binding 身份来源映射表](#914-sys_identity_source_binding-身份来源映射表)
   - [9.15 sys_identity_write_lock 身份目录事务锁表](#915-sys_identity_write_lock-身份目录事务锁表)
+  - [9.16 sys_identity_source_snapshot 来源身份最新原文快照表](#916-sys_identity_source_snapshot-来源身份最新原文快照表)
 - [10. 集成应用安全底座](#10-集成应用安全底座)
   - [10.1 integration_application 外部集成应用表](#101-integration_application-外部集成应用表)
   - [10.2 integration_application_credential 集成应用凭证表](#102-integration_application_credential-集成应用凭证表)
@@ -4352,7 +4352,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 #### 9.2.4 业务规则
 
-用户在具体组织的任职记录保存在 sys_position_assignment。
+用户在具体组织的当前职务关系保存在 sys_position_assignment。单人职务每组织最多一人，多人职务允许多名人员；职务本身不授予系统权限。
 
 #### 9.2.5 来源与迁移
 
@@ -4360,103 +4360,54 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 实现定位：[SysPositionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
 
-### 9.3 sys_position_assignment 组织职务任职表
+### 9.3 sys_position_assignment 当前组织职务人员关系表
 
 #### 9.3.1 业务说明
 
-记录用户在指定组织单元担任职务的事实、主职标记和有效时间区间。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 16 个。
+只记录“谁在什么组织担任什么职务”。保存立即生效，移除直接删除，不记录任职历史、主职或未来预约。共 9 个字段；MySQL 系使用 datetime(6)，其他方言使用 timestamp(6)，字符串按方言使用 varchar/varchar2。
 
 #### 9.3.2 字段设计
 
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 用户在组织节点担任职务的一段不可覆盖任职事实。 有效区间统一为 [effectiveFrom, effectiveTo)，撤销通过 revoked 字段保留历史，重新任职必须新增记录。 | 现存 |
-| `position_id` | 职务ID | `varchar(64)` | 否 | 无 | 职务ID。 | 现存 |
-| `organization_unit_id` | 组织单元ID | `varchar(64)` | 否 | 无 | 组织单元ID。 | 现存 |
-| `user_id` | 用户ID | `varchar(64)` | 否 | 无 | 用户ID。 | 现存 |
-| `is_primary` | 是否主职 | `tinyint` | 否 | `0` | 是否主职；CHECK 枚举：0,1。 | 现存 |
-| `sort_order` | 排序号 | `int` | 否 | `0` | 排序号。 | 现存 |
-| `effective_from` | 生效起始时间 | `datetime(6)` | 否 | 无 | 生效起始时间。 | 现存 |
-| `effective_to` | 生效结束时间 | `datetime(6)` | 是 | `NULL` | 生效结束时间。 | 现存 |
-| `revoked_at` | 撤销时间 | `datetime(6)` | 是 | `NULL` | 撤销时间。 | 现存 |
-| `revoked_by` | 撤销人 | `varchar(64)` | 是 | `NULL` | 撤销人。 | 现存 |
-| `revoke_reason` | 撤销原因 | `varchar(500)` | 是 | `NULL` | 撤销原因。 | 现存 |
-| `revision` | 修订号 | `int` | 否 | `1` | 修订号。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 是 | `NULL` | 创建人。 | 现存 |
-| `updated_by` | 修改人 | `varchar(64)` | 是 | `NULL` | 修改人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
+| 字段名 | 数据类型（MySQL） | 允许空 | 默认值 | 用途与约束 |
+| --- | --- | --- | --- | --- |
+| `id` | `varchar(64)` | 否 | 无 | 当前关系 ID，移除时物理删除。 |
+| `position_id` | `varchar(64)` | 否 | 无 | 指向全局职务，供流程按稳定职务编码定位。 |
+| `organization_unit_id` | `varchar(64)` | 否 | 无 | 职务作用组织，区分不同部门的同名职务。 |
+| `user_id` | `varchar(64)` | 否 | 无 | 当前人员身份，流程通过用户目录解析办理人。 |
+| `revision` | `int` | 否 | `1` | 删除时的并发校验版本，不保存历史版本记录。 |
+| `created_by` | `varchar(64)` | 是 | `NULL` | 普通维护元数据。 |
+| `updated_by` | `varchar(64)` | 是 | `NULL` | 普通维护元数据。 |
+| `create_time` | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 当前关系创建时间，不参与生效判断。 |
+| `update_time` | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 由应用维护，不参与生效判断。 |
 
-#### 9.3.3 索引与关联
+#### 9.3.3 关联与约束
 
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_sys_position_assignment_fact` (`position_id`,`organization_unit_id`,`user_id`,`effective_from`)``。
-- ``KEY `idx_sys_position_assignment_lookup` (`position_id`,`organization_unit_id`,`effective_from`,`effective_to`,`revoked_at`)``。
-- ``KEY `idx_sys_position_assignment_user` (`user_id`,`effective_from`,`effective_to`,`revoked_at`)``。
-- ``KEY `idx_sys_position_assignment_unit` (`organization_unit_id`,`position_id`)``。
-- ``CONSTRAINT `fk_sys_position_assignment_position` FOREIGN KEY (`position_id`) REFERENCES `sys_position` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `fk_sys_position_assignment_org` FOREIGN KEY (`organization_unit_id`) REFERENCES `sys_organization` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `fk_sys_position_assignment_user` FOREIGN KEY (`user_id`) REFERENCES `sys_user` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_sys_position_assignment_primary` CHECK (`is_primary` IN (0,1))``。
-- ``CONSTRAINT `chk_sys_position_assignment_period` CHECK (`effective_to` IS NULL OR `effective_to` > `effective_from`)``。
-- ``CONSTRAINT `chk_sys_position_assignment_revoked_at` CHECK (`revoked_at` IS NULL OR `revoked_at` >= `effective_from`)``。
-- ``CONSTRAINT `chk_sys_position_assignment_revision` CHECK (`revision` >= 1)``。
-
-业务关联：
-
-- `user_id` → [sys_user](#95-sys_user-系统用户表).`id`。
-- `position_id` → [sys_position](#92-sys_position-全局职务定义表).`id`。
-- `organization_unit_id` → [sys_organization](#91-sys_organization-组织部门表).`id`。
+- 主键：`id`。
+- `uk_pos_member_current`：`(position_id, organization_unit_id, user_id)` 唯一，禁止重复关系。
+- `idx_pos_member_user`：按用户查询当前职务。
+- `idx_pos_member_unit`：`(organization_unit_id, position_id)`，支持组织内职务查询。
+- `fk_pos_member_position`、`fk_pos_member_unit`、`fk_pos_member_user` 分别关联 `sys_position`、`sys_organization`、`sys_user`，禁止产生悬空关系。
+- `chk_pos_member_revision`：`revision >= 1`。
 
 #### 9.3.4 业务规则
 
-有效区间采用半开区间；是否在任还需结合状态、起止时间和撤销信息。
+- 以某组织某职务的完整人员集合保存，空集合清空。后台在同一事务内校验、删除旧关系并新增缺少的关系。
+- 保持职务、组织、用户的固定锁顺序；当前集合采用锁定读，避免 MySQL 可重复读快照导致并发覆盖。
+- 请求携带编辑时的 `expectedUserIds`；集合已变更则返回冲突。目标集合已相同时重复提交不新增关系。
+- 单人职务每组织最多一人，多人职务可设置多人；不再选择主职或通过任职排序挑人。
+- 人员必须处于目标组织子树内；同时检查管理员的组织数据范围。清空和移除允许清理停用对象。
+- 审批选人过滤已删除或停用的用户、组织和职务。直接分配要求唯一人员，候选人和多实例使用全部人员；多人无法唯一确定时进入原有错误处理。
+- `UNIT_LEADER` 关系是负责人唯一权威来源；兼容 `sys_organization.leader_id/leader_name` 在保存事务内同步。投影表示当前设置，停用状态由审批查询过滤。
+- 已生成任务的办理人不随当前职务设置自动改派，流程自身的审批历史保持原语义。
+- 通用操作日志沿用平台机制，不增加任职履历或必填变更原因。
 
 #### 9.3.5 来源与迁移
 
-结构依据：[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
+新增 [V130__simplify_position_membership.java](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V130__simplify_position_membership.java)。以切换时刻筛选已开始、未结束、未撤销的关系，保留其 ID 和普通维护信息；历史及未来预约均不进入新表。旧 `sys_position_assignment_batch` 表及旧区间索引、约束一并退役。切换前若单人职务存在多名当前人员则失败，禁止静默挑选负责人。
 
-实现定位：[SysPositionAssignmentMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionAssignmentMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
+旧 BPMN 的 `PRIMARY_OR_ERROR` 兼容读取为 `ERROR`，不再查询主职；多人时明确报错。重新保存配置时写入新策略。发布和运行时使用同一解析规则，不改写已部署 BPMN 或其历史版本。
 
-### 9.4 sys_position_assignment_batch 职务批量任命回执表
-
-#### 9.4.1 业务说明
-
-保存批量任命的幂等键、请求摘要和生成的任职 ID 集合。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 6 个。
-
-#### 9.4.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 已成功提交的批量任命幂等结果。 | 现存 |
-| `idempotency_key` | 幂等键 | `varchar(128)` | 否 | 无 | 标识同一业务请求的幂等键，具体唯一性范围见本表索引。 | 现存 |
-| `request_hash` | 请求哈希 | `char(64)` | 否 | 无 | 请求内容摘要，用于核验幂等重试是否携带相同内容。 | 现存 |
-| `assignment_ids_json` | 任职ID集合JSON | `longtext` | 否 | 无 | 任职ID集合JSON。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-
-#### 9.4.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_sys_position_batch_idempotency` (`created_by`,`idempotency_key`)``。
-- ``KEY `idx_sys_position_batch_time` (`create_time`)``。
-- ``CONSTRAINT `fk_sys_position_batch_actor` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_sys_position_batch_hash` CHECK (`request_hash` REGEXP '^[0-9a-f]{64}$')``。
-- ``CONSTRAINT `chk_sys_position_batch_result_json` CHECK (JSON_VALID(`assignment_ids_json`))``。
-
-#### 9.4.4 业务规则
-
-重复提交通过幂等键和请求摘要校验，任职结果记录在 sys_position_assignment。
-
-#### 9.4.5 来源与迁移
-
-结构依据：[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
-
-实现定位：[SysPositionAssignmentBatchMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionAssignmentBatchMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[PositionAssignmentService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/application/PositionAssignmentService.java)。
+原 V069/V070 等历史迁移保持不可变；新库按版本执行至 V130，空库脚本直接建立最终结构。
 
 ### 9.5 sys_user 系统用户表
 
@@ -4931,6 +4882,31 @@ V062 清理已退役的范围盘点根菜单及直接子菜单授权，保留并
 用户与组织来源写入及本地管理通过该行持有事务锁，用于串行化首次来源绑定、组织父链校验及派生结构更新。
 
 结构依据见 [V126 身份来源写入](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V126__identity_source_write_and_external_accounts.sql)。
+
+### 9.16 sys_identity_source_snapshot 来源身份最新原文快照表
+
+每个来源对象只保存最近一次接受的单条 JSON 对象原文，按 `source_key` 覆盖，不逐次追加历史。
+来源绑定与正文拆表，常规用户列表、组织树、身份目录和来源详情均不加载原文。
+
+| 字段名 | 数据类型 | 允许空 | 默认值 | 用途与约束 |
+| --- | --- | --- | --- | --- |
+| `source_key` | `CHAR(64)` | 否 | 无 | 主键，逻辑关联来源绑定，包含对象类型、来源及稳定外部 ID 的 SHA-256 |
+| `source_version` | `BIGINT` / `NUMBER(19)` | 是 | 无 | 原文对应来源版本，SERIAL 模式为空 |
+| `payload_hash` | `CHAR(64)` | 否 | 无 | 原文对应业务快照摘要，独立于原文摘要 |
+| `raw_json` | `LONGTEXT` / `TEXT` / `CLOB` | 否 | 无 | 单条原始 JSON 字符串，保留原始空白、数字与转义 |
+| `raw_hash` | `CHAR(64)` | 否 | 无 | 原始 UTF-8 字节 SHA-256，跳过完全重复写入 |
+| `raw_bytes` | `INTEGER` / `NUMBER(10)` | 否 | 无 | 原文 UTF-8 字节数，供限额校验与查询展示 |
+| `is_current` | `SMALLINT` / `NUMBER(5)` | 否 | 1 | 1 对应当前资料，0 表示后续业务更新缺少原文 |
+| `recorded_at` | `DATETIME(6)` / `TIMESTAMP(6)` | 否 | 无 | 实际原文写入时间；去重、过期标记和父级后到关联不刷新 |
+| `recorded_by` | `VARCHAR(64)` / `VARCHAR2(64)` | 否 | 无 | 有效登录用户或配置服务账号，用于审计归属 |
+
+MySQL、OceanBase MySQL 使用 LONGTEXT，PostgreSQL、人大金仓使用 TEXT，Oracle、达梦、OceanBase Oracle 使用 CLOB。只有主键 `pk_identity_snapshot`，无额外索引、外键或种子数据。
+
+写入持有现有目录锁，与基础资料、扩展、默认角色、绑定和必需审计共用事务。UNCHANGED 可补录或单独更新原文，结果仍为 UNCHANGED；完全重复不改时间。STALE_IGNORED 和同版本业务冲突不改原文。UPDATED 缺原文时仅将旧原文标为过期，必须用显式状态避免 SERIAL 业务值恢复后误认为原文仍有效。
+
+`raw-data-required` 默认 false，单条及批次默认上限分别为 256 KiB、8 MiB。根节点必须是 JSON 对象，拒绝空串、重复字段和尾随内容。旧记录不回填，后续携带原文的接受写入可补录。本地停用、逻辑删除和来源退休不删除原文；未来物理清理绑定时应同事务删除其原文。
+
+专用管理接口先校验登录、目标的 view + manage 权限及组织数据范围，再按需加载原文。审计只记录来源键、哈希及字节数，正文不进入审计。详见 [原文留存方案](../architecture/identity-source-original-data-design.md) 和 [V131 迁移](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V131__identity_source_snapshot.java)。
 
 ## 10. 集成应用安全底座
 

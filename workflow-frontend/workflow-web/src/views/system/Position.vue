@@ -18,7 +18,7 @@
               <el-option label="组织和部门" value="ANY" />
             </el-select>
           </el-form-item>
-          <el-form-item label="任职模式">
+          <el-form-item label="人员数量">
             <el-select v-model="positionQuery.holderMode" clearable placeholder="全部" style="width: 120px">
               <el-option label="单人" value="SINGLE" />
               <el-option label="多人" value="MULTIPLE" />
@@ -69,14 +69,14 @@
           <el-table-column label="适用单位" width="120">
             <template #default="{ row }">{{ unitTypeLabel(row.applicableUnitType) }}</template>
           </el-table-column>
-          <el-table-column label="任职模式" width="100" align="center">
+          <el-table-column label="人员数量" width="100" align="center">
             <template #default="{ row }">
               <el-tag :type="row.holderMode === 'SINGLE' ? 'primary' : 'success'" size="small">
                 {{ row.holderMode === 'SINGLE' ? '单人' : '多人' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="有效任职" width="95" align="center">
+          <el-table-column label="当前人员" width="95" align="center">
             <template #default="{ row }">{{ row.currentAssignmentCount ?? row.activeAssignmentCount ?? row.assignmentCount ?? 0 }}</template>
           </el-table-column>
           <el-table-column label="流程引用" width="95" align="center">
@@ -126,7 +126,7 @@
         />
       </el-tab-pane>
 
-      <el-tab-pane label="组织任职" name="assignments">
+      <el-tab-pane label="职务人员" name="assignments">
         <div class="assignment-layout">
           <aside class="organization-panel">
             <div class="organization-panel__header">
@@ -163,7 +163,7 @@
           <section class="assignment-content">
             <div class="assignment-context">
               <div>
-                <strong>{{ selectedUnit ? selectedUnit.orgName : '全部组织任职' }}</strong>
+                <strong>{{ selectedUnit ? selectedUnit.orgName : '全部职务人员' }}</strong>
                 <span v-if="selectedUnit?.displayPath">{{ selectedUnit.displayPath }}</span>
               </div>
             </div>
@@ -192,20 +192,14 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item>
-                <el-checkbox v-model="assignmentQuery.activeOnly">仅当前有效</el-checkbox>
-              </el-form-item>
               <div class="filter-bar__actions">
                 <div class="filter-bar__action-group">
                   <el-button type="primary" @click="searchAssignments">查询</el-button>
                   <el-button @click="resetAssignmentQuery">重置</el-button>
                 </div>
                 <div v-if="canAssign" class="filter-bar__action-group filter-bar__manage">
-                  <el-button @click="openBatchDialog">
-                    <el-icon><DocumentAdd /></el-icon>批量任命
-                  </el-button>
                   <el-button type="primary" @click="openAssignmentDialog()">
-                    <el-icon><Plus /></el-icon>新增任职
+                    <el-icon><Plus /></el-icon>设置职务人员
                   </el-button>
                 </div>
               </div>
@@ -214,7 +208,7 @@
             <PageState
               v-if="assignmentLoadError"
               type="error"
-              title="组织任职加载失败"
+              title="职务人员加载失败"
               :description="assignmentLoadError"
               retryable
               @retry="fetchAssignments"
@@ -227,7 +221,7 @@
               stripe
               empty-text="当前范围没有任职记录"
             >
-              <el-table-column label="任职用户" min-width="140">
+              <el-table-column label="人员" min-width="140">
                 <template #default="{ row }">
                   <strong>{{ assignmentUserLabel(row) }}</strong>
                   <div class="secondary-text">{{ row.username || row.userCode || row.userId }}</div>
@@ -242,36 +236,22 @@
               <el-table-column label="组织节点" min-width="180" show-overflow-tooltip>
                 <template #default="{ row }">{{ assignmentUnitLabel(row) }}</template>
               </el-table-column>
-              <el-table-column label="有效期" min-width="190">
-                <template #default="{ row }">
-                  {{ formatDateTime(row.effectiveFrom) }}
-                  <div class="secondary-text">至 {{ row.effectiveTo ? formatDateTime(row.effectiveTo) : '长期' }}</div>
-                </template>
-              </el-table-column>
-              <el-table-column label="主职" width="70" align="center">
-                <template #default="{ row }"><el-tag v-if="row.isPrimary" size="small">主职</el-tag><span v-else>-</span></template>
-              </el-table-column>
-              <el-table-column label="状态" width="90" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="assignmentStatus(row).type" size="small">{{ assignmentStatus(row).label }}</el-tag>
-                </template>
-              </el-table-column>
               <el-table-column label="操作" width="130" fixed="right">
                 <template #default="{ row }">
                   <el-button
                     type="primary"
                     link
                     size="small"
-                    :disabled="!canAssign || !isAssignmentActive(row)"
-                    @click="openTransferDialog(row)"
-                  >转任</el-button>
+                    :disabled="!canAssign"
+                    @click="openMembersDialog(row)"
+                  >设置人员</el-button>
                   <el-button
                     type="danger"
                     link
                     size="small"
-                    :disabled="!canAssign || !isAssignmentActive(row)"
-                    @click="revokeAssignment(row)"
-                  >撤销</el-button>
+                    :disabled="!canAssign"
+                    @click="removeAssignment(row)"
+                  >移除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -315,12 +295,12 @@
             <el-radio-button value="ANY">组织和部门</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="任职模式" prop="holderMode">
+        <el-form-item label="人员数量" prop="holderMode">
           <el-radio-group v-model="positionForm.holderMode">
             <el-radio-button value="SINGLE">单人</el-radio-button>
             <el-radio-button value="MULTIPLE">多人</el-radio-button>
           </el-radio-group>
-          <div class="form-tip">单人职务更换人员时必须显式转任；多人职务可设置唯一主职。</div>
+          <div class="form-tip">单人职务每个组织最多一人，多人职务可设置多名人员。</div>
         </el-form-item>
         <el-form-item label="排序">
           <el-input-number v-model="positionForm.sortOrder" :min="0" :max="9999" controls-position="right" />
@@ -339,118 +319,27 @@
       v-model="assignmentDialogVisible"
       :locked-unit="assignmentDialogContext.unit"
       :locked-position="assignmentDialogContext.position"
-      :transfer="assignmentDialogContext.transfer"
       @saved="handleAssignmentSaved"
     />
 
-    <el-dialog
-      v-model="batchDialogVisible"
-      title="平行部门批量任命"
-      width="min(1180px, 96vw)"
-      top="5vh"
-      :close-on-click-modal="false"
-      destroy-on-close
-    >
-      <el-alert
-        title="最多 200 行；先执行只读预检，正式提交将全量原子成功或失败。"
-        type="info"
-        :closable="false"
-        show-icon
-        class="batch-alert"
-      />
-      <el-table :data="batchRows" border max-height="480">
-        <el-table-column label="#" type="index" width="50" />
-        <el-table-column label="组织节点" min-width="210">
-          <template #default="{ row }">
-            <el-tree-select
-              v-model="row.organizationUnitId"
-              :data="organizationTree"
-              :props="{ label: 'orgName', value: 'id', children: 'children' }"
-              check-strictly
-              filterable
-              default-expand-all
-              placeholder="选择组织或部门"
-              style="width: 100%"
-              @change="handleBatchUnitChange(row)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column label="职务" min-width="180">
-          <template #default="{ row }">
-            <el-select v-model="row.positionCode" filterable placeholder="选择职务" style="width: 100%" @change="clearBatchPrecheck">
-              <el-option v-for="item in batchPositionOptions(row)" :key="item.positionCode" :label="item.positionName" :value="item.positionCode" />
-            </el-select>
-          </template>
-        </el-table-column>
-        <el-table-column label="新任职人" min-width="210">
-          <template #default="{ row }">
-            <UserSelector v-model="row.userId" value-key="id" placeholder="选择用户" title="选择任职人" @change="clearBatchPrecheck" />
-          </template>
-        </el-table-column>
-        <el-table-column label="生效时间" min-width="180">
-          <template #default="{ row }">
-            <el-date-picker v-model="row.effectiveFromLocal" type="datetime" format="YYYY-MM-DD HH:mm" style="width: 100%" @change="clearBatchPrecheck" />
-          </template>
-        </el-table-column>
-        <el-table-column label="处理方式" min-width="150">
-          <template #default="{ row }">
-            <el-select v-model="row.replaceExisting" style="width: 100%" @change="clearBatchPrecheck">
-              <el-option label="新增任命" :value="false" />
-              <el-option label="转任原负责人" :value="true" />
-            </el-select>
-          </template>
-        </el-table-column>
-        <el-table-column label="预检" min-width="150">
-          <template #default="{ row }">
-            <el-tag v-if="row.precheckStatus === 'passed'" type="success" size="small">通过</el-tag>
-            <el-tooltip v-else-if="row.precheckStatus === 'failed'" :content="row.precheckMessage" placement="top">
-              <el-tag type="danger" size="small">未通过</el-tag>
-            </el-tooltip>
-            <span v-else class="secondary-text">待预检</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="70" fixed="right">
-          <template #default="{ $index }">
-            <el-button type="danger" link :disabled="batchRows.length <= 1" @click="removeBatchRow($index)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-button class="add-batch-row" :disabled="batchRows.length >= 200" @click="addBatchRow">
-        <el-icon><Plus /></el-icon>添加一行
-      </el-button>
-      <el-form label-width="90px" class="batch-reason">
-        <el-form-item label="任命原因" required>
-          <el-input v-model="batchReason" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="请输入本次批量任命原因" @input="clearBatchPrecheck" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchDialogVisible = false">取消</el-button>
-        <el-button :loading="batchPrechecking" @click="precheckBatch">预检全部</el-button>
-        <el-button type="primary" :disabled="!batchPrecheckPassed" :loading="batchSubmitting" @click="submitBatch">原子提交</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { DocumentAdd, House, OfficeBuilding, Plus, Search } from '@element-plus/icons-vue'
+import { House, OfficeBuilding, Plus, Search } from '@element-plus/icons-vue'
 import PageState from '@/components/PageState.vue'
-import UserSelector from '@/components/UserSelector.vue'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
 import { useUserStore } from '@/stores/user'
 import { getOrgTree } from '@/api/system/org'
-import { createIdempotentSubmissionKeyTracker } from '@/shared/idempotent-submission'
 import {
-  batchAssignPositions,
   createPosition,
   deletePosition,
   getEnabledPositions,
   getPositionAssignmentPage,
   getPositionPage,
-  precheckPositionAssignments,
-  revokePositionAssignment,
+  removePositionAssignment,
   updatePosition,
   updatePositionStatus
 } from '@/api/system/position'
@@ -476,7 +365,7 @@ const positionDialogVisible = ref(false)
 const positionFormRef = ref()
 const positionSubmitting = ref(false)
 const positionForm = reactive({
-  id: '', positionName: '', positionCode: '', applicableUnitType: 'ANY', holderMode: 'SINGLE',
+  id: '', positionName: '', positionCode: '', applicableUnitType: 'ANY', holderMode: 'MULTIPLE',
   status: 'ENABLED', sortOrder: 0, description: '', revision: undefined as number | undefined
 })
 const positionRules = {
@@ -486,7 +375,7 @@ const positionRules = {
     { pattern: /^[A-Z][A-Z0-9_]{1,99}$/, message: '编码应使用大写字母、数字和下划线', trigger: 'blur' }
   ],
   applicableUnitType: [{ required: true, message: '请选择适用单位', trigger: 'change' }],
-  holderMode: [{ required: true, message: '请选择任职模式', trigger: 'change' }]
+  holderMode: [{ required: true, message: '请选择人员数量', trigger: 'change' }]
 }
 
 const organizationTreeRef = ref()
@@ -498,27 +387,9 @@ const assignmentLoading = ref(false)
 const assignmentLoadError = ref('')
 const assignmentList = ref<any[]>([])
 const assignmentTotal = ref(0)
-const assignmentQuery = reactive({ keyword: '', positionCode: '', activeOnly: true, pageNum: 1, pageSize: 20 })
+const assignmentQuery = reactive({ keyword: '', positionCode: '', pageNum: 1, pageSize: 20 })
 const assignmentDialogVisible = ref(false)
-const assignmentDialogContext = reactive({ unit: null as any, position: null as any, transfer: false })
-
-const batchDialogVisible = ref(false)
-const batchRows = ref<any[]>([])
-const batchReason = ref('')
-const batchPrechecking = ref(false)
-const batchSubmitting = ref(false)
-const batchSubmissionKeyTracker = createIdempotentSubmissionKeyTracker()
-const batchPrecheckPassed = computed(() => batchRows.value.length > 0
-  && batchRows.value.every(row => row.precheckStatus === 'passed'))
-const flatOrganizationUnits = computed(() => {
-  const result: any[] = []
-  const walk = (nodes: any[]) => (nodes || []).forEach(node => {
-    result.push(node)
-    walk(node.children || [])
-  })
-  walk(organizationTree.value)
-  return result
-})
+const assignmentDialogContext = reactive({ unit: null as any, position: null as any })
 
 watch(organizationKeyword, value => organizationTreeRef.value?.filter(value))
 
@@ -567,7 +438,7 @@ function handlePositionPageSizeChange() { positionQuery.pageNum = 1; fetchPositi
 
 function resetPositionForm() {
   Object.assign(positionForm, {
-    id: '', positionName: '', positionCode: '', applicableUnitType: 'ANY', holderMode: 'SINGLE',
+    id: '', positionName: '', positionCode: '', applicableUnitType: 'ANY', holderMode: 'MULTIPLE',
     status: 'ENABLED', sortOrder: 0, description: '', revision: undefined
   })
 }
@@ -654,7 +525,7 @@ async function removePosition(row: any) {
 
 function showPositionReferences(row: any) {
   ElMessageBox.alert(
-    `当前有效任职 ${row.currentAssignmentCount ?? row.activeAssignmentCount ?? row.assignmentCount ?? 0} 条，流程引用 ${row.processReferenceCount ?? row.referenceCount ?? 0} 处。`,
+    `当前人员 ${row.currentAssignmentCount ?? row.activeAssignmentCount ?? row.assignmentCount ?? 0} 条，流程引用 ${row.processReferenceCount ?? row.referenceCount ?? 0} 处。`,
     `职务引用 - ${row.positionName}`, { confirmButtonText: '关闭' }
   )
 }
@@ -696,7 +567,6 @@ async function fetchAssignments() {
       keyword: assignmentQuery.keyword.trim() || undefined,
       positionCode: assignmentQuery.positionCode || undefined,
       organizationUnitId: selectedUnit.value?.id || undefined,
-      activeOnly: assignmentQuery.activeOnly,
       pageNum: assignmentQuery.pageNum,
       pageSize: assignmentQuery.pageSize
     }), assignmentQuery.pageNum, assignmentQuery.pageSize)
@@ -705,7 +575,7 @@ async function fetchAssignments() {
     assignmentQuery.pageNum = page.pageNum
     assignmentQuery.pageSize = page.pageSize
   } catch (error: any) {
-    assignmentLoadError.value = error?.message || '无法读取组织任职，请重试。'
+    assignmentLoadError.value = error?.message || '无法读取职务人员，请重试。'
   } finally {
     assignmentLoading.value = false
   }
@@ -713,7 +583,7 @@ async function fetchAssignments() {
 
 function searchAssignments() { assignmentQuery.pageNum = 1; fetchAssignments() }
 function resetAssignmentQuery() {
-  Object.assign(assignmentQuery, { keyword: '', positionCode: '', activeOnly: true, pageNum: 1 })
+  Object.assign(assignmentQuery, { keyword: '', positionCode: '', pageNum: 1 })
   fetchAssignments()
 }
 function handleAssignmentPageSizeChange() { assignmentQuery.pageNum = 1; fetchAssignments() }
@@ -721,13 +591,12 @@ function handleAssignmentPageSizeChange() { assignmentQuery.pageNum = 1; fetchAs
 function openAssignmentDialog(context: any = {}) {
   Object.assign(assignmentDialogContext, {
     unit: context.unit || selectedUnit.value || null,
-    position: context.position || null,
-    transfer: context.transfer === true
+    position: context.position || null
   })
   assignmentDialogVisible.value = true
 }
 
-function openTransferDialog(row: any) {
+function openMembersDialog(row: any) {
   openAssignmentDialog({
     unit: {
       id: row.organizationUnitId,
@@ -741,8 +610,7 @@ function openTransferDialog(row: any) {
       positionName: row.positionName,
       applicableUnitType: row.applicableUnitType || 'ANY',
       holderMode: row.holderMode || 'SINGLE'
-    },
-    transfer: true
+    }
   })
 }
 
@@ -750,149 +618,14 @@ async function handleAssignmentSaved() {
   await Promise.all([fetchAssignments(), fetchPositions()])
 }
 
-async function revokeAssignment(row: any) {
-  try {
-    const result = await ElMessageBox.prompt(
-      '撤销只影响尚未创建的后续审批任务，已生成任务不会自动改派。请输入撤销原因。',
-      `撤销任职 - ${assignmentUserLabel(row)}`,
-      {
-        type: 'warning',
-        inputType: 'textarea',
-        inputPlaceholder: '请输入撤销原因',
-        inputValidator: value => Boolean(String(value || '').trim()) || '撤销原因不能为空',
-        confirmButtonText: '确认撤销', cancelButtonText: '取消'
-      }
-    )
-    await revokePositionAssignment(row.id, {
-      reason: String(result.value).trim(),
-      revision: row.revision
-    })
-    ElMessage.success('任职已撤销')
-    await Promise.all([fetchAssignments(), fetchPositions()])
-  } catch { /* 用户取消 */ }
+async function removeAssignment(row: any) {
+  try { await ElMessageBox.confirm(`移除「${assignmentUserLabel(row)}」的当前职务？已生成任务保持原办理人。`, '移除职务人员', { type: 'warning' }) }
+  catch { return }
+  await removePositionAssignment(row.id, row.revision)
+  ElMessage.success('职务人员已移除')
+  await handleAssignmentSaved()
 }
 
-function createBatchRow() {
-  return {
-    organizationUnitId: selectedUnit.value?.id || '',
-    positionCode: '', userId: '', effectiveFromLocal: new Date(), effectiveToLocal: null,
-    isPrimary: true, sortOrder: 0, replaceExisting: false,
-    precheckStatus: 'idle', precheckMessage: ''
-  }
-}
-
-function openBatchDialog() {
-  batchSubmissionKeyTracker.clear()
-  batchRows.value = [createBatchRow()]
-  batchReason.value = ''
-  batchDialogVisible.value = true
-}
-function addBatchRow() { if (batchRows.value.length < 200) batchRows.value.push(createBatchRow()) }
-function removeBatchRow(index: number) { batchRows.value.splice(index, 1); clearBatchPrecheck() }
-function clearBatchPrecheck() {
-  batchRows.value.forEach(row => { row.precheckStatus = 'idle'; row.precheckMessage = '' })
-  batchSubmissionKeyTracker.clear()
-}
-
-function batchPositionOptions(row: any) {
-  const unit = flatOrganizationUnits.value.find(item =>
-    String(item.id) === String(row.organizationUnitId))
-  const unitType = String(unit?.type || '').toUpperCase()
-  if (!unitType) return enabledPositionOptions.value
-  return enabledPositionOptions.value.filter(position =>
-    position.applicableUnitType === 'ANY'
-    || position.applicableUnitType === unitType)
-}
-
-function handleBatchUnitChange(row: any) {
-  if (row.positionCode
-      && !batchPositionOptions(row).some(position =>
-        position.positionCode === row.positionCode)) {
-    row.positionCode = ''
-    ElMessage.warning('已清除不适用于该组织节点类型的职务')
-  }
-  clearBatchPrecheck()
-}
-
-function buildBatchRequest() {
-  return {
-    atomic: true,
-    reason: batchReason.value.trim(),
-    items: batchRows.value.map(row => ({
-      positionCode: row.positionCode,
-      organizationUnitId: row.organizationUnitId,
-      userId: row.userId,
-      effectiveFrom: row.effectiveFromLocal ? new Date(row.effectiveFromLocal).toISOString() : null,
-      effectiveTo: row.effectiveToLocal ? new Date(row.effectiveToLocal).toISOString() : null,
-      isPrimary: row.isPrimary,
-      sortOrder: row.sortOrder,
-      replaceExisting: row.replaceExisting
-    }))
-  }
-}
-
-function validateBatchRows() {
-  if (!batchReason.value.trim()) return '请输入批量任命原因'
-  const invalidIndex = batchRows.value.findIndex(row =>
-    !row.organizationUnitId || !row.positionCode || !row.userId || !row.effectiveFromLocal)
-  return invalidIndex >= 0 ? `第 ${invalidIndex + 1} 行信息不完整` : ''
-}
-
-async function precheckBatch() {
-  const validationError = validateBatchRows()
-  if (validationError) { ElMessage.warning(validationError); return }
-  batchPrechecking.value = true
-  clearBatchPrecheck()
-  const request = buildBatchRequest()
-  try {
-    const result: any = await precheckPositionAssignments(request)
-    const items = Array.isArray(result) ? result : result?.items || result?.results || []
-    batchRows.value.forEach((row, index) => {
-      const item = items.find((candidate: any) => Number(candidate.index) === index)
-        || items[index]
-        || {}
-      const passed = item.valid ?? item.passed ?? item.success ?? (result?.valid ?? result?.passed ?? true)
-      row.precheckStatus = passed === false ? 'failed' : 'passed'
-      row.precheckMessage = item.message || item.errorMessage || item.errorCode || ''
-    })
-    if (batchPrecheckPassed.value) {
-      batchSubmissionKeyTracker.keyFor(request)
-      ElMessage.success(`全部 ${batchRows.value.length} 行预检通过`)
-    }
-    else ElMessage.warning('部分任职未通过预检，请查看行内结果')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '批量预检失败')
-  } finally {
-    batchPrechecking.value = false
-  }
-}
-
-async function submitBatch() {
-  if (!batchPrecheckPassed.value) return
-  batchSubmitting.value = true
-  try {
-    const request = buildBatchRequest()
-    await batchAssignPositions(
-      request,
-      batchSubmissionKeyTracker.keyFor(request)
-    )
-    ElMessage.success(`已原子提交 ${batchRows.value.length} 条任职`)
-    batchSubmissionKeyTracker.clear()
-    batchDialogVisible.value = false
-    await Promise.all([fetchAssignments(), fetchPositions()])
-  } finally {
-    batchSubmitting.value = false
-  }
-}
-
-function assignmentStatus(row: any) {
-  if (row.revokedAt || row.status === 'REVOKED') return { label: '已撤销', type: 'info' }
-  const now = Date.now()
-  if (row.effectiveFrom && new Date(row.effectiveFrom).getTime() > now) return { label: '待生效', type: 'warning' }
-  if (row.effectiveTo && new Date(row.effectiveTo).getTime() <= now) return { label: '已到期', type: 'info' }
-  return { label: '有效', type: 'success' }
-}
-function isAssignmentActive(row: any) { return assignmentStatus(row).label === '有效' }
 function assignmentUserLabel(row: any) { return row.displayName || row.userDisplayName || row.nickname || row.userName || row.username || row.userId || '-' }
 function assignmentUnitLabel(row: any) { return row.organizationPath || row.organizationUnitPath || row.orgPath || row.organizationUnitName || row.orgName || row.organizationUnitId || '-' }
 function unitTypeLabel(value: string) { return ({ ORG: '组织', DEPT: '部门', ANY: '组织和部门' } as any)[value] || value || '-' }
@@ -942,9 +675,6 @@ onMounted(async () => {
 .assignment-context span { display: block; margin-top: 3px; color: var(--el-text-color-secondary); font-size: 12px; }
 .assignment-filter { margin-bottom: 12px; }
 .secondary-text, .form-tip { margin-top: 3px; color: var(--el-text-color-secondary); font-size: 12px; }
-.batch-alert { margin-bottom: 14px; }
-.add-batch-row { width: 100%; margin-top: 12px; }
-.batch-reason { margin-top: 14px; }
 @media (max-width: 900px) {
   .position-management { padding: 12px; }
   .assignment-layout { grid-template-columns: 1fr; }

@@ -3,7 +3,11 @@ package com.workflow.contracts.identity.port;
 import com.workflow.contracts.identity.model.*;
 import java.util.List;
 
-/** biz 负责取数和调用时机，框架仅在调用期间校验、保存并返回结果。外层事务如存在须使用 READ_COMMITTED。 */
+/**
+ * biz 负责取数和调用时机，框架仅在调用期间校验、保存并返回结果。外层事务如存在须使用 READ_COMMITTED。
+ * rawDataJson 是转换前的单条来源 JSON 对象，按来源身份覆盖保存；原文单独变化时仍返回 UNCHANGED。
+ * 原文与业务资料共用事务，受 UTF-8 单条/批次限额和来源 raw-data-required 配置约束。
+ */
 public interface IdentityWritePort {
     /** 保存用户基础快照及携带的扩展，映射、审计与资料一起提交；失败整次回滚。 */
     IdentitySaveResult saveUser(UserSaveModel model);

@@ -2,6 +2,8 @@ package com.workflow.admin.identity.provisioning.application;
 
 import com.workflow.admin.identity.extension.application.*;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
+import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentitySourceSnapshotMapper;
+import com.workflow.admin.security.context.UserContext;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import org.mybatis.spring.SqlSessionTemplate;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
@@ -55,6 +57,8 @@ class IdentityWriteIntegrationTest {
     IdentityAccessService access;
     IdentityWriteProperties.Source source;
     SysOrganizationServiceImpl organizations;
+    IdentityWriteProperties properties;
+    IdentitySourceSnapshotService snapshots;
 
     @BeforeEach
     void setup() throws Exception {
@@ -75,12 +79,14 @@ class IdentityWriteIntegrationTest {
         jdbc.execute("ALTER TABLE sys_identity_source_binding ADD parent_external_id VARCHAR(255) NULL");
         jdbc.execute("ALTER TABLE sys_identity_source_binding ADD parent_source_key VARCHAR(64) NULL");
         jdbc.execute("CREATE INDEX idx_identity_parent ON sys_identity_source_binding(parent_source_key)");
+        jdbc.execute("CREATE TABLE sys_identity_source_snapshot(source_key CHAR(64) PRIMARY KEY, source_version BIGINT, payload_hash CHAR(64) NOT NULL, raw_json CLOB NOT NULL, raw_hash CHAR(64) NOT NULL, raw_bytes INTEGER NOT NULL, is_current SMALLINT DEFAULT 1 NOT NULL, recorded_at TIMESTAMP(6) NOT NULL, recorded_by VARCHAR(64) NOT NULL)");
         for (String name : List.of("first", "second", "local")) {
             jdbc.execute("CREATE TABLE biz_test_" + name + " (user_id VARCHAR(64) PRIMARY KEY, value_text VARCHAR(64), row_version BIGINT NOT NULL DEFAULT 0)");
         }
         jdbc.execute("CREATE TABLE biz_test_numbers (user_id VARCHAR(64) PRIMARY KEY, small INTEGER, large BIGINT, amount DECIMAL(30, 8), row_version BIGINT NOT NULL DEFAULT 0)");
         var configuration = new com.baomidou.mybatisplus.core.MybatisConfiguration();
         configuration.addMapper(IdentityPersistenceMapper.class);
+        configuration.addMapper(IdentitySourceSnapshotMapper.class);
         configuration.addMapper(SysOrganizationMapper.class);
         configuration.addMapper(SysRoleMapper.class);
         configuration.addMapper(SysUserRoleMapper.class);
@@ -91,7 +97,7 @@ class IdentityWriteIntegrationTest {
         var organizationMapper = session.getMapper(SysOrganizationMapper.class);
         var roleMapper = session.getMapper(SysRoleMapper.class);
         store = new IdentitySourceStore(persistence);
-        var properties = new IdentityWriteProperties();
+        properties = new IdentityWriteProperties();
         source = new IdentityWriteProperties.Source();
         source.setExtensions(Set.of("test.first", "test.second"));
         var writer = new IdentityAccessService.Writer("actor", source);
@@ -119,7 +125,8 @@ class IdentityWriteIntegrationTest {
         organizations = new SysOrganizationServiceImpl(organizationMapper, userMapper, mock(SysDictItemMapper.class));
         audit = mock(SystemAuditPort.class);
         var hierarchy = new IdentityOrganizationHierarchyService(store, persistence, organizationMapper);
-        service = new IdentityWriteService(store, access, extensions, persistence, mapper, users, userMapper, roleMapper, organizations, hierarchy, audit);
+        snapshots = new IdentitySourceSnapshotService(session.getMapper(IdentitySourceSnapshotMapper.class), properties, access, audit);
+        service = new IdentityWriteService(store, access, extensions, persistence, mapper, users, userMapper, roleMapper, organizations, hierarchy, audit, snapshots);
     }
 
     @Test
@@ -133,7 +140,7 @@ class IdentityWriteIntegrationTest {
             Callable<IdentitySaveResult> call = () -> {
                 ready.countDown();
                 if (!start.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("start timed out");
-                return save(user("concurrent", 1L, "a", null, List.of(first("T1"))));
+                return save(raw(user("concurrent", 1L, "a", null, List.of(first("T1"))), "{\"id\":\"concurrent\"}"));
             };
             var a = executor.submit(call); var b = executor.submit(call);
             assertTrue(ready.await(5, TimeUnit.SECONDS)); start.countDown();
@@ -142,6 +149,7 @@ class IdentityWriteIntegrationTest {
             assertEquals(Set.of(IdentitySaveOutcome.CREATED, IdentitySaveOutcome.UNCHANGED), Set.of(first.outcome(), second.outcome()));
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user_role", Integer.class));
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_snapshot", Integer.class));
         } finally { start.countDown(); executor.shutdownNow(); }
     }
 
@@ -688,6 +696,178 @@ class IdentityWriteIntegrationTest {
         }
     }
 
+    @Test
+    void rawDataIsExactDeduplicatedAndSeparateFromBusinessHash() {
+        var model = user("E1", Long.MAX_VALUE, "alice", null, List.of(first("T1")));
+        String raw = " {\n\"id\":9223372036854775807123, \"html\":\"<script>alert(1)</script>\",\"姓名\":\"张三\"} ";
+        var created = save(raw(model, raw));
+        String businessHash = jdbc.queryForObject("SELECT payload_hash FROM sys_identity_source_binding", String.class);
+        var time = jdbc.queryForObject("SELECT recorded_at FROM sys_identity_source_snapshot", java.sql.Timestamp.class);
+        clearInvocations(users, audit);
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(raw(model, raw)).outcome());
+        assertEquals(time, jdbc.queryForObject("SELECT recorded_at FROM sys_identity_source_snapshot", java.sql.Timestamp.class));
+        verifyNoInteractions(audit);
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(raw(model, raw + " ")).outcome());
+        verify(users, never()).saveUserRoles(anyString(), anyList());
+        assertEquals(businessHash, jdbc.queryForObject("SELECT payload_hash FROM sys_identity_source_binding", String.class));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_snapshot", Integer.class));
+        UserContext.setCurrentUser("actor", "admin");
+        try {
+            var view = snapshots.read(IdentityObjectType.USER, created.localId());
+            assertEquals(raw + " ", view.rawDataJson());
+            assertEquals("9223372036854775807", view.currentSourceVersion());
+            assertEquals("CURRENT", view.state());
+            assertEquals((raw + " ").getBytes(StandardCharsets.UTF_8).length, view.rawBytes());
+            verify(access).requirePermission("actor", "system:user:view");
+            verify(access).requirePermission("actor", "system:user:manage");
+            verify(access).requireObject(IdentityObjectType.USER, created.localId());
+        } finally { UserContext.clear(); }
+    }
+
+    @Test
+    void unchangedCanFillOldRecordsAndLargeClobWithoutBusinessWrites() {
+        var model = user("E1", 1L, "alice", null, List.of(first("T1")));
+        save(model);
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_snapshot", Integer.class));
+        Long extensionVersion = jdbc.queryForObject("SELECT row_version FROM biz_test_first", Long.class);
+        String raw = "{\"large\":\"" + "汉".repeat(20000) + "\"}";
+        clearInvocations(users);
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(raw(model, raw)).outcome());
+        assertEquals(raw, jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot", String.class));
+        assertEquals(extensionVersion, jdbc.queryForObject("SELECT row_version FROM biz_test_first", Long.class));
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void serialReturnToPreviousBusinessStillLeavesMissingRawStaleUntilExplicitlySupplied() {
+        source.setVersionMode(IdentityWriteProperties.VersionMode.SERIAL);
+        var original = user("E1", null, "alice", "a@example.com", List.of());
+        save(raw(original, "{\"original\":true}"));
+        var time = jdbc.queryForObject("SELECT recorded_at FROM sys_identity_source_snapshot", java.sql.Timestamp.class);
+        save(user("E1", null, "alice", "b@example.com", List.of()));
+        save(original);
+        assertEquals(0, jdbc.queryForObject("SELECT is_current FROM sys_identity_source_snapshot", Integer.class));
+        assertEquals(time, jdbc.queryForObject("SELECT recorded_at FROM sys_identity_source_snapshot", java.sql.Timestamp.class));
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(raw(original, "{\"original\":true}")).outcome());
+        assertEquals(1, jdbc.queryForObject("SELECT is_current FROM sys_identity_source_snapshot", Integer.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "null", "[]", "1", "true", "{", "{} {}", "{\"id\":1,\"id\":2}", "{\"nested\":{\"id\":1,\"id\":2}}", "{\"id\":1,}", "{/*comment*/}"})
+    void rejectsInvalidRawWithoutLeakingSourceTextOrSavingAnything(String raw) {
+        var error = assertThrows(IdentityWriteException.class, () -> save(raw(user("E1", 1L, "alice", null, List.of()), raw)));
+        assertEquals("INVALID_RAW_DATA", error.code());
+        assertNull(error.getCause());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_snapshot", Integer.class));
+    }
+
+    @Test
+    void requiredRawAppliesToAcceptedAndUnchangedButStaleOnlyHasSizeGuard() {
+        var first = user("E1", 2L, "alice", null, List.of());
+        save(raw(first, "{}")); source.setRawDataRequired(true);
+        assertEquals("RAW_DATA_REQUIRED", assertThrows(IdentityWriteException.class,
+                () -> save(user("E2", 1L, "bob", null, List.of()))).code());
+        assertEquals("RAW_DATA_REQUIRED", assertThrows(IdentityWriteException.class, () -> save(first)).code());
+        assertEquals("RAW_DATA_REQUIRED", assertThrows(IdentityWriteException.class,
+                () -> save(user("E1", 3L, "alice", null, List.of()))).code());
+        var stale = user("E1", 1L, "alice", null, List.of());
+        assertEquals(IdentitySaveOutcome.STALE_IGNORED, save(stale).outcome());
+        assertEquals(IdentitySaveOutcome.STALE_IGNORED, save(raw(stale, "bad json")).outcome());
+        properties.setRawDataMaxBytes(2);
+        assertEquals("RAW_DATA_TOO_LARGE", assertThrows(IdentityWriteException.class, () -> save(raw(stale, "bad json"))).code());
+        assertEquals("{}", jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot", String.class));
+    }
+
+    @Test
+    void enforcesUtf8SingleAndCumulativeBatchLimitsBeforeAnyWrite() {
+        var first = user("E1", 1L, "alice", null, List.of());
+        properties.setRawDataMaxBytes(10);
+        assertEquals("RAW_DATA_TOO_LARGE", assertThrows(IdentityWriteException.class,
+                () -> save(raw(first, "{\"a\":\"汉\"}"))).code());
+        properties.setRawDataMaxBytes(100); properties.setRawDataMaxBatchBytes(3);
+        var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveUsers(List.of(
+                raw(first, "{}"), raw(user("E2", 1L, "bob", null, List.of()), "{}")))));
+        assertEquals("RAW_DATA_TOO_LARGE", error.code()); assertEquals("models[1].rawDataJson", error.field());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
+    }
+
+    @Test
+    void snapshotAuditAndBatchFailureRollbackBaseBindingRoleAndRawTogether() {
+        jdbc.update("INSERT INTO sys_role(id, role_code) VALUES ('role', 'employee')");
+        source.setDefaultRoleCode("employee");
+        var first = raw(user("E1", 1L, "alice", null, List.of(first("T1"))), "{}");
+        doThrow(new IllegalStateException("audit unavailable")).when(audit).record(argThat(e -> "来源原文留存".equals(e.operationName())));
+        assertThrows(IllegalStateException.class, () -> save(first));
+        for (String table : List.of("sys_user", "sys_user_role", "sys_identity_source_binding", "sys_identity_source_snapshot", "biz_test_first")) {
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class));
+        }
+        reset(audit);
+        var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveUsers(List.of(
+                first, raw(user("E2", 1L, "bob", null, List.of()), "invalid")))));
+        assertEquals("models[1].rawDataJson", error.field());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_snapshot", Integer.class));
+        save(first);
+        doThrow(new IllegalStateException("audit unavailable")).when(audit).record(any());
+        assertThrows(IllegalStateException.class, () -> save(raw(first, "{\"new\":true}")));
+        assertEquals("{}", jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot", String.class));
+    }
+
+    @Test
+    void lateParentReconciliationDoesNotRewriteChildOriginal() {
+        var child = organization("child", "parent");
+        tx.execute(s -> service.saveOrganization(new OrganizationSaveModel(child.key(), child.sourceVersion(), child.base(), child.extensions(), "{\"parentId\":\"parent\"}")));
+        var time = jdbc.queryForObject("SELECT recorded_at FROM sys_identity_source_snapshot", java.sql.Timestamp.class);
+        tx.execute(s -> service.saveOrganization(organization("parent", null)));
+        assertEquals(time, jdbc.queryForObject("SELECT recorded_at FROM sys_identity_source_snapshot", java.sql.Timestamp.class));
+        assertEquals("{\"parentId\":\"parent\"}", jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot", String.class));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_snapshot", Integer.class));
+    }
+
+    @Test
+    void snapshotPersistenceFailureRollsBackUserAndSourceBinding() {
+        jdbc.execute("ALTER TABLE sys_identity_source_snapshot ADD CONSTRAINT test_raw_limit CHECK(raw_bytes < 10)");
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> save(raw(user("E1", 1L, "alice", null, List.of()), "{\"value\":true}")));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_binding", Integer.class));
+        verifyNoInteractions(audit);
+    }
+
+    @Test
+    void organizationBatchKeepsInputOrderAndRawWithItsOwnKeyAndRollsBackOnInvalidRaw() {
+        var child = organization("child", "parent"); var parent = organization("parent", null);
+        var childRaw = new OrganizationSaveModel(child.key(), 1L, child.base(), List.of(), "{\"id\":\"child\"}");
+        var parentRaw = new OrganizationSaveModel(parent.key(), 1L, parent.base(), List.of(), "{\"id\":\"parent\"}");
+        var results = tx.execute(s -> service.saveOrganizations(List.of(childRaw, parentRaw)));
+        assertEquals(List.of("child", "parent"), results.stream().map(IdentitySaveResult::externalId).toList());
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_snapshot", Integer.class));
+        UserContext.setCurrentUser("actor", "admin");
+        try {
+            assertEquals(childRaw.rawDataJson(), snapshots.read(IdentityObjectType.ORGANIZATION, results.get(0).localId()).rawDataJson());
+            tx.execute(s -> service.saveOrganization(new OrganizationSaveModel(child.key(), 2L, child.base(), List.of())));
+            assertEquals("STALE", snapshots.read(IdentityObjectType.ORGANIZATION, results.get(0).localId()).state());
+        } finally { UserContext.clear(); }
+        var bad = organization("bad", "child");
+        var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveOrganizations(List.of(
+                new OrganizationSaveModel(child.key(), 2L, child.base(), List.of(), "{\"new\":true}"),
+                new OrganizationSaveModel(bad.key(), 1L, bad.base(), List.of(), "[]")))));
+        assertEquals("models[1].rawDataJson", error.field());
+        assertEquals(childRaw.rawDataJson(), jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot WHERE source_key = ?", String.class,
+                IdentitySourceStore.hash(IdentityObjectType.ORGANIZATION, child.key())));
+    }
+
+    @Test
+    void sameVersionBusinessConflictDoesNotReplaceRaw() {
+        save(raw(user("E1", 1L, "alice", null, List.of()), "{}"));
+        assertEquals("SOURCE_VERSION_CONFLICT", assertThrows(IdentityWriteException.class,
+                () -> save(raw(user("E1", 1L, "alice", "changed@example.com", List.of()), "{\"new\":true}"))).code());
+        assertEquals("{}", jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot", String.class));
+    }
+
+    private UserSaveModel raw(UserSaveModel model, String raw) {
+        return new UserSaveModel(model.key(), model.sourceVersion(), model.base(), model.extensions(), raw);
+    }
     private IdentitySaveResult save(UserSaveModel model) { return tx.execute(s -> service.saveUser(model)); }
     private UserSaveModel user(String id, Long revision, String account, String email, List<UserExtension> groups) {
         return new UserSaveModel(new ExternalIdentityKey("erp", id), revision,

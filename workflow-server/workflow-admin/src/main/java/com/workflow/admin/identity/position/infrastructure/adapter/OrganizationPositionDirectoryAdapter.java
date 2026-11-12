@@ -26,8 +26,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -217,14 +215,12 @@ public class OrganizationPositionDirectoryAdapter
      *
      * @param positionCode 位置编码，后续用于查询有效持有者集合时定位或关联目标
      * @param organizationUnitId 组织单元ID，后续用于查询有效持有者集合时定位或关联目标
-     * @param asOf {@code as}，供本方法查询有效持有者集合时使用
      * @return 符合条件的位置持有者解析结果，供调用方继续处理
      */
     @Override
-    public PositionHolderResolution findEffectiveHolders(
+    public PositionHolderResolution findCurrentHolders(
             String positionCode,
-            String organizationUnitId,
-            Instant asOf) {
+            String organizationUnitId) {
         String normalizedCode = normalizePositionCode(positionCode);
         SysPosition position = positionMapper.selectByCode(normalizedCode);
         if (position == null) {
@@ -255,11 +251,9 @@ public class OrganizationPositionDirectoryAdapter
             return empty(PositionDirectoryResultCode.POSITION_UNIT_TYPE_MISMATCH,
                     normalizedCode, organizationUnitId, revision);
         }
-        Instant effectiveAt = asOf == null ? Instant.now() : asOf;
-        List<PositionHolderView> holders = assignmentMapper.selectEffectiveRows(
+        List<PositionHolderView> holders = assignmentMapper.selectCurrentHolders(
                         normalizedCode,
-                        organizationUnitId,
-                        LocalDateTime.ofInstant(effectiveAt, ZoneOffset.UTC))
+                        organizationUnitId)
                 .stream()
                 .map(this::holder)
                 .toList();
@@ -328,11 +322,7 @@ public class OrganizationPositionDirectoryAdapter
     private PositionHolderView holder(PositionAssignmentViewRow row) {
         String displayName = StringUtils.hasText(row.getNickname())
                 ? row.getNickname() : row.getUsername();
-        return new PositionHolderView(
-                row.getUserId(), row.getUsername(), displayName,
-                Boolean.TRUE.equals(row.getIsPrimary()),
-                row.getSortOrder() == null ? 0 : row.getSortOrder(),
-                row.getEffectiveFrom().toInstant(ZoneOffset.UTC));
+        return new PositionHolderView(row.getUserId(), row.getUsername(), displayName);
     }
 
     /**

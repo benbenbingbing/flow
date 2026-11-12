@@ -150,33 +150,15 @@ public interface SysPositionMapper extends BaseMapper<SysPosition> {
             """)
     long countProcessReferences(@Param("positionCode") String positionCode);
 
-    /**
-     * 切换单任职模式前检查同一组织内的重叠；日期列直接比较，开放区间使用有类型的最大时间。
-     *
-     * @param positionId 位置ID，后续用于统计{@code overlaps}{@code preventing}{@code single}模式时定位或关联目标
-     * @return 符合条件的{@code overlaps}{@code preventing}{@code single}模式数量
-     */
+    /** 切换单人模式前检查当前人员数；调用方持有职务行锁以串行化人员修改。 */
     @Select("""
-            <script>
-            <bind name="overlapMaximum" value="@java.time.LocalDateTime@of(9999, 12, 31, 23, 59, 59, 999999000)"/>
-            SELECT COUNT(*)
-            FROM sys_position_assignment first_assignment
-            JOIN sys_position_assignment second_assignment
-              ON first_assignment.id &lt; second_assignment.id
-             AND first_assignment.position_id = second_assignment.position_id
-             AND first_assignment.organization_unit_id = second_assignment.organization_unit_id
-             AND (first_assignment.effective_from &lt; second_assignment.effective_to
-               OR (second_assignment.effective_to IS NULL
-                 AND first_assignment.effective_from &lt; #{overlapMaximum,jdbcType=TIMESTAMP}))
-             AND (first_assignment.effective_to &gt; second_assignment.effective_from
-               OR (first_assignment.effective_to IS NULL
-                 AND second_assignment.effective_from &lt; #{overlapMaximum,jdbcType=TIMESTAMP}))
-            WHERE first_assignment.position_id = #{positionId}
-              AND first_assignment.revoked_at IS NULL
-              AND second_assignment.revoked_at IS NULL
-            </script>
+            SELECT COUNT(*) FROM (
+                SELECT organization_unit_id FROM sys_position_assignment
+                WHERE position_id = #{positionId}
+                GROUP BY organization_unit_id HAVING COUNT(*) > 1
+            ) occupied_units
             """)
-    long countOverlapsPreventingSingleMode(@Param("positionId") String positionId);
+    long countUnitsWithMultipleHolders(@Param("positionId") String positionId);
 
     /**
      * 统计分配集合{@code outside}单元类型；结果供后续判断或展示使用。

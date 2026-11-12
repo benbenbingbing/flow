@@ -6,7 +6,6 @@ import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionMapper;
-import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeDelegationMapper;
@@ -108,32 +107,24 @@ class MySqlRuntimeTimeDatabaseTest {
         }
     }
 
-    @Test void positionWritesKeepUtcTimestampsOptimisticRevisionAndRevocationGuards() {
+    @Test void positionAndLeaderWritesKeepUtcTimestampsAndOptimisticRevision() {
         try (var f = new Fixture()) {
             f.table("sys_position", "id VARCHAR(64) PRIMARY KEY, position_name VARCHAR(100), applicable_unit_type VARCHAR(32), holder_mode VARCHAR(32), sort_order INT, description TEXT, updated_by VARCHAR(64), revision INT, deleted INT, status VARCHAR(32), update_time DATETIME(6)");
-            f.table("sys_position_assignment", "id VARCHAR(64) PRIMARY KEY, effective_from DATETIME(6), effective_to DATETIME(6), revoked_at DATETIME(6), revoked_by VARCHAR(64), revoke_reason TEXT, updated_by VARCHAR(64), revision INT, update_time DATETIME(6)");
             f.table("sys_organization", "id VARCHAR(64) PRIMARY KEY, leader_id VARCHAR(64), leader_name VARCHAR(100), deleted INT, update_time DATETIME(6)");
-            var h = new Harness(f, SysPositionMapper.class, SysPositionAssignmentMapper.class, SysOrganizationMapper.class);
+            var h = new Harness(f, SysPositionMapper.class, SysOrganizationMapper.class);
             h.jdbc.update("INSERT INTO sys_position(id,revision,deleted,status) VALUES ('p',1,0,'ENABLED')");
-            h.jdbc.update("INSERT INTO sys_position_assignment(id,revision) VALUES ('a',1)");
             h.jdbc.update("INSERT INTO sys_organization(id,deleted) VALUES ('o',0),('deleted',1)");
             h.tx.executeWithoutResult(status -> {
                 h.jdbc.execute("SET time_zone = '+09:00'");
-                var positions = h.mapper(SysPositionMapper.class); var assignments = h.mapper(SysPositionAssignmentMapper.class);
+                var positions = h.mapper(SysPositionMapper.class);
                 assertEquals(1, positions.updateDefinition("p", "Position", "TEAM", "SINGLE", 1, "notes", "actor", 1));
                 assertEquals(0, positions.updateStatus("p", "DISABLED", "stale", 1));
                 assertEquals(1, positions.updateStatus("p", "DISABLED", "actor", 2));
                 assertEquals(1, positions.softDelete("p", "actor", 3));
                 assertEquals(0, positions.updateStatus("p", "ENABLED", "actor", 4));
-                LocalDateTime time = LocalDateTime.of(2026, 9, 22, 0, 0);
-                assertEquals(1, assignments.updatePeriod("a", time, time.plusDays(2), "actor", 1));
-                assertEquals(0, assignments.closeAt("a", time, "stale", 1));
-                assertEquals(1, assignments.closeAt("a", time.plusDays(1), "actor", 2));
-                assertEquals(1, assignments.revoke("a", time, time, "reason", "actor", 3));
-                assertEquals(0, assignments.updatePeriod("a", time, time.plusDays(2), "actor", 4));
                 assertEquals(1, h.mapper(SysOrganizationMapper.class).updateLeaderProjection("o", "user", "User"));
                 assertEquals(0, h.mapper(SysOrganizationMapper.class).updateLeaderProjection("deleted", "user", "User"));
-                utcUpdated(h, "sys_position", "p"); utcUpdated(h, "sys_position_assignment", "a"); utcUpdated(h, "sys_organization", "o");
+                utcUpdated(h, "sys_position", "p"); utcUpdated(h, "sys_organization", "o");
             });
         }
     }

@@ -6,6 +6,9 @@ workflow:
   identity:
     # 扫描 @IdentityExtension 的包列表，可通过逗号分隔覆盖，包外扩展须显式加入。
     scan-packages: ${WORKFLOW_IDENTITY_SCAN_PACKAGES:com.workflow.biz}
+    # 原始 JSON 按 UTF-8 字节计量；单条默认 256 KiB，一批累计默认 8 MiB。
+    raw-data-max-bytes: ${WORKFLOW_IDENTITY_RAW_DATA_MAX_BYTES:262144}
+    raw-data-max-batch-bytes: ${WORKFLOW_IDENTITY_RAW_DATA_MAX_BATCH_BYTES:8388608}
     # 按 sourceCode 登记可信来源，空映射会拒绝所有来源写入，配置完成后由 biz 决定调用时机。
     sources: {}
     # 接入时使用下面的来源声明替换 sources 空映射，来源编码须与 ExternalIdentityKey.sourceCode 一致。
@@ -22,6 +25,8 @@ workflow:
     #     default-role-code: ${PROJECT_DIRECTORY_DEFAULT_ROLE_CODE:}
     #     # VERSIONED 要求 sourceVersion 可靠递增，SERIAL 要求版本为空且由 biz 保证调用顺序。
     #     version-mode: VERSIONED
+    #     # 默认兼容不传原文；设为 true 后，接受的用户及组织快照必须携带 rawDataJson。
+    #     raw-data-required: false
     #     # 允许来源写入的 SOURCE 扩展编码清单，空列表表示只提交基础用户、组织数据。
     #     extensions: []
   # 开放接口认证与访问控制配置，供第三方服务接入使用。

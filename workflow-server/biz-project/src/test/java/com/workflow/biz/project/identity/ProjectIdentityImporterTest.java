@@ -20,5 +20,17 @@ class ProjectIdentityImporterTest {
         assertEquals(7L, input.getValue().sourceVersion());
         assertEquals("external-org", input.getValue().base().organizationExternalId());
         assertTrue(input.getValue().extensions().isEmpty());
+        assertNull(input.getValue().rawDataJson());
+    }
+
+    @Test void passesOriginalBeforeMappingWithoutLosingExtraFieldsOrNumbers() {
+        var port = mock(IdentityWritePort.class);
+        var importer = new ProjectIdentityImporter(port);
+        String original = "{\"extra\":9223372036854775807123}";
+        importer.saveOrganization(new ProjectIdentityImporter.DirectoryOrganization("O1", 1, "HQ", "总部",
+                OrganizationUnitType.ORGANIZATION, null, true), original);
+        var input = ArgumentCaptor.forClass(OrganizationSaveModel.class);
+        verify(port).saveOrganization(input.capture());
+        assertEquals(original, input.getValue().rawDataJson());
     }
 }

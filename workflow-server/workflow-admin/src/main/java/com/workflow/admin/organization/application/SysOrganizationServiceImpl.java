@@ -308,14 +308,14 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         if (existing == null && StringUtils.hasText(requestedLeaderId)) {
             throw new PositionManagementException(
                     409,
-                    PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
+                    PositionErrorCode.ASSIGNMENT_INVALID,
                     "新增组织不能直接设置负责人；请保存后通过职务任命接口设置");
         }
         if (existing != null && StringUtils.hasText(requestedLeaderId)
                 && !requestedLeaderId.equals(existing.getLeaderId())) {
             throw new PositionManagementException(
                     409,
-                    PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
+                    PositionErrorCode.ASSIGNMENT_INVALID,
                     "负责人必须通过 UNIT_LEADER 职务任命接口变更");
         }
         // MyBatis-Plus 默认不更新 null 字段，从而保留已有兼容投影。

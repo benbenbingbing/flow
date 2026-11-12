@@ -25,7 +25,6 @@ const RELATIVE_POSITION_HIERARCHY_MODES = new Set([
 const RELATIVE_POSITION_ASSIGNMENT_MODES = new Set(['DIRECT', 'CANDIDATE'])
 const RELATIVE_POSITION_MATCH_POLICIES = new Set([
   'ERROR',
-  'PRIMARY_OR_ERROR',
   'ALL'
 ])
 
@@ -113,11 +112,13 @@ export function normalizeRelativeOrgPositionConfig(value = {}) {
   const assignmentMode = String(
     source.assignmentMode || params.assignmentMode || 'DIRECT'
   ).trim().toUpperCase()
-  const multipleMatchPolicy = String(
+  let multipleMatchPolicy = String(
     params.multipleMatchPolicy
       || source.multipleMatchPolicy
-      || (assignmentMode === 'CANDIDATE' ? 'ALL' : 'PRIMARY_OR_ERROR')
+      || (assignmentMode === 'CANDIDATE' ? 'ALL' : 'ERROR')
   ).trim().toUpperCase()
+  // 已发布模型的旧主职策略按唯一人员检查读取，重新保存后写入 ERROR。
+  if (multipleMatchPolicy === 'PRIMARY_OR_ERROR') multipleMatchPolicy = 'ERROR'
   const eligibleUnitTypes = configValues(
     hierarchySource.eligibleUnitTypes?.length
       ? hierarchySource.eligibleUnitTypes
@@ -228,8 +229,8 @@ export function validateRelativeOrgPositionConfig(
     errors.push('候选人或多人办理必须使用全部任职人')
   }
   if (!isMultiInstance && config.assignmentMode === 'DIRECT'
-      && !['ERROR', 'PRIMARY_OR_ERROR'].includes(config.multipleMatchPolicy)) {
-    errors.push('直接分配只支持多人时报错或唯一主职')
+      && config.multipleMatchPolicy !== 'ERROR') {
+    errors.push('直接分配要求唯一人员，多人时报错')
   }
   return {
     valid: errors.length === 0,
@@ -260,9 +261,7 @@ export function relativeOrgPositionSummary(value = {}, labels = {}) {
     ? '全部任职人参与多人办理'
     : config.assignmentMode === 'CANDIDATE'
       ? '全部任职人作为候选人'
-      : config.multipleMatchPolicy === 'PRIMARY_OR_ERROR'
-        ? '唯一任职人或唯一主职直接办理，否则报错'
-        : '仅唯一任职人直接办理，多人时报错'
+      : '仅唯一人员直接办理，多人时报错'
   return `以流程发起人的${anchor}为锚点，查找${lookup}的「${position}」；${assignment}。`
 }
 

@@ -20,7 +20,6 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.session.ExecutorType;
-import org.apache.ibatis.type.JdbcType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
@@ -108,7 +107,7 @@ class MySqlNullBindingDatabaseTest {
 
     @Test void nullableElementParentAndCursorParametersKeepTheirOriginalScopes() throws Exception {
         try (var f = new Fixture()) {
-            f.table("process_action", "id VARCHAR(64),process_config_id VARCHAR(64),version_id VARCHAR(64),scope_type VARCHAR(32),element_id VARCHAR(64),trigger_timing VARCHAR(32),sort_order INT,status VARCHAR(32),deleted INT,execution_mode VARCHAR(32),failure_policy VARCHAR(32),retry_config TEXT,action_definition_id VARCHAR(64),action_name VARCHAR(128),description TEXT,interface_name VARCHAR(128),params_json TEXT,enabled INT,create_time DATETIME,update_time DATETIME,created_by VARCHAR(64)");
+            f.table("process_action", "id VARCHAR(64),process_config_id VARCHAR(64),version_id VARCHAR(64),scope_type VARCHAR(32),element_id VARCHAR(64),trigger_timing VARCHAR(32),sort_order INT,status VARCHAR(32),deleted INT,execution_mode VARCHAR(32),failure_policy VARCHAR(32),failure_strategy_code VARCHAR(100),failure_strategy_version INT,failure_strategy_config TEXT,retry_config TEXT,action_definition_id VARCHAR(64),action_name VARCHAR(128),description TEXT,interface_name VARCHAR(128),params_json TEXT,enabled INT,create_time DATETIME,update_time DATETIME,created_by VARCHAR(64)");
             f.table("entity_form_node", "id VARCHAR(64),form_id VARCHAR(64),parent_id VARCHAR(64),deleted INT,order_key BIGINT,create_time DATETIME,node_key VARCHAR(64),node_type VARCHAR(32),binding_type VARCHAR(32),binding_ref VARCHAR(64),component_name VARCHAR(64),component_version INT,snapshot_version INT,props_document TEXT,rules_document TEXT,data_source_bindings_document TEXT,legacy_props_document TEXT,revision INT,template_id VARCHAR(64),template_version INT,local_overrides_document TEXT,update_time DATETIME");
             f.table("embed_session", "id VARCHAR(64),view_id VARCHAR(64),application_id VARCHAR(64),status VARCHAR(32),slot_released INT");
             var h = new BindingHarness(f, ExecutorType.SIMPLE, FlowActionMapper.class, EntityFormNodeMapper.class, EmbedOperationsMapper.class);
@@ -154,64 +153,38 @@ class MySqlNullBindingDatabaseTest {
         }
     }
 
-    @Test void openEndedAssignmentIntervalsBindDatesAndKeepTouchingBoundariesSeparate() throws Exception {
+    @Test void singleHolderValidationCountsCurrentOrganizationsWithMultiplePeople() throws Exception {
         try (var f = new Fixture()) {
-            // BaseMapper 按实体选择全部列，测试表显式包含完整任职事实字段。
-            f.table("sys_position_assignment", "id VARCHAR(64),position_id VARCHAR(64),organization_unit_id VARCHAR(64),effective_from DATETIME(6),effective_to DATETIME(6),revoked_at DATETIME,user_id VARCHAR(64),is_primary INT,sort_order INT,revoked_by VARCHAR(64),revoke_reason VARCHAR(200),revision INT,created_by VARCHAR(64),updated_by VARCHAR(64),create_time DATETIME,update_time DATETIME");
-            var h = new BindingHarness(f, ExecutorType.SIMPLE, SysPositionAssignmentMapper.class);
-            var capture = new PreparedSqlCapture();
-            h.session.getConfiguration().addInterceptor(capture);
-            var mapper = h.session.getMapper(SysPositionAssignmentMapper.class);
-            h.jdbc.update("INSERT INTO sys_position_assignment(id,position_id,organization_unit_id,effective_from,effective_to,revoked_at) VALUES ('early','p','u','2026-01-01','2026-02-01',NULL),('open','p','u','2026-02-01',NULL,NULL),('revoked','p','u','2026-01-01',NULL,'2026-01-02'),('other','p','other','2026-01-01',NULL,NULL)");
-            var jan = LocalDateTime.of(2026, 1, 10, 0, 0); var feb = LocalDateTime.of(2026, 2, 1, 0, 0);
-            assertEquals(List.of("early"), mapper.selectOverlaps("p", "u", jan, feb, null).stream().map(row -> row.getId()).toList());
-            assertEquals(List.of("open"), mapper.selectOverlaps("p", "u", feb, null, null).stream().map(row -> row.getId()).toList());
-            var openIntervalSql = capture.last;
-            assertEquals(List.of("early", "open"), mapper.selectOverlaps("p", "u", feb.minusNanos(1000), feb.plusNanos(1000), null).stream().map(row -> row.getId()).toList());
-            assertTrue(mapper.selectOverlaps("p", "u", feb, null, "open").isEmpty());
-            assertTrue(mapper.selectOverlaps("p", "u", LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999999000), null, null).isEmpty());
-            assertTrue(mapper.selectOverlaps("p", "u", null, null, null).isEmpty());
-            assertEquals(List.of(Types.TIMESTAMP), h.audit.nullTypes());
-            assertNotNull(openIntervalSql, "必须捕获实际执行的 Wrapper SQL，不能只读取已删除的旧映射");
-            assertFalse(openIntervalSql.getSql().contains("9999-12-31"));
-            assertFalse(openIntervalSql.getSql().contains("COALESCE"));
-            var timestampMappings = openIntervalSql.getParameterMappings().stream()
-                    .filter(mapping -> mapping.getJdbcType() == JdbcType.TIMESTAMP).toList();
-            assertEquals(2, timestampMappings.size(), "区间两端都必须按 TIMESTAMP 绑定");
-            var parameters = h.session.getConfiguration().newMetaObject(openIntervalSql.getParameterObject());
-            assertEquals(List.of(LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999999000), feb),
-                    timestampMappings.stream().map(mapping -> parameters.getValue(mapping.getProperty())).toList());
-        }
-    }
-
-    @Test void singleHolderValidationCountsOnlyOverlappingPairsInTheSameOrganization() throws Exception {
-        try (var f = new Fixture()) {
-            f.table("sys_position_assignment", "id VARCHAR(64),position_id VARCHAR(64),organization_unit_id VARCHAR(64),effective_from DATETIME(6),effective_to DATETIME(6),revoked_at DATETIME");
+            f.table("sys_position_assignment", "id VARCHAR(64),position_id VARCHAR(64),organization_unit_id VARCHAR(64),user_id VARCHAR(64)");
             f.table("sys_organization", "id VARCHAR(64),type VARCHAR(32),deleted INT");
-            var h = new BindingHarness(f, ExecutorType.SIMPLE, SysPositionMapper.class); var mapper = h.session.getMapper(SysPositionMapper.class);
-            h.jdbc.update("INSERT INTO sys_organization VALUES ('u','DEPT',0),('other','COMPANY',0),('deleted','COMPANY',1)");
-            h.jdbc.update("INSERT INTO sys_position_assignment VALUES ('a','p','u','2026-01-01','2026-02-01',NULL),('b','p','u','2026-02-01',NULL,NULL),('revoked','p','u','2026-01-01',NULL,'2026-01-02'),('other','p','other','2026-01-01',NULL,NULL),('deleted-unit','p','deleted','2026-01-01',NULL,NULL),('other-position','q','u','2026-01-01',NULL,NULL)");
-            assertEquals(0, mapper.countOverlapsPreventingSingleMode("p"));
-            h.jdbc.update("INSERT INTO sys_position_assignment VALUES ('c','p','u','2026-01-15','2026-01-20',NULL),('d','p','u','2026-02-15','2026-03-01',NULL),('e','p','u','2026-03-01',NULL,NULL),('maximum','p','u','9999-12-31 23:59:59.999999',NULL,NULL)");
-            assertEquals(3, mapper.countOverlapsPreventingSingleMode("p"));
-            assertEquals(0, mapper.countOverlapsPreventingSingleMode("q"));
-            // 类型切换检查保留现有组织删除过滤，不把 XML 实体文本发送给 JDBC。
+            var h = new BindingHarness(f, ExecutorType.SIMPLE, SysPositionMapper.class);
+            var mapper = h.session.getMapper(SysPositionMapper.class);
+            h.jdbc.update("INSERT INTO sys_organization VALUES ('u','DEPT',0),('other','ORG',0)");
+            h.jdbc.update("INSERT INTO sys_position_assignment VALUES ('a','p','u','alice'),('b','p','other','bob'),('c','q','u','carol')");
+            assertEquals(0, mapper.countUnitsWithMultipleHolders("p"));
+            h.jdbc.update("INSERT INTO sys_position_assignment VALUES ('d','p','u','dave')");
+            assertEquals(1, mapper.countUnitsWithMultipleHolders("p"));
+            assertEquals(0, mapper.countUnitsWithMultipleHolders("q"));
             assertEquals(1, mapper.countAssignmentsOutsideUnitType("p", "DEPT"));
-            assertEquals(0, mapper.countAssignmentsOutsideUnitType("q", "DEPT"));
         }
     }
 
-    /** 在 JDBC prepare 前观察实际 SQL；不替换执行器、SQL 或参数。 */
-    @org.apache.ibatis.plugin.Intercepts(@org.apache.ibatis.plugin.Signature(
-            type = org.apache.ibatis.executor.statement.StatementHandler.class,
-            method = "prepare", args = {java.sql.Connection.class, Integer.class}))
-    static final class PreparedSqlCapture implements org.apache.ibatis.plugin.Interceptor {
-        org.apache.ibatis.mapping.BoundSql last;
-
-        @Override
-        public Object intercept(org.apache.ibatis.plugin.Invocation invocation) throws Throwable {
-            last = ((org.apache.ibatis.executor.statement.StatementHandler) invocation.getTarget()).getBoundSql();
-            return invocation.proceed();
+    /** 普通查询已建立旧快照时，当前关系仍必须通过锁定读看到其他事务提交的新人员。 */
+    @Test void membershipLockingReadUsesLatestCommittedPeopleUnderRepeatableRead() throws Exception {
+        try (var f = new Fixture()) {
+            String table = f.table("sys_position_assignment", "id VARCHAR(64) PRIMARY KEY,position_id VARCHAR(64),organization_unit_id VARCHAR(64),user_id VARCHAR(64),revision INT,created_by VARCHAR(64),updated_by VARCHAR(64),create_time DATETIME(6),update_time DATETIME(6)");
+            var h = new BindingHarness(f, ExecutorType.SIMPLE, SysPositionAssignmentMapper.class);
+            h.jdbc.update("INSERT INTO sys_position_assignment(id,position_id,organization_unit_id,user_id) VALUES ('relation','position','unit','old')");
+            h.tx.setIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
+            h.tx.executeWithoutResult(status -> {
+                assertEquals("old", h.jdbc.queryForObject("SELECT user_id FROM sys_position_assignment", String.class));
+                try (var connection = f.source.getConnection(); var update = connection.createStatement()) {
+                    update.executeUpdate("UPDATE " + table + " SET user_id='new'");
+                } catch (java.sql.SQLException error) { throw new RuntimeException(error); }
+                var mapper = h.session.getMapper(SysPositionAssignmentMapper.class);
+                assertEquals("new", mapper.selectMembersForUpdate("position", "unit").get(0).getUserId());
+                assertEquals("new", mapper.selectMemberForUpdate("relation").getUserId());
+            });
         }
     }
 

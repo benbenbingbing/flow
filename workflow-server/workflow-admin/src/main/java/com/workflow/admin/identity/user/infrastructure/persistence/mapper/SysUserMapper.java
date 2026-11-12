@@ -231,7 +231,6 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      * @param deptId 部门ID，后续用于查询用户分页时定位或关联目标
      * @param roleId 角色ID，后续用于查询用户分页时定位或关联目标
      * @param positionCode 位置编码，后续用于查询用户分页时定位或关联目标
-     * @param asOf {@code as}，供本方法查询用户分页时使用
      * @param assignmentUnitIds 分配单元ID 集合，供本方法查询用户分页时使用
      * @return 查询后的用户分页结果，供调用方继续处理
      */
@@ -258,8 +257,6 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             "INNER JOIN sys_position p ON p.id = pa.position_id",
             "WHERE pa.user_id = u.id AND p.position_code = #{positionCode}",
             "AND p.status = 'ENABLED' AND p.deleted = 0",
-            "AND pa.revoked_at IS NULL AND pa.effective_from &lt;= #{asOf}",
-            "AND (pa.effective_to IS NULL OR pa.effective_to &gt; #{asOf})",
             "<choose>",
             "<when test='assignmentUnitIds == null'></when>",
             "<when test='assignmentUnitIds.size() &gt; 0'>",
@@ -281,7 +278,6 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             @Param("deptId") String deptId,
             @Param("roleId") String roleId,
             @Param("positionCode") String positionCode,
-            @Param("asOf") LocalDateTime asOf,
             @Param("assignmentUnitIds") List<String> assignmentUnitIds);
     
     /**

@@ -4,6 +4,8 @@
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
 -- 2026-11-04：同步至 V128，补齐身份来源写入表、目录锁及认证策略；不预置已退役的 V127 项目示例表。
 -- 2026-11-10 同步至 V129，补齐组织父链就绪状态、来源父级外部引用及待关联子级索引。
+-- 2026-11-12 同步至 V130，职务仅保留当前人员关系，移除任命批次及历史、预约和主职字段。
+-- 2026-11-12 同步至 V131，新增按来源对象覆盖保存的原始 JSON 快照表，不回填历史原文。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
 -- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -3108,36 +3110,15 @@ CREATE TABLE "sys_position_assignment" (
   "position_id" varchar(64) NOT NULL,
   "organization_unit_id" varchar(64) NOT NULL,
   "user_id" varchar(64) NOT NULL,
-  "is_primary" smallint NOT NULL DEFAULT '0',
-  "sort_order" integer NOT NULL DEFAULT '0',
-  "effective_from" timestamp(6) NOT NULL,
-  "effective_to" timestamp(6),
-  "revoked_at" timestamp(6),
-  "revoked_by" varchar(64),
-  "revoke_reason" varchar(500),
   "revision" integer NOT NULL DEFAULT '1',
   "created_by" varchar(64),
   "updated_by" varchar(64),
   "create_time" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "update_time" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  CONSTRAINT "pk_sys_position_assignment_sys_position_assignment" PRIMARY KEY ("id"),
-  CONSTRAINT "ck_sys_position_assignment_chk_sys_position_assignment_period" CHECK ((("effective_to" is null) or ("effective_to" > "effective_from"))),
-  CONSTRAINT "ck_sys_position_assignment_chk_sys_position_assignment_primary" CHECK (("is_primary" in (0,1))),
-  CONSTRAINT "ck_sys_position_assignment_chk_sys_position_assignmen_6100d38d" CHECK (("revision" >= 1)),
-  CONSTRAINT "ck_sys_position_assignment_chk_sys_position_assignmen_cd53b659" CHECK ((("revoked_at" is null) or ("revoked_at" >= "effective_from")))
+  CONSTRAINT "pk_pos_member" PRIMARY KEY ("id"),
+  CONSTRAINT "chk_pos_member_revision" CHECK ("revision" >= 1)
 );
 
-CREATE TABLE "sys_position_assignment_batch" (
-  "id" varchar(64) NOT NULL,
-  "idempotency_key" varchar(128) NOT NULL,
-  "request_hash" char(64) NOT NULL,
-  "assignment_ids_json" text NOT NULL,
-  "created_by" varchar(64) NOT NULL,
-  "create_time" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  CONSTRAINT "pk_sys_position_assignment_batch_sys_position_assignment_batch" PRIMARY KEY ("id"),
-  CONSTRAINT "ck_sys_position_assignment_batch_chk_sys_position_batch_hash" CHECK (("request_hash" ~ '^[0-9a-f]{64}$')),
-  CONSTRAINT "ck_sys_position_assignment_batch_chk_sys_position_bat_c04c04f7" CHECK (flow_sql_is_json("assignment_ids_json"))
-);
 
 CREATE TABLE "sys_role" (
   "id" varchar(64) NOT NULL,
@@ -3840,6 +3821,29 @@ CREATE TABLE "sys_identity_write_lock" (
 COMMENT ON TABLE "sys_identity_write_lock" IS '身份目录事务锁，覆盖组织树及来源首次创建';
 COMMENT ON COLUMN "sys_identity_write_lock"."lock_key" IS '固定 directory 行供身份写入事务加锁；串行化组织树校验及来源首次绑定，禁止删除';
 
+CREATE TABLE "sys_identity_source_snapshot" (
+  "source_key" CHAR(64) NOT NULL,
+  "source_version" BIGINT,
+  "payload_hash" CHAR(64) NOT NULL,
+  "raw_json" TEXT NOT NULL,
+  "raw_hash" CHAR(64) NOT NULL,
+  "raw_bytes" INTEGER NOT NULL,
+  "is_current" SMALLINT DEFAULT 1 NOT NULL,
+  "recorded_at" TIMESTAMP(6) NOT NULL,
+  "recorded_by" VARCHAR(64) NOT NULL,
+  CONSTRAINT "pk_identity_snapshot" PRIMARY KEY ("source_key")
+);
+COMMENT ON TABLE "sys_identity_source_snapshot" IS '来源身份最新原文快照';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."source_key" IS '关联来源绑定的稳定哈希主键，每个用户或组织仅保留一条原文';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."source_version" IS '原文对应的来源版本，SERIAL 模式为空';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."payload_hash" IS '原文对应的业务快照哈希，用于追溯映射后的资料';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."raw_json" IS '单条来源 JSON 对象原文，仅在管理端授权后按需读取';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."raw_hash" IS '原文 UTF-8 字节的 SHA-256，用于跳过完全重复的原文写入';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."raw_bytes" IS '原文 UTF-8 字节数，用于大小校验及管理端展示';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."is_current" IS '是否对应当前业务资料，无原文的业务更新后标为过期';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."recorded_at" IS '实际留存原文的时间，重复同步和过期标记不刷新';
+COMMENT ON COLUMN "sys_identity_source_snapshot"."recorded_by" IS '实际留存原文的有效操作人，用于审计追溯';
+
 CREATE TABLE "sys_identity_source_binding" (
   "source_key" char(64) NOT NULL,
   "source_code" varchar(64) NOT NULL,
@@ -4350,12 +4354,6 @@ CREATE INDEX "ix_sys_organization_idx_deleted" ON "sys_organization" ("deleted")
 CREATE INDEX "ix_sys_organization_idx_sys_org_business_level" ON "sys_organization" ("business_level_code", "status", "deleted");
 CREATE UNIQUE INDEX "uq_sys_position_uk_sys_position_code" ON "sys_position" ("position_code");
 CREATE INDEX "ix_sys_position_idx_sys_position_status_sort" ON "sys_position" ("status", "deleted", "sort_order");
-CREATE UNIQUE INDEX "uq_sys_position_assignment_uk_sys_position_assignment_fact" ON "sys_position_assignment" ("position_id", "organization_unit_id", "user_id", "effective_from");
-CREATE INDEX "ix_sys_position_assignment_idx_sys_position_assignment_lookup" ON "sys_position_assignment" ("position_id", "organization_unit_id", "effective_from", "effective_to", "revoked_at");
-CREATE INDEX "ix_sys_position_assignment_idx_sys_position_assignment_user" ON "sys_position_assignment" ("user_id", "effective_from", "effective_to", "revoked_at");
-CREATE INDEX "ix_sys_position_assignment_idx_sys_position_assignment_unit" ON "sys_position_assignment" ("organization_unit_id", "position_id");
-CREATE UNIQUE INDEX "uq_sys_position_assignment_batch_uk_sys_position_batc_cc38dd75" ON "sys_position_assignment_batch" ("created_by", "idempotency_key");
-CREATE INDEX "ix_sys_position_assignment_batch_idx_sys_position_batch_time" ON "sys_position_assignment_batch" ("create_time");
 CREATE UNIQUE INDEX "uq_sys_role_uk_role_code" ON "sys_role" ("role_code");
 CREATE INDEX "ix_sys_role_idx_status" ON "sys_role" ("status");
 CREATE INDEX "ix_sys_role_idx_deleted" ON "sys_role" ("deleted");
@@ -6930,30 +6928,16 @@ COMMENT ON COLUMN "sys_position"."updated_by" IS '修改人。';
 COMMENT ON COLUMN "sys_position"."create_time" IS '创建时间。';
 COMMENT ON COLUMN "sys_position"."update_time" IS '更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。';
 COMMENT ON COLUMN "sys_position"."deleted" IS '逻辑删除标记；CHECK 枚举：0,1。';
-COMMENT ON TABLE "sys_position_assignment" IS '组织职务任职表';
-COMMENT ON COLUMN "sys_position_assignment"."id" IS '主键ID：用户在组织节点担任职务的一段不可覆盖任职事实。 有效区间统一为 [effectiveFrom, effectiveTo)，撤销通过 revoked 字段保留历史，重新任职必须新增记录。';
-COMMENT ON COLUMN "sys_position_assignment"."position_id" IS '职务ID。';
-COMMENT ON COLUMN "sys_position_assignment"."organization_unit_id" IS '组织单元ID。';
-COMMENT ON COLUMN "sys_position_assignment"."user_id" IS '用户ID。';
-COMMENT ON COLUMN "sys_position_assignment"."is_primary" IS '是否主职；CHECK 枚举：0,1。';
-COMMENT ON COLUMN "sys_position_assignment"."sort_order" IS '排序号。';
-COMMENT ON COLUMN "sys_position_assignment"."effective_from" IS '生效起始时间。';
-COMMENT ON COLUMN "sys_position_assignment"."effective_to" IS '生效结束时间。';
-COMMENT ON COLUMN "sys_position_assignment"."revoked_at" IS '撤销时间。';
-COMMENT ON COLUMN "sys_position_assignment"."revoked_by" IS '撤销人。';
-COMMENT ON COLUMN "sys_position_assignment"."revoke_reason" IS '撤销原因。';
-COMMENT ON COLUMN "sys_position_assignment"."revision" IS '修订号。';
+COMMENT ON TABLE "sys_position_assignment" IS '当前组织职务人员关系';
+COMMENT ON COLUMN "sys_position_assignment"."id" IS '主键ID：当前组织职务人员关系，移除时直接删除，不保存任职履历。';
+COMMENT ON COLUMN "sys_position_assignment"."position_id" IS '关联全局职务，供流程按稳定职务编码选人。';
+COMMENT ON COLUMN "sys_position_assignment"."organization_unit_id" IS '职务作用的组织或部门，区分不同部门的同名职务。';
+COMMENT ON COLUMN "sys_position_assignment"."user_id" IS '当前职务人员，供流程生成办理人。';
+COMMENT ON COLUMN "sys_position_assignment"."revision" IS '并发控制版本，不保存历史。';
 COMMENT ON COLUMN "sys_position_assignment"."created_by" IS '创建人。';
 COMMENT ON COLUMN "sys_position_assignment"."updated_by" IS '修改人。';
-COMMENT ON COLUMN "sys_position_assignment"."create_time" IS '创建时间。';
-COMMENT ON COLUMN "sys_position_assignment"."update_time" IS '更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。';
-COMMENT ON TABLE "sys_position_assignment_batch" IS '职务批量任命回执表';
-COMMENT ON COLUMN "sys_position_assignment_batch"."id" IS '主键ID：已成功提交的批量任命幂等结果。';
-COMMENT ON COLUMN "sys_position_assignment_batch"."idempotency_key" IS '幂等键：标识同一业务请求的幂等键，具体唯一性范围见本表索引。';
-COMMENT ON COLUMN "sys_position_assignment_batch"."request_hash" IS '请求哈希：请求内容摘要，用于核验幂等重试是否携带相同内容。';
-COMMENT ON COLUMN "sys_position_assignment_batch"."assignment_ids_json" IS '任职ID集合JSON。';
-COMMENT ON COLUMN "sys_position_assignment_batch"."created_by" IS '创建人。';
-COMMENT ON COLUMN "sys_position_assignment_batch"."create_time" IS '创建时间。';
+COMMENT ON COLUMN "sys_position_assignment"."create_time" IS '当前关系创建时间，不参与生效判断。';
+COMMENT ON COLUMN "sys_position_assignment"."update_time" IS '更新时间，由应用维护。';
 COMMENT ON TABLE "sys_role" IS '系统角色表';
 COMMENT ON COLUMN "sys_role"."id" IS '主键ID：角色ID。';
 COMMENT ON COLUMN "sys_role"."role_name" IS '角色名称。';
@@ -7640,6 +7624,12 @@ INSERT INTO "sys_user" ("id", "username", "nickname", "password", "email", "phon
 INSERT INTO "sys_user_role" ("id", "user_id", "role_id", "create_time") VALUES ('bootstrap_admin_role_001', '1', '1', CURRENT_TIMESTAMP);
 
 -- 初始数据载入后建立外键，避免跨表种子数据的顺序依赖。
+CREATE UNIQUE INDEX "uk_pos_member_current" ON "sys_position_assignment" ("position_id", "organization_unit_id", "user_id");
+CREATE INDEX "idx_pos_member_user" ON "sys_position_assignment" ("user_id");
+CREATE INDEX "idx_pos_member_unit" ON "sys_position_assignment" ("organization_unit_id", "position_id");
+ALTER TABLE "sys_position_assignment" ADD CONSTRAINT "fk_pos_member_position" FOREIGN KEY ("position_id") REFERENCES "sys_position" ("id");
+ALTER TABLE "sys_position_assignment" ADD CONSTRAINT "fk_pos_member_unit" FOREIGN KEY ("organization_unit_id") REFERENCES "sys_organization" ("id");
+ALTER TABLE "sys_position_assignment" ADD CONSTRAINT "fk_pos_member_user" FOREIGN KEY ("user_id") REFERENCES "sys_user" ("id");
 ALTER TABLE "act_app_appdef" ADD CONSTRAINT "fk_act_app_appdef_act_fk_app_def_dply" FOREIGN KEY ("deployment_id_") REFERENCES "act_app_deployment" ("id_");
 ALTER TABLE "act_app_deployment_resource" ADD CONSTRAINT "fk_act_app_deployment_resource_act_fk_app_rsrc_dpl" FOREIGN KEY ("deployment_id_") REFERENCES "act_app_deployment" ("id_");
 ALTER TABLE "act_cmmn_casedef" ADD CONSTRAINT "fk_act_cmmn_casedef_act_fk_case_def_dply" FOREIGN KEY ("deployment_id_") REFERENCES "act_cmmn_deployment" ("id_");
@@ -7735,10 +7725,6 @@ ALTER TABLE "integration_api_request_lease" ADD CONSTRAINT "fk_integration_api_r
 ALTER TABLE "integration_application_credential" ADD CONSTRAINT "fk_integration_application_credential_fk_integration__3f714238" FOREIGN KEY ("application_id") REFERENCES "integration_application" ("id") ON DELETE RESTRICT;
 ALTER TABLE "integration_idempotency_record" ADD CONSTRAINT "fk_integration_idempotency_record_fk_integration_idem_5cd40e8b" FOREIGN KEY ("application_id") REFERENCES "integration_application" ("id") ON DELETE RESTRICT;
 ALTER TABLE "sys_external_system_parameter" ADD CONSTRAINT "fk_sys_external_system_parameter_fk_sys_external_syst_2fbf8273" FOREIGN KEY ("external_system_id") REFERENCES "sys_external_system" ("id") ON DELETE RESTRICT;
-ALTER TABLE "sys_position_assignment" ADD CONSTRAINT "fk_sys_position_assignment_fk_sys_position_assignment_org" FOREIGN KEY ("organization_unit_id") REFERENCES "sys_organization" ("id") ON DELETE RESTRICT;
-ALTER TABLE "sys_position_assignment" ADD CONSTRAINT "fk_sys_position_assignment_fk_sys_position_assignment_position" FOREIGN KEY ("position_id") REFERENCES "sys_position" ("id") ON DELETE RESTRICT;
-ALTER TABLE "sys_position_assignment" ADD CONSTRAINT "fk_sys_position_assignment_fk_sys_position_assignment_user" FOREIGN KEY ("user_id") REFERENCES "sys_user" ("id") ON DELETE RESTRICT;
-ALTER TABLE "sys_position_assignment_batch" ADD CONSTRAINT "fk_sys_position_assignment_batch_fk_sys_position_batch_actor" FOREIGN KEY ("created_by") REFERENCES "sys_user" ("id") ON DELETE RESTRICT;
 
 -- 保持 MySQL ON UPDATE CURRENT_TIMESTAMP 的更新时间行为。
 CREATE OR REPLACE FUNCTION flow_sql_touch_update_time() RETURNS trigger LANGUAGE plpgsql AS $$

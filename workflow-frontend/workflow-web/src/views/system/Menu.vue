@@ -12,19 +12,21 @@
           </div>
         </div>
       </template>
-      <div class="menu-layout">
-        <aside class="menu-sidebar">
-          <div class="sidebar-title">菜单架构</div>
-          <ManagementNavigationTree
-            ref="navigationRef"
-            :model-value="currentId"
-            :page-loader="getMenuManagementPage"
-            :path-loader="getMenuAncestors"
-            label-key="menuName"
-            root-label="全部菜单"
-            @select="navigateTo"
-          />
-        </aside>
+      <ResizableTreeLayout class="menu-layout" sidebar-label="菜单树宽度">
+        <template #sidebar>
+          <aside class="menu-sidebar">
+            <div class="sidebar-title">菜单架构</div>
+            <ManagementNavigationTree
+              ref="navigationRef"
+              :model-value="currentId"
+              :page-loader="getMenuManagementPage"
+              :path-loader="getMenuAncestors"
+              label-key="menuName"
+              root-label="全部菜单"
+              @select="navigateTo"
+            />
+          </aside>
+        </template>
         <main class="menu-content">
           <el-breadcrumb separator="/" class="menu-breadcrumb">
             <el-breadcrumb-item @click="navigateTo({ id: '0' })">全部菜单</el-breadcrumb-item>
@@ -146,7 +148,7 @@
             @current-change="loadPage"
           />
         </main>
-      </div>
+      </ResizableTreeLayout>
     </el-card>
 
     <!-- 菜单编辑对话框 -->
@@ -374,6 +376,7 @@ import IconPicker from '@/components/IconPicker.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import PageState from '@/components/PageState.vue'
 import ManagementNavigationTree from './components/ManagementNavigationTree.vue'
+import ResizableTreeLayout from './components/ResizableTreeLayout.vue'
 import { getMenuManagementPage, getMenuAncestors, getMenuById, createMenu, updateMenu, deleteMenu, updateStatus, updateVisible, updateMenuSortValue } from '@/api/system/menu'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
@@ -785,16 +788,9 @@ onMounted(() => {
   justify-content: space-between;
 }
 
-.menu-layout {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 20px;
-}
-
 .menu-sidebar {
   min-width: 0;
   padding-right: 16px;
-  border-right: 1px solid var(--el-border-color-light);
 }
 
 .sidebar-title {
@@ -863,13 +859,8 @@ onMounted(() => {
 }
 
 @media (max-width: 1000px) {
-  .menu-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .menu-sidebar {
     padding: 0 0 16px;
-    border-right: 0;
     border-bottom: 1px solid var(--el-border-color-light);
   }
 

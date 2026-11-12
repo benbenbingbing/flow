@@ -3,6 +3,8 @@
 状态：已实现。biz 获取数据、转换为公共模型并主动调用 `IdentityWritePort`；框架负责保存。
 没有增加取数 Provider、定时任务或后台重试，业务自行决定调用时机和失败后的处理方式。
 
+原始 JSON 留存已实现，接入及状态规则见 [来源原始数据留存方案](identity-source-original-data-design.md)。
+
 ## 1. 调用边界
 
 ```mermaid
@@ -260,6 +262,7 @@ HTTP 不接受 Java 类名、表名或列名；SQL 标识符只来自启动白�
 - `V127__project_identity_extension_examples.sql`：恢复并原样保留已执行的示例表迁移，确保 Flyway 历史校验一致。
 - `V128__remove_project_identity_extension_examples.sql`：删除 V127 创建的三张示例表及表内数据，不影响其他自建扩展表。
 - `V129__allow_out_of_order_organization_provisioning.java` 增加组织父链就绪状态、来源父级引用及查询索引，并回填已有同来源父子引用。
+- `V131__identity_source_snapshot.java`：来源身份最新原文快照，每个来源对象仅保存一份。应用部署前执行至 V131。
 
 V127 已执行，不能删除或改写；新库依次执行 V127、V128 后最终不保留这三张示例表。
 已升级到 V127 的环境依次执行 V128、V129，应用升级前须完成 V129。

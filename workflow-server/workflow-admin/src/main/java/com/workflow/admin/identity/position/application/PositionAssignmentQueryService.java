@@ -21,7 +21,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 /**
- * 任职历史与当前任职的范围安全查询服务。
+ * 当前组织职务关系的范围安全查询服务。
  */
 @Service
 @RequiredArgsConstructor
@@ -41,7 +41,6 @@ public class PositionAssignmentQueryService {
      * @param positionCode 位置编码，后续用于分页查询位置分配查询时定位或关联目标
      * @param organizationUnitId 组织单元ID，后续用于分页查询位置分配查询时定位或关联目标
      * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
-     * @param activeOnly 活动仅，供本方法分页查询位置分配查询时使用
      * @return 符合条件的位置视图结果，供调用方继续处理
      */
     public PageResult<PositionViews.AssignmentView> page(
@@ -50,14 +49,12 @@ public class PositionAssignmentQueryService {
             String keyword,
             String positionCode,
             String organizationUnitId,
-            String userId,
-            Boolean activeOnly) {
+            String userId) {
         if (StringUtils.hasText(organizationUnitId)) {
             scopeService.requireVisible(organizationUnitId);
         }
         int safePage = Math.max(pageNum, 1);
         int safeSize = Math.min(Math.max(pageSize, 1), 100);
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         Page<PositionAssignmentViewRow> result =
                 assignmentMapper.selectAssignmentPage(
                         new Page<>(safePage, safeSize),
@@ -65,12 +62,10 @@ public class PositionAssignmentQueryService {
                         normalizeCode(positionCode),
                         trimToNull(organizationUnitId),
                         trimToNull(userId),
-                        activeOnly,
-                        now,
                         scopeService.visibleUnitIds());
         return new PageResult<>(
                 result.getRecords().stream()
-                        .map(row -> toView(row, now)).toList(),
+                        .map(row -> toView(row)).toList(),
                 result.getTotal(), result.getCurrent(), result.getSize());
     }
 
@@ -90,12 +85,11 @@ public class PositionAssignmentQueryService {
                     PositionErrorCode.ORGANIZATION_UNIT_NOT_FOUND,
                     "组织节点不存在");
         }
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         return new PositionViews.OrganizationAssignmentMatrix(
                 unit.getId(), unit.getOrgName(), unit.getType(),
                 unit.getBusinessLevelCode(),
                 assignmentMapper.selectRowsByUnit(unit.getId()).stream()
-                        .map(row -> toView(row, now)).toList());
+                        .map(row -> toView(row)).toList());
     }
 
     /**
@@ -122,45 +116,36 @@ public class PositionAssignmentQueryService {
                     PositionErrorCode.ORGANIZATION_SCOPE_FORBIDDEN,
                     "目标用户超出当前用户可查看的组织范围");
         }
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         return new PositionViews.UserAssignments(
                 user.getId(), user.getUsername(), displayName(user),
                 assignmentMapper.selectRowsByUser(
                                 userId, visibleUnitIds).stream()
-                        .map(row -> toView(row, now)).toList());
+                        .map(row -> toView(row)).toList());
     }
 
     /**
      * 为用户分页回填当前任职摘要；返回值已按当前管理者组织范围过滤。
      *
      * @param userIds 用户ID 集合，作为 {@code assignmentMapper.selectCurrentRowsByUsers} 的输入影响后续处理
-     * @param asOf {@code as}，作为 {@code assignmentMapper.selectCurrentRowsByUsers} 的输入影响后续处理
      * @return 位置分配视图行集合，供调用方遍历或展示
      */
     public List<PositionAssignmentViewRow> currentRowsByUsers(
-            List<String> userIds,
-            LocalDateTime asOf) {
+            List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return List.of();
         }
         return assignmentMapper.selectCurrentRowsByUsers(
-                userIds, asOf, scopeService.visibleUnitIds());
+                userIds, scopeService.visibleUnitIds());
     }
 
     /**
      * 转换为视图；输出作为后续校验或处理的输入。
      *
      * @param row 行，作为 {@code PositionViews.AssignmentView} 的输入影响后续处理
-     * @param asOf {@code as}，作为 {@code isAfter} 的输入影响后续处理
      * @return 转换为后的视图结果，供调用方继续处理
      */
     public PositionViews.AssignmentView toView(
-            PositionAssignmentViewRow row,
-            LocalDateTime asOf) {
-        boolean active = row.getRevokedAt() == null
-                && !row.getEffectiveFrom().isAfter(asOf)
-                && (row.getEffectiveTo() == null
-                    || row.getEffectiveTo().isAfter(asOf));
+            PositionAssignmentViewRow row) {
         String displayName = StringUtils.hasText(row.getNickname())
                 ? row.getNickname() : row.getUsername();
         return new PositionViews.AssignmentView(
@@ -168,13 +153,7 @@ public class PositionAssignmentQueryService {
                 row.getPositionName(), row.getOrganizationUnitId(),
                 row.getOrganizationUnitName(), row.getOrganizationUnitType(),
                 row.getBusinessLevelCode(), row.getUserId(), row.getUsername(),
-                displayName, Boolean.TRUE.equals(row.getIsPrimary()),
-                row.getSortOrder() == null ? 0 : row.getSortOrder(),
-                toInstant(row.getEffectiveFrom()),
-                toInstant(row.getEffectiveTo()),
-                toInstant(row.getRevokedAt()), row.getRevokedBy(),
-                row.getRevokeReason(),
-                row.getRevision() == null ? 1 : row.getRevision(), active,
+                displayName, row.getRevision() == null ? 1 : row.getRevision(),
                 toInstant(row.getCreateTime()), toInstant(row.getUpdateTime()));
     }
 

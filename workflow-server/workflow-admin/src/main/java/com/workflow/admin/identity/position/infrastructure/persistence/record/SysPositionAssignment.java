@@ -7,12 +7,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/**
- * 用户在组织节点担任职务的一段不可覆盖任职事实。
- *
- * <p>有效区间统一为 {@code [effectiveFrom, effectiveTo)}，撤销通过
- * revoked 字段保留历史，重新任职必须新增记录。</p>
- */
+/** 当前组织职务人员关系；移除时直接删除，不维护时间区间或任职履历。 */
 @Data
 @TableName("sys_position_assignment")
 public class SysPositionAssignment {
@@ -22,13 +17,6 @@ public class SysPositionAssignment {
     private String positionId;
     private String organizationUnitId;
     private String userId;
-    private Boolean isPrimary;
-    private Integer sortOrder;
-    private LocalDateTime effectiveFrom;
-    private LocalDateTime effectiveTo;
-    private LocalDateTime revokedAt;
-    private String revokedBy;
-    private String revokeReason;
     private Integer revision;
     private String createdBy;
     private String updatedBy;

@@ -4,6 +4,8 @@
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
 -- 2026-11-04：同步至 V128，补齐身份来源写入表、目录锁及认证策略；不预置已退役的 V127 项目示例表。
 -- 2026-11-10 同步至 V129，补齐组织父链就绪状态、来源父级外部引用及待关联子级索引。
+-- 2026-11-12 同步至 V130，职务仅保留当前人员关系，移除任命批次及历史、预约和主职字段。
+-- 2026-11-12 同步至 V131，新增按来源对象覆盖保存的原始 JSON 快照表，不回填历史原文。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空数据库。
 -- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -3660,46 +3662,22 @@ CREATE TABLE `sys_position` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局职务定义表';
 
 CREATE TABLE `sys_position_assignment` (
-  `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：用户在组织节点担任职务的一段不可覆盖任职事实。 有效区间统一为 [effectiveFrom, effectiveTo)，撤销通过 revoked 字段保留历史，重新任职必须新增记录。',
-  `position_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '职务ID。',
-  `organization_unit_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '组织单元ID。',
-  `user_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户ID。',
-  `is_primary` tinyint NOT NULL DEFAULT '0' COMMENT '是否主职；CHECK 枚举：0,1。',
-  `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序号。',
-  `effective_from` datetime(6) NOT NULL COMMENT '生效起始时间。',
-  `effective_to` datetime(6) DEFAULT NULL COMMENT '生效结束时间。',
-  `revoked_at` datetime(6) DEFAULT NULL COMMENT '撤销时间。',
-  `revoked_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '撤销人。',
-  `revoke_reason` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '撤销原因。',
-  `revision` int NOT NULL DEFAULT '1' COMMENT '修订号。',
+  `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：当前组织职务人员关系，移除时直接删除，不保存任职履历。',
+  `position_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联全局职务，供流程按稳定职务编码选人。',
+  `organization_unit_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '职务作用的组织或部门，区分不同部门的同名职务。',
+  `user_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '当前职务人员，供流程生成办理人。',
+  `revision` int NOT NULL DEFAULT '1' COMMENT '并发控制版本，不保存历史。',
   `created_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '创建人。',
   `updated_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '修改人。',
-  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间。',
-  `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。',
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '当前关系创建时间，不参与生效判断。',
+  `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '更新时间，由应用维护。',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_sys_position_assignment_fact` (`position_id`,`organization_unit_id`,`user_id`,`effective_from`),
-  KEY `idx_sys_position_assignment_lookup` (`position_id`,`organization_unit_id`,`effective_from`,`effective_to`,`revoked_at`),
-  KEY `idx_sys_position_assignment_user` (`user_id`,`effective_from`,`effective_to`,`revoked_at`),
-  KEY `idx_sys_position_assignment_unit` (`organization_unit_id`,`position_id`),
-  CONSTRAINT `chk_sys_position_assignment_period` CHECK (((`effective_to` is null) or (`effective_to` > `effective_from`))),
-  CONSTRAINT `chk_sys_position_assignment_primary` CHECK ((`is_primary` in (0,1))),
-  CONSTRAINT `chk_sys_position_assignment_revision` CHECK ((`revision` >= 1)),
-  CONSTRAINT `chk_sys_position_assignment_revoked_at` CHECK (((`revoked_at` is null) or (`revoked_at` >= `effective_from`)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='组织职务任职表';
+  CONSTRAINT `chk_pos_member_revision` CHECK (`revision` >= 1),
+  CONSTRAINT `uk_pos_member_current` UNIQUE (`position_id`,`organization_unit_id`,`user_id`),
+  KEY `idx_pos_member_user` (`user_id`),
+  KEY `idx_pos_member_unit` (`organization_unit_id`,`position_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='当前组织职务人员关系';
 
-CREATE TABLE `sys_position_assignment_batch` (
-  `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：已成功提交的批量任命幂等结果。',
-  `idempotency_key` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '幂等键：标识同一业务请求的幂等键，具体唯一性范围见本表索引。',
-  `request_hash` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '请求哈希：请求内容摘要，用于核验幂等重试是否携带相同内容。',
-  `assignment_ids_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '任职ID集合JSON。',
-  `created_by` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '创建人。',
-  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间。',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_sys_position_batch_idempotency` (`created_by`,`idempotency_key`),
-  KEY `idx_sys_position_batch_time` (`create_time`),
-  CONSTRAINT `chk_sys_position_batch_hash` CHECK (regexp_like(`request_hash`,_utf8mb4'^[0-9a-f]{64}$')),
-  CONSTRAINT `chk_sys_position_batch_result_json` CHECK (json_valid(`assignment_ids_json`))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='职务批量任命回执表';
 
 CREATE TABLE `sys_role` (
   `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：角色ID。',
@@ -4228,6 +4206,19 @@ CREATE TABLE `sys_identity_write_lock` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='身份目录事务锁，覆盖组织树及来源首次创建';
 
 -- 摘要由应用统一生成固定 64 位小写十六进制串；原始 ID 的大小写差异在哈希时保留，摘要列沿用表的默认字符集和排序规则。
+CREATE TABLE `sys_identity_source_snapshot` (
+  `source_key` CHAR(64) NOT NULL COMMENT '关联来源绑定的稳定哈希主键，每个用户或组织仅保留一条原文',
+  `source_version` BIGINT COMMENT '原文对应的来源版本，SERIAL 模式为空',
+  `payload_hash` CHAR(64) NOT NULL COMMENT '原文对应的业务快照哈希，用于追溯映射后的资料',
+  `raw_json` LONGTEXT NOT NULL COMMENT '单条来源 JSON 对象原文，仅在管理端授权后按需读取',
+  `raw_hash` CHAR(64) NOT NULL COMMENT '原文 UTF-8 字节的 SHA-256，用于跳过完全重复的原文写入',
+  `raw_bytes` INTEGER NOT NULL COMMENT '原文 UTF-8 字节数，用于大小校验及管理端展示',
+  `is_current` SMALLINT DEFAULT 1 NOT NULL COMMENT '是否对应当前业务资料，无原文的业务更新后标为过期',
+  `recorded_at` DATETIME(6) NOT NULL COMMENT '实际留存原文的时间，重复同步和过期标记不刷新',
+  `recorded_by` VARCHAR(64) NOT NULL COMMENT '实际留存原文的有效操作人，用于审计追溯',
+  CONSTRAINT `pk_identity_snapshot` PRIMARY KEY (`source_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='来源身份最新原文快照';
+
 CREATE TABLE `sys_identity_source_binding` (
   `source_key` char(64) NOT NULL COMMENT '对象类型、来源代码和外部 ID 的 SHA-256 主键；按精确 UTF-8 值生成以保留大小写语义',
   `source_code` varchar(64) NOT NULL COMMENT '已授权的身份来源代码；与外部 ID 共同定位来源对象',
@@ -4737,7 +4728,6 @@ ALTER TABLE `integration_api_request_lease` ADD CONSTRAINT `fk_integration_api_l
 ALTER TABLE `integration_application_credential` ADD CONSTRAINT `fk_integration_credential_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT;
 ALTER TABLE `integration_idempotency_record` ADD CONSTRAINT `fk_integration_idempotency_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT;
 ALTER TABLE `sys_external_system_parameter` ADD CONSTRAINT `fk_sys_external_system_parameter_system` FOREIGN KEY (`external_system_id`) REFERENCES `sys_external_system` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `sys_position_assignment` ADD CONSTRAINT `fk_sys_position_assignment_org` FOREIGN KEY (`organization_unit_id`) REFERENCES `sys_organization` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `sys_position_assignment` ADD CONSTRAINT `fk_sys_position_assignment_position` FOREIGN KEY (`position_id`) REFERENCES `sys_position` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `sys_position_assignment` ADD CONSTRAINT `fk_sys_position_assignment_user` FOREIGN KEY (`user_id`) REFERENCES `sys_user` (`id`) ON DELETE RESTRICT;
-ALTER TABLE `sys_position_assignment_batch` ADD CONSTRAINT `fk_sys_position_batch_actor` FOREIGN KEY (`created_by`) REFERENCES `sys_user` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `sys_position_assignment` ADD CONSTRAINT `fk_pos_member_unit` FOREIGN KEY (`organization_unit_id`) REFERENCES `sys_organization` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `sys_position_assignment` ADD CONSTRAINT `fk_pos_member_position` FOREIGN KEY (`position_id`) REFERENCES `sys_position` (`id`) ON DELETE RESTRICT;
+ALTER TABLE `sys_position_assignment` ADD CONSTRAINT `fk_pos_member_user` FOREIGN KEY (`user_id`) REFERENCES `sys_user` (`id`) ON DELETE RESTRICT;

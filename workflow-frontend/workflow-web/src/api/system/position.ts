@@ -14,7 +14,6 @@ export interface PositionAssignmentQuery {
   positionCode?: string
   organizationUnitId?: string
   userId?: string
-  activeOnly?: boolean
   pageNum?: number
   pageSize?: number
 }
@@ -48,7 +47,7 @@ export const updatePositionStatus = (
 export const deletePosition = (id: string, revision: number) =>
   request.post(`/system/position/${encodeURIComponent(id)}/delete`, { revision })
 
-/** 分页查询任职事实，包含历史及撤销记录。 */
+/** 分页查询当前职务人员。 */
 export const getPositionAssignmentPage = (params: PositionAssignmentQuery) =>
   request.get('/system/position/assignments/page', { params })
 
@@ -58,58 +57,22 @@ export const getOrganizationPositionAssignments = (unitId: string) =>
     `/system/org/${encodeURIComponent(unitId)}/position-assignments`
   )
 
-/**
- * 组织负责人是 UNIT_LEADER 任职的快捷投影；不能再随组织 DTO 直写 leaderId。
- * 设置负责人时幂等键必填，清空 userId 表示撤销当前有效负责人。
- */
-export const updateOrganizationLeader = (
-  unitId: string,
-  data: Record<string, any>,
-  idempotencyKey: string
-) => request.post(
-  `/system/org/${encodeURIComponent(unitId)}/leader`,
-  data,
-  { headers: { 'Idempotency-Key': idempotencyKey } }
-)
+/** 直接设置当前负责人，空 userId 表示清空，使用已读取集合阻止并发覆盖。 */
+export const updateOrganizationLeader = (unitId: string, data: Record<string, any>) =>
+  request.post(`/system/org/${encodeURIComponent(unitId)}/leader`, data)
 
-/** 读取指定用户的全部任职记录。 */
+/** 读取指定用户的当前职务关系。 */
 export const getUserPositionAssignments = (userId: string) =>
   request.get(
     `/system/user/${encodeURIComponent(userId)}/position-assignments`
   )
 
-/**
- * 使用与正式提交相同的领域校验器执行只读预检。
- * 预检通过不替代提交事务内的再次校验。
- */
-export const precheckPositionAssignments = (data: Record<string, any>) =>
-  request.post('/system/position/assignments/precheck', data, {
-    silentError: true
-  })
+/** 保存完整当前人员集合，可重复提交；不存在任命批次或独立预检。 */
+export const setPositionMembers = (data: Record<string, any>) =>
+  request.put('/system/position/assignments', data)
 
-/** 原子批量任命或转任，幂等键用于防止用户重复点击产生重复任职事实。 */
-export const batchAssignPositions = (
-  data: Record<string, any>,
-  idempotencyKey: string
-) => request.post('/system/position/assignments/batch', data, {
-  headers: { 'Idempotency-Key': idempotencyKey }
-})
-
-export const revokePositionAssignment = (
-  id: string,
-  data: Record<string, any>
-) => request.post(
-  `/system/position/assignments/${encodeURIComponent(id)}/revoke`,
-  data
-)
-
-export const updatePositionAssignmentPeriod = (
-  id: string,
-  data: Record<string, any>
-) => request.post(
-  `/system/position/assignments/${encodeURIComponent(id)}/update-period`,
-  data
-)
+export const removePositionAssignment = (id: string, revision: number) =>
+  request.delete(`/system/position/assignments/${encodeURIComponent(id)}`, { data: { revision } })
 
 /** 流程设计器专用职务选项，不要求任职管理权限。 */
 export const getProcessDesignPositionOptions = (

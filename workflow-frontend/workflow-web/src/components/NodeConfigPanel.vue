@@ -514,7 +514,6 @@
                 @change="onRelativePositionChanged"
               >
                 <el-radio-button value="ERROR">直接报错</el-radio-button>
-                <el-radio-button value="PRIMARY_OR_ERROR">唯一主职，否则报错</el-radio-button>
               </el-radio-group>
               <el-tag v-else type="info">使用全部任职人</el-tag>
             </el-form-item>
@@ -2542,7 +2541,7 @@ function onRelativeHierarchyModeChanged(mode) {
 function onRelativeAssignmentModeChanged(mode) {
   assigneeForm.value.relativePosition.multipleMatchPolicy = mode === 'CANDIDATE'
     ? 'ALL'
-    : 'PRIMARY_OR_ERROR'
+    : 'ERROR'
   onRelativePositionChanged()
 }
 
@@ -3354,7 +3353,7 @@ function onMultiInstanceChange(enabled) {
 
   markAssignmentConfigDirty()
   if (assigneeForm.value.assigneeType === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
-    // 多实例由 BPMN loop 创建每人实例，解析结果必须完整保留，不能退化为挑选主职。
+    // 多实例由 BPMN loop 创建每人实例，解析结果必须完整保留，不能缩小参与人集合。
     assigneeForm.value.relativePosition.assignmentMode = enabled
       ? 'CANDIDATE'
       : assigneeForm.value.relativePosition.assignmentMode
@@ -3362,7 +3361,7 @@ function onMultiInstanceChange(enabled) {
       ? 'ALL'
       : assigneeForm.value.relativePosition.assignmentMode === 'CANDIDATE'
         ? 'ALL'
-        : 'PRIMARY_OR_ERROR'
+        : 'ERROR'
     clearRelativePositionPreview()
   }
   if (assigneeForm.value.assigneeType === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
@@ -3790,7 +3789,7 @@ function onAssigneeTypeChange(type) {
   } else if (type === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
     assigneeForm.value.relativePosition = createRelativePositionForm({
       assignmentMode: assigneeForm.value.isMultiInstance ? 'CANDIDATE' : 'DIRECT',
-      multipleMatchPolicy: assigneeForm.value.isMultiInstance ? 'ALL' : 'PRIMARY_OR_ERROR'
+      multipleMatchPolicy: assigneeForm.value.isMultiInstance ? 'ALL' : 'ERROR'
     })
     assigneeForm.value.resolverCode = RELATIVE_ORG_POSITION_RESOLVER_CODE
     assigneeForm.value.resolverDisplayName = '相对组织职务'

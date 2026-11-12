@@ -4,6 +4,51 @@
 
 这些文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入本目录脚本。
 
+## 2026-11-12 同步 V131 来源身份最新原文
+
+已同时核对 SQL 与 Java 迁移至 V131，七份空库初始化脚本的最终结构为 **200 张表、2,792 个字段**（含 Flowable，不含 Flyway 历史表和动态业务表）。相对 V130 增加一张 9 字段的 `sys_identity_source_snapshot`，没有新增种子记录。
+
+新增迁移为 [`V131__identity_source_snapshot.java`](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V131__identity_source_snapshot.java)，未修改历史迁移。该表以 `source_key` 为主键，每个来源用户/组织只保留一份原始 JSON，覆盖更新并独立判重。业务更新缺原文时保留旧正文并标为过期；原文写入、来源绑定及必需审计共用事务。
+
+七种数据库均保留相同的 9 个字段、主键、可空性、默认值和用途注释；原文分别使用 MySQL/OB MySQL 的 LONGTEXT、PostgreSQL/人大金仓的 TEXT、Oracle/达梦/OB Oracle 的 CLOB。关联来源绑定采用逻辑关联，无新增外键或二级索引。详细字段及业务规则见 [数据库设计 9.16](database-design.md#916-sys_identity_source_snapshot-来源身份最新原文快照表)，配置与调用示例见 [原文留存方案](../architecture/identity-source-original-data-design.md)。
+
+### 本次验证
+
+- H2 MySQL 模式直接执行实际 V131 的 Flyway migrate/validate/重复 migrate 和迁移重试测试通过，验证 9 字段、可空性、用途注释及无历史回填；七种空库脚本逐项与实际迁移 DDL 比对通过。
+- 所选后端回归共 122 项通过，涵盖身份写入、原文读取授权、业务接入示例、真实 YAML 配置/环境变量绑定及架构边界。包含原样保留、重复写入、原文独立更新、旧版本、SERIAL 过期、单条/批次 UTF-8 超限、JSON 严格校验、默认角色/原文/审计及批次事务回滚、父级后到。
+- 管理端及嵌入端生产构建通过；原文查看组件的真实浏览器测试通过，覆盖按需加载、文本安全、大整数、未留存/过期、重试、目标切换和权限收回。
+- 七种方言的 200 个表名、2,792 个字段清单一致；逐项检查本次新增字段的类型、长度、可空性、默认值、主键和用途注释，系统种子 INSERT 与 HEAD 保持一致。
+- 在 `/tmp` 的独立 MySQL 8.0.27 实例中完整导入 `mysql.sql` 和 `obmysql.sql`，在独立 PostgreSQL 15.12 实例中完整导入 `pg.sql`。实查均为 200 表、2,792 字段；原文探针覆盖 20,000 个汉字、大整数、可空版本、默认当前状态、更新及事务回滚，实例已关闭。
+- Oracle、达梦、人大金仓、两种 OceanBase 未连接实际实例，完成静态方言及迁移语义检查；在 MySQL 中执行 OB MySQL 脚本不替代 OceanBase 实例验证。未连接或修改业务数据库。
+
+## 2026-11-12 同步 V130 当前职务关系
+
+已同时核对 SQL 与 Java 迁移至 V130，七份空库初始化脚本的最终结构为 **199 张表、2,783 个字段**（含 Flowable，不含 Flyway 历史表和动态业务表）。相对 V129 删除一张 6 字段的批次回执表，以及人员关系表的 7 个字段，共减少 1 张表、13 个字段。
+
+| 对象 | 最终结构和用途 |
+| --- | --- |
+| `sys_position` | 保留职务字典、稳定编码、启停和单人/多人规则。 |
+| `sys_position_assignment` | 保留 `id`、`position_id`、`organization_unit_id`、`user_id`、`revision`、`created_by`、`updated_by`、`create_time`、`update_time` 共 9 字段，只保存当前关系。 |
+| 退役字段 | 删除 `is_primary`、`sort_order`、`effective_from`、`effective_to`、`revoked_at`、`revoked_by`、`revoke_reason` 及其区间索引和约束。 |
+| `sys_position_assignment_batch` | 删除整张表及批次、幂等回执代码；集合替换可重复提交，不再维护独立任命履历。 |
+| 当前关系约束 | 三元组唯一；保留主键、三个外键和 `revision >= 1`，增加按用户、组织查询的两个索引。MySQL 系 datetime(6)，其他方言 timestamp(6)，字符串及数值类型沿用方言约定。 |
+
+升级迁移只复制切换时刻已开始、未结束、未撤销的关系，保留 ID 与维护信息。历史及未来预约均不进入当前表；单人职务存在多名当前人员时中止迁移，禁止猜测负责人。先成功复制再替换旧表，通过暂存表和元数据检测支持非事务 DDL 中断后的继续执行。负责人兼容字段随当前关系保存同步，删除预约生效定时任务。
+
+当前关系保存采用锁定读和集合并发比较，避免 MySQL REPEATABLE_READ 旧快照覆盖其他管理员的设置。旧 BPMN `PRIMARY_OR_ERROR` 兼容读取为 `ERROR`；多人时明确报错，新配置只提供唯一人员或全部人员。已生成任务不自动改派。
+
+### 本次验证
+
+- 七种方言的 199 个表名、2,783 个字段清单一致，逐项检查当前关系字段类型、长度、可空性、默认值、用途注释、主键、唯一键、外键和索引；系统种子 INSERT 与任务开始时逐字一致，仍为 103 条菜单/权限及对应超级管理员授权。
+- 在 `/tmp` 创建独立 MySQL 8.0.27 实例，`mysql.sql` 和 `obmysql.sql` 均完整导入，实查两库均为 199 表、2,783 字段，关系表 9 字段及主键、唯一键、三个外键、版本 CHECK 均存在。OceanBase MySQL 脚本按文件头要求在同一会话生成临时签名密钥，外键仍在被引用表建成后添加；此结果不替代 OceanBase 实例验证。
+- V130 的 5 项测试通过：H2 验证当前/历史/未来/撤销数据边界、单人冲突、中断后继续及 Flyway migrate/validate/重复 migrate；隔离 MySQL 验证实际复制、重复执行、排序规则兼容、唯一键和外键。
+- 后端所选回归共 1,255 项通过：系统管理 340、流程模块 575、应用集成 335、迁移 5。包含当前集合替换、并发冲突、重复保存、归属校验、旧主职策略多人报错及实际 MySQL 锁定读绕过旧快照的验证。全部应用依赖和测试代码完成干净编译。
+- 管理端生产构建及审批配置契约测试通过，`git diff --check` 通过。
+- 额外整类试跑中，`MySqlIdentifierConversionDatabaseTest` 的两项 Embed 用例因既有测试夹具缺少 `entity_form_published` 未通过；本次涉及的两项目录版本用例已单独复跑通过，没有修改 Embed 逻辑。
+- 未连接 PostgreSQL、Oracle、达梦、人大金仓及两种 OceanBase 的实际实例；这些产品完成静态方言核对。未连接或修改业务数据库。
+
+本次新增迁移：`src/main/java/db/migration/V130__simplify_position_membership.java`；修改、删除或重命名历史迁移：**无**。不执行 repair 或 baseline。字段、关联和业务规则已同步 [数据库设计](database-design.md#93-sys_position_assignment-当前组织职务人员关系表)。
+
 ## 2026-11-11 空库迁移兼容性复验
 
 当前最终结构仍为 V129、200 张表、2,796 个字段。本次未增加或修改持久化结构及系统种子数据，七份初始化 SQL 保持不变；已重新核对七种方言的表名和字段清单一致。

@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -111,7 +110,6 @@ public class SysUserService {
             String positionCode) {
         int safePageNum = Math.max(pageNum, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), 100);
-        LocalDateTime asOf = LocalDateTime.now(ZoneOffset.UTC);
         List<String> visibleAssignmentUnits = StringUtils.hasText(positionCode)
                 ? positionOrganizationScopeService.visibleUnitIds()
                 : null;
@@ -123,13 +121,12 @@ public class SysUserService {
                 trimToNull(deptId),
                 trimToNull(roleId),
                 normalizePositionCode(positionCode),
-                asOf,
                 visibleAssignmentUnits);
         page.getRecords().forEach(user -> {
             fillUserRoles(user);
             fillUserOrgInfo(user);
         });
-        fillCurrentPositionAssignments(page.getRecords(), asOf);
+        fillCurrentPositionAssignments(page.getRecords());
         return new PageResult<>(
                 page.getRecords(),
                 page.getTotal(),
@@ -451,17 +448,15 @@ public class SysUserService {
      * 为用户分页批量回填范围安全的当前任职摘要。
      *
      * @param users 用户集合，作为 {@code positionAssignmentQueryService.currentRowsByUsers} 的输入影响后续处理
-     * @param asOf {@code as}，供本方法处理{@code fill}当前位置分配集合时使用
      */
     private void fillCurrentPositionAssignments(
-            List<SysUser> users,
-            LocalDateTime asOf) {
+            List<SysUser> users) {
         if (users == null || users.isEmpty()) {
             return;
         }
         List<PositionAssignmentViewRow> rows =
                 positionAssignmentQueryService.currentRowsByUsers(
-                        users.stream().map(SysUser::getId).toList(), asOf);
+                        users.stream().map(SysUser::getId).toList());
         Map<String, List<SysUser.CurrentPositionAssignment>> byUser =
                 new HashMap<>();
         for (PositionAssignmentViewRow row : rows) {
@@ -469,11 +464,7 @@ public class SysUserService {
                     .add(new SysUser.CurrentPositionAssignment(
                             row.getId(), row.getPositionCode(),
                             row.getPositionName(), row.getOrganizationUnitId(),
-                            row.getOrganizationUnitName(),
-                            Boolean.TRUE.equals(row.getIsPrimary()),
-                            row.getEffectiveFrom().toInstant(ZoneOffset.UTC),
-                            row.getEffectiveTo() == null ? null
-                                    : row.getEffectiveTo().toInstant(ZoneOffset.UTC)));
+                            row.getOrganizationUnitName()));
         }
         users.forEach(user -> user.setCurrentPositionAssignments(
                 List.copyOf(byUser.getOrDefault(user.getId(), List.of()))));

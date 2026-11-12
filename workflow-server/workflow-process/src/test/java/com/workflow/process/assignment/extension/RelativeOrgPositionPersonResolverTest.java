@@ -62,12 +62,11 @@ class RelativeOrgPositionPersonResolverTest {
                     return new OrganizationUnitStateView(
                             id, type, "revision-7");
                 });
-        when(directory.findEffectiveHolders(
+        when(directory.findCurrentHolders(
                 org.mockito.ArgumentMatchers.eq("UNIT_LEADER"),
-                org.mockito.ArgumentMatchers.eq("dept-first"),
-                any(Instant.class)))
+                org.mockito.ArgumentMatchers.eq("dept-first")))
                 .thenReturn(resolved(
-                        "dept-first", holder("leader", true)));
+                        "dept-first", holder("leader")));
 
         var result = resolver.resolve(request(
                 "zhangsan",
@@ -82,10 +81,9 @@ class RelativeOrgPositionPersonResolverTest {
         assertEquals(1, result.principals().size());
         assertEquals("leader", result.principals().get(0).key());
         verify(directory).requireEnabledPosition("UNIT_LEADER");
-        verify(directory).findEffectiveHolders(
+        verify(directory).findCurrentHolders(
                 org.mockito.ArgumentMatchers.eq("UNIT_LEADER"),
-                org.mockito.ArgumentMatchers.eq("dept-first"),
-                any(Instant.class));
+                org.mockito.ArgumentMatchers.eq("dept-first"));
     }
 
     @Test
@@ -116,8 +114,8 @@ class RelativeOrgPositionPersonResolverTest {
         assertEquals("ORG_SNAPSHOT_INVALID", failure.reasonCode());
         verify(directory).requireActiveOrganizationUnit("dept-team");
         verify(directory).requireActiveOrganizationUnit("dept-mid");
-        verify(directory, never()).findEffectiveHolders(
-                any(), any(), any());
+        verify(directory, never()).findCurrentHolders(
+                any(), any());
     }
 
     @Test
@@ -128,12 +126,11 @@ class RelativeOrgPositionPersonResolverTest {
         when(directory.requireActiveOrganizationUnit(any()))
                 .thenAnswer(invocation -> new OrganizationUnitStateView(
                         invocation.getArgument(0), "dept", "revision-9"));
-        when(directory.findEffectiveHolders(
+        when(directory.findCurrentHolders(
                 org.mockito.ArgumentMatchers.eq("UNIT_LEADER"),
-                org.mockito.ArgumentMatchers.eq("dept-first"),
-                any(Instant.class)))
+                org.mockito.ArgumentMatchers.eq("dept-first")))
                 .thenReturn(resolved(
-                        "dept-first", holder("leader", false)));
+                        "dept-first", holder("leader")));
 
         RelativeOrgPositionPreview preview = resolver.preview(
                 "user-1",
@@ -148,6 +145,18 @@ class RelativeOrgPositionPersonResolverTest {
         assertTrue(preview.scannedUnits().stream().anyMatch(
                 item -> item.depth() == 2
                         && "RESOLVED".equals(item.result())));
+    }
+
+    @Test
+    void legacyPrimaryPolicyRejectsMultipleCurrentMembersInsteadOfPickingOne() {
+        Map<String, Object> variables = captured(snapshot(), "user-1");
+        when(directory.requireActiveOrganizationUnit(any())).thenAnswer(invocation ->
+                new OrganizationUnitStateView(invocation.getArgument(0), "dept", "revision"));
+        when(directory.findCurrentHolders("UNIT_LEADER", "dept-team"))
+                .thenReturn(resolved("dept-team", holder("alice"), holder("bob")));
+        var failure = assertThrows(PersonResolutionException.class, () -> resolver.resolve(request(
+                "user-1", variables, config("UNIT_LEADER", Map.of("mode", "SELF"), "PRIMARY_OR_ERROR"))));
+        assertEquals("AMBIGUOUS_POSITION_HOLDER", failure.reasonCode());
     }
 
     private Map<String, Object> captured(
@@ -221,15 +230,11 @@ class RelativeOrgPositionPersonResolverTest {
     }
 
     private PositionHolderView holder(
-            String username,
-            boolean primary) {
+            String username) {
         return new PositionHolderView(
                 "id-" + username,
                 username,
-                username,
-                primary,
-                1,
-                Instant.parse("2026-01-01T00:00:00Z"));
+                username);
     }
 
     private PositionHolderResolution resolved(

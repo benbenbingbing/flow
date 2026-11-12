@@ -28,7 +28,6 @@ import com.workflow.process.assignment.domain.RelativeOrgPositionConfig.Multiple
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -220,17 +219,16 @@ public class RelativeOrgPositionPersonResolver
         List<PositionHolderView> holders = switch (
                 config.hierarchy().mode()) {
             case SELF -> resolveExact(
-                    config, chain, 0, Instant.now(), trace);
+                    config, chain, 0, trace);
             case FIXED_ANCESTOR -> resolveExact(
                     config,
                     chain,
                     config.hierarchy().ancestorHops(),
-                    Instant.now(),
                     trace);
             case NEAREST_WITH_HOLDER -> resolveNearest(
-                    config, chain, Instant.now(), trace);
+                    config, chain, trace);
             case BUSINESS_LEVEL -> resolveBusinessLevel(
-                    config, chain, Instant.now(), trace);
+                    config, chain, trace);
         };
         List<PositionHolderView> selected = applyMultiplePolicy(
                 config, holders, trace);
@@ -324,7 +322,6 @@ public class RelativeOrgPositionPersonResolver
      * @param config 配置内容，决定后续精确的处理规则
      * @param chain 链，作为 {@code requireActiveUnit} 的输入影响后续处理
      * @param depth 深度，作为 {@code chain.get} 的输入影响后续处理
-     * @param asOf {@code as}，作为 {@code requireHolders} 的输入影响后续处理
      * @param trace 追踪，作为 {@code failure} 的输入影响后续处理
      * @return 位置持有者视图集合，供调用方遍历或展示
      */
@@ -332,7 +329,6 @@ public class RelativeOrgPositionPersonResolver
             RelativeOrgPositionConfig config,
             List<OrganizationUnitSnapshot> chain,
             int depth,
-            Instant asOf,
             ResolutionTrace trace) {
         if (depth < 0 || depth >= chain.size()) {
             throw failure(
@@ -348,7 +344,7 @@ public class RelativeOrgPositionPersonResolver
         }
         OrganizationUnitSnapshot unit = chain.get(depth);
         requireEligibleUnit(config, unit, depth, trace);
-        return requireHolders(config, unit, asOf, depth, trace);
+        return requireHolders(config, unit, depth, trace);
     }
 
     /**
@@ -356,14 +352,12 @@ public class RelativeOrgPositionPersonResolver
      *
      * @param config 配置内容，决定后续{@code nearest}的处理规则
      * @param chain 链，作为 {@code requireActiveUnit} 的输入影响后续处理
-     * @param asOf {@code as}，作为 {@code query} 的输入影响后续处理
      * @param trace 追踪，作为 {@code requireActiveUnit} 的输入影响后续处理
      * @return 位置持有者视图集合，供调用方遍历或展示
      */
     private List<PositionHolderView> resolveNearest(
             RelativeOrgPositionConfig config,
             List<OrganizationUnitSnapshot> chain,
-            Instant asOf,
             ResolutionTrace trace) {
         int startLevel = config.hierarchy().startLevel();
         int maxHops = config.hierarchy().maxHops();
@@ -384,7 +378,7 @@ public class RelativeOrgPositionPersonResolver
                 continue;
             }
             PositionHolderResolution resolution = query(
-                    config, unit, asOf, depth, trace);
+                    config, unit, depth, trace);
             if (resolution.resultCode()
                     == PositionDirectoryResultCode.NO_ACTIVE_HOLDER) {
                 continue;
@@ -406,14 +400,12 @@ public class RelativeOrgPositionPersonResolver
      *
      * @param config 配置内容，决定后续业务层级的处理规则
      * @param chain 链，作为 {@code requireActiveUnit} 的输入影响后续处理
-     * @param asOf {@code as}，作为 {@code requireHolders} 的输入影响后续处理
      * @param trace 追踪，作为 {@code requireEligibleUnit} 的输入影响后续处理
      * @return 位置持有者视图集合，供调用方遍历或展示
      */
     private List<PositionHolderView> resolveBusinessLevel(
             RelativeOrgPositionConfig config,
             List<OrganizationUnitSnapshot> chain,
-            Instant asOf,
             ResolutionTrace trace) {
         int maxHops = config.hierarchy().maxHops();
         List<Integer> matches = new ArrayList<>();
@@ -447,7 +439,7 @@ public class RelativeOrgPositionPersonResolver
         }
         OrganizationUnitSnapshot unit = chain.get(depth);
         requireEligibleUnit(config, unit, depth, trace);
-        return requireHolders(config, unit, asOf, depth, trace);
+        return requireHolders(config, unit, depth, trace);
     }
 
     /**
@@ -455,7 +447,6 @@ public class RelativeOrgPositionPersonResolver
      *
      * @param config 配置内容，决定后续持有者集合的处理规则
      * @param unit 单元，作为 {@code query} 的输入影响后续处理
-     * @param asOf {@code as}，作为 {@code query} 的输入影响后续处理
      * @param depth 深度，作为 {@code query} 的输入影响后续处理
      * @param trace 追踪，作为 {@code query} 的输入影响后续处理
      * @return 位置持有者视图集合，供调用方遍历或展示
@@ -463,11 +454,10 @@ public class RelativeOrgPositionPersonResolver
     private List<PositionHolderView> requireHolders(
             RelativeOrgPositionConfig config,
             OrganizationUnitSnapshot unit,
-            Instant asOf,
             int depth,
             ResolutionTrace trace) {
         PositionHolderResolution resolution = query(
-                config, unit, asOf, depth, trace);
+                config, unit, depth, trace);
         if (resolution.resolved()) {
             trace.matchedUnitId = unit.id();
             return resolution.holders();
@@ -487,7 +477,6 @@ public class RelativeOrgPositionPersonResolver
      *
      * @param config 配置内容，决定后续相对组织位置人员解析器的处理规则
      * @param unit 单元，作为 {@code failure} 的输入影响后续处理
-     * @param asOf {@code as}，供本方法查询相对组织位置人员解析器时使用
      * @param depth 深度，作为 {@code trace.scanned} 的输入影响后续处理
      * @param trace 追踪，作为 {@code failure} 的输入影响后续处理
      * @return 查询后的相对组织位置人员解析器结果，供调用方继续处理
@@ -495,12 +484,11 @@ public class RelativeOrgPositionPersonResolver
     private PositionHolderResolution query(
             RelativeOrgPositionConfig config,
             OrganizationUnitSnapshot unit,
-            Instant asOf,
             int depth,
             ResolutionTrace trace) {
         PositionHolderResolution resolution = directoryPort
-                .findEffectiveHolders(
-                        config.positionCode(), unit.id(), asOf);
+                .findCurrentHolders(
+                        config.positionCode(), unit.id());
         if (resolution == null || resolution.resultCode() == null) {
             throw failure(
                     "ORG_SNAPSHOT_INVALID",
@@ -570,15 +558,7 @@ public class RelativeOrgPositionPersonResolver
         if (holders.size() == 1) {
             return List.of(holders.get(0));
         }
-        if (config.multipleMatchPolicy()
-                == MultipleMatchPolicy.PRIMARY_OR_ERROR) {
-            List<PositionHolderView> primaries = holders.stream()
-                    .filter(PositionHolderView::primary)
-                    .toList();
-            if (primaries.size() == 1) {
-                return List.of(primaries.get(0));
-            }
-        }
+
         throw failure(
                 "AMBIGUOUS_POSITION_HOLDER",
                 "DIRECT 职务审批无法确定唯一任职人",
@@ -738,7 +718,7 @@ public class RelativeOrgPositionPersonResolver
                 "NEAREST_WITH_HOLDER",
                 "BUSINESS_LEVEL"));
         schema.put("multipleMatchPolicies", List.of(
-                "ERROR", "PRIMARY_OR_ERROR", "ALL"));
+                "ERROR", "ALL"));
         return Map.copyOf(schema);
     }
 

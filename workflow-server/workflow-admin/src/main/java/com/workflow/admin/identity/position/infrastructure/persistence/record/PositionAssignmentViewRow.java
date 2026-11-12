@@ -4,9 +4,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/**
- * 任职事实及职务、组织、用户展示字段的只读联表投影。
- */
+/** 当前组织职务人员关系；移除时直接删除，不维护时间区间或任职履历。 */
 @Data
 public class PositionAssignmentViewRow {
     private String id;
@@ -20,13 +18,6 @@ public class PositionAssignmentViewRow {
     private String userId;
     private String username;
     private String nickname;
-    private Boolean isPrimary;
-    private Integer sortOrder;
-    private LocalDateTime effectiveFrom;
-    private LocalDateTime effectiveTo;
-    private LocalDateTime revokedAt;
-    private String revokedBy;
-    private String revokeReason;
     private Integer revision;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

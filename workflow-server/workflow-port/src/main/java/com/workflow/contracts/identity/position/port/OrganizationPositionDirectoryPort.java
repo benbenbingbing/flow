@@ -6,7 +6,6 @@ import com.workflow.contracts.identity.position.error.OrganizationPositionDirect
 import com.workflow.contracts.identity.position.model.OrganizationUnitStateView;
 import com.workflow.contracts.identity.position.model.PositionDefinitionView;
 import com.workflow.contracts.identity.position.model.PositionHolderResolution;
-import java.time.Instant;
 import java.util.List;
 
 /**
@@ -56,21 +55,10 @@ public interface OrganizationPositionDirectoryPort {
     List<PositionDefinitionView> listEnabledPositions(String applicableUnitType);
 
     /**
-     * 查询某个组织节点在指定时刻的有效任职人。
-     *
-     * <p>适配器必须同时过滤停用用户、失效/撤销任职以及停用单位，并保持
-     * {@code isPrimary DESC, sortOrder ASC, effectiveFrom ASC, userId ASC}
-     * 的稳定顺序。</p>
-     *
-     * @param positionCode 位置编码，后续用于查询有效持有者集合时定位或关联目标
-     * @param organizationUnitId 组织单元ID，后续用于查询有效持有者集合时定位或关联目标
-     * @param asOf {@code as}，供本方法查询有效持有者集合时使用
-     * @return 符合条件的位置持有者解析结果，供调用方继续处理
+     * 查询组织节点当前职务人员，过滤停用用户、职务和组织，按 userId 稳定排序。
+     * 仅查询当前关系，已创建任务的办理人由流程自身保存。
      */
-    PositionHolderResolution findEffectiveHolders(
-            String positionCode,
-            String organizationUnitId,
-            Instant asOf);
+    PositionHolderResolution findCurrentHolders(String positionCode, String organizationUnitId);
 
     /**
      * 判断组织业务层级编码是否存在且可用，用于流程发布时静态校验。

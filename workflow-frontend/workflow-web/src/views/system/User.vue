@@ -139,7 +139,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column v-if="canViewPosition" label="当前任职" min-width="220">
+        <el-table-column v-if="canViewPosition" label="当前职务" min-width="220">
           <template #default="{ row }">
             <div v-if="currentPositionAssignments(row).length" class="position-list">
               <el-tooltip
@@ -172,7 +172,7 @@
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item v-if="row.authenticationMode !== 'EXTERNAL_ONLY'" @click="handleResetPassword(row)">重置密码</el-dropdown-item>
-                    <el-dropdown-item v-if="canAssignPosition" @click="openPositionAssignment(row)">职务任命</el-dropdown-item>
+                    <el-dropdown-item v-if="canAssignPosition" @click="openPositionAssignment(row)">设置职务</el-dropdown-item>
                     <el-dropdown-item divided :disabled="row.username === 'admin'" @click="handleDelete(row)">
                       <span :class="{ 'danger-action': row.username !== 'admin' }">删除用户</span>
                     </el-dropdown-item>
@@ -216,7 +216,7 @@
           </div>
           <span v-else>-</span>
         </el-descriptions-item>
-        <el-descriptions-item v-if="canViewPosition" label="当前任职" :span="2">
+        <el-descriptions-item v-if="canViewPosition" label="当前职务" :span="2">
           <template v-if="currentPositionAssignments(viewUser).length">
             <div v-for="(assignment, index) in currentPositionAssignments(viewUser)" :key="assignment.assignmentId || assignment.id || index">
               {{ positionAssignmentLabel(assignment) }}
@@ -227,6 +227,7 @@
         <el-descriptions-item label="创建时间">{{ formatDateValue(viewUser.createTime) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDateValue(viewUser.updateTime) }}</el-descriptions-item>
       </el-descriptions>
+      <IdentitySourceSnapshotViewer v-if="viewDialogVisible && viewUser.sourceInfo" target-type="USER" :target-id="viewUser.id" />
       <el-form label-width="100px"><IdentityExtensionForm v-if="viewDialogVisible" target-type="USER" :target-id="viewUser.id" readonly /></el-form>
       <template #footer>
         <el-button @click="viewDialogVisible = false">关闭</el-button>
@@ -346,6 +347,7 @@
             />
           </el-select>
         </el-form-item>
+        <IdentitySourceSnapshotViewer v-if="dialogVisible && formData.sourceInfo" target-type="USER" :target-id="formData.id" />
         <IdentityExtensionForm v-if="dialogVisible" ref="extensionFormRef" target-type="USER" :target-id="formData.id" />
       </el-form>
       
@@ -405,6 +407,7 @@ import {
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
 import IdentityExtensionForm from '@/views/system/components/IdentityExtensionForm.vue'
+import IdentitySourceSnapshotViewer from '@/views/system/components/IdentitySourceSnapshotViewer.vue'
 import { formatDateColumn, formatDateValue } from '@/shared/list-runtime'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
 import SystemFilterPicker from '@/views/system/components/SystemFilterPicker.vue'

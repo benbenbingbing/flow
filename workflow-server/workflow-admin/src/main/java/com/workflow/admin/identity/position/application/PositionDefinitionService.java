@@ -33,7 +33,7 @@ import java.util.Locale;
 public class PositionDefinitionService {
 
     private final SysPositionMapper positionMapper;
-    /** 从任职事实表读取历史引用和当前人数，避免职务定义 Mapper 查询其他业务表。 */
+    /** 从当前关系表读取关联人数，避免职务定义 Mapper 查询其他业务表。 */
     private final SysPositionAssignmentMapper assignmentMapper;
     private final PositionOrganizationScopeService scopeService;
 
@@ -236,11 +236,11 @@ public class PositionDefinitionService {
         }
         if (SysPosition.HolderMode.MULTIPLE.name().equals(current.getHolderMode())
                 && SysPosition.HolderMode.SINGLE.name().equals(holderMode)
-                && positionMapper.countOverlapsPreventingSingleMode(id) > 0) {
+                && positionMapper.countUnitsWithMultipleHolders(id) > 0) {
             throw new PositionManagementException(
                     409,
                     PositionErrorCode.POSITION_HOLDER_MODE_CONFLICT,
-                    "现有任职区间存在多人重叠，不能切换为单人职务");
+                    "现有组织存在多名职务人员，不能切换为单人职务");
         }
         int changed = positionMapper.updateDefinition(
                 id,
@@ -347,7 +347,7 @@ public class PositionDefinitionService {
         return basicView(
                 position,
                 assignmentMapper.countCurrentAssignments(
-                        position.getId(), now, visibleUnitIds),
+                        position.getId(), visibleUnitIds),
                 positionMapper.countProcessReferences(position.getPositionCode()),
                 now);
     }
@@ -463,7 +463,7 @@ public class PositionDefinitionService {
      */
     private PositionManagementException invalid(String message) {
         return new PositionManagementException(
-                400, PositionErrorCode.BATCH_ASSIGNMENT_INVALID, message);
+                400, PositionErrorCode.ASSIGNMENT_INVALID, message);
     }
 
     /**

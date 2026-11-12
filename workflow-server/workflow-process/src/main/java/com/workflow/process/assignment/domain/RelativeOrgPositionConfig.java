@@ -75,13 +75,10 @@ public record RelativeOrgPositionConfig(
         }
         Hierarchy hierarchy = parseHierarchy(
                 stringKeyMap(hierarchyMap), anchor);
-        MultipleMatchPolicy policy = enumValue(
-                MultipleMatchPolicy.class,
-                requiredText(
-                        source,
-                        "multipleMatchPolicy",
-                        "extraParams"),
-                "multipleMatchPolicy");
+        // 兼容已部署 BPMN 的旧主职策略；当前模型仅允许唯一人员，多人必须明确报错。
+        String policyCode = requiredText(source, "multipleMatchPolicy", "extraParams");
+        if ("PRIMARY_OR_ERROR".equalsIgnoreCase(policyCode)) policyCode = "ERROR";
+        MultipleMatchPolicy policy = enumValue(MultipleMatchPolicy.class, policyCode, "multipleMatchPolicy");
         return new RelativeOrgPositionConfig(
                 schemaVersion,
                 anchor,
@@ -110,7 +107,7 @@ public record RelativeOrgPositionConfig(
                 : "DIRECT";
         if ("DIRECT".equals(mode)) {
             if (multipleMatchPolicy == MultipleMatchPolicy.ALL) {
-                throw invalid("DIRECT 任务只允许 ERROR 或 PRIMARY_OR_ERROR");
+                throw invalid("DIRECT 任务只允许 ERROR");
             }
             return;
         }
@@ -370,7 +367,6 @@ public record RelativeOrgPositionConfig(
      */
     public enum MultipleMatchPolicy {
         ERROR,
-        PRIMARY_OR_ERROR,
         ALL
     }
 

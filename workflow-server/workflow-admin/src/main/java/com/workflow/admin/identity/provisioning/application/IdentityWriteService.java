@@ -40,11 +40,13 @@ public class IdentityWriteService implements IdentityWritePort {
     private final SysOrganizationService organizations;
     private final IdentityOrganizationHierarchyService organizationHierarchy;
     private final SystemAuditPort audit;
+    private final IdentitySourceSnapshotService snapshots;
 
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public IdentitySaveResult saveUser(UserSaveModel model) {
         if (model == null) fail("INVALID_MODEL", "model", "用户模型不能为空");
+        snapshots.checkSizes(Collections.singletonList(model.rawDataJson()), false);
         lockDirectory();
         var writer = access.requireSource(model.key());
         if (model.base() == null) fail("INVALID_MODEL", "base", "基础快照不能为空");
@@ -54,7 +56,15 @@ public class IdentityWriteService implements IdentityWritePort {
         validateVersion(model.sourceVersion(), writer);
         var previous = store.find(IdentityObjectType.USER, model.key());
         var unchanged = previousResult(IdentityObjectType.USER, model.key(), model.sourceVersion(), digest, previous);
-        if (unchanged != null) return unchanged;
+        if (unchanged != null) {
+            // 旧版本完全忽略；相同业务版本允许补录或刷新原文，不重写用户、扩展和角色。
+            if (unchanged.outcome() == IdentitySaveOutcome.UNCHANGED) {
+                String raw = snapshots.validate(model.rawDataJson(), writer);
+                snapshots.save(IdentityObjectType.USER, model.key(), unchanged.localId(), model.sourceVersion(), digest, raw, writer, false);
+            }
+            return unchanged;
+        }
+        String raw = snapshots.validate(model.rawDataJson(), writer);
         String id = previous == null ? IdWorker.getIdStr() : (String) previous.get("local_id");
         SysUser existing = previous == null ? null : userMapper.selectById(id);
         if (previous != null && existing == null) fail("SOURCE_OBJECT_RETIRED", "key", "映射的本地用户已删除或缺失");
@@ -77,6 +87,7 @@ public class IdentityWriteService implements IdentityWritePort {
         }
         extensions.saveSource(IdentityObjectType.USER, id, groups);
         saveBinding(IdentityObjectType.USER, model.key(), model.sourceVersion(), digest, id, base.account(), base.enabled(), previous);
+        snapshots.save(IdentityObjectType.USER, model.key(), id, model.sourceVersion(), digest, raw, writer, true);
         record(writer.actorId(), IdentityObjectType.USER, id, model.key());
         return result(IdentityObjectType.USER, model.key(), id, username,
                 previous == null ? IdentitySaveOutcome.CREATED : IdentitySaveOutcome.UPDATED, model.sourceVersion());
@@ -86,6 +97,7 @@ public class IdentityWriteService implements IdentityWritePort {
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public IdentitySaveResult saveOrganization(OrganizationSaveModel model) {
         if (model == null) fail("INVALID_MODEL", "model", "组织模型不能为空");
+        snapshots.checkSizes(Collections.singletonList(model.rawDataJson()), false);
         lockDirectory();
         var writer = access.requireSource(model.key());
         if (model.base() == null) fail("INVALID_MODEL", "base", "基础快照不能为空");
@@ -99,7 +111,14 @@ public class IdentityWriteService implements IdentityWritePort {
         validateVersion(model.sourceVersion(), writer);
         var previous = store.find(IdentityObjectType.ORGANIZATION, model.key());
         var unchanged = previousResult(IdentityObjectType.ORGANIZATION, model.key(), model.sourceVersion(), digest, previous);
-        if (unchanged != null) return unchanged;
+        if (unchanged != null) {
+            if (unchanged.outcome() == IdentitySaveOutcome.UNCHANGED) {
+                String raw = snapshots.validate(model.rawDataJson(), writer);
+                snapshots.save(IdentityObjectType.ORGANIZATION, model.key(), unchanged.localId(), model.sourceVersion(), digest, raw, writer, false);
+            }
+            return unchanged;
+        }
+        String raw = snapshots.validate(model.rawDataJson(), writer);
         String id = previous == null ? IdWorker.getIdStr() : (String) previous.get("local_id");
         if (previous != null && persistence.findObject(IdentityObjectType.ORGANIZATION, id) == null) {
             fail("SOURCE_OBJECT_RETIRED", "key", "映射的本地组织已删除或缺失");
@@ -120,6 +139,7 @@ public class IdentityWriteService implements IdentityWritePort {
         extensions.saveSource(IdentityObjectType.ORGANIZATION, id, groups);
         saveBinding(IdentityObjectType.ORGANIZATION, model.key(), model.sourceVersion(), digest, id, base.externalCode(), base.enabled(), previous);
         organizationHierarchy.reconcile(model.key(), base.parentExternalId(), org);
+        snapshots.save(IdentityObjectType.ORGANIZATION, model.key(), id, model.sourceVersion(), digest, raw, writer, true);
         record(writer.actorId(), IdentityObjectType.ORGANIZATION, id, model.key());
         return result(IdentityObjectType.ORGANIZATION, model.key(), id, null,
                 previous == null ? IdentitySaveOutcome.CREATED : IdentitySaveOutcome.UPDATED, model.sourceVersion());
@@ -130,6 +150,7 @@ public class IdentityWriteService implements IdentityWritePort {
     public List<IdentitySaveResult> saveUsers(List<UserSaveModel> models) {
         lockDirectory();
         batch(models == null ? null : models.stream().map(m -> m == null ? null : m.key()).toList());
+        snapshots.checkSizes(models.stream().map(UserSaveModel::rawDataJson).toList(), true);
         List<IdentitySaveResult> results = new ArrayList<>();
         for (int i = 0; i < models.size(); i++) {
             try { results.add(saveUser(models.get(i))); }
@@ -143,6 +164,7 @@ public class IdentityWriteService implements IdentityWritePort {
     public List<IdentitySaveResult> saveOrganizations(List<OrganizationSaveModel> models) {
         lockDirectory();
         batch(models == null ? null : models.stream().map(m -> m == null ? null : m.key()).toList());
+        snapshots.checkSizes(models.stream().map(OrganizationSaveModel::rawDataJson).toList(), true);
         // 先冻结目录结构，再拓扑处理当前批次的父子引用；返回顺序仍与输入一致。
         Map<String, OrganizationSaveModel> pending = new LinkedHashMap<>();
         for (var model : models) {

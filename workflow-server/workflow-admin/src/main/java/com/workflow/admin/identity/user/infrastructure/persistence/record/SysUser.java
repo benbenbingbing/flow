@@ -10,7 +10,6 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.record.S
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.time.Instant;
 import java.util.List;
 
 /**
@@ -153,19 +152,13 @@ public class SysUser {
      * @param positionName 位置名称，后续用于处理当前位置分配时匹配或展示
      * @param organizationUnitId 组织单元ID，后续用于处理当前位置分配时定位或关联目标
      * @param organizationUnitName 组织单元名称，后续用于处理当前位置分配时匹配或展示
-     * @param isPrimary 是否主要，保存在对象中供后续校验、查询或展示
-     * @param effectiveFrom 有效起始，保存在对象中供后续校验、查询或展示
-     * @param effectiveTo 有效截止，保存在对象中供后续校验、查询或展示
      */
     public record CurrentPositionAssignment(
             String assignmentId,
             String positionCode,
             String positionName,
             String organizationUnitId,
-            String organizationUnitName,
-            boolean isPrimary,
-            Instant effectiveFrom,
-            Instant effectiveTo) {
+            String organizationUnitName) {
     }
 
     /**

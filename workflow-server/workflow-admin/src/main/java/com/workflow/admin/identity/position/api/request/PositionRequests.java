@@ -1,6 +1,5 @@
 package com.workflow.admin.identity.position.api.request;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -72,77 +71,15 @@ public final class PositionRequests {
     }
 
     /**
-     * 封装分配批次的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param atomic {@code atomic}，保存在对象中供后续校验、查询或展示
-     * @param reason 原因，保存在对象中供后续校验、查询或展示
-     * @param items 条目，保存在对象中供后续校验、查询或展示
+     * 保存组织内某职务的完整当前人员集合，空集合表示清空。
+     * expectedUserIds 是编辑时读取的集合，用于阻止过期页面覆盖其他管理员的修改。
      */
-    public record AssignmentBatch(
-            Boolean atomic,
-            String reason,
-            List<AssignmentItem> items) {
-    }
+    public record SetMembers(String positionCode, String organizationUnitId,
+                             List<String> userIds, List<String> expectedUserIds) { }
 
-    /**
-     * 封装分配条目的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param positionCode 位置编码，后续用于处理分配条目时定位或关联目标
-     * @param organizationUnitId 组织单元ID，后续用于处理分配条目时定位或关联目标
-     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
-     * @param effectiveFrom 有效起始，保存在对象中供后续校验、查询或展示
-     * @param effectiveTo 有效截止，保存在对象中供后续校验、查询或展示
-     * @param isPrimary 是否主要，保存在对象中供后续校验、查询或展示
-     * @param sortOrder 排序权重，后续用于稳定展示顺序
-     * @param replaceExisting 替换已有，保存在对象中供后续校验、查询或展示
-     */
-    public record AssignmentItem(
-            String positionCode,
-            String organizationUnitId,
-            String userId,
-            OffsetDateTime effectiveFrom,
-            OffsetDateTime effectiveTo,
-            Boolean isPrimary,
-            Integer sortOrder,
-            Boolean replaceExisting) {
-    }
+    /** 移除当前关系，revision 用于检测并发修改，不代表任职历史版本。 */
+    public record RemoveAssignment(Integer revision) { }
 
-    /**
-     * 封装撤销分配的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param reason 原因，保存在对象中供后续校验、查询或展示
-     * @param revision 修订版本，保存在对象中供后续校验、查询或展示
-     */
-    public record RevokeAssignment(
-            String reason,
-            Integer revision) {
-    }
-
-    /**
-     * 封装更新分配时段的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param effectiveFrom 有效起始，保存在对象中供后续校验、查询或展示
-     * @param effectiveTo 有效截止，保存在对象中供后续校验、查询或展示
-     * @param reason 原因，保存在对象中供后续校验、查询或展示
-     * @param revision 修订版本，保存在对象中供后续校验、查询或展示
-     */
-    public record UpdateAssignmentPeriod(
-            OffsetDateTime effectiveFrom,
-            OffsetDateTime effectiveTo,
-            String reason,
-            Integer revision) {
-    }
-
-    /**
-     * 封装变更组织{@code leader}的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
-     * @param effectiveFrom 有效起始，保存在对象中供后续校验、查询或展示
-     * @param reason 原因，保存在对象中供后续校验、查询或展示
-     */
-    public record ChangeOrganizationLeader(
-            String userId,
-            OffsetDateTime effectiveFrom,
-            String reason) {
-    }
+    /** 负责人快捷入口使用相同的集合替换及并发检查规则。 */
+    public record ChangeOrganizationLeader(String userId, List<String> expectedUserIds) { }
 }

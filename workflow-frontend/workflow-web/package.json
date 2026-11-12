@@ -9,6 +9,7 @@
     "build:embed": "vite build --config vite.embed.config.js",
     "preview": "vite preview",
     "test:identity-extension:browser": "node scripts/identity-extension-browser-test.mjs",
+    "test:identity-source-snapshot:browser": "node scripts/identity-source-snapshot-browser-test.mjs",
     "test:identity-extension": "node --test src/shared/__tests__/identity-extension-form.spec.js",
     "test:history-import": "node --test src/shared/__tests__/history-import.spec.js",
     "test:history-import:browser": "node scripts/history-import-browser-test.mjs",
