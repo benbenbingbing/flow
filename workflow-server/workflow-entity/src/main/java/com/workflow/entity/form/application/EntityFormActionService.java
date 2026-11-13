@@ -84,21 +84,25 @@ public class EntityFormActionService {
      */
     public List<FormActionRuntimeDTO> resolve(
             FormActionResolveRequest request) {
-        RuntimeSource source = loadSource(
-                request.getFormId(),
-                request.getConfigHash(),
-                request.getRuntimeContext());
-        EntityDefinition definition =
-                requireDefinition(source.form());
-        requireEntityCode(request.getEntityCode(), definition);
-        String mode = requireMode(request.getMode());
-        EntityDataDTO row = loadRow(
-                definition,
-                request.getRecordId(),
-                request.getListKey(), mode, request.getTaskId(),
-                request.getRuntimeContext(), source).row();
-        return resolveTrustedPublishedSnapshot(
-                source.form(), definition, mode, row);
+        long started = System.nanoTime();
+        try {
+            RuntimeSource source = loadSource(request.getFormId(), request.getConfigHash(), request.getRuntimeContext());
+            EntityDefinition definition = requireDefinition(source.form());
+            requireEntityCode(request.getEntityCode(), definition);
+            String mode = requireMode(request.getMode());
+            // 只优化普通编辑；审批和流程查看继续执行原有实例/任务/发布绑定授权链。
+            boolean summary = "edit".equals(mode) && StringUtils.hasText(request.getRecordId())
+                    && definition.getStorageMode() != EntityDefinition.StorageMode.SYSTEM
+                    && !requiresAggregate(source, mode);
+            EntityDataDTO row = summary
+                    ? dataService.findAccessibleActionSummaryById(definition.getEntityCode(), request.getRecordId(), request.getListKey())
+                    : loadRow(definition, request.getRecordId(), request.getListKey(), mode, request.getTaskId(),
+                            request.getRuntimeContext(), source).row();
+            return resolveActions(source, definition, mode, row);
+        } finally {
+            log.debug("表单按钮解析耗时: mode={}, elapsedMs={}", LogValue.safe(request.getMode()),
+                    (System.nanoTime() - started) / 1_000_000);
+        }
     }
 
     /**
@@ -174,6 +178,12 @@ public class EntityFormActionService {
                 List.of(),
                 null,
                 null);
+        return resolveActions(source, definition, normalizedMode, authorizedRow);
+    }
+
+    /** 同一次解析复用已固定的发布配置；调用方须完成对应运行模式的记录授权。 */
+    private List<FormActionRuntimeDTO> resolveActions(RuntimeSource source, EntityDefinition definition,
+            String normalizedMode, EntityDataDTO authorizedRow) {
         Map<String, Object> actionBar =
                 configPolicy.actionBar(source.viewConfig());
         Map<String, Object> overrides =
@@ -574,6 +584,46 @@ public class EntityFormActionService {
                 definition.getEntityCode(),
                 recordId,
                 listKey), null);
+    }
+
+    /**
+     * 只对白名单内、明确不依赖聚合的规则使用主记录摘要。业务 FIELD（包括多值、
+     * 实体关系字段）及扩展规则一律读取完整聚合，防止字段缺失改变规则真值或扩大操作权限。
+     * 检查当前模式所有启用的按钮，包括可能被规则隐藏的按钮；停用或其他模式的
+     * 规则仍按原逻辑跳过，避免依赖分析额外触发这些规则的校验。
+     */
+    private boolean requiresAggregate(RuntimeSource source, String mode) {
+        Map<String, Object> actionBar = configPolicy.actionBar(source.viewConfig());
+        Map<String, Object> overrides = mapOrEmpty(actionBar.get("builtInOverrides"));
+        for (String key : BUILT_IN_MODES.keySet()) {
+            if (!BUILT_IN_MODES.get(key).contains(mode)) continue;
+            Map<String, Object> button = applyOverride(defaultBuiltIn(key, mode), mapOrEmpty(overrides.get(key)), mode);
+            if (enabledForMode(button, mode) && ruleRequiresAggregate(readRule(button))) return true;
+        }
+        for (Map<String, Object> button : mapList(actionBar.get("customButtons"))) {
+            if (Boolean.FALSE.equals(button.get("enabled")) || !modes(button).contains(mode)) continue;
+            if (ruleRequiresAggregate(readRule(button))) return true;
+        }
+        return false;
+    }
+
+    private boolean ruleRequiresAggregate(EntityActionRule rule) {
+        return rule != null && (nodeRequiresAggregate(rule.getVisibleWhen()) || nodeRequiresAggregate(rule.getEnabledWhen()));
+    }
+
+    private boolean nodeRequiresAggregate(EntityActionRule.RuleNode node) {
+        if (node == null) return false;
+        if (node.getType() == null) return true;
+        return switch (node.getType().toUpperCase(Locale.ROOT)) {
+            case "GROUP" -> node.getChildren() == null || node.getChildren().stream().anyMatch(this::nodeRequiresAggregate);
+            case "RELATION", "PROCESS_STATE", "STATUS_CODE", "STATUS_CATEGORY", "USER_FIELD" -> false;
+            // 与 EntityActionRuleEvaluator.readField 的 DTO 直接映射保持一致；新增或不明确的字段默认使用聚合。
+            case "FIELD" -> !Set.of("id", "name", "code", "status", "processStatus", "process_status",
+                    "processInstanceId", "processStartTime", "processEndTime", "currentTaskId", "currentTaskName",
+                    "currentTaskAssignee", "submitterId", "submitterName", "deptId", "create_time", "update_time",
+                    "create_by", "update_by", "deleted").contains(node.getField() == null ? "" : node.getField());
+            default -> true;
+        };
     }
 
     /**

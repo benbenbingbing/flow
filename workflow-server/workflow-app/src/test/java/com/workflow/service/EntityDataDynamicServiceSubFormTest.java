@@ -81,12 +81,16 @@ class EntityDataDynamicServiceSubFormTest {
             org.mockito.Mockito.verifyNoInteractions(f.multiValueRuntimeService, f.relationMapper, f.fieldMapper);
             org.junit.jupiter.api.Assertions.assertThrows(com.workflow.core.error.ForbiddenException.class,
                     () -> service.requireAccessibleById("parent", "missing", null));
+            // 摘要返回主记录字段供按钮求值，但仍不展开任何关系或多值数据。
+            var summary = service.findAccessibleActionSummaryById("parent", "parent-1", null);
+            assertEquals("parent-1", summary.getId());
+            org.mockito.Mockito.verifyNoInteractions(f.multiValueRuntimeService, f.relationMapper);
             var filtered = com.workflow.entity.permission.application.model.DataPermissionResult
                     .withCondition("dept_id = #{permissionParameters.department}", Map.of("department", "d"));
             when(permission.calculatePermission("parent", null, user)).thenReturn(filtered);
             when(f.dynamicMapper.selectByIdWithPermission("wf_parent", "filtered", filtered.getSqlCondition(), filtered.getSqlParameters()))
                     .thenReturn(Map.of("id", "filtered"));
-            service.requireAccessibleById("parent", "filtered", null);
+            assertEquals("filtered", service.findAccessibleActionSummaryById("parent", "filtered", null).getId());
             verify(f.dynamicMapper).selectByIdWithPermission("wf_parent", "filtered", filtered.getSqlCondition(), filtered.getSqlParameters());
         } finally { com.workflow.admin.security.context.UserContext.clear(); }
     }

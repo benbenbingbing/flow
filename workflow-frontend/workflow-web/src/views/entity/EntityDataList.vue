@@ -1228,16 +1228,8 @@ const handleCreate = async (button?: any) => {
   createFormLoading.value = true
   try {
     const parameters = buttonParameters(button)
-    let form = null
-    if (button?.targetFormId) {
-      form = await loadRuntimeButtonForm(button, 'TOOLBAR')
-    } else {
-      const loaded = await loadDefaultForm(true)
-      if (!loaded) return
-    }
-    await nextTick()
     await formDialogRef.value?.openCreate({
-      form,
+      loadForm: () => loadOpeningForm(button, 'TOOLBAR'),
       initialData: props.createInitialData,
       parameters: {
         ...(props.context?.parameters || {}),
@@ -1259,23 +1251,21 @@ const handleCreate = async (button?: any) => {
 // 打开编辑弹窗
 const handleEdit = async (row: any, button?: any) => {
   try {
-    let form = null
-    if (button?.targetFormId) {
-      form = await loadRuntimeButtonForm(button, 'ROW')
-    } else {
-      const loaded = await loadDefaultForm(true)
-      if (!loaded) return
-    }
-    // 无论使用默认表单还是按钮固定表单，都等 props/context 完成同一轮更新后再打开；
-    // 这样关联子列表不会把上一次的配置或关联来源 带进新弹窗。
-    await nextTick()
     await formDialogRef.value?.openEdit(row, {
-      form,
+      loadForm: () => loadOpeningForm(button, 'ROW'),
       context: { ...relatedContentRuntimeContext.value, params: { ...relatedContentRuntimeContext.value.params, ...buttonParameters(button, row) } }
     })
   } catch (error: any) {
     showRequestError(error, error?.message || '加载按钮指定表单失败')
   }
+}
+
+/** 新打开重新解析发布指针；结果只交给对应面板，不回写共享默认表单，防止旧响应污染新入口。 */
+async function loadOpeningForm(button: any, placement: 'TOOLBAR' | 'ROW') {
+  if (button?.targetFormId) return loadRuntimeButtonForm(button, placement)
+  if (props.defaultForm) return props.defaultForm
+  if (!props.allowDefaultFormResolve) throw new Error('当前固定列表版本没有可用的默认表单')
+  return getFormForNewData(entityCode.value, { silentError: true })
 }
 
 // 打开查看弹窗

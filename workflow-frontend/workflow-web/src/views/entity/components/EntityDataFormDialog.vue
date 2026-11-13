@@ -32,106 +32,122 @@
         >{{ dialogTitle }}</span>
       </RuntimeVersionDiagnostics>
     </template>
-    <el-tabs v-if="showOuterTabs" v-model="activeTab" type="border-card" class="form-dialog-tabs">
-      <el-tab-pane v-if="showBasicTab" label="基本信息" name="basic">
-        <EntityDataFormFields
-          ref="basicFormFieldsRef"
-          v-model:formData="formData"
-          :entityCode="entityCode"
-          :entityDefinition="entityDefinition"
-          :entityFields="entityFields"
-          :defaultForm="runtimeForm"
-          :isEdit="isEdit"
-          :showStartProcess="canStartProcess"
-          :excludedNodeIds="liftedRootNodeIds"
-          :dataSourceRuntime="dataSourceRuntime"
-          :skipDataSourcePrevalidation="true"
-          :form-actions="formActions"
-          :action-loading-key="actionLoadingKey"
-          :entity-status-options="entityStatusOptions"
-          :runtime-context="launchRuntimeContext"
-          @form-action="handleFormAction"
-        />
-      </el-tab-pane>
-      <el-tab-pane
-        v-for="(tab, idx) in runtimeNodeTabs"
-        :key="tab.name"
-        :label="tab.label"
-        :name="tab.name"
-      >
-        <EntityDataFormFields
-          :ref="(instance) => setNodeFormFieldsRef(tab.name, instance)"
-          v-model:formData="formData"
-          :entityCode="entityCode"
-          :entityDefinition="entityDefinition"
-          :entityFields="entityFields"
-          :defaultForm="runtimeForm"
-          :isEdit="isEdit"
-          :showStartProcess="canStartProcess && !showBasicTab && idx === 0"
-          :nodeRootParentId="tab.rootParentId"
-          :dataSourceRuntime="dataSourceRuntime"
-          :skipDataSourcePrevalidation="true"
-          :form-actions="formActions"
-          :action-loading-key="actionLoadingKey"
-          :entity-status-options="entityStatusOptions"
-          :runtime-context="launchRuntimeContext"
-          @form-action="handleFormAction"
-        />
-      </el-tab-pane>
-      <!-- 延迟到页签可见后再创建 Viewer，避免在零尺寸隐藏容器中初始化。 -->
-      <el-tab-pane
-        v-if="hasProcessInfo"
-        label="流程图"
-        name="diagram"
-        lazy
-      >
-        <EntityProcessRoundHistory view="diagram" :bpmn-xml="bpmnXml" :progress-data="progressData"
-          :process-instance-id="processInstanceId" :process-history="processHistory" />
-      </el-tab-pane>
-      <el-tab-pane v-if="hasProcessInfo" label="审批历史" name="history">
-        <EntityProcessRoundHistory view="history" :bpmn-xml="bpmnXml" :progress-data="progressData"
-          :process-instance-id="processInstanceId" :process-history="processHistory" />
-      </el-tab-pane>
-      <el-tab-pane
-        v-if="hasProcessInfo && userStore.isSuperAdmin"
-        label="动作执行记录"
-        name="actionExecutions"
-      >
-        <FlowActionExecutionLog
-          :process-instance-id="processInstanceId"
-          :active="activeTab === 'actionExecutions'"
-        />
-      </el-tab-pane>
-    </el-tabs>
+    <el-alert v-if="initialLoadError" :title="initialLoadError" type="error" :closable="false" show-icon />
+    <el-skeleton v-else-if="initialLoading && !formReady" class="form-opening-skeleton" :rows="6" animated />
+    <!-- 初始化会回填字段；完成前不挂载可交互表单，避免异步结果覆盖用户输入。 -->
+    <div v-if="formReady" :key="openingId" class="form-opening-body" :inert="initialLoading || undefined" :aria-busy="initialLoading ? 'true' : undefined">
+      <el-tabs v-if="showOuterTabs" v-model="activeTab" type="border-card" class="form-dialog-tabs">
+        <el-tab-pane v-if="showBasicTab" label="基本信息" name="basic">
+          <EntityDataFormFields
+            ref="basicFormFieldsRef"
+            v-model:formData="formData"
+            :entityCode="entityCode"
+            :entityDefinition="entityDefinition"
+            :entityFields="entityFields"
+            :defaultForm="runtimeForm"
+            :isEdit="isEdit"
+            :showStartProcess="canStartProcess"
+            :excludedNodeIds="liftedRootNodeIds"
+            :dataSourceRuntime="dataSourceRuntime"
+            :skipDataSourcePrevalidation="true"
+            :initialization-managed="true"
+            :read-session="openingReadSession"
+            :form-actions="formActions"
+            :action-loading-key="actionLoadingKey"
+            :entity-status-options="entityStatusOptions"
+            :runtime-context="launchRuntimeContext"
+            @form-action="handleFormAction"
+          />
+        </el-tab-pane>
+        <el-tab-pane
+          v-for="(tab, idx) in runtimeNodeTabs"
+          :key="tab.name"
+          :label="tab.label"
+          :name="tab.name"
+        >
+          <EntityDataFormFields
+            :ref="(instance) => setNodeFormFieldsRef(tab.name, instance)"
+            v-model:formData="formData"
+            :entityCode="entityCode"
+            :entityDefinition="entityDefinition"
+            :entityFields="entityFields"
+            :defaultForm="runtimeForm"
+            :isEdit="isEdit"
+            :showStartProcess="canStartProcess && !showBasicTab && idx === 0"
+            :nodeRootParentId="tab.rootParentId"
+            :dataSourceRuntime="dataSourceRuntime"
+            :skipDataSourcePrevalidation="true"
+            :initialization-managed="true"
+            :read-session="openingReadSession"
+            :form-actions="formActions"
+            :action-loading-key="actionLoadingKey"
+            :entity-status-options="entityStatusOptions"
+            :runtime-context="launchRuntimeContext"
+            @form-action="handleFormAction"
+          />
+        </el-tab-pane>
+        <!-- 延迟到页签可见后再创建 Viewer，避免在零尺寸隐藏容器中初始化。 -->
+        <el-tab-pane
+          v-if="hasProcessInfo"
+          label="流程图"
+          name="diagram"
+          lazy
+        >
+          <EntityProcessRoundHistory view="diagram" :bpmn-xml="bpmnXml" :progress-data="progressData"
+            :process-instance-id="processInstanceId" :process-history="processHistory" />
+        </el-tab-pane>
+        <el-tab-pane v-if="hasProcessInfo" label="审批历史" name="history">
+          <EntityProcessRoundHistory view="history" :bpmn-xml="bpmnXml" :progress-data="progressData"
+            :process-instance-id="processInstanceId" :process-history="processHistory" />
+        </el-tab-pane>
+        <el-tab-pane
+          v-if="hasProcessInfo && userStore.isSuperAdmin"
+          label="动作执行记录"
+          name="actionExecutions"
+        >
+          <FlowActionExecutionLog
+            :process-instance-id="processInstanceId"
+            :active="activeTab === 'actionExecutions'"
+          />
+        </el-tab-pane>
+      </el-tabs>
 
-    <EntityDataFormFields
-      v-else
-      ref="formFieldsRef"
-      v-model:formData="formData"
-      :entityCode="entityCode"
-      :entityDefinition="entityDefinition"
-      :entityFields="entityFields"
-      :defaultForm="runtimeForm"
-      :isEdit="isEdit"
-      :showStartProcess="canStartProcess"
-      :dataSourceRuntime="dataSourceRuntime"
-      :skipDataSourcePrevalidation="true"
-      :form-actions="formActions"
-      :action-loading-key="actionLoadingKey"
-      :entity-status-options="entityStatusOptions"
-      :runtime-context="launchRuntimeContext"
-      @form-action="handleFormAction"
-    />
-
-    <template #footer>
-      <FormActionBar
-        :actions="footerActions"
-        :loading-key="actionLoadingKey"
-        @action="handleFormAction"
+      <EntityDataFormFields
+        v-else
+        ref="formFieldsRef"
+        v-model:formData="formData"
+        :entityCode="entityCode"
+        :entityDefinition="entityDefinition"
+        :entityFields="entityFields"
+        :defaultForm="runtimeForm"
+        :isEdit="isEdit"
+        :showStartProcess="canStartProcess"
+        :dataSourceRuntime="dataSourceRuntime"
+        :skipDataSourcePrevalidation="true"
+        :initialization-managed="true"
+        :read-session="openingReadSession"
+        :form-actions="formActions"
+        :action-loading-key="actionLoadingKey"
+        :entity-status-options="entityStatusOptions"
+        :runtime-context="launchRuntimeContext"
+        @form-action="handleFormAction"
       />
+    </div>
+    <template #footer>
+      <template v-if="formReady && !initialLoading">
+        <span v-if="actionsLoading" role="status">正在加载操作…</span>
+        <el-alert v-else-if="actionsError" :title="actionsError" type="error" :closable="false">
+          <el-button link type="primary" @click="retryFormActions">重试操作加载</el-button>
+        </el-alert>
+        <FormActionBar v-else
+          :actions="footerActions"
+          :loading-key="actionLoadingKey"
+          @action="handleFormAction"
+        />
+      </template>
     </template>
   </el-dialog>
-  <FormButtonActionHost v-if="dialogVisible" ref="buttonActionHostRef" />
+  <FormButtonActionHost v-if="dialogVisible && formReady" ref="buttonActionHostRef" />
 </template>
 
 <script setup lang="ts">
@@ -139,7 +155,7 @@ import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import FormButtonActionHost from '@/components/FormButtonActionHost.vue'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { resolvePageParameters, initializePageFields, pageParameterFields } from '@flow/workflow-core/page-parameters'
-import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount, provide } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount, provide, shallowRef } from 'vue'
 import { relatedFormDraftGuardKey } from '@/shared/related-form-draft-guard'
 import { useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
@@ -205,7 +221,14 @@ const presentedDialogVisible = workspacePage.visibleWhenActive(dialogVisible)
 const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
 const dialogTitle = ref('')
 const formActions = ref<any[]>([])
-const actionPendingKey = ref('')
+const initialLoading = ref(false)
+const initialLoadError = ref('')
+const formReady = ref(false)
+const actionsLoading = ref(false)
+const actionsError = ref('')
+const openingId = ref(0)
+const openingReadSession = shallowRef<any>(null)
+let currentOpening: any = null
 const actionLoadingKey = ref('')
 const formFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
 const basicFormFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
@@ -251,7 +274,7 @@ const formData = reactive({
 // 工作区关闭标签和 Embed 关闭表单都保护输入；会话撤销时容器直接释放旧页面。
 const discardGuard = createRuntimeFormDiscardGuard({
   readValue: () => ({ name: formData.name, data: formData.data }),
-  enabled: () => dialogVisible.value && (Boolean(workspacePage.page) || isEmbedDelegatedRequestEnabled()),
+  enabled: () => dialogVisible.value && formReady.value && !initialLoading.value && (Boolean(workspacePage.page) || isEmbedDelegatedRequestEnabled()),
   confirm: () => ElMessageBox.confirm(
     '当前表单有未保存的修改，关闭或刷新后这些修改将丢失。',
     '确认放弃修改？',
@@ -275,7 +298,7 @@ workspacePage.registerGuard(() => discardGuard.isDirty() || hasUnsavedRelatedFor
 
 /** 供原生关闭和 Embed 刷新共同检查；提交中的表单不能被重新初始化。 */
 async function confirmDiscardChanges() {
-  if (props.reloadPending || (isEmbedDelegatedRequestEnabled() && actionLoadingKey.value)) return false
+  if (props.reloadPending || actionLoadingKey.value) return false
   if ([...relatedFormGuards].some(guard => guard.isBusy())) return false
   if (hasUnsavedRelatedForms()) {
     try {
@@ -292,7 +315,14 @@ async function confirmDiscardChanges() {
 }
 
 async function beforeDialogClose(done: () => void) {
-  if (await confirmDiscardChanges()) done()
+  const opening = currentOpening
+  if (await confirmDiscardChanges()) {
+    if (opening !== currentOpening) return
+    // Element Plus 的 model 更新可能晚于关闭动画；确认关闭时就废弃续体，阻止动画中的迟到事件。
+    opening?.cancel?.()
+    currentOpening = null
+    done()
+  }
 }
 
 onMounted(() => globalThis.addEventListener?.('beforeunload', discardGuard.beforeUnload))
@@ -301,27 +331,93 @@ onBeforeUnmount(() => globalThis.removeEventListener?.('beforeunload', discardGu
 const hasProcessInfo = computed(() => !!processInstanceId.value)
 const canStartProcess = computed(() => !hasProcessInfo.value)
 const footerActions = computed(() => footerFormActions(formActions.value))
-const rootDataSourceRuntime = createFormDataSourceRuntime({
-  executeDataSource: uiExtensionRuntimeApi.execute,
-  entityCode: props.entityCode,
-  getRecord: () => formData.data || {},
-  getRecordId: () => formData.id,
-  getListKey: () => props.listKey,
-  getMode: () => isEdit.value ? 'edit' : 'create',
-  getForm: () => runtimeForm.value,
-  getEntityDefinition: () => props.entityDefinition
-})
-const dataSourceRuntime = rootDataSourceRuntime.withContext(() => ({
-  ...launchRuntimeContext.value,
-  context: {
-    ...(launchRuntimeContext.value?.context || {}),
-    ...launchRuntimeContext.value
-  },
-  params:
-    launchRuntimeContext.value?.params
-    || launchRuntimeContext.value?.parameters
-    || {}
-}))
+// 每次打开创建独立运行时，旧初始化只持有旧记录，不会沿用新记录的字段或去重状态。
+const dataSourceRuntime = shallowRef<any>(null)
+
+function isCurrentOpening(opening: any) {
+  return Boolean(opening && opening === currentOpening && dialogVisible.value)
+}
+
+/** 立即呈现加载面板；会话令牌同时约束配置、事件、初始化、选项和按钮的异步续体。 */
+function beginOpening(mode: string, options: any) {
+  currentOpening?.cancel?.()
+  const opening: any = { id: ++launchSequence, mode, record: {}, reads: new Map(), pendingAction: { value: '' }, start: performance.now() }
+  opening.closed = new Promise(resolve => { opening.cancel = () => resolve(false) })
+  currentOpening = opening
+  openingId.value = opening.id
+  formReady.value = false
+  formActions.value = []
+  actionLoadingKey.value = ''
+  actionsLoading.value = false
+  actionsError.value = ''
+  resetSnapshot.value = null
+  initialLoadError.value = ''
+  initialLoading.value = true
+  isEdit.value = mode === 'edit'
+  activeForm.value = null
+  formData.id = ''
+  formData.name = ''
+  formData.data = opening.record
+  formData.startProcess = false
+  launchRuntimeContext.value = { ...(options.context || {}), initializationKey: `${mode}:${opening.id}` }
+  dialogTitle.value = mode === 'edit' ? '编辑数据' : '新增数据'
+  dialogVisible.value = true
+  markOpening(opening, 'visible')
+  // 只合并本次打开中完全相同的只读请求；失败删除缓存，关闭后不跨用户或记录复用。
+  openingReadSession.value = {
+    isCurrent: () => isCurrentOpening(opening),
+    read(key: string, load: () => Promise<any>) {
+      if (!opening.reads.has(key)) {
+        const promise = Promise.resolve().then(load)
+        opening.reads.set(key, promise)
+        promise.catch(() => { if (opening.reads.get(key) === promise) opening.reads.delete(key) })
+      }
+      return opening.reads.get(key)
+    }
+  }
+  return opening
+}
+
+/** 性能面板区分弹窗出现、可填写和按钮就绪；只保留各模式最近一次指标，不含业务记录信息。 */
+function markOpening(opening: any, stage: string) {
+  const name = `entity-form:${opening.mode}:${stage}`
+  performance.clearMeasures(name)
+  performance.measure(name, { start: opening.start, end: performance.now() })
+}
+
+function initializeOpeningRuntime(opening: any) {
+  const context = launchRuntimeContext.value
+  const form = runtimeForm.value
+  const reads = openingReadSession.value
+  opening.record = formData.data
+  dataSourceRuntime.value = createFormDataSourceRuntime({
+    async executeDataSource(request: any) {
+      if (!isCurrentOpening(opening)) throw new Error('表单会话已结束')
+      // 多个页签/控件可能请求同一选项，按完整参数合并；生命周期与计算事件保持原执行次数。
+      const result = request.bindingCode === 'FIELD_OPTIONS'
+        ? await reads.read(`extension-options:${JSON.stringify(request)}`, () => uiExtensionRuntimeApi.execute(request))
+        : await uiExtensionRuntimeApi.execute(request)
+      if (!isCurrentOpening(opening)) throw new Error('表单会话已结束')
+      return result
+    },
+    entityCode: props.entityCode,
+    getRecord: () => isCurrentOpening(opening) ? formData.data : opening.record,
+    getRecordId: () => opening.recordId,
+    getListKey: () => props.listKey,
+    getMode: () => opening.mode,
+    getForm: () => form,
+    getEntityDefinition: () => props.entityDefinition
+  }).withContext({
+    ...context,
+    // 发布接口映射可从 context.* 读取入口参数、关联坐标及初值，保留原有映射路径。
+    context: { ...(context.context || {}), ...context },
+    params: context.params || context.parameters || {}
+  })
+}
+
+// 外部关闭及事件关闭也废弃会话；原生关闭在 beforeDialogClose 中提前使续体失效。
+watch(dialogVisible, visible => { if (!visible) { currentOpening?.cancel?.(); currentOpening = null; resetProcessDetail() } }, { flush: 'sync' })
+onBeforeUnmount(() => { currentOpening?.cancel?.(); currentOpening = null })
 
 const {
   bpmnXml,
@@ -457,7 +553,7 @@ const resetForm = () => {
   applyRuntimeFieldDefaults(formData.data, runtimeForm.value, fields)
 }
 
-/** 保存打开事件与初始值处理后的基线，供重置恢复同一发布表单的初始状态。 */
+/** 保存必要初始化与控件补值后的基线，供重置及未保存修改判断使用。 */
 function captureResetSnapshot() {
   resetSnapshot.value = JSON.parse(JSON.stringify({
     id: formData.id,
@@ -480,19 +576,29 @@ function restoreResetSnapshot() {
   formData.startProcess = false
 }
 
-async function loadFormActions() {
-  formActions.value = await resolveRuntimeFormActions(runtimeForm.value, {
-    entityCode: props.entityCode,
-    listKey: props.listKey,
-    mode: isEdit.value ? 'edit' : 'create',
-    recordId: formData.id || undefined,
-    workflowReady: isWorkflowReady(props.entityDefinition),
-    hasProcessInstance: hasProcessInfo.value,
-    systemEntity: props.entityDefinition?.storageMode === 'SYSTEM',
-    compositionContext:
-      launchRuntimeContext.value?.compositionContext || undefined
-  })
+/** 按钮不阻塞填写；只接受当前会话的服务端解析结果，失败单独重试，不重放打开事件。 */
+async function loadFormActions(opening = currentOpening) {
+  if (!isCurrentOpening(opening)) return
+  actionsLoading.value = true
+  actionsError.value = ''
+  try {
+    const actions = await resolveRuntimeFormActions(runtimeForm.value, {
+      entityCode: props.entityCode, listKey: props.listKey,
+      mode: opening.mode, recordId: formData.id || undefined,
+      workflowReady: isWorkflowReady(props.entityDefinition),
+      hasProcessInstance: hasProcessInfo.value,
+      systemEntity: props.entityDefinition?.storageMode === 'SYSTEM',
+      compositionContext: launchRuntimeContext.value?.compositionContext || undefined,
+      requireServerResolution: true
+    })
+    if (isCurrentOpening(opening)) { formActions.value = actions; markOpening(opening, 'actions-ready') }
+  } catch (error: any) {
+    if (isCurrentOpening(opening)) actionsError.value = error?.message || '加载表单操作失败'
+  } finally {
+    if (isCurrentOpening(opening)) actionsLoading.value = false
+  }
 }
+function retryFormActions() { if (!actionsLoading.value) void loadFormActions() }
 
 /**
  * 在当前表单发布版本上执行表单级事件；eventCode 标识打开等时机，
@@ -500,8 +606,9 @@ async function loadFormActions() {
  */
 async function executeFormEvent(eventCode: string) {
   if (!runtimeForm.value?.id) return
+  const opening = currentOpening
   const context = launchRuntimeContext.value
-  const isCurrent = () => launchRuntimeContext.value === context
+  const isCurrent = () => isCurrentOpening(opening) && launchRuntimeContext.value === context
   const result = await uiEventBindingApi.execute(eventCode, {
     configType: 'FORM',
     configId: String(runtimeForm.value.id),
@@ -540,24 +647,30 @@ async function executeFormEvent(eventCode: string) {
 
 /** 按服务端效果顺序回填或导航；FIELD_MAPPING 的覆盖策略决定是否保留用户现有值。 */
 async function applyFormEventResult(result: any, isCurrent = () => true) {
+  const context = launchRuntimeContext.value
+  let closedByEffect = false
   await applyFormEffects(result, {
     excel: (effect: any) => excelActionDialog.value.open(effect),
     getRecord: () => formData.data,
     setField: (key: string, value: any) => { formData.data[key] = value },
     getFields: () => props.entityFields,
-    isCurrent,
+    // 事件自身关闭后仍须顺序执行 REFRESH_PARENT 等后续效果；用户关闭或切换记录则丢弃结果。
+    isCurrent: () => isCurrent() || (closedByEffect && launchRuntimeContext.value === context),
     navigate: (effect: any) => router.push(effect.route),
-    close: () => { dialogVisible.value = false },
+    close: () => { closedByEffect = true; dialogVisible.value = false },
     refresh: () => emit('success')
   })
 }
 
 
 
-/** 统一分发保存、重置及自定义按钮；actionPendingKey 覆盖确认弹窗等待期以阻止双击。 */
+/** 统一分发保存、重置及自定义按钮；会话内 pendingAction 覆盖确认等待期，避免旧动作释放新会话的锁。 */
 async function handleFormAction(action: any) {
+  if (!formReady.value || initialLoading.value || initialLoadError.value || actionsLoading.value || actionsError.value) return
+  const opening = currentOpening
   const context = launchRuntimeContext.value
-  const isCurrent = () => launchRuntimeContext.value === context
+  const isCurrent = () => isCurrentOpening(opening) && launchRuntimeContext.value === context
+  const actionPendingKey = opening.pendingAction
   try {
     await runFormAction(action, {
       loadingState: actionPendingKey,
@@ -600,7 +713,7 @@ async function handleFormAction(action: any) {
         await applyFormEventResult(result, isCurrent)
         if (isCurrent() && result?.message) ElMessage.success(result.message)
       },
-      settled: () => { actionLoadingKey.value = '' }
+      settled: () => { if (launchRuntimeContext.value === context) actionLoadingKey.value = '' }
     })
   } catch (error: any) {
     await showServerValidationErrors(error)
@@ -633,60 +746,93 @@ function initializeParameterFields() {
     launchRuntimeContext.value.params, pageParameterFields([...(runtimeForm.value?.fields || []), ...(runtimeForm.value?.nodes || [])]), [], isEdit.value ? 'edit' : 'create')
 }
 
-/**
- * 打开新增表单。options.form 固定本次运行的表单，initialData 是入口提供的
- * 初值；打开事件可能回填字段，因此事件后再次应用初值以保留入口优先级。
- */
+/** 新增沿用默认值、参数、打开事件与入口初值的优先级，必要回填完成后才允许输入。 */
 const openCreate = async (options: any = {}) => {
   runtimeDiagnosticsRef.value?.reset()
   resetProcessDetail()
+  return openForm('create', null, options)
+}
+
+/**
+ * 统一首屏生命周期。DETAIL_LOAD/FORM_OPEN 可能产生业务效果，失败不自动重放；
+ * 按钮和只读选项不影响表单可填写，保存仍经过原有发布身份、权限与字段校验。
+ */
+function openForm(mode: string, row: any, options: any) {
+  const opening = beginOpening(mode, options)
+  // 关闭即释放列表入口的等待锁；底层事件不自动重放，迟到的结果由会话校验丢弃。
+  return Promise.race([initializeOpenForm(opening, row, options), opening.closed])
+}
+
+async function initializeOpenForm(opening: any, row: any, options: any) {
+  const mode = opening.mode
   processDetailsLoadedFor.value = ''
   processDetailsPendingFor = ''
-  activeForm.value = options?.form || null
-  isEdit.value = false
   processInstanceId.value = ''
   currentProcessStatus.value = ''
   currentProcessName.value = ''
-  activeTab.value = firstFormTabName.value
-  const inputParameters = resolvePageParameters(runtimeForm.value?.viewConfig, {
-    ...(options?.context?.parameters || {}),
-    ...(options?.context?.params || {}),
-    ...(options?.parameters || {})
-  })
-  const initialData =
-    options?.initialData && typeof options.initialData === 'object'
-      ? options.initialData
-      : {}
-  launchRuntimeContext.value = {
-    ...(options?.context || {}),
-    params: inputParameters,
-    parameters: inputParameters,
-    initialData,
-    initializationKey: `create:${++launchSequence}`
-  }
-  resetForm()
-  dialogTitle.value = runtimeForm.value?.formName
-    ? `新增数据 - ${runtimeForm.value.formName}${runtimeForm.value.formKey ? `（${runtimeForm.value.formKey}）` : ''}`
-    : '新增数据'
-
-  // 关联入口初值优先于默认值，且须在 FORM_OPEN 回填后继续保持优先级。
-  applyCreateInitialData(initialData)
-  initializeParameterFields()
-
+  let stage = '表单配置'
   try {
+    const form = options.loadForm ? await options.loadForm() : options.form || props.defaultForm
+    if (!isCurrentOpening(opening)) return false
+    activeForm.value = form || null
+    const params = resolvePageParameters(runtimeForm.value?.viewConfig, {
+      ...(options.context?.parameters || {}), ...(options.context?.params || {}), ...(options.parameters || {})
+    })
+    const initialData = mode === 'create' && options.initialData && typeof options.initialData === 'object' ? options.initialData : {}
+    launchRuntimeContext.value = { ...launchRuntimeContext.value, params, parameters: params, initialData }
+    if (mode === 'create') {
+      resetForm()
+      dialogTitle.value = runtimeForm.value?.formName
+        ? `新增数据 - ${runtimeForm.value.formName}${runtimeForm.value.formKey ? `（${runtimeForm.value.formKey}）` : ''}` : '新增数据'
+      applyCreateInitialData(initialData)
+    } else {
+      stage = '实体详情'
+      const detail = await entityDataApi.getDetail(props.entityCode, row.id, props.listKey,
+        runtimeForm.value?.id, listReleaseContext.value, formReleaseContext.value)
+      if (!isCurrentOpening(opening)) return false
+      formData.id = detail.id
+      formData.name = detail.name
+      formData.data = normalizeEntityRecordForForm(detail)
+      processInstanceId.value = detail.processInstanceId || ''
+      currentProcessStatus.value = detail.processStatus || ''
+    }
+    initializeParameterFields()
+    stage = '表单打开事件'
     await executeFormEvent('FORM_OPEN')
+    if (!isCurrentOpening(opening)) return false
+    if (mode === 'create') applyCreateInitialData(initialData)
+    opening.recordId = formData.id || undefined
+    initializeOpeningRuntime(opening)
+    stage = '字段初始化'
+    await dataSourceRuntime.value.initialize({
+      form: runtimeForm.value, fields: runtimeForm.value?.fields || [], nodes: runtimeForm.value?.nodes || [],
+      record: formData.data, initializationKey: launchRuntimeContext.value.initializationKey,
+      runtimeContext: launchRuntimeContext.value
+    })
+    if (!isCurrentOpening(opening)) return false
+    if (mode === 'create') applyCreateInitialData(initialData)
+    activeTab.value = firstFormTabName.value
+    formReady.value = true
+    await nextTick()
+    if (!isCurrentOpening(opening)) return false
+    refreshFormLinkage()
+    await nextTick()
+    if (!isCurrentOpening(opening)) return false
+    // 控件同步补值和必要初始化一起构成重置基线；可编辑之后不再移动基线。
+    captureResetSnapshot()
+    initialLoading.value = false
+    markOpening(opening, 'ready')
+    void loadFormActions(opening)
+    return true
   } catch (error: any) {
-    showRequestError(error, '表单打开事件执行失败')
+    if (isCurrentOpening(opening)) {
+      formReady.value = false
+      initialLoadError.value = `${stage}加载失败：${error?.message || '请关闭后重试'}`
+    }
+    return false
+  } finally {
+    if (isCurrentOpening(opening)) initialLoading.value = false
   }
-  applyCreateInitialData(initialData)
-  captureResetSnapshot()
-  await loadFormActions()
-  dialogVisible.value = true
-  await nextTick()
-  refreshFormLinkage()
-  await nextTick()
-  // 原生控件初始化会补默认值；这些值应属于基线，不应被误认为用户输入。
-  discardGuard.markSaved()
 }
 
 // 图与历史按需加载；失败保留可重试状态，切换实体时不沿用旧实例内容。
@@ -702,60 +848,11 @@ watch([activeTab, processInstanceId, dialogVisible], async ([tab, instanceId, vi
   }
 })
 
-/**
- * 打开现有记录。row.id 仅作为详情查询坐标，字段值必须由带列表与表单发布
- * 上下文的详情接口返回，之后才执行打开事件并记录重置基线。
- */
+/** 编辑数据必须由服务端详情返回；行摘要仅提供坐标，关闭后不得继续执行打开事件。 */
 const openEdit = async (row: any, options: any = {}) => {
   runtimeDiagnosticsRef.value?.reset()
   resetProcessDetail()
-  processDetailsLoadedFor.value = ''
-  processDetailsPendingFor = ''
-  processInstanceId.value = ''
-  currentProcessStatus.value = ''
-  currentProcessName.value = ''
-  activeForm.value = options?.form || null
-  isEdit.value = true
-  launchRuntimeContext.value = {
-    ...(options?.context || {}),
-    params: resolvePageParameters(runtimeForm.value?.viewConfig, { ...(options?.context?.parameters || {}), ...(options?.context?.params || {}), ...(options?.parameters || {}) }),
-    initializationKey: `edit:${row?.id || 'record'}:${++launchSequence}`
-  }
-  formData.startProcess = false
-  const detail = await entityDataApi.getDetail(
-    props.entityCode,
-    row.id,
-    props.listKey,
-    runtimeForm.value?.id,
-    listReleaseContext.value,
-    formReleaseContext.value
-  )
-  formData.id = detail.id
-  formData.name = detail.name
-  formData.data = normalizeEntityRecordForForm(detail)
-  initializeParameterFields()
-
-  processInstanceId.value = detail.processInstanceId || ''
-  // 普通编辑表单已经由实体详情和固定发布配置提供数据，不为状态标签等待整张流程图。
-  currentProcessStatus.value = detail.processStatus || ''
-  currentProcessName.value = ''
-  processDetailsLoadedFor.value = ''
-
-  activeTab.value = firstFormTabName.value
-
-  dialogTitle.value = '编辑数据'
-  try {
-    await executeFormEvent('FORM_OPEN')
-  } catch (error: any) {
-    showRequestError(error, '表单打开事件执行失败')
-  }
-  captureResetSnapshot()
-  await loadFormActions()
-  dialogVisible.value = true
-  await nextTick()
-  refreshFormLinkage()
-  await nextTick()
-  discardGuard.markSaved()
+  return openForm('edit', row, options)
 }
 
 /** 把服务端字段错误分发到所有表单页签，并定位第一个可操作的错误。 */
@@ -807,7 +904,7 @@ async function validateRuntimeForms() {
     }
   }
 
-  await dataSourceRuntime.prevalidateBeforeSubmit({
+  await dataSourceRuntime.value.prevalidateBeforeSubmit({
     form: runtimeForm.value,
     fields: runtimeForm.value?.fields || [],
     nodes: runtimeForm.value?.nodes || []
@@ -820,9 +917,10 @@ async function validateRuntimeForms() {
  * 允许的字段，并带上配置摘要及业务来源供服务端实时鉴权、校验配置是否变化。
  */
 const handleSubmit = async (startProcess = false, restartProcess = false) => {
+  const opening = currentOpening
   try {
     const valid = await validateRuntimeForms()
-    if (!valid) return
+    if (!valid || !isCurrentOpening(opening)) return
     formData.startProcess = startProcess
     const submittedData = filterRuntimeFormSubmissionData(
       formData.data,
@@ -886,6 +984,7 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
         props.listKey,
         listReleaseContext.value
       )
+      if (!isCurrentOpening(opening)) return
       ElMessage.success(restartProcess ? '已保存并重新发起' : '更新成功')
     } else {
       result = await entityDataApi.save(
@@ -893,9 +992,11 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
         data.startProcess,
         listReleaseContext.value
       )
+      if (!isCurrentOpening(opening)) return
       ElMessage.success('创建成功')
     }
 
+    if (!isCurrentOpening(opening)) return
     // 保存主表不会提交普通关联草稿；保留弹窗，让用户继续独立保存子表单。
     if (hasUnsavedRelatedForms()) {
       captureResetSnapshot()
@@ -905,6 +1006,7 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
     }
     emit('success', result)
   } catch (error: any) {
+    if (!isCurrentOpening(opening)) return
     await showServerValidationErrors(error)
     showRequestError(error, '操作失败')
   }
@@ -967,6 +1069,7 @@ function applyCreateInitialData(initialData: Record<string, any>) {
   flex-direction: column;
 }
 
+.form-opening-body,
 .form-dialog-tabs {
   flex: 1;
   display: flex;

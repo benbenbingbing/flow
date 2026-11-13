@@ -173,7 +173,7 @@ async function loadRuntime() {
       })
     }
     if (mode.value === 'CREATE') {
-      await dialog.openCreate({
+      const opened = await dialog.openCreate({
         form: runtimeForm.value,
         initialData: target.initialData,
         parameters: target.parameters,
@@ -187,6 +187,7 @@ async function loadRuntime() {
             runtimeForm.value.configHash || undefined
         }
       })
+      if (opened === false) throw new Error('Flow 表单初始化暂时失败，请关闭后重试')
       if (sequence !== loadSequence) return false
       loading.value = false
       return true

@@ -130,6 +130,10 @@ const failedOpen = nativeForm({ openCreate: async () => { throw failure } })
 await assert.rejects(failedOpen.reload(), error => error === failure)
 assert.equal(failedOpen.loading.value, false)
 
+const initializationFailed = nativeForm({ openCreate: async () => false })
+await assert.rejects(initializationFailed.reload(), /初始化暂时失败/)
+assert.equal(initializationFailed.loading.value, false)
+
 const missingDialog = nativeForm()
 missingDialog.dataFormDialogRef.value = null
 await assert.rejects(missingDialog.reload(), error => error.errorCode === 'EMBED_RUNTIME_UNAVAILABLE')

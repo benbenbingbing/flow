@@ -91,6 +91,97 @@ class EntityFormActionServiceTest {
     }
 
     @Test
+    void editActionsUseSummaryOnlyForRulesKnownToUseRootFields() {
+        for (String rule : List.of("{}", """
+                {"builtInOverrides":{"save":{"availabilityRule":{"version":2,
+                  "disabledMessage":"条件不满足","enabledWhen":{"type":"GROUP","logic":"AND","children":[
+                    {"type":"FIELD","field":"status","operator":"EQ","value":"DRAFT"},
+                    {"type":"RELATION","relation":"CURRENT_USER_IS_CREATOR"}]}}}}}
+                """)) {
+            org.mockito.Mockito.clearInvocations(dataService);
+            FormActionResolveRequest request = editResolveRequest(rule);
+            EntityDataDTO row = new EntityDataDTO(); row.setId("record-1"); row.setStatus("DRAFT");
+            when(dataService.findAccessibleActionSummaryById("work_order", "record-1", "orders")).thenReturn(row);
+            assertTrue(service.resolve(request).stream().anyMatch(action -> "save".equals(action.getKey()) && action.isEnabled()));
+            verify(dataService).findAccessibleActionSummaryById("work_order", "record-1", "orders");
+            verify(dataService, org.mockito.Mockito.never()).findAccessibleById(anyString(), anyString(), any());
+            verify(capabilityService, org.mockito.Mockito.atLeastOnce()).evaluateConfiguredAction(
+                    eq("work_order"), eq("entity:work_order:update"), isNull(), same(row));
+        }
+    }
+
+    @Test
+    void businessFieldDependenciesKeepAggregateForVisibleAndEnabledRules() {
+        for (String condition : List.of("visibleWhen", "enabledWhen")) {
+            org.mockito.Mockito.clearInvocations(dataService);
+            FormActionResolveRequest request = editResolveRequest("""
+                    {"customButtons":[{"key":"calc","enabled":true,"modes":["edit"],
+                      "availabilityRule":{"version":2,"disabledMessage":"条件不满足","%s":{"type":"FIELD","field":"detailList",
+                        "operator":"EQ","value":"expected"}}}]}
+                    """.formatted(condition));
+            EntityDataDTO row = new EntityDataDTO(); row.setId("record-1"); row.setData(Map.of("detailList", List.of(Map.of("amount", 9))));
+            when(dataService.findAccessibleById("work_order", "record-1", "orders")).thenReturn(row);
+            service.resolve(request);
+            verify(dataService).findAccessibleById("work_order", "record-1", "orders");
+            verify(dataService, org.mockito.Mockito.never()).findAccessibleActionSummaryById(anyString(), anyString(), any());
+            verify(capabilityService, org.mockito.Mockito.atLeastOnce()).evaluateConfiguredAction(
+                    eq("work_order"), eq(""), any(EntityActionRule.class), same(row));
+        }
+    }
+
+    @Test
+    void summaryDeniedByDataScopeDoesNotResolveOrFallBackToAggregate() {
+        FormActionResolveRequest request = editResolveRequest("{}");
+        when(dataService.findAccessibleActionSummaryById("work_order", "record-1", "orders"))
+                .thenThrow(new ForbiddenException("记录不在当前数据范围内"));
+        assertThrows(ForbiddenException.class, () -> service.resolve(request));
+        verifyNoInteractions(capabilityService);
+        verify(dataService, org.mockito.Mockito.never()).findAccessibleById(anyString(), anyString(), any());
+    }
+
+    @Test
+    void dependencyAnalysisDoesNotValidateDisabledOrOtherModeRules() {
+        FormActionResolveRequest request = editResolveRequest("""
+                {"builtInOverrides":{"saveAndStart":{"enabled":false,
+                    "availabilityRule":{"version":2,"visibleWhen":{"type":"UNKNOWN"}}}},
+                 "customButtons":[
+                   {"key":"disabled","enabled":false,"modes":["edit"],
+                    "availabilityRule":{"version":2,"visibleWhen":{"type":"UNKNOWN"}}},
+                   {"key":"createOnly","modes":["create"],
+                    "availabilityRule":{"version":2,"visibleWhen":{"type":"UNKNOWN"}}}]}
+                """);
+        EntityDataDTO row = new EntityDataDTO(); row.setId("record-1");
+        when(dataService.findAccessibleActionSummaryById("work_order", "record-1", "orders")).thenReturn(row);
+        assertEquals(List.of("close", "reset", "save"), service.resolve(request).stream()
+                .map(FormActionRuntimeDTO::getKey).toList());
+        verify(dataService).findAccessibleActionSummaryById("work_order", "record-1", "orders");
+        verify(dataService, org.mockito.Mockito.never()).findAccessibleById(anyString(), anyString(), any());
+    }
+
+    @Test
+    void invalidRuleCannotUseSummaryToBypassValidation() {
+        FormActionResolveRequest request = editResolveRequest("""
+                {"builtInOverrides":{"save":{"availabilityRule":{"version":2,
+                  "visibleWhen":{"type":"UNKNOWN"}}}}}
+                """);
+        assertThrows(RuntimeException.class, () -> service.resolve(request));
+        verifyNoInteractions(dataService);
+    }
+
+    /** 固定测试发布快照，所有规则分析必须读取服务端发布配置。 */
+    private FormActionResolveRequest editResolveRequest(String actionBar) {
+        EntityForm form = publishedForm("{\"actionBar\":" + actionBar + "}");
+        form.setId("form-1");
+        when(definitionMapper.selectById("entity-1")).thenReturn(definition);
+        when(releaseService.resolveRuntimeEventSnapshot(eq("form-1"), any(), any()))
+                .thenReturn(new UiConfigReleaseService.ResolvedUiEventSnapshot(snapshot(form), "release-1", 1, "release-1", false, "hash-1"));
+        FormActionResolveRequest request = new FormActionResolveRequest();
+        request.setFormId("form-1"); request.setConfigHash("hash-1"); request.setEntityCode("work_order");
+        request.setMode("edit"); request.setRecordId("record-1"); request.setListKey("orders");
+        return request;
+    }
+
+    @Test
     void restartIsOptInAndRuntimeEligibilityStillApplies() {
         EntityDataDTO row = new EntityDataDTO();
         row.setId("record-1"); row.setProcessInstanceId("withdrawn-instance");

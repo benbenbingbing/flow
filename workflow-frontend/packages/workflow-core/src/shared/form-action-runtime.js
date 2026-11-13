@@ -26,13 +26,14 @@ async function resolveRuntimeFormActions(forms, context) {
         compositionContext:
           context.compositionContext || undefined
       })
+      if (context.requireServerResolution && !Array.isArray(result)) throw new Error('表单操作返回格式错误')
       return Array.isArray(result)
         ? result
         : resolveSafeRuntimeActionFallback(form, context)
     } catch (error) {
-      // Embed 必须以映射 Flow 用户的服务端实时权限为准。若解析失败仍回退本地
-      // 默认按钮，会把“服务不可用”误显示成“用户有保存权限”，因此委托会话失败关闭。
-      if (isEmbedDelegatedRequestEnabled()) throw error
+      // Embed 及显式要求服务端解析的宿主必须拿到实时权限结论；解析失败回退本地
+      // 默认按钮会把“服务不可用”显示成“可以保存”，因此这些入口交给宿主提示并重试。
+      if (context.requireServerResolution || isEmbedDelegatedRequestEnabled()) throw error
       console.warn('解析表单按钮失败，仅使用本地内置动作:', error)
       return resolveSafeRuntimeActionFallback(form, context)
     }

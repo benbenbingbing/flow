@@ -95,3 +95,17 @@ test('回退重审节点优先活跃，其次取消，最后历史完成；兼�
   assert.equal(getProcessNodeStatus({ completedNodes: [{ id: 'review' }] }, 'review'), 'completed')
   assert.equal(getProcessNodeStatus({}, 'review'), 'pending')
 })
+
+// 独立按钮加载不能把服务不可用当作已授权成功，重试也不能执行任何表单事件。
+test('要求服务端解析的表单按钮在失败或坏响应时拒绝，恢复后可单独重试', async () => {
+  let calls = 0, response
+  const runtime = createFormActionRuntime({ formActionRuntimeApi: { resolve: async () => { calls++; if (response instanceof Error) throw response; return response } } })
+  const form = { id: 'f', configHash: 'hash' }, context = { mode: 'edit', requireServerResolution: true }
+  response = new Error('网络不可用')
+  await assert.rejects(runtime.resolveRuntimeFormActions(form, context), /网络不可用/)
+  response = {}
+  await assert.rejects(runtime.resolveRuntimeFormActions(form, context), /返回格式/)
+  response = [{ key: 'save', visible: true, enabled: false }]
+  assert.equal((await runtime.resolveRuntimeFormActions(form, context))[0].enabled, false)
+  assert.equal(calls, 3)
+})

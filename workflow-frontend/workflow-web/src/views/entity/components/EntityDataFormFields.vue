@@ -125,7 +125,7 @@
 <script setup lang="ts">
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { isSubFormLayoutField } from '@/shared/form-layout'
-import { ref, computed, watch, nextTick, provide } from 'vue'
+import { ref, computed, watch, nextTick, provide, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
@@ -176,6 +176,8 @@ const props = defineProps<{
   nodeRootParentId?: string | number
   excludedNodeIds?: Array<string | number>
   dataSourceRuntime?: any
+  initializationManaged?: boolean
+  readSession?: any
   skipDataSourcePrevalidation?: boolean
   formActions?: any[]
   actionLoadingKey?: string
@@ -412,45 +414,55 @@ const internalDataSourceRuntime = createFormDataSourceRuntime({
 })
 const dataSourceRuntime = props.dataSourceRuntime || internalDataSourceRuntime
 
+let fieldLoadSequence = 0
+let mounted = true
+onBeforeUnmount(() => { mounted = false; fieldLoadSequence += 1 })
+const readOnce = (key: string, load: () => Promise<any>) => props.readSession ? props.readSession.read(key, load) : load()
+
 async function loadRuntimeDataSources(fields: any[]) {
-  await dataSourceRuntime.initialize({
-    form: props.defaultForm,
-    fields,
-    nodes: props.defaultForm?.nodes || [],
-    initializationKey:
-      props.runtimeContext?.initializationKey,
-    runtimeContext: {
-      ...(props.runtimeContext || {}),
-      params:
-        props.runtimeContext?.params
-        || props.runtimeContext?.parameters
-      || {}
-    }
-  })
-  Object.entries(props.runtimeContext?.initialData || {}).forEach(
-    ([key, value]) => {
-      formData.value.data[key] = cloneRuntimeValue(value)
-    }
-  )
+  const sequence = ++fieldLoadSequence
+  const session = props.readSession
+  const isCurrent = () => mounted && sequence === fieldLoadSequence && (!session || session.isCurrent())
+  if (!props.initializationManaged) {
+    await dataSourceRuntime.initialize({
+      form: props.defaultForm,
+      fields,
+      nodes: props.defaultForm?.nodes || [],
+      initializationKey:
+        props.runtimeContext?.initializationKey,
+      runtimeContext: {
+        ...(props.runtimeContext || {}),
+        params:
+          props.runtimeContext?.params
+          || props.runtimeContext?.parameters
+        || {}
+      }
+    })
+    if (!isCurrent()) return
+    Object.entries(props.runtimeContext?.initialData || {}).forEach(
+      ([key, value]) => {
+        formData.value.data[key] = cloneRuntimeValue(value)
+      }
+    )
+  }
+  if (!isCurrent()) return
   const optionEntries = await Promise.all(
     (fields || []).map(async field => {
       // 级联由组件按父路径读取，通用预加载缺少协议参数且会造成重复接口请求。
       if (String(field.componentType || field.fieldType || '').toLowerCase() === 'cascader') return [field.fieldCode, []]
       try {
-        const options = await executeFieldDataSource(field, 'FIELD_OPTIONS')
+        const options = await readOnce(`options:${field.id || field.fieldCode}:${JSON.stringify(formData.value.data)}`, () => executeFieldDataSource(field, 'FIELD_OPTIONS'))
         return [field.fieldCode, Array.isArray(options) ? options : []]
       } catch {
         return [field.fieldCode, []]
       }
     })
   )
+  if (!isCurrent()) return
   dataSourceOptionMap.value = Object.fromEntries(
     optionEntries.filter(([, options]) => options.length > 0)
   )
 
-  for (const field of fields || []) {
-    if (!dataSourceOptionMap.value[field.fieldCode]) continue
-  }
 }
 
 function flattenDictItems(items: any[]): any[] {
@@ -467,15 +479,17 @@ function flattenDictItems(items: any[]): any[] {
 watch(
   () => props.entityFields.map((field: any) => field.dictType).filter(Boolean),
   async (dictCodes: string[]) => {
+    const session = props.readSession
     const uniqueCodes = [...new Set(dictCodes)]
     const entries = await Promise.all(uniqueCodes.map(async dictCode => {
       try {
-        const items = await getItemTreeByDictCode(dictCode)
+        const items = await readOnce(`dict:${dictCode}`, () => getItemTreeByDictCode(dictCode))
         return [dictCode, flattenDictItems(items || [])]
       } catch {
         return [dictCode, []]
       }
     }))
+    if (!mounted || (session && !session.isCurrent())) return
     dictOptionMap.value = Object.fromEntries(entries)
   },
   { immediate: true }

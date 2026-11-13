@@ -521,6 +521,16 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
     }
 
     /**
+     * 为仅依赖主记录系统字段的按钮规则读取摘要，沿用详情相同的数据范围 SQL。
+     * 不展开多值字段或关系子树；含业务字段/扩展规则的调用方必须使用完整聚合读取。
+     * 返回值只供服务端能力判断，不能替代详情展示或提交授权。
+     */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findAccessibleActionSummaryById(String entityCode, String id, String listKey) {
+        return toRuntimeDto(findAccessibleRecord(entityCode, id, listKey), entityCode);
+    }
+
+    /**
      * 仅校验记录仍在当前数据范围内，不展开字段多值和关系子树。
      * 用于档案摘要等只需要访问校验的读取，不能替代展示字段和按钮规则的完整解析。
      */

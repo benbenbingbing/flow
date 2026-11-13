@@ -446,13 +446,18 @@ assert.ok(
 )
 assert.match(
   entityDataList,
-  /const handleCreate = async[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*await formDialogRef\.value\?\.openCreate\(\{[\s\S]*initialData:[\s\S]*parameters:[\s\S]*context:/,
-  '新增实体数据前应重新加载最新发布表单，并等待子组件 props 更新后再打开弹窗'
+  /const handleCreate = async[\s\S]*openCreate\(\{[\s\S]*loadForm: \(\) => loadOpeningForm\(button, 'TOOLBAR'\)[\s\S]*initialData:[\s\S]*parameters:[\s\S]*context:/,
+  '新增立即打开原生面板，配置在面板生命周期内解析，关联初值与参数仍传给初始化'
 )
 assert.match(
   entityDataList,
-  /const handleEdit = async[\s\S]*button\?\.targetFormId[\s\S]*loadRuntimeButtonForm\(button, 'ROW'\)[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*openEdit\(row, \{[\s\S]*form,[\s\S]*context: relatedContentRuntimeContext\.value[\s\S]*\}\)/,
-  '编辑实体数据时，未显式指定表单的按钮应重新加载最新发布表单，并把已签名关联上下文传给原生弹窗'
+  /const handleEdit = async[\s\S]*openEdit\(row, \{[\s\S]*loadForm: \(\) => loadOpeningForm\(button, 'ROW'\)[\s\S]*context:/,
+  '编辑立即打开原生面板，详情和打开事件必须等待同一入口表单及签名上下文'
+)
+assert.match(
+  entityDataList,
+  /async function loadOpeningForm[\s\S]*props\.defaultForm[\s\S]*allowDefaultFormResolve[\s\S]*getFormForNewData/,
+  '普通新打开仍解析当前发布表单，固定版本会话不再查询 ACTIVE'
 )
 assert.ok(
   entityDataList.includes("getFormForNewData(entityCode.value, { silentError: true })")
