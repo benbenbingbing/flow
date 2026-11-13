@@ -29,3 +29,16 @@ export const getOrganizationPage = (params: {
 export const getOrganizationAncestors = (id: string) => {
   return request.get(`/system/org/${encodeURIComponent(id)}/ancestors`)
 }
+
+/** 树展开读取当前节点的全部直属下级，不分页、不递归读取后代。 */
+export const getOrganizationChildren = (params: { parentId?: string, type?: string, excludeId?: string }) =>
+  request.get('/system/org/children', { params })
+
+/** 选择器搜索结果按列表分页，只返回启用且符合类型的候选。 */
+export const getOrganizationSelectionPage = (params: {
+  parentId?: string, pageNum?: number, pageSize?: number, keyword?: string, type?: string
+}) => request.get('/system/org/options/page', { params })
+
+/** 已选值按需回显，单次最多 100 个；流程定义使用 code，管理表单使用 id。 */
+export const resolveOrganizationSelection = (values: string[], valueKey = 'id') =>
+  request.get('/system/org/options/resolve', { params: { values: values.join(','), valueKey } })

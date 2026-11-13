@@ -64,7 +64,8 @@
         :label="ruleValueLabel(rule.type)"
         required
       >
-        <el-select-v2
+        <OrganizationSelector v-if="rule.type === 'ORGANIZATION'" v-model="rule.values" multiple value-key="code" :disabled="disabled" />
+        <el-select-v2 v-else
           v-model="rule.values"
           :options="optionsForRule(rule.type)"
           multiple
@@ -103,6 +104,7 @@ import { ref, watch } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import UserSelector from '@/components/UserSelector.vue'
+import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import {
   normalizeNextApproverScope,
   validateNextApproverSelectionConfig
@@ -118,10 +120,6 @@ const props = defineProps({
     default: () => []
   },
   groupOptions: {
-    type: Array,
-    default: () => []
-  },
-  organizationOptions: {
     type: Array,
     default: () => []
   },
@@ -203,9 +201,6 @@ function canonicalOptions(options) {
 function optionsForRule(type) {
   if (type === 'ROLE') return canonicalOptions(props.roleOptions)
   if (type === 'GROUP') return canonicalOptions(props.groupOptions)
-  if (type === 'ORGANIZATION') {
-    return canonicalOptions(props.organizationOptions)
-  }
   return []
 }
 

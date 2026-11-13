@@ -81,25 +81,18 @@ public class ProcessInstanceService {
      * @return 流程进度信息
      */
     public ProcessProgressDTO getProcessProgress(String processInstanceId) {
-        return getProcessProgress(processInstanceId, null);
-    }
-
-    /**
-     * 读取流程进度；查询结果供调用方展示或继续处理。
-     *
-     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
-     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
-     * @return 符合条件的流程进度结果，供调用方继续处理
-     */
-    public ProcessProgressDTO getProcessProgress(
-            String processInstanceId,
-            String taskId) {
         processInstanceAccessService.requireReadAccess(processInstanceId);
-        ProcessProgressDTO progress = processProgressRuntimeService.getProcessProgress(processInstanceId, taskId);
+        ProcessProgressDTO progress = processProgressRuntimeService.getProcessProgress(processInstanceId);
         progress.setRounds(processRoundService.listReadableRounds(processInstanceId));
         return progress;
     }
-    
+
+    /** 首屏表单与进度各自重新鉴权，避免拆分接口后可直接绕过实例参与范围。 */
+    public com.workflow.process.instance.api.response.ProcessFormRuntimeDTO getProcessFormRuntime(String instanceId, String taskId) {
+        processInstanceAccessService.requireReadAccess(instanceId);
+        return processProgressRuntimeService.getProcessFormRuntime(instanceId, taskId);
+    }
+
     /**
      * 根据流程实例ID获取BPMN XML（公共方法）
      * 

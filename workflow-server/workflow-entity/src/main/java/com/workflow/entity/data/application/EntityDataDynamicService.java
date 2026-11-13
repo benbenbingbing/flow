@@ -517,6 +517,20 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
             String entityCode,
             String id,
             String listKey) {
+        return assembleAggregate(findAccessibleRecord(entityCode, id, listKey), entityCode);
+    }
+
+    /**
+     * 仅校验记录仍在当前数据范围内，不展开字段多值和关系子树。
+     * 用于档案摘要等只需要访问校验的读取，不能替代展示字段和按钮规则的完整解析。
+     */
+    @Transactional(readOnly = true)
+    public void requireAccessibleById(String entityCode, String id, String listKey) {
+        findAccessibleRecord(entityCode, id, listKey);
+    }
+
+    /** 授权查询共用同一行过滤条件，避免轻量路径与实体详情的数据范围发生偏差。 */
+    private Map<String, Object> findAccessibleRecord(String entityCode, String id, String listKey) {
         String tableName =
                 dynamicTableService.getTableName(entityCode);
         DataPermissionResult permission =
@@ -539,7 +553,7 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
             throw new ForbiddenException(
                     "数据不存在或不在当前数据权限范围内");
         }
-        return assembleAggregate(data, entityCode);
+        return data;
     }
 
     /**

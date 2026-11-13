@@ -488,28 +488,12 @@
         <el-row :gutter="18">
           <el-col :span="12">
             <el-form-item label="组织">
-              <el-tree-select
-                v-model="roleUserForm.orgId"
-                :data="roleUserOrgOptions"
-                :props="{ label: 'orgName', value: 'id' }"
-                placeholder="请选择组织"
-                clearable
-                check-strictly
-                style="width: 100%"
-              />
+              <OrganizationSelector v-model="roleUserForm.orgId" type="org" placeholder="请选择组织" title="选择组织" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="部门">
-              <el-tree-select
-                v-model="roleUserForm.deptId"
-                :data="roleUserDeptOptions"
-                :props="{ label: 'orgName', value: 'id' }"
-                placeholder="请选择部门"
-                clearable
-                check-strictly
-                style="width: 100%"
-              />
+              <OrganizationSelector v-model="roleUserForm.deptId" type="dept" placeholder="请选择部门" title="选择部门" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -543,6 +527,7 @@
 </template>
 
 <script setup lang="ts">
+import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import { computed, nextTick, ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeftBold, ArrowRightBold, Plus, Search } from '@element-plus/icons-vue'
@@ -734,8 +719,6 @@ const roleUserPage = reactive({
 const newRoleUserDialogVisible = ref(false)
 const roleUserFormRef = ref()
 const roleUserSubmitLoading = ref(false)
-const roleUserOrgOptions = ref<any[]>([])
-const roleUserDeptOptions = ref<any[]>([])
 const roleUserForm = reactive({
   username: '',
   password: '',
@@ -936,19 +919,6 @@ const resetRoleUserState = () => {
   roleUserPage.total = 0
 }
 
-const fetchRoleUserOrgOptions = async () => {
-  if (roleUserOrgOptions.value.length || roleUserDeptOptions.value.length) return
-
-  try {
-    const res = await request.get('/system/org/enabled')
-    const options = Array.isArray(res) ? res : []
-    roleUserOrgOptions.value = options.filter((item: any) => item.type === 'org')
-    roleUserDeptOptions.value = options.filter((item: any) => item.type === 'dept')
-  } catch (error) {
-    console.error('获取组织部门列表失败', error)
-  }
-}
-
 const resetRoleUserForm = () => {
   Object.assign(roleUserForm, {
     username: '',
@@ -965,7 +935,6 @@ const resetRoleUserForm = () => {
 
 const handleAddRoleUser = async () => {
   resetRoleUserForm()
-  await fetchRoleUserOrgOptions()
   newRoleUserDialogVisible.value = true
   await nextTick()
   roleUserFormRef.value?.clearValidate()

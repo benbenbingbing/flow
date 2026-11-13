@@ -6,16 +6,11 @@
           <el-input v-model="queryParams.keyword" placeholder="账号、姓名、邮箱或手机号" clearable @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="组织/部门">
-          <SystemFilterPicker
-            v-model="organizationFilter"
-            :options="organizationFilterOptions"
-            title="选择组织/部门"
-            entity-label="组织/部门"
-            placeholder="全部组织/部门"
-            tree
-            :loading="filterLoading.organization"
-            :error="filterErrors.organization"
-            @retry="fetchOrgOptions"
+          <OrganizationSelector
+            :model-value="queryParams.deptId || queryParams.orgId"
+            confirm
+            title="选择组织/部门" placeholder="全部组织/部门"
+            @selected="selectOrganizationFilter"
           />
         </el-form-item>
         <el-form-item label="角色">
@@ -306,28 +301,14 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="组织">
-              <el-tree-select
-                v-model="formData.orgId" :disabled="!!formData.sourceInfo"
-                :data="orgOptions"
-                :props="{ label: 'orgName', value: 'id' }"
-                placeholder="请选择组织"
-                clearable
-                check-strictly
-                style="width: 100%"
-              />
+              <OrganizationSelector v-model="formData.orgId" type="org" :disabled="!!formData.sourceInfo"
+                placeholder="请选择组织" title="选择组织" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="部门">
-              <el-tree-select
-                v-model="formData.deptId" :disabled="!!formData.sourceInfo"
-                :data="deptOptions"
-                :props="{ label: 'orgName', value: 'id' }"
-                placeholder="请选择部门"
-                clearable
-                check-strictly
-                style="width: 100%"
-              />
+              <OrganizationSelector v-model="formData.deptId" type="dept" :disabled="!!formData.sourceInfo"
+                placeholder="请选择部门" title="选择部门" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -410,6 +391,7 @@ import IdentityExtensionForm from '@/views/system/components/IdentityExtensionFo
 import IdentitySourceSnapshotViewer from '@/views/system/components/IdentitySourceSnapshotViewer.vue'
 import { formatDateColumn, formatDateValue } from '@/shared/list-runtime'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
+import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import SystemFilterPicker from '@/views/system/components/SystemFilterPicker.vue'
 import { getEnabledPositions } from '@/api/system/position'
 import { useUserStore } from '@/stores/user'
@@ -430,12 +412,9 @@ const selectedUsers = ref<any[]>([])
 const total = ref(0)
 const roleOptions = ref<any[]>([])
 const positionOptions = ref<any[]>([])
-const orgOptions = ref<any[]>([])
-const deptOptions = ref<any[]>([])
-const organizationOptions = ref<any[]>([])
 const filtersExpanded = ref(false)
-const filterLoading = reactive({ organization: false, role: false, position: false })
-const filterErrors = reactive({ organization: '', role: '', position: '' })
+const filterLoading = reactive({ role: false, position: false })
+const filterErrors = reactive({ role: '', position: '' })
 const queryParams = reactive({
   keyword: '',
   orgId: '',
@@ -446,31 +425,11 @@ const queryParams = reactive({
   pageNum: 1,
   pageSize: 20
 })
-// 合并控件只允许一个组织节点生效；切换组织/部门或清空时同时清除另一类旧条件。
-const organizationFilter = computed({
-  get: () => queryParams.deptId || queryParams.orgId,
-  set: (value: string) => {
-    const node = organizationOptions.value.find(item => String(item.id) === value)
-    queryParams.orgId = node?.type === 'org' ? value : ''
-    queryParams.deptId = node?.type === 'dept' ? value : ''
-  }
-})
-const organizationFilterOptions = computed(() => {
-  const nodes = new Map(organizationOptions.value.map(item => [String(item.id), item]))
-  return organizationOptions.value.map(item => {
-    const names = [item.orgName]
-    const visited = new Set([String(item.id)])
-    let parent = nodes.get(String(item.parentId))
-    // 展示完整名称路径，帮助区分不同组织下的同名部门；不可见祖先不参与补全。
-    while (parent && !visited.has(String(parent.id))) {
-      names.unshift(parent.orgName)
-      visited.add(String(parent.id))
-      parent = nodes.get(String(parent.parentId))
-    }
-    return { value: String(item.id), label: item.orgName, code: item.orgCode,
-      parentValue: String(item.parentId), kind: item.type, path: names.join(' / ') }
-  })
-})
+/** 选择节点直接提供类型，避免为区分组织和部门预读全目录。 */
+const selectOrganizationFilter = (node: any) => {
+  queryParams.orgId = node?.type === 'org' ? String(node.id) : ''
+  queryParams.deptId = node?.type === 'dept' ? String(node.id) : ''
+}
 const roleFilterOptions = computed(() => roleOptions.value.map(item => ({
   value: String(item.id), label: item.roleName, code: item.roleCode, description: item.description
 })))
@@ -627,25 +586,6 @@ const openPositionAssignment = (row: any) => {
 
 const handlePositionAssignmentSaved = async () => {
   await fetchUserList()
-}
-
-// 获取启用的平铺节点：查询选择器按 parentId 还原组织与部门的混合树。
-const fetchOrgOptions = async () => {
-  filterLoading.organization = true
-  filterErrors.organization = ''
-  try {
-    const res = await request.get('/system/org/enabled')
-    if (res && Array.isArray(res)) {
-      organizationOptions.value = res
-      orgOptions.value = res.filter((item: any) => item.type === 'org')
-      deptOptions.value = res.filter((item: any) => item.type === 'dept')
-    }
-  } catch (error) {
-    filterErrors.organization = '无法读取组织/部门，请重试。'
-    console.error('获取组织部门列表失败', error)
-  } finally {
-    filterLoading.organization = false
-  }
 }
 
 // 重置表单
@@ -846,7 +786,6 @@ onMounted(() => {
   fetchUserList()
   fetchRoleOptions()
   fetchPositionOptions()
-  fetchOrgOptions()
 })
 </script>
 

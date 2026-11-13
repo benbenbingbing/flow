@@ -178,12 +178,7 @@ async function main() {
     status: progress.status,
     activeNodes: progress.activeNodes,
     completedNodes: progress.completedNodes,
-    entityData: progress.entityData && {
-      id: progress.entityData.id,
-      status: progress.entityData.status,
-      currentTaskName: progress.entityData.currentTaskName,
-      processInstanceId: progress.entityData.processInstanceId
-    }
+
   })
   assert.ok(progress.activeNodes?.includes('Task_Admin_Review'), '流程进度应停留在配置的审批节点')
 

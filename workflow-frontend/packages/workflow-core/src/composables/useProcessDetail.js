@@ -6,7 +6,7 @@ import { resolveEntityStatusLabel } from '../shared/entity-status-runtime.js'
  * 流程详情加载组合式函数
  * 用于审批弹窗、编辑弹窗等需要展示流程图和审批历史的场景
  */
-export function useProcessDetail({ request, getProcessHistory }) {
+export function useProcessDetail({ request }) {
   const bpmnXml = ref('')
   const progressData = ref({
     completedNodes: [],
@@ -23,6 +23,53 @@ export function useProcessDetail({ request, getProcessHistory }) {
   const processRuntimeMetadata = ref({})
 
   let loadSequence = 0
+  let formSequence = 0
+  let loadedProgressId = ''
+  let pendingProgress = null
+  const progressLoading = ref(false)
+  const progressError = ref('')
+
+  /** 首屏只读取实体与生效表单；图和历史的迟到响应不会覆盖已经展示或编辑的数据。 */
+  async function loadProcessFormRuntime(instanceId, options = {}) {
+    const sequence = ++formSequence
+    entityData.value = null
+    formConfig.value = null
+    formConfigs.value = []
+    approvalConfig.value = null
+    try {
+      const result = await request.get(`/process-instance/${encodeURIComponent(instanceId)}/form-runtime`, {
+        params: options.taskId ? { taskId: options.taskId } : undefined
+      })
+      if (sequence !== formSequence) return false
+      if (!result) throw new Error('流程表单数据为空')
+      processRuntimeMetadata.value = {
+        processInstanceId: result.processInstanceId || instanceId,
+        processKey: result.processKey || '', processVersion: result.processVersion ?? null
+      }
+      progressData.value = { ...progressData.value, status: result.status }
+      entityData.value = result.entityData || null
+      if (entityData.value?.status) entityData.value._statusText ||= resolveEntityStatusLabel(entityData.value.status)
+      formConfigs.value = normalizeRuntimeFormConfigs(result)
+      formConfig.value = mergeRuntimeFormConfigs(formConfigs.value)
+      approvalConfig.value = result.approvalConfig || null
+      options.onLoad?.(result)
+      return true
+    } catch (error) {
+      if (sequence === formSequence) console.error('加载流程表单失败:', error)
+      return false
+    }
+  }
+
+  /** 同一实例的页签切换复用进度请求；失败可重试，刷新时显式传 force。 */
+  function loadProcessDetail(instanceId, options = {}) {
+    const id = String(instanceId)
+    if (!options.force && loadedProgressId === id) return Promise.resolve(true)
+    if (pendingProgress?.id === id) return pendingProgress.promise
+    const promise = readProcessProgress(id, options)
+    pendingProgress = { id, promise }
+    promise.finally(() => { if (pendingProgress?.promise === promise) pendingProgress = null })
+    return promise
+  }
 
   // 获取流程状态显示文本
   function getProcessStatusText(status) {
@@ -41,32 +88,30 @@ export function useProcessDetail({ request, getProcessHistory }) {
    * @param {string} instanceId 流程实例 ID
    * @param {object} options 选项
    * @param {string} options.startUserName 发起人名称回退值
-   * @param {string} options.taskId 当前任务 ID，并行实例下用于读取对应节点配置
    * @param {function} options.onLoad 加载成功回调，参数为后端返回的 progressRes
    */
-  async function loadProcessDetail(instanceId, options = {}) {
+  async function readProcessProgress(instanceId, options = {}) {
     const sequence = ++loadSequence
-    const { startUserName = 'admin', taskId = '', onLoad } = options
+    loadedProgressId = ''
+    const { startUserName = '', onLoad } = options
+    progressLoading.value = true
+    progressError.value = ''
     bpmnXml.value = ''
     progressData.value = {
       completedNodes: [],
       activeNodes: [],
       executedSequenceFlows: [],
       nodeAssigneeMap: {},
-      nodeAssigneesMap: {}
+      nodeAssigneesMap: {},
+      status: progressData.value.status
     }
     processHistory.value = []
-    entityData.value = null
-    formConfig.value = null
-    formConfigs.value = []
-    approvalConfig.value = null
-    processRuntimeMetadata.value = {}
     try {
       const progressRes = await request.get(
-        `/process-instance/${instanceId}/progress`,
-        { params: taskId ? { taskId } : undefined }
+        `/process-instance/${encodeURIComponent(instanceId)}/progress`
       )
       if (sequence !== loadSequence) return false
+      if (!progressRes) throw new Error('流程进度数据为空')
       if (progressRes) {
         // 这些坐标描述实例实际运行的不可变流程版本，诊断展示不得从当前草稿或最新发布反推。
         processRuntimeMetadata.value = {
@@ -88,15 +133,6 @@ export function useProcessDetail({ request, getProcessHistory }) {
           rounds: progressRes.rounds || [],
           status: progressRes.status
         }
-        entityData.value = progressRes.entityData || null
-        if (entityData.value && entityData.value.status) {
-          // 服务端返回实体配置的名称；无配置时沿用统一内置名称，不能被流程状态覆盖。
-          entityData.value._statusText ||= resolveEntityStatusLabel(entityData.value.status)
-        }
-        formConfigs.value = normalizeRuntimeFormConfigs(progressRes)
-        formConfig.value = mergeRuntimeFormConfigs(formConfigs.value)
-        approvalConfig.value = progressRes.approvalConfig || null
-
         if (onLoad) {
           onLoad(progressRes)
         }
@@ -132,33 +168,29 @@ export function useProcessDetail({ request, getProcessHistory }) {
           }
         }).reverse()
       } else {
-        const historyRes = await getProcessHistory(instanceId)
-        if (sequence !== loadSequence) return false
-        processHistory.value = (historyRes || []).map((h) => {
-          const isStart = h.action === '发起' || h.taskName?.toLowerCase().includes('start')
-          const isTransfer = h.result === 'transfer' || (h.comment && h.comment.includes('转办'))
-          return {
-            title: h.taskName || '流程节点',
-            description: isStart
-              ? `发起人: ${h.assigneeName || h.assignee || startUserName}`
-              : `${h.assigneeName || h.assignee || '系统'} ${isTransfer ? '转办' : ({ cancelled: '已取消', withdraw: '撤回', terminate: '终止', completed: '完成' }[h.result] || h.action || '处理')}${h.comment ? `（${h.comment}）` : ''}`,
-            time: h.endTime || h.startTime,
-            type: isStart ? 'primary' : ['cancelled', 'terminate'].includes(h.result) ? 'danger' : (isTransfer || h.result === 'withdraw' ? 'warning' : (h.action === '通过' ? 'success' : 'info')),
-            status: h.result === 'cancelled' ? 'CANCELLED' : h.result === 'withdraw' ? 'WITHDRAWN' : h.result === 'terminate' ? 'TERMINATED' : h.endTime ? 'COMPLETED' : 'ACTIVE',
-            action: h.result
-          }
-        }).reverse()
+        processHistory.value = []
       }
+      loadedProgressId = instanceId
       return true
     } catch (e) {
-      console.error('加载流程详情失败:', e)
+      if (sequence === loadSequence) {
+        progressError.value = '流程进度加载失败，请重试'
+        console.error('加载流程详情失败:', e)
+      }
       return false
+    } finally {
+      if (sequence === loadSequence) progressLoading.value = false
     }
   }
 
   // 关闭/切换普通编辑记录时让尚未返回的请求失效，避免旧图覆盖新实体。
   function resetProcessDetail() {
     loadSequence++
+    formSequence++
+    loadedProgressId = ''
+    pendingProgress = null
+    progressLoading.value = false
+    progressError.value = ''
     bpmnXml.value = ''
     progressData.value = { completedNodes: [], activeNodes: [], executedSequenceFlows: [], nodeAssigneeMap: {}, nodeAssigneesMap: {} }
     entityData.value = null
@@ -171,6 +203,9 @@ export function useProcessDetail({ request, getProcessHistory }) {
 
   return {
     resetProcessDetail,
+    loadProcessFormRuntime,
+    progressLoading,
+    progressError,
     bpmnXml,
     progressData,
     processHistory,

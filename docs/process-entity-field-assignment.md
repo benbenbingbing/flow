@@ -2,6 +2,8 @@
 
 在流程设计器选中顺序流，进入「流程动作」，点击「字段赋值」。选择当前实体的字段，逐项设置「固定值」或「清空」，保存动作后发布流程。也可以在「添加动作」中选择内置「实体字段赋值」处理器。
 
+字段候选以关联实体当前已发布的字段为准，历史流程也遵循此规则。流程未绑定实体或实体尚未发布时会提示原因；只有系统、只读或不支持的复杂字段时，没有可赋值候选，页面会显示提示并禁用「添加字段」。加载失败时可点击「重新加载字段」，不会把错误响应当作空白候选。
+
 ## 配置范围
 
 - 第一版仅支持当前流程关联实体的已发布普通字段：STRING、TEXT、INTEGER、LONG、DECIMAL、BOOLEAN、DATE、DATETIME、SELECT、RADIO。一次动作可配置 1–50 个不同字段。
@@ -65,9 +67,12 @@ WHERE handler_name = 'entityFieldAssignmentFlowActionHandler';
 ### 验证入口
 
 - 后端配置及发布：`EntityFieldAssignmentFlowActionHandlerTest`、`EntityFieldAssignmentPublishTest`。
+- 字段候选接口与历史流程：`EntityFieldAssignmentFieldsTest`，覆盖真实实体绑定适配器、历史快照解析和 HTTP 序列化，包含旧快照缺省标记、小写类型、旧子列表类型、选项值、空候选、未绑定及未发布提示。
 - 真实引擎事务：`EntityFieldAssignmentFlowableTest`，覆盖分支、循环、发布版本及与状态写入共同回滚。
 - 迁移及七方言种子：`EntityFieldAssignmentMigrationTest`，使用隔离 H2 MySQL 模式测试实际 SQL，覆盖手动执行后再由 Flyway 迁移、重复执行、管理员自建 ID 及目录冲突，不连接业务库。
 - 前端模型：在 `workflow-frontend/workflow-web` 执行 `npm run test:field-assignment`。
 - 真实组件浏览器：同目录执行 `npm run test:field-assignment:browser`，使用本地接口桩，无业务库写入。
+
+2026-11-13 字段下拉复核：上述字段候选、处理器和发布测试共 31 项通过；前端 3 项模型测试及真实组件浏览器测试通过。浏览器保留真实字段请求和响应解包，在 HTTP 层拦截测试响应，验证字段选择、保存重开、空候选禁用及异常响应重试。本轮没有新增、修改或删除数据库迁移。
 
 本次没有部署，也没有在业务数据库执行迁移。实际验证结果及数据库覆盖范围见 [数据库脚本说明](sql/README.md)。

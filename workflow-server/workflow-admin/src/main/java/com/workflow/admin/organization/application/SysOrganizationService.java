@@ -40,6 +40,33 @@ public interface SysOrganizationService {
 
     /** 返回从真实根到目标节点的有序路径，用于面包屑和懒加载树定位；无有效父链时拒绝定位。 */
     List<SysOrganization> getAncestors(String id);
+
+    /**
+     * 按父节点读取全部直属下级，树展开不分页，也不递归预读后代。
+     * @param parentId 父节点 ID，0 或空表示真实根层
+     * @param type org/dept 或空；普通选择器不传类型，保留可展开的祖先
+     * @param excludeId 上级选择时排除的当前节点及其子树，可空
+     * @return 带完整路径及展开标记的直属节点，包含可导航但不可新选的停用节点
+     * @throws IllegalArgumentException 类型非法、范围节点不存在或父链未完整
+     */
+    List<SysOrganization> getChildren(String parentId, String type, String excludeId);
+
+    /**
+     * 选择器搜索结果按列表分页，只返回启用且符合 type 的候选；树展开使用 getChildren。
+     * pageSize 限制为 1 到 100；树浏览不使用该类型过滤，避免部门选择器丢失组织祖先。
+     * @return 指定 parentId 范围内的分页搜索结果；keyword 为空时只列直属候选
+     * @throws IllegalArgumentException 分页、类型参数非法或范围节点不可用
+     */
+    PageResult<SysOrganization> getSelectionPage(int pageNum, int pageSize, String parentId, String keyword, String type);
+
+    /**
+     * 按已选值定向回显，空集合返回空结果，禁止退化为全表查询。
+     * @param values 最多 100 个 ID 或编码，空白值忽略
+     * @param valueKey id 用于管理表单，code 用于持久化业务编码的流程配置
+     * @return 存在且父链完整的目标节点，保留停用节点名称，缺失值不自动清除原配置
+     * @throws IllegalArgumentException 值类型非法或请求数量超过上限
+     */
+    List<SysOrganization> resolveSelection(List<String> values, String valueKey);
     
     /**
      * 查询所有启用中的组织部门（平铺列表）

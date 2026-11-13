@@ -49,7 +49,7 @@ assert.match(
 )
 assert.match(
   dialog,
-  /openApprove[\s\S]*?resolveActionableTaskId\(row, 'approve',[\s\S]*?requireActionCapability:\s*options\.requireActionCapability[\s\S]*?if \(!actionableTaskId\)[\s\S]*?刷新列表后重试[\s\S]*?return false[\s\S]*?loadProcessDetail/,
+  /openApprove[\s\S]*?resolveActionableTaskId\(row, 'approve',[\s\S]*?requireActionCapability:\s*options\.requireActionCapability[\s\S]*?if \(!actionableTaskId\)[\s\S]*?刷新列表后重试[\s\S]*?return false[\s\S]*?loadProcessFormRuntime/,
   '实体列表审批能力缺少服务端目标任务时必须在加载流程详情前失败关闭'
 )
 assert.match(

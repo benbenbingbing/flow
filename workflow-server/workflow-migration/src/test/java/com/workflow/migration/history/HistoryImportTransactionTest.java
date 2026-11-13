@@ -110,6 +110,13 @@ class HistoryImportTransactionTest {
             if (names.isEmpty()) throw new ForbiddenException("不可读");
             var record = new EntityDataDTO(); record.setName(names.get(0)); record.setData(Map.of("name", names.get(0))); return record;
         });
+        // 档案摘要仅检查记录范围，不读取展示聚合；仍使用真实测试表判断行是否存在。
+        doAnswer(call -> {
+            Integer found = jdbc.queryForObject("SELECT COUNT(*) FROM test_business WHERE id=?", Integer.class,
+                    (String) call.getArgument(1));
+            if (found == null || found == 0) throw new ForbiddenException("不可读");
+            return null;
+        }).when(records).requireAccessibleById(eq("expense"), anyString(), isNull());
         var versions = mock(ProcessVersionHistoryMapper.class); var version = new ProcessVersionHistory();
         version.setId("v1"); version.setProcessName("新审批图"); version.setVersion(1); version.setDeleted(0);
         version.setBpmnXml("<definitions xmlns='http://www.omg.org/spec/BPMN/20100524/MODEL'><process id='p'><userTask id='review' name='审批'/></process></definitions>");
@@ -179,6 +186,8 @@ class HistoryImportTransactionTest {
         var batch = batch(true, "记录"); execute(batch, false);
         UserContext.setCurrentUser("u2", "another"); assertThrows(ForbiddenException.class, () -> service.get(batch.get("id").toString()));
         when(records.findAccessibleById(eq("expense"), anyString(), isNull())).thenThrow(new ForbiddenException("权限收回"));
+        doThrow(new ForbiddenException("权限收回")).when(records)
+                .requireAccessibleById(eq("expense"), anyString(), isNull());
         String id = jdbc.queryForObject("SELECT id FROM process_archive_instance", String.class);
         assertThrows(ForbiddenException.class, () -> archives.list("expense", "000"));
         assertThrows(ForbiddenException.class, () -> archives.detail(id));

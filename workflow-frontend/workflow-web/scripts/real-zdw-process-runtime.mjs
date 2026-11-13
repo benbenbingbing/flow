@@ -124,28 +124,21 @@ function summarizeForm(formConfig) {
 
 async function loadTaskCase(task) {
   const detail = await request('GET', `/process-task/detail/${task.taskId}`)
-  const progress = await request(
+  const runtime = await request(
     'GET',
-    `/process-instance/${task.processInstanceId}/progress`
+    `/process-instance/${task.processInstanceId}/form-runtime?taskId=${encodeURIComponent(task.taskId)}`
   )
   const formConfigs = detail.formConfigs || []
-  const progressForms = progress.formConfigs || []
   assert.equal(formConfigs.length, 1, `${task.taskName} 必须只返回一个办理表单`)
-  assert.equal(progressForms.length, 1, `${task.taskName} 进度接口必须只返回一个办理表单`)
   assert.equal(
     detail.formConfig?.entityFormId,
     formConfigs[0]?.entityFormId,
     `${task.taskName} formConfig 与 formConfigs 不一致`
   )
   assert.equal(
-    progress.formConfig?.formId,
-    progressForms[0]?.formId,
-    `${task.taskName} 进度表单兼容字段不一致`
-  )
-  assert.equal(
-    progress.formConfig?.formId,
+    runtime.formConfig?.formId,
     detail.formConfig?.entityFormId,
-    `${task.taskName} 任务详情与进度接口表单不一致`
+    `${task.taskName} 任务详情与首屏接口表单不一致`
   )
   assert.ok(
     detail.formConfig?.effectiveFormReleaseId,
@@ -162,7 +155,7 @@ async function loadTaskCase(task) {
         entityDataId: task.entityDataId
       },
       detailForm: summarizeForm(detail.formConfig),
-      progressForm: summarizeForm(progress.formConfig),
+      runtimeForm: summarizeForm(runtime.formConfig),
       entityDataKeys: Object.keys(detail.entityData || {}).sort()
     }
   }

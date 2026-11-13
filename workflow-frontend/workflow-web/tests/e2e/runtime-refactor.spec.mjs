@@ -3,17 +3,19 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:bpmn=
 const form = { id: 'form-test', formKey: 'test', configHash: 'graph-test', fields: [{ id: 'amount-field', fieldId: 'amount-field', fieldCode: 'amount', fieldLabel: '金额', fieldName: '金额', fieldType: 'DECIMAL', componentType: 'number', isReadonly: 0 }], nodes: [] }
 const action = { key: 'calculate', label: '计算并回填', type: 'custom', ownerFormId: 'form-test', placement: 'FOOTER', visible: true, enabled: true, confirm: { enabled: true, message: '确认执行这次回填？' } }
 async function fixture(page, { result, done } = {}) {
-  const errors = [], unexpected = [], writes = []
+  const errors = [], unexpected = [], writes = [], reads = []
   page.on('pageerror', error => errors.push(error.message))
   await page.route('**/api/**', async route => {
     if (!new URL(route.request().url()).pathname.startsWith('/api/')) return route.continue()
     const request = route.request(), url = new URL(request.url()), endpoint = url.pathname.slice(4), body = request.method() === 'POST' ? request.postDataJSON() : null
+    reads.push({ endpoint, taskId: url.searchParams.get('taskId') })
     let data
     if (endpoint === '/ui-runtime/form-actions/resolve') data = [action]
     else if (endpoint.includes('/FORM_BUTTON_CLICK/')) { writes.push(body); data = result || { effects: [{ type: 'FIELD_MAPPING', data: { form: { amount: 100 } }, mappings: [{ targetPath: 'form.amount', overwrite: 'ALWAYS' }] }] } }
     else if (endpoint.startsWith('/ui-runtime/events/')) data = { effects: [] }
     else if (endpoint === '/entity-data/entity/test/detail/record-test/load') data = { id: 'record-test', name: '测试记录', data: { amount: 7 } }
-    else if (endpoint === '/process-instance/instance-test/progress') data = { processInstanceId: 'instance-test', processName: '回退重审流程', status: 'RUNNING', formConfig: form, entityData: { id: 'record-test', amount: 7 }, bpmnXml: xml, activeNodes: ['review'], completedNodes: ['review'], tasks: [], nodeHistory: [{ nodeId: 'review', nodeName: '再次审批', startTime: '2026-09-24 10:00:00', duration: 60000, status: 'ACTIVE' }] }
+    else if (endpoint === '/process-instance/instance-test/form-runtime') data = { processInstanceId: 'instance-test', processName: '回退重审流程', status: 'RUNNING', formConfig: form, entityData: { id: 'record-test', amount: 7 }, tasks: [] }
+    else if (endpoint === '/process-instance/instance-test/progress') data = { processInstanceId: 'instance-test', processName: '回退重审流程', status: 'RUNNING', bpmnXml: xml, activeNodes: ['review'], completedNodes: ['review'], tasks: [], nodeHistory: [{ nodeId: 'review', nodeName: '再次审批', startTime: '2026-09-24 10:00:00', duration: 60000, status: 'ACTIVE' }] }
     else if (endpoint.endsWith('/next-approval-preview')) data = { status: 'READY', nextNodes: [], scopeKey: 'scope-test' }
     else if (endpoint.endsWith('/history/instance-test')) data = []
     else if (endpoint === '/process-task/statistics') data = { todoCount: 0, doneCount: 0, processCount: 0 }
@@ -22,7 +24,7 @@ async function fixture(page, { result, done } = {}) {
     else { unexpected.push(endpoint); return route.fulfill({ status: 500, json: { code: 500, message: `未声明测试接口 ${endpoint}` } }) }
     await route.fulfill({ json: { code: 200, data } })
   })
-  return { errors, unexpected, writes }
+  return { errors, unexpected, writes, reads }
 }
 for (const mode of ['编辑', '审批']) test(`PC ${mode}真实弹窗：取消确认不执行，确认后按 form.amount 正确回填`, async ({ page }) => {
   const state = await fixture(page)
@@ -40,6 +42,19 @@ for (const mode of ['编辑', '审批']) test(`PC ${mode}真实弹窗：取消�
   await expect(page.getByText('确认执行这次回填？', { exact: true })).toBeHidden()
   expect(state.writes).toHaveLength(1)
   expect(state.writes[0]).toMatchObject({ configHash: 'graph-test', targetKey: 'calculate' })
+  if (mode === '审批') {
+    expect(state.reads.filter(item => item.endpoint.endsWith('/form-runtime'))).toEqual([
+      { endpoint: '/process-instance/instance-test/form-runtime', taskId: 'task-test' }
+    ])
+    expect(state.reads.filter(item => item.endpoint.endsWith('/progress'))).toHaveLength(0)
+    await page.getByRole('tab', { name: '流程图', exact: true }).click()
+    await expect(page.locator('.djs-element[data-element-id="review"]')).toBeVisible()
+    await page.getByRole('tab', { name: '审批历史', exact: true }).click()
+    await page.getByRole('tab', { name: '基本信息', exact: true }).click()
+    await expect(amount).toHaveValue('100.00')
+    expect(state.reads.filter(item => item.endpoint.endsWith('/progress'))).toHaveLength(1)
+    expect(state.reads.filter(item => item.endpoint.endsWith('/form-runtime'))).toHaveLength(1)
+  }
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
   await page.screenshot({ path: `../../.codex-artifacts/frontend-refactor/pc-${mode}-mapping.png`, fullPage: true, animations: 'disabled' })
 })

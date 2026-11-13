@@ -1281,9 +1281,8 @@ const handleEdit = async (row: any, button?: any) => {
 // 打开查看弹窗
 const handleView = async (row: any, button?: any) => {
   try {
-    const form = await loadRuntimeButtonForm(button, 'ROW')
     await approvalDialogRef.value?.openView(row, {
-      form,
+      loadForm: () => loadRuntimeButtonForm(button, 'ROW'),
       context: { ...relatedContentRuntimeContext.value, params: { ...relatedContentRuntimeContext.value.params, ...buttonParameters(button, row) } }
     })
   } catch (error: any) {
@@ -1294,9 +1293,8 @@ const handleView = async (row: any, button?: any) => {
 // 打开审批弹窗
 const handleApprove = async (row: any, button?: any) => {
   try {
-    const form = await loadRuntimeButtonForm(button, 'ROW')
     await approvalDialogRef.value?.openApprove(row, {
-      form,
+      loadForm: () => loadRuntimeButtonForm(button, 'ROW'),
       context: relatedContentRuntimeContext.value,
       // 实体列表的审批目标必须来自服务端动作能力；即便旧响应或自定义数据源
       // 缺少 actionCapabilities，也不得回退到记录级 currentTaskId。
@@ -1311,9 +1309,8 @@ async function loadRuntimeButtonForm(
   button: any,
   placement: 'TOOLBAR' | 'ROW'
 ) {
-  if (!button?.targetFormId) {
-    return loadExplicitListButtonForm(button, { ...props.context?.runtimeContext, listKey: runtimeListKey.value, buttonId: button.key, compositionContext: compositionContext.value || undefined })
-  }
+  // 未指定表单时由详情入口解析流程节点表单或实体默认表单，按钮参数允许为空。
+  if (!button?.targetFormId) return null
   await loadListConfig()
   const buttons = placement === 'TOOLBAR'
     ? toolbarButtons.value

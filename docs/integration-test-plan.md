@@ -688,7 +688,7 @@ ProcessNodeForm（流程节点表单绑定）
 
 ### 5.16.4 表单加载优先级（运行时）
 
-流程进度接口 `/process-instance/{id}/progress` 加载用户任务表单时，按以下规则：
+流程首屏接口 `/process-instance/{id}/form-runtime` 加载用户任务表单时，按以下规则；`/progress` 仅返回流程图、进度与历史，首屏不调用：
 
 1. **新配置统一读取快照**：DEFAULT 和 SPECIFIC 在应用时都写入明确的 `entityFormId`，发布后从 `ProcessNodeForm` 与流程发布快照读取。
 2. **DEFAULT 不是运行时动态选择**：默认表单以后发生变化，不影响已经发布的流程版本；需要重新应用节点配置并发布流程。

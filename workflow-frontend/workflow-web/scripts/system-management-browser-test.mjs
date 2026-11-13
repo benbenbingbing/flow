@@ -26,6 +26,12 @@ const organizations = [
  {id:'dept-2',parentId:'dept-1',orgName:'平台组',orgCode:'PLATFORM',type:'dept'},
  {id:'dept-3',parentId:'unavailable',orgName:'独立可见部门',orgCode:'VISIBLE',type:'dept'}
 ]
+const decorateOrg = row => {
+ const names=[row.orgName], chain=[row], seen=new Set([row.id])
+ let parent=organizations.find(item=>item.id===row.parentId)
+ while(parent&&!seen.has(parent.id)){seen.add(parent.id);chain.unshift(parent);names.unshift(parent.orgName);parent=organizations.find(item=>item.id===parent.parentId)}
+ return {...row,status:'0',displayPath:names.join(' / '),hasChildren:organizations.some(item=>item.parentId===row.id),chain}
+}
 const positions = [{positionCode:'LEADER',positionName:'部门负责人',description:'负责部门业务审批'}, {positionCode:'MEMBER',positionName:'业务专员',description:'办理日常业务'}]
 const users = Array.from({length: 24},(_,i)=>({id:'user-'+i,username:i ? 'user'+i : 'admin',nickname:i ? '用户'+i : '系统管理员',email:'user'+i+'@example.com',phone:'13800000000',orgName:'华东分公司',deptName:'研发部',status:'0',roles:[roles[0]],createTime:'2026-09-23 10:00:00'}))
 request.defaults.adapter = async config => {
@@ -34,7 +40,10 @@ request.defaults.adapter = async config => {
  let data = []
  if(config.url === '/system/user/page') { const {pageNum=1,pageSize=20}=config.params; data={records:users.slice((pageNum-1)*pageSize,pageNum*pageSize),total:users.length,pageNum,pageSize} }
  else if(config.url === '/system/role/list' || config.url === '/system/user/roles') data=roles.map(role=>({...role}))
- else if(config.url === '/system/org/enabled') data=organizations
+ else if(config.url === '/system/org/children') data=organizations.filter(row=>row.parentId===(config.params.parentId||'0')).map(decorateOrg)
+ else if(config.url === '/system/org/options/page') {const {keyword='',type,pageNum=1,pageSize=20}=config.params;const rows=organizations.filter(row=>(!type||row.type===type)&&(row.orgName.includes(keyword)||row.orgCode.includes(keyword)));data={records:rows.slice((pageNum-1)*pageSize,pageNum*pageSize).map(decorateOrg),total:rows.length}}
+ else if(config.url === '/system/org/options/resolve') {const keys=String(config.params.values||'').split(',');data=organizations.filter(row=>keys.includes(config.params.valueKey==='code'?row.orgCode:row.id)).map(decorateOrg)}
+ else if(config.url.endsWith('/ancestors')) data=decorateOrg(organizations.find(row=>row.id===config.url.split('/')[3])).chain.map(decorateOrg)
  else if(config.url === '/system/position/enabled') data=positions
  return {data:{code:200,data},status:200,statusText:'OK',headers:{},config}
 }
@@ -76,9 +85,9 @@ async function button(text, root = 'document') {
 async function input(selector, value, root = 'document') {
   await step(`{ const input=${root}.querySelector(${JSON.stringify(selector)}); input.value=${JSON.stringify(value)}; input.dispatchEvent(new Event('input',{bubbles:true})); }`)
 }
-async function openPicker(title) { await step(`document.querySelector('button[aria-label="${title}"]').click()`) }
+async function openPicker(title) { await step(`document.querySelector('[aria-label="${title}"]').click()`) }
 async function pickTree(label) {
-  const option = `([...${dialog}.querySelectorAll('.tree-option')].filter(${visible})).find(e=>e.querySelector('.tree-label').textContent.trim()===${JSON.stringify(label)})`
+  const option = `([...${dialog}.querySelectorAll('.el-tree-node__content, .search-result')].filter(${visible})).find(e=>e.textContent.trim()===${JSON.stringify(label)}||e.classList.contains('search-result')&&e.textContent.trim().startsWith(${JSON.stringify(label)}))`
   // 沿真实展开按钮访问深层节点，不依赖组件内部实例或直接修改选中状态。
   for (let depth = 0; depth < 6 && !await evaluate(`Boolean(${option})`); depth++) {
     await step(`([...${dialog}.querySelectorAll('.el-tree-node__expand-icon:not(.is-leaf):not(.expanded)')].filter(${visible})).forEach(e=>e.click())`)
@@ -136,11 +145,12 @@ try {
   assert.equal(params.orgId,'org-2'); assert.equal(params.deptId,undefined,'切换组织清除旧部门')
   await openPicker('选择组织/部门')
   await input('input','PLATFORM',dialog)
+  await button('搜索',dialog)
   await pickTree('平台组')
   await button('确认选择',dialog)
   params=await query()
   assert.equal(params.deptId,'dept-2'); assert.equal(params.orgId,undefined,'深层部门搜索及组织条件互斥')
-  await step(`document.querySelector('[aria-label="清空选择组织/部门"]').click()`)
+  await step(`document.querySelector('[aria-label="清空组织选择"]').click()`)
   params=await query()
   assert.equal(params.deptId,undefined); assert.equal(params.orgId,undefined)
 
@@ -206,8 +216,8 @@ try {
   assert.equal(await evaluate("document.querySelector('.el-message-box input').type"),'password')
   await button('取消',"document.querySelector('.el-message-box')")
   await step(`${userRow}.querySelector('[aria-label="更多用户操作"]').click()`)
-  await menuItem('职务任命')
-  assert.match(await evaluate(`${dialog}.textContent`),/任职用户/)
+  await menuItem('设置职务')
+  assert.match(await evaluate(`${dialog}.textContent`),/设置职务人员/)
   await button('取消',dialog)
   await step(`${userRow}.querySelector('[aria-label="更多用户操作"]').click()`)
   await menuItem('删除用户')
@@ -265,11 +275,13 @@ try {
   await screenshot('flow-system-user-mobile')
 
   await step("systemListTest.state.page='role'")
-  await step("systemListTest.state.failures=['/system/org/enabled'];systemListTest.state.page='user'")
+  await step("systemListTest.state.failures=['/system/org/children'];systemListTest.state.page='user'")
   await openPicker('选择组织/部门')
-  assert.match(await evaluate(`${dialog}.textContent`),/选项加载失败/)
+  assert.match(await evaluate(`${dialog}.textContent`),/模拟加载失败/)
   await step("systemListTest.state.failures=[]")
   await button('重新加载',dialog)
+  await input('input','独立',dialog)
+  await button('搜索',dialog)
   await pickTree('独立可见部门')
   await button('确认选择',dialog)
   assert.equal((await query()).deptId,'dept-3','缺少父节点时保留可见部门且重试可恢复')

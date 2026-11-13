@@ -46,7 +46,7 @@ request.get = async (url, config = {}) => {
   if (url === '/system/org/business-level-options' || url === '/system/position/enabled') return []
   if (url === '/system/identity/extensions/schema') return []
   if (url.startsWith('/system/identity/extensions/')) return { extensions: {} }
-  if (url === '/system/org/page') {
+  if (url === '/system/org/page' || url === '/system/org/children') {
     if (state.failNextPage) {
       state.failNextPage = false
       throw Error('模拟加载失败')
@@ -62,6 +62,7 @@ request.get = async (url, config = {}) => {
       const excluded = state.rows.find(row => row.id === params.excludeId)
       rows = rows.filter(row => !row.path.startsWith(excluded.path))
     }
+    if (url === '/system/org/children') return rows.map(row => ({ ...row }))
     const start = ((params.pageNum || 1) - 1) * params.pageSize
     const page = {
       total: rows.length,
@@ -147,8 +148,8 @@ try {
   await page.waitForFunction(() => document.querySelector('.organization-sidebar .is-current')?.innerText.includes('深层部门'))
   assert.equal((await breadcrumb.innerText()).includes('部门54'), true)
   assert.equal(await search.inputValue(), '')
-  // 目标在第 2 批同级数据中，加载更多不能重复插入定位时补齐的部门。
-  await sidebar.getByText('加载更多…', { exact: true }).click()
+  // 树展开一次读取全部同级；路径定位不能重复插入已有节点。
+  assert.equal(await sidebar.getByText('加载更多…', { exact: true }).count(), 0)
   await settle()
   assert.equal(await sidebar.getByText('部门54', { exact: true }).count(), 1)
   await breadcrumb.getByText('测试集团', { exact: true }).click()
@@ -169,8 +170,8 @@ try {
   assert.equal(await dialog.locator('.parent-picker-field input').inputValue(), '测试集团 / 部门54')
   await dialog.getByText('取消', { exact: true }).click()
 
-  await table.locator('tr').first().getByText('职务任命', { exact: true }).click()
-  const assignment = page.locator('.el-dialog').filter({ hasText: '新增任职' })
+  await table.locator('tr').first().getByText('设置职务人员', { exact: true }).click()
+  const assignment = page.locator('.el-dialog').filter({ hasText: '设置职务人员' })
   await assignment.waitFor({ state: 'visible' })
   await page.waitForFunction(() => organizationTest.state.calls.some(call => call.url === '/system/position/enabled'))
   assert.equal(await page.evaluate(() => organizationTest.state.calls.some(call => call.url.endsWith('/tree'))), false,

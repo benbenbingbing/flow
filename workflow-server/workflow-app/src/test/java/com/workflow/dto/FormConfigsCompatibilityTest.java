@@ -1,7 +1,5 @@
 package com.workflow.dto;
 
-import com.workflow.process.form.api.response.FormConfigDTO;
-
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
 import com.workflow.process.task.api.response.TaskDetailDTO;
 
@@ -11,31 +9,23 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * 表单配置兼容性单元测试。
- *
- * <p>验证流程进度 DTO 与任务详情 DTO 保留列表字段兼容性，
- * 但运行时只暴露一个节点办理表单。</p>
- */
+/** 验证首屏与进度的独立契约，以及未在本次变更范围内的任务详情单表单投影。 */
 class FormConfigsCompatibilityTest {
 
     /**
-     * 流程进度 DTO 应将历史多表单输入收敛为首个表单。
+     * 首屏只有单个 formConfig，流程进度不再携带实体或表单。
      */
     @Test
-    void processProgressKeepsOnlyFirstFormConfig() {
-        ProcessProgressDTO dto = new ProcessProgressDTO();
-        ProcessProgressDTO.FormConfigDTO first = new ProcessProgressDTO.FormConfigDTO();
-        first.setFormId("form-1");
-        ProcessProgressDTO.FormConfigDTO second = new ProcessProgressDTO.FormConfigDTO();
-        second.setFormId("form-2");
-
-        dto.setFormConfig(first);
-        dto.setFormConfigs(List.of(first, second));
-
-        assertEquals("form-1", dto.getFormConfig().getFormId());
-        assertEquals(1, dto.getFormConfigs().size());
-        assertEquals("form-1", dto.getFormConfigs().get(0).getFormId());
+    void formRuntimeHasSingleFormAndProgressHasNoFormPayload() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var dto = new com.workflow.process.instance.api.response.ProcessFormRuntimeDTO();
+        var form = new com.workflow.process.instance.api.response.ProcessFormRuntimeDTO.FormConfigDTO();
+        form.setFormId("form-1"); dto.setFormConfig(form);
+        var json = mapper.valueToTree(dto);
+        assertEquals("form-1", json.path("formConfig").path("formId").asText());
+        org.junit.jupiter.api.Assertions.assertFalse(json.has("formConfigs"));
+        org.junit.jupiter.api.Assertions.assertFalse(json.has("bpmnXml"));
+        org.junit.jupiter.api.Assertions.assertFalse(mapper.valueToTree(new ProcessProgressDTO()).has("entityData"));
     }
 
     /**

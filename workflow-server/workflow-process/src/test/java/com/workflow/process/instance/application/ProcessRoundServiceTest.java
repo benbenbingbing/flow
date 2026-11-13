@@ -23,11 +23,14 @@ class ProcessRoundServiceTest {
         var old = link("old", 1); var current = link("new", 2);
         when(mapper.findByProcessInstanceId("old")).thenReturn(old);
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(current, old));
-        doThrow(new ForbiddenException("无权读取新一轮")).when(access).requireReadAccess("new");
         var query = mock(HistoricProcessInstanceQuery.class, RETURNS_SELF);
         var historic = mock(HistoricProcessInstance.class);
         when(history.createHistoricProcessInstanceQuery()).thenReturn(query);
-        when(query.singleResult()).thenReturn(historic);
+        var unreadable = mock(HistoricProcessInstance.class);
+        when(unreadable.getId()).thenReturn("new");
+        when(historic.getId()).thenReturn("old");
+        when(query.list()).thenReturn(List.of(unreadable, historic));
+        when(access.canRead(historic)).thenReturn(true);
         when(historic.getEndTime()).thenReturn(new Date());
         when(historic.getDeleteReason()).thenReturn(ProcessEndReason.encode("WITHDRAWN", "修改后重新提交"));
         var rounds = service.listReadableRounds("old");
@@ -35,7 +38,20 @@ class ProcessRoundServiceTest {
         assertEquals("old", rounds.get(0).processInstanceId());
         assertEquals("COMPLETED", rounds.get(0).status());
         assertEquals("WITHDRAWN", rounds.get(0).endType());
-        verify(query, never()).processInstanceId("new");
+        verify(query).processInstanceIds(java.util.Set.of("old", "new"));
+        verify(query, never()).singleResult();
+        verify(history, times(1)).createHistoricProcessInstanceQuery();
+        verify(access).canRead(unreadable);
+    }
+
+    @Test void rejectedAnchorDoesNotReadOtherRounds() {
+        var mapper = mock(EntityProcessLinkMapper.class);
+        var history = mock(HistoryService.class);
+        var access = mock(ProcessInstanceAccessService.class);
+        doThrow(new ForbiddenException("无权访问")).when(access).requireReadAccess("denied");
+        assertThrows(ForbiddenException.class,
+                () -> new ProcessRoundService(mapper, history, access).listReadableRounds("denied"));
+        verifyNoInteractions(mapper, history);
     }
 
     private EntityProcessLink link(String instanceId, int generation) {

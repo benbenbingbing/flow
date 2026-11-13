@@ -25,6 +25,7 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
+import com.workflow.process.instance.api.response.ProcessFormRuntimeDTO;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -236,9 +237,8 @@ class ProcessProgressRuntimeServiceTest {
         fixture.entityData();
         fixture.publishedNodeForms();
 
-        ProcessProgressDTO progress = service.getProcessProgress("pi-1", "task-1-runtime");
+        ProcessFormRuntimeDTO progress = service.getProcessFormRuntime("pi-1", "task-1-runtime");
 
-        assertEquals(1, progress.getFormConfigs().size());
         assertEquals("form-1", progress.getFormConfig().getFormId());
         assertEquals("审批表单", progress.getFormConfig().getFormName());
         assertEquals("approval-form", progress.getFormConfig().getFormKey());
@@ -303,7 +303,7 @@ class ProcessProgressRuntimeServiceTest {
         fixture.noPublishedNodeForms();
         fixture.resolvedDefaultForm();
 
-        ProcessProgressDTO progress = service.getProcessProgress("pi-1");
+        ProcessFormRuntimeDTO progress = service.getProcessFormRuntime("pi-1", null);
 
         assertEquals("default-form", progress.getFormConfig().getFormKey());
     }
@@ -324,8 +324,8 @@ class ProcessProgressRuntimeServiceTest {
         fixture.noPublishedNodeForms();
         fixture.resolvedDefaultForm();
 
-        ProcessProgressDTO progress = fixture.service()
-                .getProcessProgress("pi-1", "task-1-runtime");
+        ProcessFormRuntimeDTO progress = fixture.service()
+                .getProcessFormRuntime("pi-1", "task-1-runtime");
 
         assertEquals("default-form-graph-hash",
                 progress.getFormConfig().getConfigHash());
@@ -362,7 +362,7 @@ class ProcessProgressRuntimeServiceTest {
 
         RuntimeException exception = assertThrows(
                 RuntimeException.class,
-                () -> service.getProcessProgress("pi-1"));
+                () -> service.getProcessFormRuntime("pi-1", null));
 
         assertTrue(
                 exception.getMessage().contains(
@@ -401,7 +401,7 @@ class ProcessProgressRuntimeServiceTest {
                 .getVersionByProcessDefinitionId("pd-1"))
                 .thenReturn(oldVersion);
 
-        ProcessProgressDTO progress = service.getProcessProgress("pi-1");
+        ProcessFormRuntimeDTO progress = service.getProcessFormRuntime("pi-1", null);
 
         assertEquals(
                 "旧版审批意见",
@@ -409,7 +409,7 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals(
                 "legacyApprove",
                 progress.getApprovalConfig().getOptions().get(0).getValue());
-        assertEquals(oldVersion.getBpmnXml(), progress.getBpmnXml());
+        verify(fixture.snapshotService).getVersionByProcessDefinitionId("pd-1");
     }
 
     @Test
@@ -435,7 +435,7 @@ class ProcessProgressRuntimeServiceTest {
         when(fixture.localAddSignTaskAccessService.requireCurrentUserAccess("addsign-1", "pi-1"))
                 .thenReturn(new LocalAddSignTaskAccessService.AuthorizedAddSignTask(child, source));
 
-        ProcessProgressDTO progress = fixture.service().getProcessProgress("pi-1", "addsign-1");
+        ProcessFormRuntimeDTO progress = fixture.service().getProcessFormRuntime("pi-1", "addsign-1");
 
         ProcessProgressDTO.TaskInfoDTO task = progress.getTasks().stream()
                 .filter(item -> "addsign-1".equals(item.getTaskId())).findFirst().orElseThrow();
@@ -459,9 +459,85 @@ class ProcessProgressRuntimeServiceTest {
                 .thenThrow(new ForbiddenException("加签任务不属于当前用户或当前实例"));
 
         assertThrows(ForbiddenException.class,
-                () -> fixture.service().getProcessProgress("pi-1", "addsign-other"));
+                () -> fixture.service().getProcessFormRuntime("pi-1", "addsign-other"));
 
         org.mockito.Mockito.verifyNoInteractions(fixture.entityDataDynamicService, fixture.entityFormRuntimeService);
+    }
+
+    @Test
+    void requestedParallelTaskSelectsItsOwnPublishedForm() {
+        Fixture f = new Fixture(); f.runningInstance(); f.processDefinition(); f.activeTask();
+        f.entityVariables(); f.entityDefinition(); f.entityData(); f.publishedNodeForms();
+        var first = f.taskQuery.list().get(0);
+        var second = mock(Task.class);
+        when(second.getId()).thenReturn("parallel-task");
+        when(second.getTaskDefinitionKey()).thenReturn("parallel-node");
+        when(f.taskQuery.list()).thenReturn(List.of(first, second));
+        var history = new ProcessVersionHistory(); history.setId("history-1");
+        var binding = new ProcessNodeForm(); binding.setFormId("second-form"); binding.setNodeId("parallel-node");
+        when(f.snapshotService.getNodeFormsContextByProcessDefinitionId("pd-1", "parallel-node"))
+                .thenReturn(new ProcessPublishedSnapshotService.PublishedNodeForms(history, List.of(binding)));
+        var form = new EntityForm(); form.setId("second-form");
+        when(f.entityFormRuntimeService.getByBinding(eq(binding), any())).thenReturn(form);
+        var result = f.service().getProcessFormRuntime("pi-1", "parallel-task");
+        assertEquals("second-form", result.getFormConfig().getFormId());
+        verify(f.snapshotService, never()).getNodeFormsContextByProcessDefinitionId("pd-1", "task-1");
+        verify(f.entityFormRuntimeService).getByBinding(eq(binding), argThat(context ->
+                "parallel-task".equals(context.taskId()) && "parallel-node".equals(context.nodeId())));
+    }
+
+    @Test
+    void staleOrForeignTaskIsRejectedBeforeReadingEntity() {
+        Fixture f = new Fixture(); f.runningInstance(); f.processDefinition(); f.activeTask();
+        assertThrows(IllegalArgumentException.class,
+                () -> f.service().getProcessFormRuntime("pi-1", "task-from-another-instance"));
+        org.mockito.Mockito.verifyNoInteractions(f.entityDataDynamicService, f.entityFormRuntimeService);
+        verify(f.runtimeService, never()).getVariables(any(String.class), any(java.util.Collection.class));
+    }
+
+    @Test
+    void firstScreenDoesNotReadTimelineCommentsOrHistoryVariables() {
+        Fixture f = new Fixture(); f.runningInstance(); f.processDefinition(); f.activeTask();
+        f.entityVariables(); f.entityDefinition(); f.entityData(); f.publishedNodeForms();
+        var result = f.service().getProcessFormRuntime("pi-1", "task-1-runtime");
+        assertEquals("form-1", result.getFormConfig().getFormId());
+        verify(f.entityDataDynamicService).findById("expense", "data-1");
+        org.mockito.Mockito.verifyNoInteractions(f.historyService, f.processTaskMapper, f.operationLogMapper,
+                f.sysGroupMapper, f.sysUserGroupMapper);
+        verify(f.runtimeService).createProcessInstanceQuery();
+        verify(f.runtimeService).getVariables(eq("pi-1"), any(java.util.Collection.class));
+    }
+
+    @Test
+    void diagramDoesNotLoadOrResolveEntityForms() {
+        Fixture f = new Fixture(); f.runningInstance(); f.processDefinition(); f.history();
+        f.activeTask(); f.activeExecution(); f.noOperationLogs();
+        f.service().getProcessProgress("pi-1");
+        org.mockito.Mockito.verifyNoInteractions(f.entityDataDynamicService, f.entityFormRuntimeService,
+                f.entityDefinitionMapper, f.entityStatusService);
+    }
+
+    @Test
+    void finishedFormUsesOnlyRootCoordinatesAndLastUserActivity() {
+        Fixture f = new Fixture(); f.completedInstance(); f.processDefinition(); f.entityDefinition();
+        f.entityData(); f.publishedNodeForms();
+        when(f.activityQuery.activityType("userTask")).thenReturn(f.activityQuery);
+        when(f.activityQuery.finished()).thenReturn(f.activityQuery);
+        when(f.activityQuery.orderByHistoricActivityInstanceEndTime()).thenReturn(f.activityQuery);
+        when(f.activityQuery.desc()).thenReturn(f.activityQuery);
+        when(f.activityQuery.orderByHistoricActivityInstanceStartTime()).thenReturn(f.activityQuery);
+        when(f.activityQuery.orderBy(any(org.flowable.common.engine.api.query.QueryProperty.class))).thenReturn(f.activityQuery);
+        var last = f.activity("task-1", "最后审批", "userTask", "alice", "t", new Date(1), new Date(2));
+        when(f.activityQuery.listPage(0, 1)).thenReturn(List.of(last));
+        var entityCoordinate = variable(null, "pi-1", "entityCode", "expense");
+        var recordCoordinate = variable(null, "pi-1", "entityDataId", "data-1");
+        when(f.variableQuery.singleResult()).thenReturn(entityCoordinate, recordCoordinate);
+        var result = f.service().getProcessFormRuntime("pi-1", null);
+        assertEquals("COMPLETED", result.getStatus());
+        assertEquals("form-1", result.getFormConfig().getFormId());
+        verify(f.variableQuery, org.mockito.Mockito.times(2)).excludeLocalVariables();
+        verify(f.variableQuery, never()).list();
+        verify(f.activityQuery, never()).list();
     }
 
     /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
@@ -633,9 +709,8 @@ class ProcessProgressRuntimeServiceTest {
 
         /** 设置实体相关流程变量桩数据(entityCode、entityDataId、formKey 为 null) */
         void entityVariables() {
-            when(runtimeService.getVariable("pi-1", "entityCode")).thenReturn("expense");
-            when(runtimeService.getVariable("pi-1", "entityDataId")).thenReturn("data-1");
-            when(runtimeService.getVariable("pi-1", "formKey")).thenReturn(null);
+            when(runtimeService.getVariables(eq("pi-1"), any(java.util.Collection.class)))
+                    .thenReturn(Map.of("entityCode", "expense", "entityDataId", "data-1"));
         }
 
         /** 设置实体定义桩数据，编码为 expense */

@@ -799,7 +799,6 @@
             v-model="assigneeForm.nextApproverSelection"
             :role-options="roleOptions"
             :group-options="groupOptions"
-            :organization-options="organizationOptions"
           />
           </el-form>
         </SettingsSection>
@@ -1648,9 +1647,7 @@
                   <el-select v-else-if="rule.type === 'GROUP'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择用户组">
                     <el-option v-for="item in groupOptions" :key="item.value" :label="item.label" :value="item.value" />
                   </el-select>
-                  <el-select v-else-if="rule.type === 'DEPARTMENT'" v-model="rule.values" multiple filterable style="flex:1" placeholder="选择组织或部门">
-                    <el-option v-for="item in organizationOptions" :key="item.value" :label="item.label" :value="item.value" />
-                  </el-select>
+                  <OrganizationSelector v-else-if="rule.type === 'DEPARTMENT'" v-model="rule.values" multiple value-key="code" style="flex:1" />
                   <el-input v-else-if="rule.type === 'ENTITY_FIELD'" v-model="rule.fieldCode" style="flex:1" placeholder="实体用户字段编码" />
                   <template v-else-if="rule.type === 'RESOLVER'">
                     <ConfigHelpLabel
@@ -1820,6 +1817,7 @@
 </template>
 
 <script setup>
+import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import EntityUserRelationPathSelector from "./EntityUserRelationPathSelector.vue"
 import NodeSlaEditor from "./node-config/NodeSlaEditor.vue"
 import { updateBpmnExtensionProperty } from './node-config/bpmnExtensionProperties.js'
@@ -2246,7 +2244,6 @@ const slaForm = ref({
 const slaPolicyOptions = ref([])
 const workCalendarOptions = ref([])
 
-const organizationOptions = ref([])
 const ccResolverContext = { usage: 'CC' }
 const createCcRule = () => ({
   type: 'USER',
@@ -2587,20 +2584,6 @@ async function runRelativePositionPreview() {
   }
 }
 
-async function loadOrganizations() {
-  try {
-    const res = await request.get('/system/org/enabled')
-    if (res && Array.isArray(res)) {
-      organizationOptions.value = res.map(item => ({
-        label: item.orgName,
-        value: item.orgCode || item.id
-      }))
-    }
-  } catch (e) {
-    console.error('加载组织部门失败:', e)
-  }
-}
-
 // 绑定的实体信息
 const boundEntity = ref(null)
 const ENTITY_NOT_BOUND_MESSAGE = '该流程未绑定实体'
@@ -2705,7 +2688,6 @@ onMounted(() => {
   loadGroups()
   loadRoles()
   loadRelativePositionDesignOptions()
-  loadOrganizations()
   loadEntityFields()
   loadSubProcesses()
   loadSlaOptions()

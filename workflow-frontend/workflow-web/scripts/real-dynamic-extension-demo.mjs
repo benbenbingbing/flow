@@ -418,10 +418,9 @@ async function main() {
   assert.ok(demoRow)
   assert.equal(Number(demoRow.data.riskScore), 58)
 
-  const progress = await api('GET', `/process-instance/${data.processInstanceId}/progress`)
+  const progress = await api('GET', `/process-instance/${data.processInstanceId}/form-runtime`)
   record('progressWithCustomForm', {
     status: progress.status,
-    activeNodes: progress.activeNodes,
     formId: progress.formConfig?.formId,
     customComponent: progress.formConfig?.customComponent,
     fields: progress.formConfig?.fields?.map(field => field.fieldCode)

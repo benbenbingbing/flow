@@ -6,6 +6,8 @@
     <div v-if="loading" class="detail-loading"><VanLoading>正在加载</VanLoading></div>
     <div v-if="error" class="mobile-error" role="alert">{{ error }}<button v-if="!conflict" @click="load">重试</button><button v-else @click="refreshOperations">刷新任务状态</button></div>
     <template v-if="loaded">
+      <div v-if="detail.progressLoading.value" class="detail-loading"><VanLoading>正在加载流程历史</VanLoading></div>
+      <div v-if="detail.progressError.value" class="mobile-error" role="alert">{{ detail.progressError.value }}<button @click="detail.loadProcessDetail(route.params.instanceId)">重试</button></div>
       <header class="detail-summary"><div><h1>{{ record.name || snapshot.processName || '流程详情' }}</h1><VanTag plain type="primary" :aria-label="`实体状态：${entityStatusText}`">{{ entityStatusText }}</VanTag></div><p>{{ record.submitterName || snapshot.startUserName || '发起人' }} · {{ formatTime(record.processStartTime || snapshot.startTime) }}</p></header>
       <MobileFormRenderer v-if="form" ref="formRef" v-model="record" v-model:active-tab="activeTab" tabbed class="detail-tabs" :form="form" :entity-fields="entityFields" :readonly="formReadonly" :mode="mode" :context="runtimeContext" :services="formServices" :data-source-runtime="dataSourceRuntime" :actions="formActions" :action-loading-key="pending" @action="handleAction" @error="showFailToast">
         <template #after-tabs>
@@ -62,7 +64,7 @@ import { formServices } from '../adapters/formServices.js'
 import { invalidateInboxes } from '../inbox.js'
 const ProcessDiagram = defineAsyncComponent(() => import('../components/ProcessDiagram.vue'))
 const router = useRouter(), route = useRoute(), taskId = computed(() => String(route.query.taskId || ''))
-const snapshot = ref(history.state.row || {}), detail = useProcessDetail({ request, getProcessHistory: tasks.getProcessHistory })
+const snapshot = ref(history.state.row || {}), detail = useProcessDetail({ request })
 const loading = ref(false), loaded = ref(false), error = ref(''), ccError = ref(''), conflict = ref(false), record = ref({}), form = ref(null), entityFields = ref([]), task = ref(null), operations = ref({}), rejected = ref(null), formActions = ref([])
 const activeTab = ref('basic'), formRef = ref(), approvalRef = ref(), approvalOpen = ref(false), diagramOpen = ref(false), action = ref('approve'), comment = ref(''), pending = ref(''), submitting = ref(false)
 const processOperations = ref({})
@@ -125,12 +127,14 @@ async function loadFormEntityFields() {
 }
 /** 审批入口必须经过任务详情鉴权和服务端能力确认；URL 中的 todo 类型不能授予办理权。 */
 async function load() {
+  detail.resetProcessDetail()
+  activeTab.value = 'basic'
   const current = ++sequence; loading.value = true; loaded.value = false; error.value = ''; conflict.value = false; task.value = null; operations.value = {}; preview.reset()
   try {
     let authorizedTask = null
     if (route.query.kind === 'todo' && taskId.value) authorizedTask = await tasks.getTaskDetail(taskId.value)
     if (current !== sequence) return
-    const success = await detail.loadProcessDetail(route.params.instanceId, { taskId: authorizedTask ? taskId.value : '', startUserName: snapshot.value.startUserName || '', onLoad: value => { snapshot.value = { ...snapshot.value, processName: value.processName } } })
+    const success = await detail.loadProcessFormRuntime(route.params.instanceId, { taskId: authorizedTask ? taskId.value : '', startUserName: snapshot.value.startUserName || '', onLoad: value => { snapshot.value = { ...snapshot.value, processName: value.processName } } })
     if (!success) throw new Error('流程详情加载失败，请重试')
     if (current !== sequence) return
     record.value = { ...(detail.entityData.value || authorizedTask?.entityData || {}) }
@@ -138,13 +142,20 @@ async function load() {
     form.value = source ? { ...source, id: source.id || source.formId || source.entityFormId, configHash: source.configHash } : null
     task.value = authorizedTask?.processTask || null
     if (authorizedTask?.processInstance) snapshot.value = { ...snapshot.value, ...authorizedTask.processInstance }
-    if (task.value) operations.value = await tasks.getTaskOperations(taskId.value)
-    processOperations.value = await tasks.getProcessOperations(route.params.instanceId)
-    rejected.value = isStarter.value ? await tasks.checkRejectedStatus(route.params.instanceId) : null
-    entityFields.value = await loadFormEntityFields()
-    action.value = approvalConfig.value.options?.[0]?.value || 'approve'
-    formActions.value = await actionRuntime.resolveRuntimeFormActions(form.value || {}, actionContext())
+    // 字段元数据和操作能力相互独立，并行读取以减少移动网络往返；切换记录后不再回填。
+    const [taskOps, processOps, rejectedStatus, fields] = await Promise.all([
+      task.value ? tasks.getTaskOperations(taskId.value) : {},
+      tasks.getProcessOperations(route.params.instanceId),
+      isStarter.value ? tasks.checkRejectedStatus(route.params.instanceId) : null,
+      loadFormEntityFields()
+    ])
     if (current !== sequence) return
+    operations.value = taskOps; processOperations.value = processOps
+    rejected.value = rejectedStatus; entityFields.value = fields
+    action.value = approvalConfig.value.options?.[0]?.value || 'approve'
+    const actions = await actionRuntime.resolveRuntimeFormActions(form.value || {}, actionContext())
+    if (current !== sequence) return
+    formActions.value = actions
     loaded.value = true; savedFingerprint = JSON.stringify(record.value)
     await nextTick(); await preview.refresh(); await markRead()
   } catch (cause) { if (current === sequence) error.value = cause.message || '加载失败' }
@@ -263,8 +274,12 @@ async function submitOperation() {
 async function finish(message) { completed = true; approvalOpen.value = false; operationOpen.value = false; invalidateInboxes(); showSuccessToast(message); await back() }
 function back() { if (/^\/(?:m\/)?inbox\//.test(history.state.back || '')) router.back(); else return router.replace(`/inbox/${route.query.kind || 'todo'}`) }
 onBeforeRouteLeave(async () => { if (submitting.value && !completed) return false; if (!completed && mode.value !== 'view' && savedFingerprint && (JSON.stringify(record.value) !== savedFingerprint || comment.value)) { try { await showConfirmDialog({ title: '离开详情', message: '填写的内容尚未提交，确定离开？' }) } catch { return false } } })
+// 表单初次可用后再按页签加载图和历史；查询失败保留表单并允许重试。
+watch([activeTab, loaded], ([tab, ready]) => {
+  if (ready && ['progress', 'history'].includes(tab)) void detail.loadProcessDetail(route.params.instanceId)
+})
 watch(() => [route.params.instanceId, route.query.taskId], load, { immediate: true })
-onBeforeUnmount(() => { sequence++; preview.reset() })
+onBeforeUnmount(() => { sequence++; detail.resetProcessDetail(); preview.reset() })
 </script>
 <style scoped>
 .detail-more-target { display: flex; align-items: center; }

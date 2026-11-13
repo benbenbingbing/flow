@@ -627,7 +627,7 @@ public class EntityRelationRuntimeService {
         if (dto.getData() == null) {
             dto.setData(new HashMap<>());
         }
-        loadRelationData(definition, dto.getId(), dto.getData(), 1, new HashSet<>());
+        loadRelationData(definition, dto.getId(), dto.getData(), 1, new HashSet<>(), new RelationReadContext());
     }
 
     /**
@@ -987,23 +987,21 @@ public class EntityRelationRuntimeService {
         }
     }
 
-    /**
-     * 加载关系数据；查询结果供调用方展示或继续处理。
-     *
-     * @param parentDefinition 父级定义，作为 {@code loadRelations} 的输入影响后续处理
-     * @param parentId 父级ID，后续用于加载关系数据时定位或关联目标
-     * @param target 目标，供本方法加载关系数据时使用
-     * @param depth 深度，供本方法加载关系数据时使用
-     * @param path 路径，供本方法加载关系数据时使用
-     * @return 符合条件的实体关系结果，供调用方继续处理
-     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
-     */
+    /** 单次聚合读取复用元数据，不跨请求缓存发布定义，也不缓存记录授权。 */
+    private static final class RelationReadContext {
+        final Map<String, List<EntityRelation>> relations = new HashMap<>();
+        final Map<String, EntityDefinition> children = new HashMap<>();
+        final Map<String, Boolean> tables = new HashMap<>();
+        final Map<String, String> names = new HashMap<>();
+    }
+
+    /** 递归填充关系数据；path 仅防止当前路径循环，同层兄弟记录仍分别读取真实子数据。 */
     private void loadRelationData(EntityDefinition parentDefinition, String parentId, Map<String, Object> target,
-                                  int depth, Set<String> path) {
+                                  int depth, Set<String> path, RelationReadContext context) {
         if (parentDefinition == null || !StringUtils.hasText(parentId) || target == null || depth > MAX_RELATION_DEPTH) {
             return;
         }
-        List<EntityRelation> relations = loadRelations(parentDefinition);
+        List<EntityRelation> relations = context.relations.computeIfAbsent(parentDefinition.getId(), ignored -> loadRelations(parentDefinition));
         for (EntityRelation relation : relations) {
             String dataKey = effectiveDataKey(relation);
             if (!StringUtils.hasText(dataKey)) {
@@ -1015,19 +1013,20 @@ public class EntityRelationRuntimeService {
                 continue;
             }
 
-            EntityDefinition childDefinition = loadChildEntity(relation);
+            String childKey = StringUtils.hasText(relation.getChildEntityId()) ? relation.getChildEntityId() : relation.getChildEntityCode();
+            EntityDefinition childDefinition = context.children.computeIfAbsent(childKey, ignored -> loadChildEntity(relation));
             if (childDefinition == null || !StringUtils.hasText(childDefinition.getEntityCode())
                     || !StringUtils.hasText(relation.getChildRefFieldCode())) {
                 path.remove(pathKey);
                 continue;
             }
 
-            if (!dynamicTableService.tableExists(childDefinition.getEntityCode())) {
+            if (!context.tables.computeIfAbsent(childDefinition.getEntityCode(), dynamicTableService::tableExists)) {
                 target.put(dataKey, emptyRelationValue(relation));
                 path.remove(pathKey);
                 continue;
             }
-            String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            String childTableName = context.names.computeIfAbsent(childDefinition.getEntityCode(), dynamicTableService::getTableName);
             List<Map<String, Object>> rows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
             if (relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE
                     && rows != null && rows.size() > 1) {
@@ -1038,9 +1037,9 @@ public class EntityRelationRuntimeService {
             }
             List<Map<String, Object>> childRows = rows == null ? List.of() : rows.stream()
                     .map(row -> {
-                        Map<String, Object> childRow = toChildFormRow(row, childDefinition.getEntityCode());
+                        Map<String, Object> childRow = toChildFormRow(row, childDefinition);
                         String childId = stringValue(childRow.get("id"));
-                        loadRelationData(childDefinition, childId, childRow, depth + 1, path);
+                        loadRelationData(childDefinition, childId, childRow, depth + 1, path, context);
                         return childRow;
                     })
                     .collect(Collectors.toList());

@@ -96,6 +96,8 @@ public class ProcessInstanceControllerTest {
                 .andExpect(jsonPath("$.data.status").value("RUNNING"))
                 .andExpect(jsonPath("$.data.completedNodes[0]").value("StartEvent_1"))
                 .andExpect(jsonPath("$.data.activeNodes[0]").value("Task_1"))
+                .andExpect(jsonPath("$.data.entityData").doesNotExist())
+                .andExpect(jsonPath("$.data.formConfig").doesNotExist())
                 .andExpect(jsonPath("$.data.nodeHistory[0].nodeName").value("开始"))
                 .andExpect(jsonPath("$.data.nodeAssigneeMap.Task_1.assigneeName").value("张三"));
 
@@ -119,19 +121,25 @@ public class ProcessInstanceControllerTest {
     }
 
     @Test
-    void taskSpecificProgressUsesRequestedActiveTask() throws Exception {
-        when(processInstanceService.getProcessProgress(
+    void taskSpecificFormUsesRequestedActiveTask() throws Exception {
+        when(processInstanceService.getProcessFormRuntime(
                 "proc-inst-1", "task-2"))
-                .thenReturn(testProgress);
+                .thenReturn(formRuntime());
 
-        mockMvc.perform(get("/api/process-instance/proc-inst-1/progress")
+        mockMvc.perform(get("/api/process-instance/proc-inst-1/form-runtime")
                         .param("taskId", "task-2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.processInstanceId")
                         .value("proc-inst-1"));
 
-        verify(processInstanceService).getProcessProgress(
+        verify(processInstanceService).getProcessFormRuntime(
                 "proc-inst-1", "task-2");
+    }
+
+    private com.workflow.process.instance.api.response.ProcessFormRuntimeDTO formRuntime() {
+        var result = new com.workflow.process.instance.api.response.ProcessFormRuntimeDTO();
+        result.setProcessInstanceId("proc-inst-1");
+        return result;
     }
 
     @Test

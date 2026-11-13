@@ -19,6 +19,8 @@ public interface EntityHistoryImportPort {
     /** 必须加入调用方事务；sourceHash 来自旧值及方案，而非转换后的新主键。 */
     EntityResult create(String sourceSystem, EntitySpec spec, EntityRow row, String sourceHash,
                         Map<String, Object> values, String batchId);
+    /** 校验实体查看权限和记录数据范围，不加载档案列表不使用的实体聚合。 */
+    void requireReadable(String entityCode, String recordId);
     /** 获取当前权限内可读字段，供归档快照展示时再次过滤。 */
     Map<String, Object> readable(String entityCode, String recordId);
 }

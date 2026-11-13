@@ -49,7 +49,6 @@
           v-model="localConfig.source.rules"
           :role-options="roleOptions"
           :group-options="groupOptions"
-          :organization-options="organizationOptions"
         />
       </template>
 
@@ -125,10 +124,6 @@ const props = defineProps({
     default: () => []
   },
   groupOptions: {
-    type: Array,
-    default: () => []
-  },
-  organizationOptions: {
     type: Array,
     default: () => []
   }

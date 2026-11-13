@@ -43,6 +43,7 @@ import static org.mockito.Mockito.when;
 class ProcessProgressAutoSkipIntegrationTest {
     private ProcessEngine engine;
     private ProcessProgressRuntimeService service;
+    private ProcessPublishedSnapshotService snapshots;
 
     @BeforeEach
     void setUp() {
@@ -85,6 +86,8 @@ class ProcessProgressAutoSkipIntegrationTest {
         var first = engine.getTaskService().createTaskQuery()
                 .processInstanceId(instanceId).singleResult();
         engine.getTaskService().setVariableLocal(first.getId(), "actionLabel", "首节点操作");
+        engine.getTaskService().setVariableLocal(first.getId(), "entityCode", "other_entity");
+        engine.getTaskService().setVariableLocal(first.getId(), "entityDataId", "other_record");
         if (executionLocalLabel) {
             engine.getRuntimeService().setVariableLocal(
                     first.getExecutionId(), "actionLabel", "执行分支操作");
@@ -102,7 +105,9 @@ class ProcessProgressAutoSkipIntegrationTest {
         assertEquals("RUNNING", running.getStatus());
         assertNodeLabel(running, "first", "首节点操作");
         assertNodeLabel(running, "skipped", expectedFallback);
-        assertFormAndData(running);
+        assertFormAndData(service.getProcessFormRuntime(instanceId, null));
+        org.mockito.Mockito.verify(snapshots).getNodeFormsContextByProcessDefinitionId(
+                running.getProcessDefinitionId(), "last");
 
         var last = engine.getTaskService().createTaskQuery()
                 .processInstanceId(instanceId).singleResult();
@@ -115,7 +120,9 @@ class ProcessProgressAutoSkipIntegrationTest {
         assertNodeLabel(completed, "first", "首节点操作");
         assertNodeLabel(completed, "last", "末节点操作");
         assertNodeLabel(completed, "skipped-end", expectedFallback);
-        assertFormAndData(completed);
+        assertFormAndData(service.getProcessFormRuntime(instanceId, null));
+        org.mockito.Mockito.verify(snapshots).getNodeFormsContextByProcessDefinitionId(
+                completed.getProcessDefinitionId(), "skipped-end");
     }
 
     /** 审批历史与节点悬停信息使用同一作用域规则，避免只修复其中一条查询。 */
@@ -126,7 +133,7 @@ class ProcessProgressAutoSkipIntegrationTest {
         assertEquals(expected, progress.getNodeAssigneeMap().get(nodeId).getActionLabel());
     }
 
-    private void assertFormAndData(ProcessProgressDTO progress) {
+    private void assertFormAndData(com.workflow.process.instance.api.response.ProcessFormRuntimeDTO progress) {
         assertEquals("测试自动跳过", progress.getEntityData().get("name"));
         assertNotNull(progress.getFormConfig());
         assertEquals("查看表单", progress.getFormConfig().getFormName());
@@ -142,7 +149,7 @@ class ProcessProgressAutoSkipIntegrationTest {
         var entity = new EntityDefinition();
         entity.setId("entity-1");
         when(entityMapper.findByEntityCode("all_entity")).thenReturn(Optional.of(entity));
-        var snapshots = mock(ProcessPublishedSnapshotService.class);
+        snapshots = mock(ProcessPublishedSnapshotService.class);
         var published = new ProcessVersionHistory();
         published.setId("published-1");
         var binding = new ProcessNodeForm();

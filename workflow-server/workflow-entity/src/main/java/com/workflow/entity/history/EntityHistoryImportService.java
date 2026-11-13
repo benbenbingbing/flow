@@ -179,6 +179,13 @@ public class EntityHistoryImportService implements EntityHistoryImportPort {
         return new EntityResult(saved.recordId(), false, saved.record());
     }
 
+    /** 档案摘要只需当前权限和主记录范围；完整快照仍通过 readable 取得可读字段。 */
+    @Override
+    public void requireReadable(String entityCode, String recordId) {
+        permissions.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);
+        records.requireAccessibleById(entityCode, recordId, null);
+    }
+
     @Override
     public Map<String, Object> readable(String entityCode, String recordId) {
         permissions.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);

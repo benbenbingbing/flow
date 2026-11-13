@@ -719,21 +719,8 @@
             </el-select>
           </el-form-item>
           <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '选择部门' : '选择组织'">
-            <el-select
-              v-model="cond.targetIds"
-              multiple
-              filterable
-              clearable
-              :placeholder="cond.scopeType === 'DEPT' ? '请选择部门' : '请选择组织'"
-              style="width: 100%"
-            >
-              <el-option
-                v-for="opt in cond.scopeType === 'DEPT' ? deptOptions : organizationOptions"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
+            <OrganizationSelector :key="cond.scopeType" v-model="cond.targetIds" multiple
+              :type="cond.scopeType === 'DEPT' ? 'dept' : 'org'" />
           </el-form-item>
           <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '包含子部门' : '包含下级组织'">
             <el-switch v-model="cond.includeSubDept" />
@@ -954,6 +941,7 @@ import { useUserStore } from '@/stores/user'
 import EntityFieldTypePanel from '@/views/entity/components/EntityFieldTypePanel.vue'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import UserSelector from '@/components/UserSelector.vue'
+import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import DictDefinitionPicker from '@/components/DictDefinitionPicker.vue'
 import EntityExcelSettings from '@/components/excel/EntityExcelSettings.vue'
@@ -1089,8 +1077,6 @@ const {
   permissionPreviewError,
   roleOptions,
   groupOptions,
-  deptOptions,
-  organizationOptions,
   permissionRuleFieldOptions,
   loadPermissions,
   handleAddPermission,

@@ -6,7 +6,6 @@ import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getEnabledRoles } from '@/api/system/role'
-import { getEnabledOrgList } from '@/api/system/org'
 import { getEnabledGroups } from '@/api/system/group'
 import { WORKFLOW_SYSTEM_FIELD_CODES } from '@/shared/entity-design'
 
@@ -50,10 +49,6 @@ export function useEntityPermissions({ entityId, entityData, isSystemEntity, isW
 
   const groupOptions = ref([])
 
-  const deptOptions = ref([])
-
-  const organizationOptions = ref([])
-
   const permissionSystemFields = computed(() => [
     { label: '数据名称', value: 'name' },
     { label: '数据编码', value: 'code' },
@@ -80,19 +75,12 @@ export function useEntityPermissions({ entityId, entityData, isSystemEntity, isW
 
   const loadSelectorOptions = async () => {
     try {
-      const [roles, groups, orgs] = await Promise.all([
+      const [roles, groups] = await Promise.all([
         getEnabledRoles().catch(() => []),
-        getEnabledGroups().catch(() => []),
-        getEnabledOrgList().catch(() => [])
+        getEnabledGroups().catch(() => [])
       ])
       roleOptions.value = (roles || []).map(r => ({ label: r.roleName || r.roleCode, value: r.id }))
       groupOptions.value = (groups || []).map(group => ({ label: group.groupName || group.groupCode, value: group.id }))
-      deptOptions.value = (orgs || [])
-        .filter(org => String(org.type || '').toLowerCase() === 'dept')
-        .map(org => ({ label: org.orgName, value: org.id }))
-      organizationOptions.value = (orgs || [])
-        .filter(org => String(org.type || '').toLowerCase() === 'org')
-        .map(org => ({ label: org.orgName, value: org.id }))
     } catch (error) {
       console.error('加载选择数据失败:', error)
     }
@@ -498,8 +486,6 @@ export function useEntityPermissions({ entityId, entityData, isSystemEntity, isW
     permissionPreviewError,
     roleOptions,
     groupOptions,
-    deptOptions,
-    organizationOptions,
     permissionRuleFieldOptions,
     loadPermissions,
     handleAddPermission,

@@ -215,7 +215,8 @@ flowchart TD
 | 我发起的 | `GET /process-instance/my-started` |
 | 知会 / 标记已读 | `GET /process-cc/my-cc`、`POST /process-cc/read/{ccId}` |
 | 任务详情 | `GET /process-task/detail/{taskId}` |
-| 实例详情与进度 | `GET /process-instance/{instanceId}/progress`，有任务时携带 `taskId` |
+| 实例表单首屏 | `GET /process-instance/{instanceId}/form-runtime`，有任务时携带 `taskId` |
+| 流程图与审批历史 | `GET /process-instance/{instanceId}/progress`，进入对应页签后读取 |
 | 审批历史 | `GET /process-task/history/{instanceId}` |
 | 提交审批 | `POST /process-task/complete` |
 | 下一审批人预览 / 候选 | `POST /process-task/{taskId}/next-approval-preview`、`/next-approver-options` |

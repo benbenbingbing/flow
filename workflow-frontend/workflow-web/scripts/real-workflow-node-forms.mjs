@@ -284,7 +284,7 @@ async function main() {
   })
   assert.ok(saved.processInstanceId)
 
-  const node1Progress = await api('GET', `/process-instance/${saved.processInstanceId}/progress`)
+  const node1Progress = await api('GET', `/process-instance/${saved.processInstanceId}/form-runtime`)
   record('node1Progress', {
     activeNodes: node1Progress.activeNodes,
     formId: node1Progress.formConfig?.formId,
@@ -331,7 +331,7 @@ async function main() {
   assert.equal(Number(detailAfterNode1.data.amount), 88)
   assert.equal(detailAfterNode1.data.lockedNote, 'LOCKED_ORIGINAL')
 
-  const node2Progress = await api('GET', `/process-instance/${saved.processInstanceId}/progress`)
+  const node2Progress = await api('GET', `/process-instance/${saved.processInstanceId}/form-runtime`)
   record('node2Progress', {
     activeNodes: node2Progress.activeNodes,
     formId: node2Progress.formConfig?.formId,
@@ -362,7 +362,7 @@ async function main() {
   assert.equal(detailAfterNode2.data.defaultMemo, 'DEFAULT_UPDATED')
   assert.equal(detailAfterNode2.data.lockedNote, 'LOCKED_ORIGINAL')
 
-  const node3Progress = await api('GET', `/process-instance/${saved.processInstanceId}/progress`)
+  const node3Progress = await api('GET', `/process-instance/${saved.processInstanceId}/form-runtime`)
   record('node3Progress', {
     activeNodes: node3Progress.activeNodes,
     formId: node3Progress.formConfig?.formId,

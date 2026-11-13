@@ -22,7 +22,8 @@ async function fixture(page, { actions, eventResult, theme = () => DEFAULT_MOBIL
     else if (endpoint === '/process-task/statistics') data = { todoCount: 1, unreadCcCount: 1 }
     else if (['/process-task/todo', '/process-task/done', '/process-instance/my-started', '/process-cc/my-cc'].includes(endpoint)) data = { records: [row], total: 1 }
     else if (endpoint === '/process-task/detail/task-test') data = { processTask: { taskId: 'task-test', status: 'todo', entityCode: 'test' } }
-    else if (endpoint === '/process-instance/instance-test/progress') data = { status: 'RUNNING', processName: '测试流程', entityData: record, formConfig: form, activeNodes: ['review'], ...progress, approvalConfig: { enabled: true, options: [{ value: 'approve', label: '通过' }, { value: 'reject', label: '驳回' }] } }
+    else if (endpoint === '/process-instance/instance-test/progress') data = { status: 'RUNNING', activeNodes: ['review'], ...progress }
+    else if (endpoint === '/process-instance/instance-test/form-runtime') data = { status: 'RUNNING', processName: '测试流程', entityData: record, formConfig: form, ...progress, approvalConfig: { enabled: true, options: [{ value: 'approve', label: '通过' }, { value: 'reject', label: '驳回' }] } }
     else if (endpoint === '/entity/code/test') data = { id: 'entity-test', entityCode: 'test', fields: [] }
     else if (endpoint.startsWith('/ui-runtime/events/')) {
       if (endpoint.includes('/FORM_BUTTON_CLICK/')) { writes.push({ endpoint, body }); data = typeof eventResult === 'function' ? await eventResult(body) : eventResult || { effects: [] } }
@@ -106,7 +107,7 @@ test('登录回跳：加载单据时会话失效，重新登录回到同一任�
   await page.route('**/api/auth/refresh', route => expired
     ? route.fulfill({ status: 401, json: { code: 401, errorCode: 'AUTH_REFRESH_MISSING', message: '请重新登录' } })
     : route.fallback())
-  await page.route('**/api/process-instance/instance-test/progress*', route => {
+  await page.route('**/api/process-instance/instance-test/form-runtime*', route => {
     expired = true
     return route.fulfill({ status: 401, json: { code: 401, errorCode: 'AUTH_SESSION_REVOKED', message: '登录已过期' } })
   }, { times: 1 })
@@ -140,7 +141,8 @@ test('字段编辑与正常提交保留未提交草稿和已加载的发布配�
   await submit(page); await expect(page).toHaveURL(/inbox\/todo/)
   expect(state.writes).toHaveLength(1)
   expect(state.writes[0].body).toMatchObject({ formConfigHash: loadedConfigHash, formData: { name: '未提交的名称', rich: '<p>继续编辑的富文本</p>' } })
-  expect(state.requests.filter(item => item.endpoint.endsWith('/progress'))).toHaveLength(1)
+  expect(state.requests.filter(item => item.endpoint.endsWith('/form-runtime'))).toHaveLength(1)
+  expect(state.requests.filter(item => item.endpoint.endsWith('/progress'))).toHaveLength(0)
   expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
 })
 

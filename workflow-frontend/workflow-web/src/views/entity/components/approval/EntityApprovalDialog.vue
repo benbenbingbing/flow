@@ -30,110 +30,117 @@
       </RuntimeVersionDiagnostics>
     </template>
     <div class="approval-dialog-body">
-      <el-alert
-        v-if="approvalConflictMessage"
-        :title="approvalConflictMessage"
-        type="warning"
-        show-icon
-        :closable="false"
-        class="approval-conflict-message"
-      />
-      <el-alert v-if="archiveLoadError" :title="archiveLoadError" type="error" :closable="false" />
-      <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
-        <el-tab-pane v-if="approvalShowBasicTab" label="基本信息" name="basic">
-          <EntityApprovalBasicInfo
-            ref="basicInfoRef"
-            v-model:entityData="entityData"
-            :approvalNormalForm="approvalNormalForm"
-            :formReadonly="approvalFormReadonly"
-            :mode="approvalRuntimeMode"
-            :entityCode="effectiveEntityCode"
-            :entityDefinition="entityDefinition"
-            :entityFields="entityFields"
-            :context="approvalRuntimeContext"
-            :dataSourceRuntime="dataSourceRuntime"
-            :excludedNodeIds="approvalLiftedRootNodeIds"
-            :form-actions="formActions"
-            :action-loading-key="actionLoadingKey"
-            :entity-status-options="entityStatusOptions"
-            @form-action="handleFormAction"
-          />
-        </el-tab-pane>
+      <el-skeleton v-if="initialLoading" :rows="7" animated aria-label="正在加载数据" />
+      <el-alert v-else-if="initialLoadError" :title="initialLoadError" type="error" :closable="false" />
+      <template v-else>
+        <el-alert
+          v-if="approvalConflictMessage"
+          :title="approvalConflictMessage"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="approval-conflict-message"
+        />
+        <el-alert v-if="progressError" :title="progressError" type="error" :closable="false">
+          <el-button @click="loadCurrentProgress">重试流程历史</el-button>
+        </el-alert>
+        <el-alert v-if="archiveLoadError" :title="archiveLoadError" type="error" :closable="false" />
+        <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
+          <el-tab-pane v-if="approvalShowBasicTab" label="基本信息" name="basic">
+            <EntityApprovalBasicInfo
+              ref="basicInfoRef"
+              v-model:entityData="entityData"
+              :approvalNormalForm="approvalNormalForm"
+              :formReadonly="approvalFormReadonly"
+              :mode="approvalRuntimeMode"
+              :entityCode="effectiveEntityCode"
+              :entityDefinition="entityDefinition"
+              :entityFields="entityFields"
+              :context="approvalRuntimeContext"
+              :dataSourceRuntime="dataSourceRuntime"
+              :excludedNodeIds="approvalLiftedRootNodeIds"
+              :form-actions="formActions"
+              :action-loading-key="actionLoadingKey"
+              :entity-status-options="entityStatusOptions"
+              @form-action="handleFormAction"
+            />
+          </el-tab-pane>
 
-        <el-tab-pane
-          v-for="tab in approvalNodeTabs"
-          :key="tab.name"
-          :label="tab.label"
-          :name="tab.name"
-        >
-          <EntityApprovalBasicInfo
-            :ref="(instance) => setNodeTabRef(tab.name, instance)"
-            v-model:entityData="entityData"
-            :approvalNormalForm="approvalNormalForm"
-            :formReadonly="approvalFormReadonly"
-            :mode="approvalRuntimeMode"
-            :entityCode="effectiveEntityCode"
-            :entityDefinition="entityDefinition"
-            :entityFields="entityFields"
-            :context="approvalRuntimeContext"
-            :dataSourceRuntime="dataSourceRuntime"
-            :nodeRootParentId="tab.rootParentId"
-            :form-actions="formActions"
-            :action-loading-key="actionLoadingKey"
-            :entity-status-options="entityStatusOptions"
-            @form-action="handleFormAction"
-          />
-        </el-tab-pane>
+          <el-tab-pane
+            v-for="tab in approvalNodeTabs"
+            :key="tab.name"
+            :label="tab.label"
+            :name="tab.name"
+          >
+            <EntityApprovalBasicInfo
+              :ref="(instance) => setNodeTabRef(tab.name, instance)"
+              v-model:entityData="entityData"
+              :approvalNormalForm="approvalNormalForm"
+              :formReadonly="approvalFormReadonly"
+              :mode="approvalRuntimeMode"
+              :entityCode="effectiveEntityCode"
+              :entityDefinition="entityDefinition"
+              :entityFields="entityFields"
+              :context="approvalRuntimeContext"
+              :dataSourceRuntime="dataSourceRuntime"
+              :nodeRootParentId="tab.rootParentId"
+              :form-actions="formActions"
+              :action-loading-key="actionLoadingKey"
+              :entity-status-options="entityStatusOptions"
+              @form-action="handleFormAction"
+            />
+          </el-tab-pane>
 
-        <!-- 延迟到页签可见后再创建 Viewer，避免在零尺寸隐藏容器中初始化。 -->
-        <el-tab-pane
-          v-if="hasProcessHistory"
-          label="流程图"
-          name="diagram"
-          lazy
-        >
-          <EntityProcessRoundHistory view="diagram" :bpmn-xml="bpmnXml" :progress-data="progressData"
-            :process-instance-id="currentTask?.processInstanceId || ''" :process-history="processHistory"
-            :archive-rounds="archiveRounds" />
-        </el-tab-pane>
+          <!-- 延迟到页签可见后再创建 Viewer，避免在零尺寸隐藏容器中初始化。 -->
+          <el-tab-pane
+            v-if="hasProcessHistory"
+            label="流程图"
+            name="diagram"
+            lazy
+          >
+            <EntityProcessRoundHistory v-loading="progressLoading" view="diagram" :bpmn-xml="bpmnXml" :progress-data="progressData"
+              :process-instance-id="currentTask?.processInstanceId || ''" :process-history="processHistory"
+              :archive-rounds="archiveRounds" />
+          </el-tab-pane>
 
-        <!-- 原生实例和迁入档案共用查看页签，没有流程历史的普通记录不显示。 -->
-        <el-tab-pane v-if="hasProcessHistory" label="审批历史" name="history" lazy>
-          <EntityProcessRoundHistory view="history" :bpmn-xml="bpmnXml" :progress-data="progressData"
-            :process-instance-id="currentTask?.processInstanceId || ''" :process-history="processHistory"
-            :archive-rounds="archiveRounds" />
-        </el-tab-pane>
+          <!-- 原生实例和迁入档案共用查看页签，没有流程历史的普通记录不显示。 -->
+          <el-tab-pane v-if="hasProcessHistory" label="审批历史" name="history" lazy>
+            <EntityProcessRoundHistory v-loading="progressLoading" view="history" :bpmn-xml="bpmnXml" :progress-data="progressData"
+              :process-instance-id="currentTask?.processInstanceId || ''" :process-history="processHistory"
+              :archive-rounds="archiveRounds" />
+          </el-tab-pane>
 
-        <el-tab-pane
-          v-if="currentTask?.processInstanceId && userStore.isSuperAdmin"
-          label="动作执行记录"
-          name="actionExecutions"
-        >
-          <FlowActionExecutionLog
-            :process-instance-id="currentTask.processInstanceId"
-            :active="activeDialogTab === 'actionExecutions'"
-          />
-        </el-tab-pane>
-      </el-tabs>
+          <el-tab-pane
+            v-if="currentTask?.processInstanceId && userStore.isSuperAdmin"
+            label="动作执行记录"
+            name="actionExecutions"
+          >
+            <FlowActionExecutionLog
+              :process-instance-id="currentTask.processInstanceId"
+              :active="activeDialogTab === 'actionExecutions'"
+            />
+          </el-tab-pane>
+        </el-tabs>
 
-      <ApprovalDecisionPanel
-        v-if="showApprovalDecisionSection"
-        ref="approvalDecisionRef"
-        v-model:action="approveForm.action"
-        v-model:comment="approveForm.comment"
-        v-model:expanded="approvalDecisionExpanded"
-        :approval-config="effectiveApprovalConfig"
-        :preview="nextApproverPreview"
-        :loading="nextApproverPreviewLoading"
-        :task-id="currentTask?.taskId || ''"
-        :action-label="selectedApprovalOption?.label || ''"
-        :form-data="entityData || {}"
-      />
+        <ApprovalDecisionPanel
+          v-if="showApprovalDecisionSection"
+          ref="approvalDecisionRef"
+          v-model:action="approveForm.action"
+          v-model:comment="approveForm.comment"
+          v-model:expanded="approvalDecisionExpanded"
+          :approval-config="effectiveApprovalConfig"
+          :preview="nextApproverPreview"
+          :loading="nextApproverPreviewLoading"
+          :task-id="currentTask?.taskId || ''"
+          :action-label="selectedApprovalOption?.label || ''"
+          :form-data="entityData || {}"
+        />
+      </template>
     </div>
 
     <template #footer>
       <div class="approval-dialog-footer">
-        <FormActionBar
+        <FormActionBar v-if="!initialLoading && !initialLoadError"
           :actions="footerActions"
           :loading-key="actionLoadingKey"
           @action="handleFormAction"
@@ -238,6 +245,8 @@ const listReleaseContext = computed(() => ({
 }))
 
 const processDialogVisible = ref(false)
+const initialLoading = ref(false)
+const initialLoadError = ref('')
 const workspacePage = useWorkspacePage()
 const presentedDialogVisible = workspacePage.visibleWhenActive(processDialogVisible)
 const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
@@ -300,7 +309,11 @@ const {
   formConfigs,
   approvalConfig,
   processRuntimeMetadata,
-  loadProcessDetail
+  loadProcessDetail,
+  loadProcessFormRuntime,
+  progressLoading,
+  progressError,
+  resetProcessDetail
 } = useProcessDetail()
 
 // 审批表单仍使用弹窗，但关闭所属标签时也必须保护已填写的数据和意见。
@@ -454,6 +467,7 @@ const dialogRuntimeDiagnosticResetKey = computed(() => [
 function handleDialogClosed() {
   if (processDialogVisible.value) return // 缓存页暂时隐藏弹窗时不丢弃审批上下文。
   resetArchiveRounds()
+  resetProcessDetail()
   launchRuntimeContext.value = {} // 已关闭会话的迟到事件不得回填下一次打开的记录。
   runtimeDiagnosticsRef.value?.reset()
   approvalConflictMessage.value = ''
@@ -505,12 +519,16 @@ const {
   getActionLabel: () => selectedApprovalOption.value?.label,
   getComment: () => approveForm.comment,
   getFormData: () => entityData.value,
-  isEnabled: () => !isViewMode.value
+  isEnabled: () => !initialLoading.value
+    && !initialLoadError.value
+    && !isViewMode.value
     && processDialogVisible.value
     && !isReservedApprovalActionCode(approveForm.action)
 })
 const showApprovalDecisionSection = computed(() =>
-  !isViewMode.value
+  !initialLoading.value
+  && !initialLoadError.value
+  && !isViewMode.value
   && isApprovalFormTab.value
   && (
     effectiveApprovalConfig.value.enabled !== false
@@ -545,8 +563,8 @@ function setNodeTabRef(tabName: string, instance: any) {
   }
 }
 
-async function loadFormActions() {
-  formActions.value = await resolveRuntimeFormActions(runtimeForms.value, {
+async function loadFormActions(session = archiveSession) {
+  const actions = await resolveRuntimeFormActions(runtimeForms.value, {
     entityCode: effectiveEntityCode.value,
     listKey: props.listKey,
     mode: approvalRuntimeMode.value,
@@ -559,6 +577,8 @@ async function loadFormActions() {
     compositionContext:
       launchRuntimeContext.value?.compositionContext || undefined
   })
+  // 按钮结果也受打开会话约束，旧记录权限不能回填到新记录。
+  if (session === archiveSession && processDialogVisible.value) formActions.value = actions
 }
 
 watch(
@@ -567,7 +587,11 @@ watch(
 )
 watch(entityData, scheduleNextApproverPreview, { deep: true })
 watch(processDialogVisible, visible => {
-  if (!visible) resetNextApproverPreview()
+  if (!visible) {
+    resetNextApproverPreview()
+    resetArchiveRounds()
+    resetProcessDetail()
+  }
 })
 
 watch(
@@ -593,6 +617,7 @@ watch(
 
 // 打开审批弹窗
 interface OpenApproveOptions {
+  loadForm?: () => Promise<any>
   form?: any
   context?: Record<string, any>
   requireActionCapability?: boolean
@@ -611,13 +636,19 @@ const openApprove = async (
   }
   runtimeDiagnosticsRef.value?.reset()
   approvalConflictMessage.value = ''
-  resetArchiveRounds()
+  const session = resetArchiveRounds()
+  resetProcessDetail()
+  savedApprovalFingerprint = ''
   // 审批任务可能复用同一流程实例，仍需先清空上一个任务的诊断坐标。
   processRuntimeMetadata.value = {}
   resetNextApproverPreview()
   // 每次打开审批任务都恢复完整审批信息，避免沿用上一次弹窗的折叠状态。
   approvalDecisionExpanded.value = true
-  overrideForm.value = options.form || null
+  overrideForm.value = null
+  formActions.value = []
+  initialLoadError.value = ''
+  initialLoading.value = true
+  processDialogVisible.value = true
   launchRuntimeContext.value = { ...(options.context || {}) }
   isViewMode.value = false
   currentTask.value = {
@@ -631,177 +662,141 @@ const openApprove = async (
   approveForm.action = 'approve'
   approveForm.comment = ''
   activeDialogTab.value = 'basic'
-  const loaded = await loadProcessDetail(row.processInstanceId, {
-    startUserName: currentTask.value?.startUserName,
-    taskId: currentTask.value?.taskId,
-    onLoad: (progressRes: any) => {
-      if (currentTask.value) {
-        currentTask.value.processStatus = progressRes.status
-        if (progressRes.processName) {
-          currentTask.value.processName = progressRes.processName
-        }
-        // 并行/包容网关会同时产生多个任务；列表中的 currentTaskName 只是单值投影，
-        // 审批标题必须以本次实际授权的 taskId 为准，避免用户误认自己正在办理另一分支。
-        const actionableTask = Array.isArray(progressRes.tasks)
-          ? progressRes.tasks.find((task: any) =>
-            String(task?.taskId || '') === String(currentTask.value?.taskId || ''))
-          : null
-        if (actionableTask?.taskName) {
-          currentTask.value.name = actionableTask.taskName
-        }
-      }
-      const config = progressRes.approvalConfig
-      if (config && Array.isArray(config.options) && config.options.length > 0) {
-        const firstOption = config.options[0]
-        if (firstOption && firstOption.value) {
-          approveForm.action = firstOption.value
-        }
-      }
-      activeDialogTab.value = firstApprovalFormTabName.value
-    }
-  })
-  if (!loaded) {
-    ElMessage.error('加载最新流程表单失败，请重试')
-    return
-  }
-  await reloadExplicitFormDetail(row)
-  await loadFormActions()
-  // 弹窗展示前记录基线，后续办理人预览请求期间输入的内容仍属于未保存修改。
-  savedApprovalFingerprint = approvalFingerprint()
-  processDialogVisible.value = true
-  await nextTick()
-  await refreshNextApproverPreview()
-}
-
-interface OpenViewOptions {
-  defaultTab?: string
-  startUserName?: string
-  form?: any
-  context?: Record<string, any>
-}
-
-// 打开查看弹窗（只读模式）
-const openView = async (row: any, options: OpenViewOptions = {}) => {
-  const session = resetArchiveRounds()
-  runtimeDiagnosticsRef.value?.reset()
-  approvalConflictMessage.value = ''
-  // 无流程的独立数据不会调用进度接口，必须先清空上一次实例坐标，避免诊断信息串行污染。
-  processRuntimeMetadata.value = {}
-  resetNextApproverPreview()
-  const { defaultTab, startUserName, form, context } = options
-  overrideForm.value = form || null
-  launchRuntimeContext.value = { ...(context || {}) }
-  isViewMode.value = true
-  currentTask.value = {
-    processInstanceId: row.processInstanceId,
-    name: row.name || row.currentTaskName || '数据详情',
-    startUserName: startUserName || row.startUserName,
-    processName: row.processName,
-    entityCode: row.entityCode
-  }
-  activeDialogTab.value = defaultTab || 'basic'
-  if (row.processInstanceId) {
-    const loaded = await loadProcessDetail(row.processInstanceId, {
+  try {
+    overrideForm.value = options.loadForm ? await options.loadForm() : options.form || null
+    if (session !== archiveSession) return false
+    const loaded = await loadProcessFormRuntime(row.processInstanceId, {
       startUserName: currentTask.value?.startUserName,
+      taskId: currentTask.value?.taskId,
       onLoad: (progressRes: any) => {
         if (currentTask.value) {
           currentTask.value.processStatus = progressRes.status
           if (progressRes.processName) {
             currentTask.value.processName = progressRes.processName
           }
+          // 并行/包容网关会同时产生多个任务；列表中的 currentTaskName 只是单值投影，
+          // 审批标题必须以本次实际授权的 taskId 为准，避免用户误认自己正在办理另一分支。
+          const actionableTask = Array.isArray(progressRes.tasks)
+            ? progressRes.tasks.find((task: any) =>
+              String(task?.taskId || '') === String(currentTask.value?.taskId || ''))
+            : null
+          if (actionableTask?.taskName) {
+            currentTask.value.name = actionableTask.taskName
+          }
         }
-        if (!defaultTab) {
-          activeDialogTab.value = firstApprovalFormTabName.value
+        const config = progressRes.approvalConfig
+        if (config && Array.isArray(config.options) && config.options.length > 0) {
+          const firstOption = config.options[0]
+          if (firstOption && firstOption.value) {
+            approveForm.action = firstOption.value
+          }
         }
+        activeDialogTab.value = firstApprovalFormTabName.value
       }
     })
-    if (!loaded) {
-      ElMessage.error('加载最新流程表单失败，请重试')
-      return false
-    }
-    await reloadExplicitFormDetail(row)
-  } else {
-    try {
-      const detail = await entityDataApi.getDetail(
-        effectiveEntityCode.value,
-        row.id,
-        props.listKey,
-        overrideForm.value?.id,
-        listReleaseContext.value,
-        formReleaseContext.value
-      )
-      entityData.value = normalizeEntityRecordForForm(detail)
-      const discoveredProcessInstanceId = String(
-        entityData.value?.processInstanceId || ''
-      )
-      if (discoveredProcessInstanceId) {
-        // 调用方的列表投影可能未携带 processInstanceId；详情恢复后仍复用本组件
-        // 原有流程加载链，确保流程图与审批历史不会在 Embed/普通列表中静默丢失。
-        currentTask.value.processInstanceId = discoveredProcessInstanceId
-        const loaded = await loadProcessDetail(discoveredProcessInstanceId, {
-          startUserName: currentTask.value?.startUserName,
-          onLoad: (progressRes: any) => {
-            if (!currentTask.value) return
-            currentTask.value.processStatus = progressRes.status
-            if (progressRes.processName) {
-              currentTask.value.processName = progressRes.processName
-            }
-          }
-        })
-        if (!loaded) {
-          ElMessage.error('加载最新流程表单失败，请重试')
-          return false
-        }
-        await reloadExplicitFormDetail(row)
-        activeDialogTab.value = firstApprovalFormTabName.value
-      } else {
-        const standaloneForm = overrideForm.value || props.defaultForm
-        if (standaloneForm?.fields?.length > 0 || standaloneForm?.nodes?.length > 0) {
-          formConfig.value = standaloneForm
-          formConfigs.value = [standaloneForm]
-          activeDialogTab.value = firstApprovalFormTabName.value
-        } else {
-          formConfig.value = null
-          formConfigs.value = []
-          activeDialogTab.value = 'basic'
-        }
-      }
-    } catch (e) {
-      console.error('加载数据详情失败:', e)
-      ElMessage.error('加载详情失败')
-      return false
-    }
+    if (session !== archiveSession) return false
+    if (!loaded) throw new Error('加载最新流程表单失败，请重试')
+    // 审批表单必须来自目标任务，按钮指定的详情事件仍按原业务入口执行一次。
+    await reloadExplicitFormDetail(row, session)
+    if (session !== archiveSession) return false
+    savedApprovalFingerprint = approvalFingerprint()
+    initialLoading.value = false
+    void loadFormActions(session).catch(error => { if (session === archiveSession) showRequestError(error, '加载按钮失败') })
+    await nextTick()
+    if (session === archiveSession) await refreshNextApproverPreview()
+    return true
+  } catch (error: any) {
+    if (session === archiveSession) initialLoadError.value = error?.message || '加载审批表单失败'
+    return false
+  } finally {
+    if (session === archiveSession) initialLoading.value = false
   }
-  // 只在打开记录时查询一次；列表不逐行探测档案，也不再增加独立操作或权限。
-  await loadArchiveRounds(effectiveEntityCode.value, entityData.value?.id || row.id, session)
-  if (session !== archiveSession) return false
-  await loadFormActions()
-  processDialogVisible.value = true
-  return true
 }
 
-async function reloadExplicitFormDetail(row: any) {
-  if (!overrideForm.value?.id || !row?.id) return
+interface OpenViewOptions {
+  loadForm?: () => Promise<any>
+  defaultTab?: string
+  startUserName?: string
+  form?: any
+  context?: Record<string, any>
+}
+
+/** 打开时立即展示空白加载面板；实体授权及 DETAIL_LOAD 成功后才展示数据，历史和按钮独立加载。 */
+const openView = async (row: any, options: OpenViewOptions = {}) => {
+  const session = resetArchiveRounds()
+  resetProcessDetail()
+  savedApprovalFingerprint = ''
+  runtimeDiagnosticsRef.value?.reset()
+  approvalConflictMessage.value = ''
+  resetNextApproverPreview()
+  overrideForm.value = null
+  formActions.value = []
+  launchRuntimeContext.value = { ...(options.context || {}) }
+  isViewMode.value = true
+  currentTask.value = {
+    processInstanceId: row.processInstanceId, name: row.name || row.currentTaskName || '数据详情',
+    startUserName: options.startUserName || row.startUserName, processName: row.processName, entityCode: row.entityCode
+  }
+  activeDialogTab.value = options.defaultTab || 'basic'
+  initialLoadError.value = ''
+  initialLoading.value = true
+  processDialogVisible.value = true
   try {
-    const detail = await entityDataApi.getDetail(
-      effectiveEntityCode.value,
-      row.id,
-      props.listKey,
-      overrideForm.value.id,
-      listReleaseContext.value,
-      formReleaseContext.value
-    )
-    entityData.value = {
-      ...(entityData.value || {}),
-      ...normalizeEntityRecordForForm(detail)
+    overrideForm.value = options.loadForm ? await options.loadForm() : options.form || null
+    if (session !== archiveSession) return false
+    if (overrideForm.value || !row.processInstanceId) {
+      // 指定表单沿用实体查看权限和详情事件，不加载另一套流程表单再覆盖。
+      const detail = await entityDataApi.getDetail(effectiveEntityCode.value, row.id, props.listKey,
+        overrideForm.value?.id, listReleaseContext.value, formReleaseContext.value)
+      if (session !== archiveSession) return false
+      entityData.value = normalizeEntityRecordForForm(detail)
+      currentTask.value.processInstanceId = entityData.value?.processInstanceId || row.processInstanceId || ''
+      const form = overrideForm.value || props.defaultForm
+      formConfig.value = form || null
+      formConfigs.value = form ? [form] : []
     }
+    if (!overrideForm.value && currentTask.value.processInstanceId) {
+      // 流程参与人不一定有普通实体详情权限，必须保留流程授权入口。
+      const loaded = await loadProcessFormRuntime(currentTask.value.processInstanceId, {
+        onLoad: result => {
+          currentTask.value.processStatus = result.status
+          if (result.processName) currentTask.value.processName = result.processName
+        }
+      })
+      if (session !== archiveSession) return false
+      if (!loaded) throw new Error('加载最新流程表单失败，请重试')
+    }
+    if (!options.defaultTab) activeDialogTab.value = firstApprovalFormTabName.value
+    initialLoading.value = false
+    // 档案摘要用于发现历史页签，可在后台探测；查询失败只影响历史展示。
+    void loadArchiveRounds(effectiveEntityCode.value, entityData.value?.id || row.id, session)
+    void loadFormActions(session).catch(error => { if (session === archiveSession) showRequestError(error, '加载按钮失败') })
+    return true
   } catch (error: any) {
-    console.error('加载按钮指定表单详情失败:', error)
-    throw new Error(
-      error?.message || '加载按钮指定表单详情失败，请检查表单发布版本'
-    )
+    if (session === archiveSession) initialLoadError.value = error?.message || '加载数据详情失败'
+    return false
+  } finally {
+    if (session === archiveSession) initialLoading.value = false
   }
 }
+
+/** 只有显式表单才执行该入口的详情事件，过期会话只丢弃响应，不自动重放事件。 */
+async function reloadExplicitFormDetail(row: any, session = archiveSession) {
+  if (!overrideForm.value?.id || !row?.id) return
+  const detail = await entityDataApi.getDetail(effectiveEntityCode.value, row.id, props.listKey,
+    overrideForm.value.id, listReleaseContext.value, formReleaseContext.value)
+  if (session !== archiveSession) return
+  entityData.value = { ...(entityData.value || {}), ...normalizeEntityRecordForForm(detail) }
+}
+
+/** 图和审批历史共享同一进度读取，切换页签不会重载表单、触发详情事件或覆盖输入。 */
+async function loadCurrentProgress() {
+  if (initialLoading.value || !currentTask.value?.processInstanceId) return
+  await loadProcessDetail(currentTask.value.processInstanceId, { startUserName: currentTask.value.startUserName })
+}
+watch([activeDialogTab, initialLoading, processDialogVisible], ([tab, pending, visible]) => {
+  if (visible && !pending && ['diagram', 'history'].includes(String(tab))) void loadCurrentProgress()
+})
 
 interface ApprovalFormValidationResult {
   valid: boolean

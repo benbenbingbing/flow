@@ -1,6 +1,6 @@
 <template>
   <el-dialog :model-value="modelValue" title="设置职务人员" width="620px" append-to-body destroy-on-close
-    :close-on-click-modal="false" @update:model-value="emit('update:modelValue', $event)" @open="initialize" @closed="invalidate">
+    :close-on-click-modal="false" @update:model-value="emit('update:modelValue', $event)">
     <el-alert title="保存后立即生效，已生成的审批任务保持原办理人。" type="info" :closable="false" show-icon />
     <el-table v-if="lockedUser && userAssignments.length" :data="userAssignments" class="current-positions">
       <el-table-column prop="organizationUnitName" label="组织或部门" />
@@ -12,9 +12,9 @@
     <el-form label-width="100px" class="member-form" v-loading="loading">
       <el-form-item v-if="lockedUser" label="人员">{{ lockedUser.nickname || lockedUser.username }}</el-form-item>
       <el-form-item label="组织或部门" required>
-        <el-tree-select v-model="form.organizationUnitId" :data="organizationTree" node-key="id"
-          :props="{ label: 'orgName', children: 'children' }" check-strictly filterable default-expand-all
-          :disabled="Boolean(lockedUnit) || submitting" placeholder="请选择组织或部门" style="width: 100%" @change="loadMembers" />
+        <el-input v-if="lockedUnit" :model-value="lockedUnit.displayPath || lockedUnit.orgName" disabled />
+        <OrganizationSelector v-else-if="!initializing" v-model="form.organizationUnitId" :disabled="submitting"
+          :known-nodes="selectedUnit ? [selectedUnit] : []" @selected="selectUnit" @resolved="selectedUnit = $event" />
       </el-form-item>
       <el-form-item label="职务" required>
         <el-select v-model="form.positionCode" filterable :disabled="Boolean(lockedPosition) || submitting"
@@ -41,17 +41,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import UserSelector from '@/components/UserSelector.vue'
-import { getOrgTree } from '@/api/system/org'
+import OrganizationSelector from '@/components/OrganizationSelector.vue'
+import { resolveOrganizationSelection } from '@/api/system/org'
 import { getEnabledPositions, getOrganizationPositionAssignments, getUserPositionAssignments,
   removePositionAssignment, setPositionMembers } from '@/api/system/position'
 
 const props = defineProps({ modelValue: Boolean, lockedUser: { type: Object, default: null },
   lockedUnit: { type: Object, default: null }, lockedPosition: { type: Object, default: null } })
 const emit = defineEmits(['update:modelValue', 'saved'])
-const organizationTree = ref<any[]>([])
+const selectedUnit = ref<any>(null)
+const initializing = ref(false)
 const positionOptions = ref<any[]>([])
 const userAssignments = ref<any[]>([])
 const loading = ref(false)
@@ -61,39 +63,51 @@ const loadError = ref('')
 const expectedUserIds = ref<string[]>([])
 const form = reactive({ organizationUnitId: '', positionCode: '', userIds: [] as string[] })
 let sequence = 0
+let initializationSequence = 0
 const selectedPosition = computed(() => positionOptions.value.find(p => p.positionCode === form.positionCode))
 const singleUserId = computed({ get: () => form.userIds[0] || '', set: value => { form.userIds = value ? [value] : [] } })
-const selectedUnit = computed(() => {
-  const find = (nodes: any[]): any => {
-    for (const node of nodes) { if (node.id === form.organizationUnitId) return node; const match = find(node.children || []); if (match) return match }
-  }
-  return find(organizationTree.value)
-})
 const selectablePositions = computed(() => positionOptions.value.filter(position => !selectedUnit.value
   || position.applicableUnitType === 'ANY' || position.applicableUnitType.toLowerCase() === selectedUnit.value.type))
 
 /** 关闭和切换条件均使旧请求失效，防止慢响应覆盖新选择或提交错误范围的人员。 */
 function invalidate() { sequence++; membersLoaded.value = false }
+function closeDialog() {
+  invalidate()
+  initializationSequence++
+  initializing.value = false
+  loading.value = false
+}
 async function initialize() {
   invalidate()
   const current = sequence
+  const initialization = ++initializationSequence
   loading.value = true
+  initializing.value = true
   loadError.value = ''
   Object.assign(form, { organizationUnitId: props.lockedUnit?.id || props.lockedUser?.deptId || props.lockedUser?.orgId || '',
     positionCode: props.lockedPosition?.positionCode || '', userIds: [] })
   userAssignments.value = []
+  selectedUnit.value = props.lockedUnit
   try {
-    const [tree, positions, user] = await Promise.all([getOrgTree(), getEnabledPositions(),
+    // 已锁定组织直接使用上下文；用户入口仅定向读取其默认组织，不能为回显拉整棵树。
+    const [units, positions, user] = await Promise.all([
+      !props.lockedUnit && form.organizationUnitId ? resolveOrganizationSelection([form.organizationUnitId]) : Promise.resolve([]), getEnabledPositions(),
       props.lockedUser ? getUserPositionAssignments(props.lockedUser.id) : Promise.resolve(null)])
     if (current !== sequence) return
-    organizationTree.value = Array.isArray(tree) ? tree : []
+    selectedUnit.value = props.lockedUnit || units[0] || null
     positionOptions.value = Array.isArray(positions) ? positions : []
     userAssignments.value = user?.assignments || []
     loading.value = false
     await loadMembers()
   } catch (error: any) {
     if (current === sequence) { loadError.value = error?.message || '职务数据加载失败'; loading.value = false }
-  }
+  } finally { if (initialization === initializationSequence) initializing.value = false }
+}
+
+/** 节点类型随选择更新，职务适用范围不再依赖遍历全量组织目录。 */
+async function selectUnit(unit: any) {
+  selectedUnit.value = unit
+  await loadMembers()
 }
 
 /** 编辑前读取完整集合供后台并发检查；用户入口只添加本人，保留同职务的其他人员。 */
@@ -150,6 +164,10 @@ async function removeCurrent(row: any) {
     emit('saved')
   } finally { submitting.value = false }
 }
+
+// 以业务可见状态驱动初始化，首次挂载即打开也能回显；关闭时立即使慢请求失效，不等待动画结束。
+watch(() => props.modelValue, visible => { if (visible) initialize(); else closeDialog() }, { immediate: true })
+onBeforeUnmount(closeDialog)
 </script>
 
 <style scoped>

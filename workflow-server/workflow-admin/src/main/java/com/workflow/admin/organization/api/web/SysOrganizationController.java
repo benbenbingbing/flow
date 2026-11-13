@@ -58,6 +58,34 @@ public class SysOrganizationController {
     public Result<List<SysOrganization>> ancestors(@PathVariable String id) {
         return Result.success(orgService.getAncestors(id));
     }
+
+    /** 树展开只读取一层直属下级；与右侧列表分页独立，不递归下载后代。 */
+    @GetMapping("/children")
+    public Result<List<SysOrganization>> children(
+            @RequestParam(defaultValue = "0") String parentId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String excludeId) {
+        return Result.success(orgService.getChildren(parentId, type, excludeId));
+    }
+
+    /** 组织选择器的搜索结果列表分页；树展开另走 children 接口。 */
+    @GetMapping("/options/page")
+    public Result<PageResult<SysOrganization>> selectionPage(
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "50") int pageSize,
+            @RequestParam(defaultValue = "0") String parentId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String type) {
+        return Result.success(orgService.getSelectionPage(pageNum, pageSize, parentId, keyword, type));
+    }
+
+    /** 定向解析已选值，兼容管理表单的 ID 和流程定义持久化的组织编码。 */
+    @GetMapping("/options/resolve")
+    public Result<List<SysOrganization>> resolveSelection(
+            @RequestParam(defaultValue = "") List<String> values,
+            @RequestParam(defaultValue = "id") String valueKey) {
+        return Result.success(orgService.resolveSelection(values, valueKey));
+    }
     
     /**
      * 获取所有启用中的组织部门（平铺列表）

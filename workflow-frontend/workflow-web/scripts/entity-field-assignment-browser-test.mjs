@@ -4,7 +4,7 @@ import { chromium } from '@playwright/test'
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import path from 'node:path'
 
-// 真实动作面板与字段编辑器完成创建、保存和重开；接口只使用本地桩，不连接业务库。
+// 真实动作面板、字段编辑器与请求适配器完成创建、保存和重开；HTTP 响应在浏览器拦截，不连接业务库。
 const fixture = mkdtempSync(path.resolve('.field-assignment-fixture-'))
 writeFileSync(path.join(fixture, 'index.html'), '<html><head><meta charset="utf-8"></head><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>')
 writeFileSync(path.join(fixture, 'main.js'), `
@@ -23,23 +23,18 @@ const fields = [
  {fieldCode:'flag',fieldName:'生效标志',fieldType:'BOOLEAN'},
  {fieldCode:'serial',fieldName:'业务长整数',fieldType:'LONG'},
  {fieldCode:'result',fieldName:'评审结果',fieldType:'SELECT',options:[{value:'YES',label:'通过'},{value:'NO',label:'停用',disabled:true}]}]
-const state = { actions:[], saved:[], fail:false, release:null }
+const state = { actions:[], saved:[], fail:false, fieldMode:'normal' }
 const processId=ref('process'), elementId=ref('flow')
 processActionApi.findDraftActionsByBinding = async () => state.actions
 processActionApi.timingOptions = async () => [{value:'TRANSITION_TAKEN',label:'经过连线时',defaultExecutionMode:'IN_TRANSACTION',defaultFailurePolicy:'ROLLBACK'}]
 processActionApi.listHandlers = async () => [handler]
 processActionApi.failureStrategies = async () => []
-processActionApi.assignableFields = async id => {
- if (state.fail) throw Error('加载字段失败')
- if (id === 'slow') return new Promise(resolve => state.release = () => resolve([{fieldCode:'old',fieldName:'旧实体字段',fieldType:'STRING'}]))
- return fields
-}
 processActionApi.saveAction = async action => { state.saved.push(structuredClone(action)); state.actions=[{...action,id:'saved'}] }
 extensionCatalogApi.options = async () => [{id:handler.definitionId,key:handler.beanName,sourceName:handler.beanName,...handler}]
 const router=createRouter({history:createMemoryHistory(),routes:[{path:'/',component:{render:()=>null}}]})
 createApp({setup:()=>()=>h(Panel,{key:elementId.value,processId:processId.value,scopeType:'SEQUENCE_FLOW',elementId:elementId.value,elementName:'审批通过',bpmnType:'bpmn:SequenceFlow'})})
  .use(createPinia()).use(router).use(ElementPlus).mount('#app')
-window.assignmentTest={state,processId,elementId}
+window.assignmentTest={state,processId,elementId,fields}
 `)
 let server, browser
 try {
@@ -52,6 +47,13 @@ try {
   page.setDefaultTimeout(10000)
   const errors=[]; page.on('pageerror',error=>errors.push(error.message))
   page.on('console',message=>{ if(message.type()==='warning' && message.text().includes('Invalid prop')) errors.push(message.text()) })
+  // 保留真实 assignableFields 和响应解包，避免直接替换 API 方法掩盖候选加载的契约问题。
+  await page.route('**/api/process-actions/process/*/assignable-fields', async route => {
+    const { state, fields } = await page.evaluate(() => ({ state:assignmentTest.state, fields:assignmentTest.fields }))
+    if (state.fail) return route.fulfill({status:500,json:{code:500,message:'加载字段失败'}})
+    const data = state.fieldMode === 'empty' ? [] : state.fieldMode === 'invalid' ? {fields} : fields
+    await route.fulfill({status:200,json:{code:200,message:'success',data}})
+  })
   await page.goto('http://127.0.0.1:3432/' + path.basename(fixture) + '/index.html')
   await page.getByRole('button',{name:'字段赋值',exact:true}).click()
   const dialog=page.getByRole('dialog')
@@ -106,8 +108,24 @@ try {
   await dialog.getByRole('button',{name:'重新加载字段',exact:true}).click()
   await addField('说明')
   await dialog.getByRole('button',{name:'取消',exact:true}).click()
+  // 历史流程没有合规发布字段时，显示原因且不允许继续添加一个必然为空的下拉框。
+  await page.evaluate(()=>assignmentTest.state.fieldMode='empty')
+  await page.getByRole('button',{name:'字段赋值',exact:true}).click()
+  await dialog.getByText('当前实体没有可赋值的已发布普通字段，请检查实体发布版本及字段类型',{exact:true}).waitFor()
+  assert.equal(await dialog.getByRole('button',{name:'添加字段',exact:true}).isDisabled(),true)
+  assert.equal(await dialog.locator('.assignment-row').count(),0)
+  await dialog.getByRole('button',{name:'取消',exact:true}).click()
+  // 异常响应必须提示加载失败，不能按对象迭代出无名称的候选项；恢复响应后允许重试。
+  await page.evaluate(()=>assignmentTest.state.fieldMode='invalid')
+  await page.getByRole('button',{name:'字段赋值',exact:true}).click()
+  await dialog.getByRole('button',{name:'重新加载字段',exact:true}).waitFor()
+  assert.equal(await dialog.getByRole('button',{name:'添加字段',exact:true}).isDisabled(),true)
+  await page.evaluate(()=>assignmentTest.state.fieldMode='normal')
+  await dialog.getByRole('button',{name:'重新加载字段',exact:true}).click()
+  await addField('说明')
+  await dialog.getByRole('button',{name:'取消',exact:true}).click()
   assert.deepEqual(errors,[])
-  console.log('字段赋值浏览器测试通过：快捷入口、多字段保存、布尔/长整数/清空、重开回显、非法配置保护及加载重试。')
+  console.log('字段赋值浏览器测试通过：真实 HTTP 响应解包、字段选择、多字段保存、布尔/长整数/清空、重开回显、非法配置保护、空候选禁用和错误响应重试。')
 } finally {
   await browser?.close(); await server?.close(); rmSync(fixture,{recursive:true,force:true})
 }

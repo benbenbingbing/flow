@@ -107,6 +107,28 @@ public class ProcessInstanceServiceTest {
     }
 
     @Mock
+    private com.workflow.process.instance.application.ProcessProgressRuntimeService processProgressRuntimeService;
+
+    @Mock
+    private com.workflow.process.instance.application.ProcessRoundService processRoundService;
+
+    @Test
+    void firstScreenRequiresInstanceAccessAndDoesNotLoadRounds() {
+        var runtime = new com.workflow.process.instance.api.response.ProcessFormRuntimeDTO();
+        when(processProgressRuntimeService.getProcessFormRuntime("instance", "task")).thenReturn(runtime);
+        assertSame(runtime, processInstanceService.getProcessFormRuntime("instance", "task"));
+        var order = inOrder(processInstanceAccessService, processProgressRuntimeService);
+        order.verify(processInstanceAccessService).requireReadAccess("instance");
+        order.verify(processProgressRuntimeService).getProcessFormRuntime("instance", "task");
+        verifyNoInteractions(processRoundService);
+        doThrow(new com.workflow.core.error.ForbiddenException("不可读"))
+                .when(processInstanceAccessService).requireReadAccess("denied");
+        assertThrows(com.workflow.core.error.ForbiddenException.class,
+                () -> processInstanceService.getProcessFormRuntime("denied", null));
+        verify(processProgressRuntimeService, never()).getProcessFormRuntime("denied", null);
+    }
+
+    @Mock
     private RuntimeService runtimeService;
 
     @Mock

@@ -647,9 +647,8 @@ async function runJoin(prerequisites) {
       ? value
       : null
   }, 'F07 JOIN 未进入项目经理审核')
-  const formConfig =
-    initialProgress.formConfig
-    || initialProgress.formConfigs?.[0]
+  const runtimeForm = await api('GET', `/process-instance/${request.processInstanceId}/form-runtime`)
+  const formConfig = runtimeForm.formConfig
   assert.equal(
     formConfig?.customComponent,
     'ProjectMemberChangeForm'

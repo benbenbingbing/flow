@@ -16,8 +16,11 @@ export function createFormRuntimeApi(request) {
     getDictionaryItems(dictCode) {
       return request.get(`/system/dict/item/tree/code/${encodeURIComponent(dictCode)}`)
     },
-    getProgress(instanceId, taskId) {
-      return request.get(`/process-instance/${encodeURIComponent(instanceId)}/progress`, { params: taskId ? { taskId } : {} })
+    getProgress(instanceId) {
+      return request.get(`/process-instance/${encodeURIComponent(instanceId)}/progress`, {})
+    },
+    getProcessFormRuntime(instanceId, taskId) {
+      return request.get(`/process-instance/${encodeURIComponent(instanceId)}/form-runtime`, { params: taskId ? { taskId } : {} })
     },
     getUserPage(params) {
       return request.get('/system/user/page', { params })

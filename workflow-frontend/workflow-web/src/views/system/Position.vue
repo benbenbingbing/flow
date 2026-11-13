@@ -133,31 +133,8 @@
               <strong>组织部门</strong>
               <el-button link type="primary" @click="selectAllUnits">全部</el-button>
             </div>
-            <el-input
-              v-model="organizationKeyword"
-              clearable
-              :prefix-icon="Search"
-              placeholder="搜索组织或部门"
-              class="organization-panel__search"
-            />
-            <el-tree
-              ref="organizationTreeRef"
-              v-loading="organizationLoading"
-              :data="organizationTree"
-              node-key="id"
-              default-expand-all
-              highlight-current
-              :props="{ label: 'orgName', children: 'children' }"
-              :filter-node-method="filterOrganizationNode"
-              @node-click="selectOrganizationUnit"
-            >
-              <template #default="{ data }">
-                <span class="organization-node">
-                  <el-icon><OfficeBuilding v-if="data.type === 'org'" /><House v-else /></el-icon>
-                  <span>{{ data.orgName }}</span>
-                </span>
-              </template>
-            </el-tree>
+            <OrganizationNavigationTree v-if="activeTab === 'assignments'" selection searchable
+              :model-value="selectedUnit?.id || '0'" @select="selectOrganizationUnit" />
           </aside>
 
           <section class="assignment-content">
@@ -326,13 +303,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { House, OfficeBuilding, Plus, Search } from '@element-plus/icons-vue'
+import { Plus } from '@element-plus/icons-vue'
 import PageState from '@/components/PageState.vue'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
 import { useUserStore } from '@/stores/user'
-import { getOrgTree } from '@/api/system/org'
+import OrganizationNavigationTree from './components/OrganizationNavigationTree.vue'
 import {
   createPosition,
   deletePosition,
@@ -378,10 +355,6 @@ const positionRules = {
   holderMode: [{ required: true, message: '请选择人员数量', trigger: 'change' }]
 }
 
-const organizationTreeRef = ref()
-const organizationLoading = ref(false)
-const organizationTree = ref<any[]>([])
-const organizationKeyword = ref('')
 const selectedUnit = ref<any>(null)
 const assignmentLoading = ref(false)
 const assignmentLoadError = ref('')
@@ -391,7 +364,6 @@ const assignmentQuery = reactive({ keyword: '', positionCode: '', pageNum: 1, pa
 const assignmentDialogVisible = ref(false)
 const assignmentDialogContext = reactive({ unit: null as any, position: null as any })
 
-watch(organizationKeyword, value => organizationTreeRef.value?.filter(value))
 
 function normalizePage(result: any, fallbackPage: number, fallbackSize: number) {
   return {
@@ -530,31 +502,14 @@ function showPositionReferences(row: any) {
   )
 }
 
-async function loadOrganizationTree() {
-  organizationLoading.value = true
-  try {
-    const result = await getOrgTree()
-    organizationTree.value = Array.isArray(result) ? result : result?.records || result?.list || []
-  } finally {
-    organizationLoading.value = false
-  }
-}
-
-function filterOrganizationNode(value: string, data: any) {
-  if (!value) return true
-  const keyword = value.trim().toLowerCase()
-  return `${data.orgName || ''} ${data.orgCode || ''} ${data.displayPath || ''}`.toLowerCase().includes(keyword)
-}
-
 function selectOrganizationUnit(data: any) {
-  selectedUnit.value = data
+  selectedUnit.value = data.id === '0' ? null : data
   assignmentQuery.pageNum = 1
   fetchAssignments()
 }
 
 function selectAllUnits() {
   selectedUnit.value = null
-  organizationTreeRef.value?.setCurrentKey(null)
   assignmentQuery.pageNum = 1
   fetchAssignments()
 }
@@ -632,7 +587,7 @@ function unitTypeLabel(value: string) { return ({ ORG: '组织', DEPT: '部门',
 function formatDateTime(value: any) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-' }
 
 async function handleTabChange(name: string | number) {
-  if (name === 'assignments') await Promise.all([loadOrganizationTree(), fetchEnabledPositions(), fetchAssignments()])
+  if (name === 'assignments') await Promise.all([fetchEnabledPositions(), fetchAssignments()])
 }
 
 onMounted(async () => {
@@ -650,8 +605,7 @@ onMounted(async () => {
   background: #fff;
 }
 .assignment-context,
-.organization-panel__header,
-.organization-node {
+.organization-panel__header {
   display: flex;
   align-items: center;
 }
@@ -667,8 +621,6 @@ onMounted(async () => {
 .assignment-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; min-height: 600px; }
 .organization-panel { min-width: 0; padding: 14px; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; }
 .organization-panel__header { justify-content: space-between; margin-bottom: 10px; }
-.organization-panel__search { margin-bottom: 12px; }
-.organization-node { min-width: 0; gap: 6px; }
 .assignment-content { min-width: 0; }
 .assignment-context { min-height: 38px; margin-bottom: 8px; }
 .assignment-context strong { display: block; }

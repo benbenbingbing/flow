@@ -15,7 +15,6 @@ import com.workflow.process.workbench.api.response.MyStartedProcessVO;
 import com.workflow.process.instance.api.response.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -41,7 +40,6 @@ public class ProcessInstanceController {
      * 获取流程实例的执行进度
      *
      * @param processInstanceId 流程实例ID
-     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
      * @return 流程进度信息，包含已完成节点、当前活动节点、BPMN XML等
      */
     @GetMapping("/{processInstanceId}/progress")
@@ -49,28 +47,20 @@ public class ProcessInstanceController {
             value = EmbedDelegatedRuntimeApi.Scope.PROCESS_RECORD_RUNTIME,
             targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
                     .PROCESS_INSTANCE_PATH)
-    public ApiResponse<ProcessProgressDTO> getProcessProgress(
-            @PathVariable String processInstanceId,
-            @RequestParam(required = false) String taskId) {
-        return ApiResponse.success(StringUtils.hasText(taskId)
-                ? processInstanceService.getProcessProgress(
-                processInstanceId, taskId)
-                : processInstanceService.getProcessProgress(
-                processInstanceId));
+    public ApiResponse<ProcessProgressDTO> getProcessProgress(@PathVariable String processInstanceId) {
+        return ApiResponse.success(processInstanceService.getProcessProgress(processInstanceId));
     }
 
-    /**
-     * 兼容不经过 Spring MVC 的既有调用与轻量测试。
-     *
-     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
-     * @return 符合条件的API{@code response<process}进度{@code dto>}结果，供调用方继续处理
-     */
-    public ApiResponse<ProcessProgressDTO> getProcessProgress(
-            String processInstanceId) {
-        return ApiResponse.success(
-                processInstanceService.getProcessProgress(processInstanceId));
+    /** 读取表单首屏；taskId 仅用于选择真实活动任务，不能替代实例及加签访问校验。 */
+    @GetMapping("/{processInstanceId}/form-runtime")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.PROCESS_RECORD_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.PROCESS_INSTANCE_PATH)
+    public ApiResponse<com.workflow.process.instance.api.response.ProcessFormRuntimeDTO> getProcessFormRuntime(
+            @PathVariable String processInstanceId, @RequestParam(required = false) String taskId) {
+        return ApiResponse.success(processInstanceService.getProcessFormRuntime(processInstanceId, taskId));
     }
-    
+
     /**
      * 获取流程实例详情
      *

@@ -1,7 +1,6 @@
 package com.workflow.process.instance.application;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.instance.api.response.ProcessRoundDTO;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
@@ -29,20 +28,25 @@ public class ProcessRoundService {
             ProcessRoundDTO legacy = round(instanceId, 1);
             return legacy == null ? List.of() : List.of(legacy);
         }
-        List<ProcessRoundDTO> result = new ArrayList<>();
-        for (EntityProcessLink link : links.selectList(Wrappers.<EntityProcessLink>lambdaQuery()
+        List<EntityProcessLink> related = links.selectList(Wrappers.<EntityProcessLink>lambdaQuery()
                 .eq(EntityProcessLink::getEntityCode, anchor.getEntityCode())
                 .eq(EntityProcessLink::getEntityRecordId, anchor.getEntityRecordId())
-                .orderByDesc(EntityProcessLink::getGeneration))) {
-            if (!StringUtils.hasText(link.getProcessInstanceId())) continue;
-            try {
-                accessService.requireReadAccess(link.getProcessInstanceId());
-            } catch (ForbiddenException denied) {
-                continue;
-            }
-            ProcessRoundDTO round = round(link.getProcessInstanceId(),
-                    link.getGeneration() == null ? 1 : link.getGeneration());
-            if (round != null) result.add(round);
+                .orderByDesc(EntityProcessLink::getGeneration));
+        var ids = related.stream().map(EntityProcessLink::getProcessInstanceId)
+                .filter(StringUtils::hasText).collect(java.util.stream.Collectors.toSet());
+        var facts = new java.util.HashMap<String, org.flowable.engine.history.HistoricProcessInstance>();
+        // 分批限制 IN 参数数；实例事实既用于权限判断，也用于 DTO，不再每轮重复查询实例。
+        var orderedIds = new ArrayList<>(ids);
+        for (int start = 0; start < orderedIds.size(); start += 200) {
+            var batch = new java.util.HashSet<>(orderedIds.subList(start, Math.min(start + 200, orderedIds.size())));
+            historyService.createHistoricProcessInstanceQuery().processInstanceIds(batch).list()
+                    .forEach(instance -> facts.put(instance.getId(), instance));
+        }
+        List<ProcessRoundDTO> result = new ArrayList<>();
+        for (EntityProcessLink link : related) {
+            var historic = facts.get(link.getProcessInstanceId());
+            if (historic == null || !accessService.canRead(historic)) continue;
+            result.add(round(historic, link.getGeneration() == null ? 1 : link.getGeneration()));
         }
         return result;
     }
@@ -51,7 +55,12 @@ public class ProcessRoundService {
         var historic = historyService.createHistoricProcessInstanceQuery()
                 .processInstanceId(instanceId).singleResult();
         if (historic == null) return null;
-        return new ProcessRoundDTO(instanceId, generation,
+        return round(historic, generation);
+    }
+
+    /** 仅接受本服务从引擎加载且已通过读取范围校验的实例事实。 */
+    private ProcessRoundDTO round(org.flowable.engine.history.HistoricProcessInstance historic, int generation) {
+        return new ProcessRoundDTO(historic.getId(), generation,
                 historic.getEndTime() == null ? "RUNNING" : "COMPLETED",
                 historic.getEndTime() == null ? null : ProcessEndReason.category(historic.getDeleteReason()),
                 historic.getStartTime(), historic.getEndTime());

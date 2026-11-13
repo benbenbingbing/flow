@@ -59,6 +59,61 @@ import static org.mockito.Mockito.when;
  */
 class EntityDataDynamicServiceSubFormTest {
 
+    @Test
+    void authorizationOnlyReadDoesNotExpandMultivaluesOrRelations() {
+        Fixture f = new Fixture();
+        when(f.dynamicMapper.selectById("wf_parent", "parent-1")).thenReturn(Map.of("id", "parent-1"));
+        when(f.dynamicMapper.selectById("wf_parent", "missing")).thenReturn(null);
+        var permission = mock(com.workflow.entity.permission.application.DataPermissionEngine.class);
+        var users = mock(com.workflow.admin.identity.user.application.SysUserService.class);
+        var user = new com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser();
+        when(users.getById("u")).thenReturn(user);
+        when(permission.calculatePermission("parent", null, user))
+                .thenReturn(com.workflow.entity.permission.application.model.DataPermissionResult.allowAll());
+        var objectMapper = new ObjectMapper();
+        var service = new EntityDataDynamicService(f.dynamicMapper, f.definitionMapper, f.dynamicTableService,
+                new EntityRuntimeRecordMapper(objectMapper), mock(EntityRelationRuntimeService.class),
+                f.multiValueRuntimeService, permission, users, f.snapshotService);
+        com.workflow.admin.security.context.UserContext.setCurrentUser("u", "test-user");
+        try {
+            service.requireAccessibleById("parent", "parent-1", null);
+            verify(f.dynamicMapper).selectById("wf_parent", "parent-1");
+            org.mockito.Mockito.verifyNoInteractions(f.multiValueRuntimeService, f.relationMapper, f.fieldMapper);
+            org.junit.jupiter.api.Assertions.assertThrows(com.workflow.core.error.ForbiddenException.class,
+                    () -> service.requireAccessibleById("parent", "missing", null));
+            var filtered = com.workflow.entity.permission.application.model.DataPermissionResult
+                    .withCondition("dept_id = #{permissionParameters.department}", Map.of("department", "d"));
+            when(permission.calculatePermission("parent", null, user)).thenReturn(filtered);
+            when(f.dynamicMapper.selectByIdWithPermission("wf_parent", "filtered", filtered.getSqlCondition(), filtered.getSqlParameters()))
+                    .thenReturn(Map.of("id", "filtered"));
+            service.requireAccessibleById("parent", "filtered", null);
+            verify(f.dynamicMapper).selectByIdWithPermission("wf_parent", "filtered", filtered.getSqlCondition(), filtered.getSqlParameters());
+        } finally { com.workflow.admin.security.context.UserContext.clear(); }
+    }
+
+    @Test
+    void nestedRowsReuseMetadataWithinReadButNotAcrossReads() {
+        Fixture f = new Fixture();
+        var objectMapper = new ObjectMapper();
+        var relationService = f.relationRuntimeService(new EntityRuntimeRecordMapper(objectMapper), objectMapper);
+        when(f.dynamicMapper.selectByCondition(eq("wf_child"), anyMap()))
+                .thenReturn(List.of(Map.of("id", "child-1", "parentId", "parent-1"),
+                        Map.of("id", "child-2", "parentId", "parent-1")));
+        when(f.dynamicMapper.selectByCondition(eq("wf_tax"), anyMap()))
+                .thenReturn(List.of(Map.of("id", "tax-1")));
+        EntityDataDTO dto = new EntityDataDTO(); dto.setEntityCode("parent"); dto.setId("parent-1");
+        relationService.loadRelationData(dto);
+        var children = (List<Map<String, Object>>) dto.getData().get("detailList");
+        assertEquals(2, children.size());
+        assertEquals("tax-1", ((List<Map<String, Object>>) children.get(1).get("taxRows")).get(0).get("id"));
+        verify(f.definitionMapper).selectById("tax-id");
+        verify(f.fieldMapper).findByEntityId("tax-id");
+        verify(f.relationMapper).selectByParentEntityId("child-id");
+        verify(f.dynamicTableService).tableExists("tax");
+        relationService.loadRelationData(dto);
+        verify(f.fieldMapper, org.mockito.Mockito.times(2)).findByEntityId("tax-id");
+    }
+
     /**
      * 测试保存时子表单行写入被引用实体表而非父表：
      * 验证父表数据不含子表单字段，子表行写入引用表并自动回填 parentId、deleted、code。

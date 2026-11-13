@@ -32,8 +32,8 @@
         </div>
         <el-button link type="danger" aria-label="删除字段赋值" @click="rows.splice(index, 1)">删除</el-button>
       </div>
-      <el-button link type="primary" :disabled="loading || Boolean(parseError || loadError) || rows.length >= 50" @click="rows.push({ fieldCode: '', operation: 'SET', value: '' })">添加字段</el-button>
-      <el-empty v-if="!loading && !loadError && !fields.length" description="当前实体没有可赋值的已发布普通字段" :image-size="60" />
+      <el-button link type="primary" :disabled="loading || Boolean(parseError || loadError) || !fields.length || rows.length >= 50" @click="rows.push({ fieldCode: '', operation: 'SET', value: '' })">添加字段</el-button>
+      <el-empty v-if="!loading && !loadError && !fields.length" description="当前实体没有可赋值的已发布普通字段，请检查实体发布版本及字段类型" :image-size="60" />
     </div>
   </SettingsSection>
 </template>
@@ -66,7 +66,10 @@ async function loadFields() {
   loadError.value = ''
   try {
     const result = await processActionApi.assignableFields(props.processId)
-    if (current === requestId) fields.value = result || []
+    if (current !== requestId) return
+    // 错误响应不能被当作字段集合渲染，否则下拉框会出现无名称选项或静默空白。
+    if (!Array.isArray(result)) throw new Error('加载可赋值字段失败，请刷新页面后重试。')
+    fields.value = result
   } catch (error) {
     if (current === requestId) loadError.value = error?.message || '加载可赋值字段失败，请重试。'
   } finally { if (current === requestId) loading.value = false }

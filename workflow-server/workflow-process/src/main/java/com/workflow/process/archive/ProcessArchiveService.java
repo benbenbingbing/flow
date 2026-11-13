@@ -100,7 +100,7 @@ public class ProcessArchiveService implements ProcessArchivePort {
      */
     @Override
     public List<Map<String, Object>> list(String entityCode, String recordId) {
-        entities.readable(entityCode, recordId);
+        entities.requireReadable(entityCode, recordId);
         return mapper.list(entityCode, recordId).stream().map(row -> Map.<String,Object>of("id", row.id(), "name", row.name(),
                 "result", row.result(), "sourceSystem", row.sourceSystem(), "sourceId", row.sourceId())).toList();
     }

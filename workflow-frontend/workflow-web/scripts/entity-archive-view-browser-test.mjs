@@ -20,7 +20,11 @@ import { historyImportApi as api } from '/src/api/historyImport.js'
 import request from '/src/utils/request.js'
 const xml='<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" targetNamespace="test"><process id="p"><userTask id="review" name="经理审批"/></process><bpmndi:BPMNDiagram id="diagram"><bpmndi:BPMNPlane id="plane" bpmnElement="p"><bpmndi:BPMNShape id="shape" bpmnElement="review"><dc:Bounds x="100" y="100" width="140" height="80"/></bpmndi:BPMNShape></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></definitions>'
 const rows={imported:{id:'imported',name:'历史业务数据',processStatus:'NOT_STARTED',data:{name:'历史业务数据'}},normal:{id:'normal',name:'普通业务数据',processStatus:'NOT_STARTED',data:{name:'普通业务数据'}}}
-const state={listCalls:[],detailCalls:[],runtimeCalls:[],unexpected:[]}
+const state={listCalls:[],detailCalls:[],runtimeCalls:[],unexpected:[],requests:[],entityCalls:[]}
+const pending=new Map()
+const wait=key=>new Promise(resolve=>pending.set(key,resolve))
+let delayOptional=false,delayProgress=false,delayEntity='',failProgress=false
+rows.error={id:'error',name:'错误记录'}
 const related={id:'children',compositionKey:'children',anchorType:'OWNER',config:{enabled:true,name:'关联子列表',target:{contentType:'LIST'},relation:{type:'ENTITY_RELATION'},presentation:{position:'INLINE',loadMode:'IMMEDIATE'}}}
 const form=(id,runtimeContext={})=>({id,configHash:'published-'+id,fields:[{id:'name',fieldCode:'name',fieldName:'名称',componentType:'input',fieldType:'STRING'}],runtimeContext,viewCompositions:[related]})
 const nativeForm=form('node-form',{processInstanceId:'native1',nodeId:'review',recordId:'native',entityCode:'expense'})
@@ -28,17 +32,19 @@ rows.native={id:'native',name:'原生运行记录',processInstanceId:'native1',p
 request.defaults.adapter=async config=>{
  const body=typeof config.data==='string'?JSON.parse(config.data):config.data||{}
  let data
- if(config.url==='/process-instance/native1/progress')data={processInstanceId:'native1',status:'RUNNING',entityData:rows.native,formConfig:nativeForm,bpmnXml:xml,nodeHistory:[{nodeId:'review',nodeName:'经理审批',status:'ACTIVE'}]}
- else if(config.url==='/ui-runtime/form-actions/resolve'){state.runtimeCalls.push({kind:'actions',body});data=[]}
+ state.requests.push(config.url)
+ if(config.url==='/process-instance/native1/form-runtime')data={processInstanceId:'native1',status:'RUNNING',entityData:rows.native,formConfig:nativeForm}
+ else if(config.url==='/process-instance/native1/progress'){if(failProgress){failProgress=false;throw Error('模拟进度查询失败')}if(delayProgress)await wait('progress');data={processInstanceId:'native1',status:'RUNNING',bpmnXml:xml,nodeHistory:[{nodeId:'review',nodeName:'经理审批',status:'ACTIVE'}]}}
+ else if(config.url==='/ui-runtime/form-actions/resolve'){state.runtimeCalls.push({kind:'actions',body});if(delayOptional)await wait('actions');data=[]}
  else if(config.url==='/ui-runtime/view-compositions/resolve'){state.runtimeCalls.push({kind:'composition',body});data={targetContentType:'LIST',matchNone:true}}
  else if(config.url==='/ui-runtime/view-compositions/actions/capabilities')data={actionCapabilities:{}}
  else {state.unexpected.push(config.url);throw Error('Unexpected fixture API: '+config.url)}
  return {data:{code:200,data},status:200,statusText:'OK',headers:{},config}
 }
-entityDataApi.getDetail=async(code,id)=>rows[id]
-api.archives=async(code,id)=>{state.listCalls.push({code,id});if(id==='error')throw Error('模拟错误');return id==='imported'?[{id:'a1',name:'旧报销流程',sourceId:'P1',result:'APPROVED'},{id:'a2',name:'旧报销第二轮',sourceId:'P2',result:'REJECTED'}]:[]}
+entityDataApi.getDetail=async(code,id)=>{state.entityCalls.push(id);if(id===delayEntity)await wait('entity');return rows[id]}
+api.archives=async(code,id)=>{state.listCalls.push({code,id});if(delayOptional)await wait('archives');if(id==='error')throw Error('模拟错误');return id==='imported'?[{id:'a1',name:'旧报销流程',sourceId:'P1',result:'APPROVED'},{id:'a2',name:'旧报销第二轮',sourceId:'P2',result:'REJECTED'}]:[]}
 api.archive=async id=>{state.detailCalls.push(id);return {id,sourceSystem:'legacy',instance:{name:id==='a1'?'旧报销流程':'旧报销第二轮',sourceId:id==='a1'?'P1':'P2',result:id==='a1'?'APPROVED':'REJECTED',initiator:'张三'},template:{name:'审批图',version:1,xml,nodes:{review:'经理审批'}},events:[{id:'E1',nodeId:'review',sourceNode:'经理',actor:'李四',action:'APPROVED',rawAction:'通过',comment:id==='a1'?'首次办理':'第二轮办理',sequence:1},{id:'E2',nodeId:'review',sourceNode:'经理',actor:'王五',action:'APPROVED',rawAction:'通过',comment:'再次办理',sequence:2}]}}
-const root={setup(){const dialog=ref(),native=ref(false);window.archiveViewTest={state,open:id=>dialog.value.openView(rows[id]||{id,name:'错误记录'}),openNative:formId=>{state.runtimeCalls=[];return dialog.value.openView(rows.native,formId?{form:form(formId,{listKey:'expenses',buttonId:'view'})}:{})},showNative:()=>native.value=true};return()=>h('div',[native.value?h('div',{id:'native-history'},[h(Rounds,{view:'history',processInstanceId:'native1',bpmnXml:xml,progressData:{rounds:[{processInstanceId:'native1',generation:1,status:'COMPLETED',endType:'COMPLETED'}]},processHistory:[{title:'原生审批记录',status:'COMPLETED'}],archiveRounds:[{id:'a1',name:'旧报销流程',sourceId:'P1',result:'APPROVED'}]})]):null,h(Table,{entityCode:'expense',entityDefinition:{},dataList:[rows.normal],listFields:[],rowActionButtons:[],toolbarButtons:[]}),h(Dialog,{ref:dialog,entityCode:'expense',entityDefinition:{},entityFields:[]})])}}
+const root={setup(){const dialog=ref(),native=ref(false);window.archiveViewTest={state,failProgressOnce:()=>{failProgress=true},setDelay:(optional,progress,entity='')=>{delayOptional=optional;delayProgress=progress;delayEntity=entity},release:key=>{pending.get(key)?.();pending.delete(key)},openWithForm:()=>dialog.value.openView(rows.normal,{loadForm:()=>wait('form')}),open:id=>dialog.value.openView(rows[id]||{id,name:'错误记录'}),openNative:formId=>{state.runtimeCalls=[];return dialog.value.openView(rows.native,formId?{form:form(formId,{listKey:'expenses',buttonId:'view'})}:{})},showNative:()=>native.value=true};return()=>h('div',[native.value?h('div',{id:'native-history'},[h(Rounds,{view:'history',processInstanceId:'native1',bpmnXml:xml,progressData:{rounds:[{processInstanceId:'native1',generation:1,status:'COMPLETED',endType:'COMPLETED'}]},processHistory:[{title:'原生审批记录',status:'COMPLETED'}],archiveRounds:[{id:'a1',name:'旧报销流程',sourceId:'P1',result:'APPROVED'}]})]):null,h(Table,{entityCode:'expense',entityDefinition:{},dataList:[rows.normal],listFields:[],rowActionButtons:[],toolbarButtons:[]}),h(Dialog,{ref:dialog,entityCode:'expense',entityDefinition:{},entityFields:[]})])}}
 const app=createApp(root);const pinia=createPinia();app.use(pinia).use(ElementPlus).use(createRouter({history:createMemoryHistory(),routes:[{path:'/',component:{render:()=>null}}]}));const store=useUserStore(pinia);store.permissions=['entity:expense:view'];app.mount('#app')
 `
 const fixture = mkdtempSync(path.resolve('.archive-view-fixture-'))
@@ -50,6 +56,7 @@ try {
   await server.listen()
   browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true })
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+  page.setDefaultTimeout(15000)
   const errors = []; page.on('pageerror', error => errors.push(error.message))
   await page.goto(`http://127.0.0.1:3423/${path.basename(fixture)}/index.html`)
   await page.waitForFunction(() => window.archiveViewTest)
@@ -90,8 +97,10 @@ try {
   await page.locator('.entity-approval-dialog').waitFor({ state: 'hidden' })
   // 查看按钮指定的表单是实体入口；即使与流程表单 ID 相同，也不能只因记录有关联流程就拼接流程授权。
   for (const formId of ['node-form', 'other-form', null]) {
+    const entityReads = await page.evaluate(() => archiveViewTest.state.entityCalls.length)
     assert.equal(await page.evaluate(id => archiveViewTest.openNative(id), formId), true)
     await page.getByText('未找到关联数据', { exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => archiveViewTest.state.entityCalls.length), entityReads + (formId ? 1 : 0), '指定表单仅执行一次详情事件，流程表单不重复取实体详情')
     const calls = await page.evaluate(() => archiveViewTest.state.runtimeCalls)
     assert(calls.some(call => call.kind === 'composition'))
     assert(calls.some(call => call.kind === 'actions'))
@@ -112,6 +121,45 @@ try {
     await page.getByRole('button', { name: 'Close this dialog', exact: true }).click()
     await page.locator('.entity-approval-dialog').waitFor({ state: 'hidden' })
   }
+  // 首屏不能等候按钮、档案或进度；进度失败和旧会话响应也不能污染当前表单。
+  await page.evaluate(() => { archiveViewTest.setDelay(true, true); window.opening = archiveViewTest.openNative(null) })
+  await page.waitForFunction(() => [...document.querySelectorAll('input')].some(el => el.value === '原生运行记录') || document.body.innerText.includes('原生运行记录'))
+  assert.equal(await page.evaluate(() => archiveViewTest.state.requests.filter(url => url.endsWith('/progress')).length), 0)
+  assert.equal(await page.evaluate(() => window.opening), true, '后台档案和按钮不阻塞首屏')
+  await page.getByRole('tab', { name: '流程图', exact: true }).click()
+  await page.waitForFunction(() => archiveViewTest.state.requests.some(url => url.endsWith('/progress')))
+  await page.getByRole('tab', { name: '基本信息', exact: true }).click()
+  assert.equal(await page.evaluate(() => archiveViewTest.state.requests.filter(url => url.endsWith('/progress')).length), 1)
+  await page.evaluate(() => archiveViewTest.setDelay(false, false))
+  await page.evaluate(() => archiveViewTest.open('normal'))
+  await page.evaluate(() => { archiveViewTest.release('progress');archiveViewTest.release('archives');archiveViewTest.release('actions') })
+  await page.getByText('普通业务数据', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('tab', { name: '流程图', exact: true }).count(), 0)
+  await page.evaluate(() => { archiveViewTest.setDelay(false,false,'imported');window.stale=archiveViewTest.open('imported') })
+  await page.locator('[aria-label="正在加载数据"]').waitFor()
+  await page.evaluate(() => archiveViewTest.open('normal'))
+  await page.evaluate(() => archiveViewTest.release('entity'))
+  assert.equal(await page.evaluate(() => window.stale), false)
+  await page.getByText('普通业务数据', { exact: true }).waitFor()
+  assert.equal(await page.getByText('历史业务数据', { exact: true }).count(), 0)
+  await page.getByRole('button', { name: 'Close this dialog', exact: true }).click()
+  await page.locator('.entity-approval-dialog').waitFor({ state: 'hidden' })
+  await page.evaluate(() => { window.opening=archiveViewTest.openWithForm() })
+  await page.locator('[aria-label="正在加载数据"]').waitFor()
+  await page.getByRole('button', { name: 'Close this dialog', exact: true }).click()
+  await page.locator('.entity-approval-dialog').waitFor({ state: 'hidden' })
+  await page.evaluate(() => archiveViewTest.release('form'))
+  assert.equal(await page.evaluate(() => window.opening), false, '关闭后表单配置响应不得继续加载实体')
+  await page.evaluate(() => { archiveViewTest.failProgressOnce();return archiveViewTest.openNative(null) })
+  const formReads = await page.evaluate(() => archiveViewTest.state.requests.filter(url => url.endsWith('/form-runtime')).length)
+  await page.getByRole('tab', { name: '流程图', exact: true }).click()
+  await page.getByText('流程进度加载失败，请重试', { exact: true }).waitFor()
+  await page.getByRole('button', { name: '重试流程历史', exact: true }).click()
+  await page.locator('.djs-element[data-element-id="review"]').waitFor()
+  await page.getByRole('tab', { name: '基本信息', exact: true }).click()
+  assert.equal(await page.evaluate(() => archiveViewTest.state.requests.filter(url => url.endsWith('/form-runtime')).length), formReads, '进度重试不重载表单或重放详情事件')
+  await page.getByRole('button', { name: 'Close this dialog', exact: true }).click()
+  await page.locator('.entity-approval-dialog').waitFor({ state: 'hidden' })
   await page.evaluate(() => archiveViewTest.showNative())
   const native = page.locator('#native-history')
   await native.getByText('原生审批记录', { exact: true }).waitFor()
@@ -124,5 +172,6 @@ try {
   assert.equal(await native.locator('.archive-panel').count(), 0)
   assert.deepEqual(errors, [])
   assert.deepEqual(await page.evaluate(() => archiveViewTest.state.unexpected), [])
-  console.log('实体查看浏览器验证通过：按钮指定表单与流程节点表单上下文、关联子页面请求、无独立按钮/操作列、流程图与重复审批、原生/迁入轮次切换、普通记录清理、查询失败提示。')
+  console.log('实体查看浏览器验证通过：按钮指定表单与流程节点表单上下文、关联子页面请求、无独立按钮/操作列、流程图与重复审批、原生/迁入轮次切换、普通记录清理、查询失败提示、首屏不等待档案/按钮/进度、切换与关闭丢弃旧响应。')
+} catch(error) { console.error(error); await browser?.contexts()[0]?.pages()[0]?.screenshot({path:'/private/tmp/flow-view-browser-failure.png'}).catch(()=>{}); throw error
 } finally { await browser?.close(); await server?.close(); rmSync(fixture, { recursive: true, force: true }) }

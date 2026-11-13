@@ -31,20 +31,20 @@
       >
         <template #default="{ data }">
           <el-tooltip :content="data.displayPath || data[labelKey]" :show-after="400">
-            <span :class="{ 'load-more': data.more }">{{ data[labelKey] }}</span>
+            <span :class="{ 'load-more': data.more, 'unselectable-node': !data.more && !canSelect(data) }">{{ data[labelKey] }}</span>
           </el-tooltip>
         </template>
       </el-tree>
       <template v-else>
         <el-button link @click="clearSearch">返回树形导航</el-button>
         <el-empty v-if="!searchLoading && !searchRows.length" :description="emptyDescription" :image-size="60" />
-        <button v-for="row in searchRows" :key="row.id" class="search-result" :disabled="row.selectionDisabled" @click="emit('select', row)">
+        <button v-for="row in searchRows" :key="row.id" class="search-result" :disabled="!canSelect(row)" @click="selectNode(row)">
           <span>{{ row[labelKey] }}</span>
           <small>{{ row.displayPath }}</small>
         </button>
         <el-pagination
           v-if="searchTotal > searchPageSize"
-          small
+          size="small"
           layout="prev, pager, next"
           :total="searchTotal"
           :page-size="searchPageSize"
@@ -62,6 +62,7 @@ import { nextTick, ref, watch } from 'vue'
 const props = defineProps({
   modelValue: { type: String, default: '0' },
   pageLoader: { type: Function, required: true },
+  childrenLoader: { type: Function, default: null },
   pathLoader: { type: Function, required: true },
   labelKey: { type: String, required: true },
   rootLabel: { type: String, required: true },
@@ -70,6 +71,8 @@ const props = defineProps({
   parentCandidates: Boolean,
   searchable: Boolean,
   selectableRoot: { type: Boolean, default: true },
+  // 选择资格与是否可展开分开：停用祖先和类型不匹配的组织仍可能有可选的下级部门。
+  nodeSelectable: { type: Function, default: () => true },
   type: { type: String, default: '' },
   excludeId: { type: String, default: '' }
 })
@@ -95,6 +98,10 @@ function isLeaf(data) {
   return !!data.more || data.selectionDisabled || !data.hasChildren
 }
 
+function canSelect(data) {
+  return data.id === '0' ? props.selectableRoot : !data.selectionDisabled && props.nodeSelectable(data)
+}
+
 function pageParams(parentId, pageNum, pageSize) {
   return { parentId, pageNum, pageSize, type: props.type, excludeId: props.excludeId || undefined, parentCandidates: props.parentCandidates || undefined }
 }
@@ -103,16 +110,17 @@ function moreNode(parentId, pageNum) {
   return { id: `__more__${parentId}`, [props.labelKey]: '加载更多…', more: true, parentId, pageNum }
 }
 
-/** 每次展开仅取直属下级的一页，加载更多作为同级操作项，保持已展开分支。 */
+/** 组织树展开读取一层全部直属下级；保留其他目录已有的分页加载能力，搜索仍独立分页。 */
 function loadChildren(node, resolve, reject) {
   if (node.level === 0) return resolve(roots)
   const parentId = node.data.id
   const version = treeVersion.value
-  const pending = props.pageLoader(pageParams(parentId, 1, branchPageSize))
-    .then(page => {
+  const params = pageParams(parentId, 1, branchPageSize)
+  const pending = (props.childrenLoader ? props.childrenLoader(params) : props.pageLoader(params))
+    .then(result => {
       if (version !== treeVersion.value) return
-      const rows = [...page.records]
-      if (rows.length < page.total) rows.push(moreNode(parentId, 2))
+      const rows = props.childrenLoader ? [...result] : [...result.records]
+      if (!props.childrenLoader && rows.length < result.total) rows.push(moreNode(parentId, 2))
       resolve(rows)
     })
     .catch(e => {
@@ -152,9 +160,8 @@ async function loadMore(data) {
 
 function selectNode(data) {
   if (data.more) return loadMore(data)
-  if (data.selectionDisabled) return treeRef.value.setCurrentKey(props.modelValue)
-  if (data.id !== '0' || props.selectableRoot) emit('select', data)
-  else treeRef.value.setCurrentKey(props.modelValue)
+  if (canSelect(data)) emit('select', data)
+  else treeRef.value?.setCurrentKey(props.modelValue)
 }
 
 /** 补齐目标父链，即使目标位于尚未翻到的同级页也能直接定位。 */
@@ -253,6 +260,10 @@ defineExpose({ reload, reveal })
 
 .load-more {
   color: var(--el-color-primary);
+}
+
+.unselectable-node {
+  color: var(--el-text-color-placeholder);
 }
 
 .search-result {

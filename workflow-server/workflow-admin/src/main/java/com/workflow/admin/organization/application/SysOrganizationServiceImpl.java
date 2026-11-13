@@ -108,6 +108,74 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         return ancestors;
     }
 
+    @Override
+    public List<SysOrganization> getChildren(String parentId, String type, String excludeId) {
+        if (StringUtils.hasText(type) && !List.of("org", "dept").contains(type)) {
+            throw new IllegalArgumentException("类型只能是组织或部门");
+        }
+        String scopeId = StringUtils.hasText(parentId) ? parentId : "0";
+        if (!"0".equals(scopeId)) requireHierarchyNode(scopeId);
+        var query = Wrappers.<SysOrganization>lambdaQuery()
+                .eq(SysOrganization::isHierarchyReady, 1).eq(SysOrganization::getParentId, scopeId)
+                .eq(StringUtils.hasText(type), SysOrganization::getType, type);
+        if (StringUtils.hasText(excludeId)) {
+            SysOrganization excluded = orgMapper.selectById(excludeId);
+            if (excluded == null) throw new IllegalArgumentException("待编辑组织部门不存在");
+            query.ne(SysOrganization::getId, excludeId);
+            if (StringUtils.hasText(excluded.getPath())) query.notLikeRight(SysOrganization::getPath, excluded.getPath());
+        }
+        query.orderByAsc(SysOrganization::getSortOrder, SysOrganization::getCreateTime, SysOrganization::getId);
+        List<SysOrganization> rows = orgMapper.selectList(query);
+        fillManagementRows(rows);
+        return rows;
+    }
+
+    @Override
+    public PageResult<SysOrganization> getSelectionPage(
+            int pageNum, int pageSize, String parentId, String keyword, String type) {
+        if (pageNum < 1 || pageSize < 1 || pageSize > 100) {
+            throw new IllegalArgumentException("页码必须大于 0，每页数量必须在 1 到 100 之间");
+        }
+        if (StringUtils.hasText(type) && !List.of("org", "dept").contains(type)) {
+            throw new IllegalArgumentException("类型只能是组织或部门");
+        }
+        String scopeId = StringUtils.hasText(parentId) ? parentId : "0";
+        SysOrganization scope = "0".equals(scopeId) ? null : requireHierarchyNode(scopeId);
+        var query = Wrappers.<SysOrganization>lambdaQuery().eq(SysOrganization::isHierarchyReady, 1)
+                .eq(SysOrganization::getStatus, "0")
+                .eq(StringUtils.hasText(type), SysOrganization::getType, type);
+        if (StringUtils.hasText(keyword)) {
+            // 搜索是数据库分页，不能先下载全目录再在浏览器过滤。
+            if (scope != null) query.likeRight(SysOrganization::getPath, scope.getPath());
+            String term = keyword.trim();
+            query.and(q -> q.like(SysOrganization::getOrgName, term).or().like(SysOrganization::getOrgCode, term));
+        } else {
+            query.eq(SysOrganization::getParentId, scopeId);
+        }
+        query.orderByAsc(SysOrganization::getSortOrder, SysOrganization::getCreateTime, SysOrganization::getId);
+        Page<SysOrganization> page = orgMapper.selectPage(new Page<>(pageNum, pageSize), query);
+        fillManagementRows(page.getRecords());
+        return new PageResult<>(page.getRecords(), page.getTotal(), pageNum, pageSize);
+    }
+
+    @Override
+    public List<SysOrganization> resolveSelection(List<String> values, String valueKey) {
+        if (!"id".equals(valueKey) && !"code".equals(valueKey)) throw new IllegalArgumentException("值类型只能是 id 或 code");
+        if (values == null || values.isEmpty()) return List.of();
+        if (values.size() > 100) throw new IllegalArgumentException("每次最多回显 100 个组织部门");
+        List<String> keys = values.stream().filter(StringUtils::hasText).map(String::trim).distinct().toList();
+        if (keys.isEmpty()) return List.of();
+        // 保留已选停用节点的名称，避免仅打开表单就丢失历史配置；待关联节点不能参与层级选择。
+        var query = Wrappers.<SysOrganization>lambdaQuery().eq(SysOrganization::isHierarchyReady, 1);
+        if ("id".equals(valueKey)) query.in(SysOrganization::getId, keys);
+        else query.and(q -> q.in(SysOrganization::getOrgCode, keys)
+                .or(nested -> nested.and(empty -> empty.isNull(SysOrganization::getOrgCode)
+                        .or().eq(SysOrganization::getOrgCode, "")).in(SysOrganization::getId, keys)));
+        List<SysOrganization> rows = orgMapper.selectList(query);
+        fillManagementRows(rows);
+        return rows;
+    }
+
     /** 父链待补齐的来源节点不能作为浏览范围，避免 NULL 路径扩大搜索范围。 */
     private SysOrganization requireHierarchyNode(String id) {
         SysOrganization node = orgMapper.selectById(id);
@@ -124,12 +192,16 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     private void fillManagementRows(List<SysOrganization> rows) {
         if (rows.isEmpty()) return;
         List<String> ids = rows.stream().map(SysOrganization::getId).toList();
-        var parentsWithChildren = orgMapper.selectList(Wrappers.<SysOrganization>lambdaQuery()
-                        .select(SysOrganization::getParentId)
-                        .eq(SysOrganization::isHierarchyReady, 1)
-                        .in(SysOrganization::getParentId, ids)
-                        .groupBy(SysOrganization::getParentId))
-                .stream().map(SysOrganization::getParentId).collect(Collectors.toSet());
+        var parentsWithChildren = new LinkedHashSet<String>();
+        // 树的同级节点不分页，可能超过 Oracle 的 IN 项数限制；批量补标记仍保持每批最多 500 项。
+        for (int offset = 0; offset < ids.size(); offset += 500) {
+            orgMapper.selectList(Wrappers.<SysOrganization>lambdaQuery()
+                            .select(SysOrganization::getParentId)
+                            .eq(SysOrganization::isHierarchyReady, 1)
+                            .in(SysOrganization::getParentId, ids.subList(offset, Math.min(offset + 500, ids.size())))
+                            .groupBy(SysOrganization::getParentId))
+                    .forEach(row -> parentsWithChildren.add(row.getParentId()));
+        }
         var ancestorIds = new LinkedHashSet<String>();
         for (SysOrganization row : rows) ancestorIds.addAll(pathIds(row.getPath()));
         var names = new HashMap<String, String>();
