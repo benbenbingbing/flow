@@ -2,7 +2,7 @@
 
 文档版本：1.8；整理日期：2026-10-08。
 
-2026-11-12 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V132，均包含 200 张平台及 Flowable 表、2,792 个字段。V130 职务管理收敛为当前人员关系；V131 增加身份来源最新原文快照，相关字段与业务规则见第 9 章；V132 仅新增内置实体字段赋值动作目录种子，复用第 5.11–5.12 节存储，结构计数不变。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的统计仍是历史核对记录。
+2026-11-13 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V133，均包含 200 张平台及 Flowable 表、2,797 个字段。V130 职务管理收敛为当前人员关系；V131 增加身份来源最新原文快照，相关字段与业务规则见第 9 章；V132 仅新增内置实体字段赋值动作目录种子，复用第 5.11–5.12 节存储，结构计数不变。V133 为字典项新增 ext1～ext5 五个可选文本字段，用途及兼容规则见第 13.2 节。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的统计仍是历史核对记录。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
@@ -6289,9 +6289,9 @@ V058 新增来源坐标、依赖强度和解析状态；UNKNOWN 或 INVALID 不�
 
 #### 13.2.1 业务说明
 
-保存字典项的实际值、显示标签、样式、默认项和排序。
+保存字典项的编码、实际值、显示标签、树形关系、排序及定制模块使用的附加文本。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 18 个。
 
 #### 13.2.2 字段设计
 
@@ -6307,6 +6307,11 @@ V058 新增来源坐标、依赖强度和解析状态；UNKNOWN 或 INVALID 不�
 | `sort` | 排序 | `int` | 是 | `'0'` | 排序。 | 现存 |
 | `status` | 状态 | `char(1)` | 是 | `'0'` | 状态：0-启用 1-禁用。 | 现存 |
 | `remark` | 备注 | `varchar(500)` | 是 | `NULL` | 备注。 | 现存 |
+| `ext1` | 扩展字段1 | `varchar(500)` | 是 | `NULL` | 供定制模块约定用途并读取；通用字典只保存文本，类型转换及业务校验由定制代码负责。 | 现存 |
+| `ext2` | 扩展字段2 | `varchar(500)` | 是 | `NULL` | 供定制模块约定用途并读取；通用字典只保存文本，类型转换及业务校验由定制代码负责。 | 现存 |
+| `ext3` | 扩展字段3 | `varchar(500)` | 是 | `NULL` | 供定制模块约定用途并读取；通用字典只保存文本，类型转换及业务校验由定制代码负责。 | 现存 |
+| `ext4` | 扩展字段4 | `varchar(500)` | 是 | `NULL` | 供定制模块约定用途并读取；通用字典只保存文本，类型转换及业务校验由定制代码负责。 | 现存 |
+| `ext5` | 扩展字段5 | `varchar(500)` | 是 | `NULL` | 供定制模块约定用途并读取；通用字典只保存文本，类型转换及业务校验由定制代码负责。 | 现存 |
 | `deleted` | 逻辑删除标记 | `tinyint` | 是 | `'0'` | 逻辑删除。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
@@ -6329,9 +6334,16 @@ V058 新增来源坐标、依赖强度和解析状态；UNKNOWN 或 INVALID 不�
 
 字典项值与显示文本分离，动态配置需要明确保存值还是展示标签。
 
+- `ext1`～`ext5` 是固定、可选的文本槽位，每个最多 500 字符。字典类型不增加字段定义、必填、默认值或联动配置，各定制模块自行约定业务含义。
+- 新增、单项更新、批量快捷创建和配置迁移导入统一检查扩展值长度，不自动裁剪、去空白或解析内容；其他业务规则由定制模块负责。
+- 历史项不回填，未使用的槽位允许 NULL。更新时未传或为 NULL 的槽位保留旧值；管理页面以空字符串明确清空，Oracle 兼容库会将空字符串存为 NULL，回显时视为空值。
+- 查询树、内存字典缓存和配置迁移快照携带五个扩展字段。旧版配置包没有这些属性时保留目标环境已有值，树形父项仍按既有编码规则迁移。
+- 扩展字段不增加索引、外键或唯一约束，不改变 `itemCode`、`itemValue`、启停和父子关系的既有语义。
+- MySQL / OB MySQL、PostgreSQL / 人大金仓使用 VARCHAR(500)，Oracle / 达梦 / OB Oracle 使用 VARCHAR2(500 CHAR)，显式按字符计长，均可空且默认 NULL。
+
 #### 13.2.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
+结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。扩展字段来源：[V133__dictionary_item_extensions.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V133__dictionary_item_extensions.sql)。该增量脚本采用 MySQL 兼容语法，由 Flyway 按版本执行一次；其他数据库的存量升级语法按目标方言调整，七份空库初始化脚本的字段语义保持等价。
 
 实现定位：[SysDictItemMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/infrastructure/persistence/mapper/SysDictItemMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[SysDictItemService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/application/SysDictItemService.java)。
 

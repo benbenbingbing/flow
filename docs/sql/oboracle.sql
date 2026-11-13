@@ -7,6 +7,7 @@
 -- 2026-11-12 同步至 V130，职务仅保留当前人员关系，移除任命批次及历史、预约和主职字段。
 -- 2026-11-12 同步至 V131，新增按来源对象覆盖保存的原始 JSON 快照表，不回填历史原文。
 -- 2026-11-12 同步至 V132，新增内置实体字段赋值动作目录；表结构及字段数保持不变。
+-- 2026-11-13 同步至 V133，字典项增加 ext1～ext5 五个可选文本字段，每个最多 500 字符。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
 -- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -3036,6 +3037,11 @@ CREATE TABLE "SYS_DICT_ITEM" (
   "SORT" number(10) DEFAULT '0',
   "STATUS" char(1) DEFAULT '0',
   "REMARK" varchar2(500),
+  "EXT1" varchar2(500 CHAR) DEFAULT NULL,
+  "EXT2" varchar2(500 CHAR) DEFAULT NULL,
+  "EXT3" varchar2(500 CHAR) DEFAULT NULL,
+  "EXT4" varchar2(500 CHAR) DEFAULT NULL,
+  "EXT5" varchar2(500 CHAR) DEFAULT NULL,
   "DELETED" number(3) DEFAULT '0',
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
   "UPDATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -6807,6 +6813,11 @@ COMMENT ON COLUMN "SYS_DICT_ITEM"."ITEM_VALUE" IS '项值。';
 COMMENT ON COLUMN "SYS_DICT_ITEM"."SORT" IS '排序。';
 COMMENT ON COLUMN "SYS_DICT_ITEM"."STATUS" IS '状态：0-启用 1-禁用。';
 COMMENT ON COLUMN "SYS_DICT_ITEM"."REMARK" IS '备注。';
+COMMENT ON COLUMN "SYS_DICT_ITEM"."EXT1" IS '扩展字段1：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。';
+COMMENT ON COLUMN "SYS_DICT_ITEM"."EXT2" IS '扩展字段2：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。';
+COMMENT ON COLUMN "SYS_DICT_ITEM"."EXT3" IS '扩展字段3：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。';
+COMMENT ON COLUMN "SYS_DICT_ITEM"."EXT4" IS '扩展字段4：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。';
+COMMENT ON COLUMN "SYS_DICT_ITEM"."EXT5" IS '扩展字段5：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。';
 COMMENT ON COLUMN "SYS_DICT_ITEM"."DELETED" IS '逻辑删除标记：逻辑删除。';
 COMMENT ON COLUMN "SYS_DICT_ITEM"."CREATE_TIME" IS '创建时间。';
 COMMENT ON COLUMN "SYS_DICT_ITEM"."UPDATE_TIME" IS '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。';

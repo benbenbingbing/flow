@@ -226,10 +226,12 @@
       v-model="itemDialogVisible"
       :title="itemDialogTitle"
       width="500px"
+      top="5vh"
       :close-on-click-modal="false"
     >
       <el-form
         ref="itemFormRef"
+        class="dict-item-form"
         :model="itemForm"
         :rules="itemRules"
         label-width="100px"
@@ -282,6 +284,23 @@
             type="textarea"
             :rows="2"
             placeholder="请输入备注"
+          />
+        </el-form-item>
+        <el-divider content-position="left">扩展信息</el-divider>
+        <div class="field-help" style="margin-bottom: 12px">供定制功能使用，可按约定填写；每个字段最多 500 字符。</div>
+        <el-form-item
+          v-for="field in extensionFields"
+          :key="field"
+          :label="`扩展字段${field.slice(-1)}`"
+          :prop="field"
+        >
+          <el-input
+            v-model="itemForm[field]"
+            type="textarea"
+            :rows="2"
+            :maxlength="500"
+            show-word-limit
+            placeholder="可选，请按定制功能约定填写"
           />
         </el-form-item>
       </el-form>
@@ -479,6 +498,9 @@ const itemFormRef = ref()
 const itemSubmitLoading = ref(false)
 const itemSelectTree = ref<any[]>([])
 
+// 固定五个文本槽位；这里只负责维护内容，不引入按字典配置字段含义的能力。
+const extensionFields = ['ext1', 'ext2', 'ext3', 'ext4', 'ext5'] as const
+
 const itemForm = reactive({
   id: '',
   dictId: '',
@@ -489,7 +511,12 @@ const itemForm = reactive({
   itemValue: '',
   sort: 0,
   status: '0',
-  remark: ''
+  remark: '',
+  ext1: '',
+  ext2: '',
+  ext3: '',
+  ext4: '',
+  ext5: ''
 })
 
 const itemRules = {
@@ -531,7 +558,12 @@ const resetItemForm = () => {
     itemValue: '',
     sort: 0,
     status: '0',
-    remark: ''
+    remark: '',
+    ext1: '',
+    ext2: '',
+    ext3: '',
+    ext4: '',
+    ext5: ''
   })
 }
 
@@ -561,7 +593,13 @@ const handleEditItem = (row: any) => {
     itemValue: row.itemValue,
     sort: row.sort,
     status: row.status,
-    remark: row.remark
+    remark: row.remark,
+    // 旧数据的 NULL 回显为空字符串，用户删除内容后可以通过普通更新明确清空。
+    ext1: row.ext1 ?? '',
+    ext2: row.ext2 ?? '',
+    ext3: row.ext3 ?? '',
+    ext4: row.ext4 ?? '',
+    ext5: row.ext5 ?? ''
   })
   itemSelectTree.value = buildSelectTree(itemTree.value)
   itemDialogTitle.value = '编辑字典项'
@@ -686,6 +724,13 @@ onMounted(() => {
   color: #909399;
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* 五个扩展文本框会拉长表单，固定滚动区域让保存按钮在较小屏幕上也能直接操作。 */
+.dict-item-form {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding-right: 12px;
 }
 
 @media (max-width: 960px) {

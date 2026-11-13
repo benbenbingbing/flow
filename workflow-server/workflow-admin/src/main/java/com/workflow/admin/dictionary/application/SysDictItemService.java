@@ -115,6 +115,7 @@ public class SysDictItemService {
             captureArguments = true,
             captureResult = true)
     public SysDictItem saveItem(SysDictItem item) {
+        DictItemExtensionSupport.validate(item);
         if (!StringUtils.hasText(item.getStatus())) {
             item.setStatus(SysDictItem.Status.ENABLED.getValue());
         }

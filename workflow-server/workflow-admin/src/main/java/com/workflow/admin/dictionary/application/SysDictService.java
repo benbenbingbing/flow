@@ -184,6 +184,7 @@ public class SysDictService {
         }
         Set<String> itemCodes = new HashSet<>();
         for (SysDictItem item : items) {
+            DictItemExtensionSupport.validate(item);
             if (!StringUtils.hasText(item.getItemCode())
                     || !StringUtils.hasText(item.getItemLabel())) {
                 throw new IllegalArgumentException("代码项编码和名称不能为空");

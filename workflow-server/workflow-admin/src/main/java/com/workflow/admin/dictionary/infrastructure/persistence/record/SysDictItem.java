@@ -1,6 +1,7 @@
 package com.workflow.admin.dictionary.infrastructure.persistence.record;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
@@ -14,6 +15,7 @@ import java.util.List;
  * 字典明细实体
  * <p>
  * 对应 sys_dict_item 表，存储字典项的编码、标签、值及树形结构（parentId），支持状态启用/禁用。
+ * ext1～ext5 供定制模块读取；更新时 NULL 保留旧值，空字符串用于明确清空。
  * </p>
  */
 @Data
@@ -68,6 +70,26 @@ public class SysDictItem {
      * 备注
      */
     private String remark;
+
+    /** 扩展字段1：供定制模块约定用途并直接读取，通用字典只保存文本，不解释业务含义。 */
+    @TableField(updateStrategy = FieldStrategy.NOT_NULL)
+    private String ext1;
+
+    /** 扩展字段2：供定制模块保存附加参数，类型转换和业务校验由定制代码负责。 */
+    @TableField(updateStrategy = FieldStrategy.NOT_NULL)
+    private String ext2;
+
+    /** 扩展字段3：供定制模块保存附加参数，类型转换和业务校验由定制代码负责。 */
+    @TableField(updateStrategy = FieldStrategy.NOT_NULL)
+    private String ext3;
+
+    /** 扩展字段4：供定制模块保存附加参数，类型转换和业务校验由定制代码负责。 */
+    @TableField(updateStrategy = FieldStrategy.NOT_NULL)
+    private String ext4;
+
+    /** 扩展字段5：供定制模块保存附加参数，类型转换和业务校验由定制代码负责。 */
+    @TableField(updateStrategy = FieldStrategy.NOT_NULL)
+    private String ext5;
 
     /**
      * 创建时间

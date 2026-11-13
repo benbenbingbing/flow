@@ -7,6 +7,7 @@
 -- 2026-11-12 同步至 V130，职务仅保留当前人员关系，移除任命批次及历史、预约和主职字段。
 -- 2026-11-12 同步至 V131，新增按来源对象覆盖保存的原始 JSON 快照表，不回填历史原文。
 -- 2026-11-12 同步至 V132，新增内置实体字段赋值动作目录；表结构及字段数保持不变。
+-- 2026-11-13 同步至 V133，字典项增加 ext1～ext5 五个可选文本字段，每个最多 500 字符。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 在预先创建的空数据库中执行：mysql --default-character-set=utf8mb4 数据库名 < docs/sql/mysql.sql
 -- 本文件是独立导入脚本，不是 Flyway B 迁移；不要在已执行 Flyway 迁移的库中重复导入。
@@ -3772,6 +3773,11 @@ CREATE TABLE `sys_dict_item` (
   `sort` int DEFAULT '0' COMMENT '排序。',
   `status` char(1) COLLATE utf8mb4_unicode_ci DEFAULT '0' COMMENT '状态：0-启用 1-禁用。',
   `remark` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '备注。',
+  `ext1` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '扩展字段1：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。',
+  `ext2` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '扩展字段2：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。',
+  `ext3` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '扩展字段3：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。',
+  `ext4` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '扩展字段4：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。',
+  `ext5` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '扩展字段5：供定制模块约定用途，通用字典仅保存文本，不解释业务含义。',
   `deleted` tinyint DEFAULT '0' COMMENT '逻辑删除标记：逻辑删除。',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间。',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。',

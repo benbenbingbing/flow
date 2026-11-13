@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.dictionary.port.DictionaryMigrationPort;
 import com.workflow.admin.dictionary.application.DictCacheService;
+import com.workflow.admin.dictionary.application.DictItemExtensionSupport;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
@@ -78,6 +79,7 @@ public class DictionaryMigrationAdapter implements DictionaryMigrationPort {
         for (Map<String, Object> value : incomingItems) {
             SysDictItem incomingItem = convert(
                     value, SysDictItem.class);
+            DictItemExtensionSupport.validate(incomingItem);
             if (!StringUtils.hasText(
                     incomingItem.getItemCode())) {
                 throw new IllegalStateException(

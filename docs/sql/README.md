@@ -2,7 +2,26 @@
 
 本目录根目录的七份数据库脚本用于预先创建的空数据库或空 schema，包含平台表、Flowable 引擎表和系统种子数据，不包含 `biz_*` 动态业务表或业务记录。按目标数据库选择文件，并遵守文件头中的字符集、签名密钥和管理员 Bootstrap 要求。`upgrade/mysql` 下的文件则是明确标注用途的 MySQL 存量库手工升级脚本。
 
-本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132 可直接执行的 MySQL 增量脚本及操作方法见下文。
+本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132、V133 的 MySQL 增量脚本及执行限制见下文。
+
+## 2026-11-13 同步 V133 字典项扩展字段
+
+已同时核对 `src/main/resources/db/migration` 的 SQL 和 `src/main/java/db/migration` 的 Java 迁移至 V133，无重复版本号。七份空库初始化脚本均为 **200 张表、2,797 个字段**，相对 V132 只给 `sys_dict_item` 增加 `ext1`～`ext5` 五列，不增加表、索引、约束或系统种子数据。
+
+新增迁移 [`V133__dictionary_item_extensions.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V133__dictionary_item_extensions.sql)，使用与现有 SQL 迁移一致的 MySQL 兼容语法，为 `sys_dict_item` 增加五个可空、默认 NULL 的 VARCHAR(500) 文本字段，不回填旧项。普通 ADD COLUMN 由 Flyway 按版本执行一次，不提供重复手工执行或逐列跳过逻辑；不要将空库初始化脚本与这份存量增量脚本重复应用到同一结构。其他数据库的存量升级语法需按方言调整。七份空库初始化脚本继续保持等价结构：MySQL / OB MySQL、PostgreSQL / 人大金仓使用 VARCHAR(500)，Oracle / 达梦 / OB Oracle 使用 VARCHAR2(500 CHAR)，每个最多保存 500 字符。
+
+这些字段只为定制代码预留文本位置；通用字典提供填写、长度校验和读取，不增加字典类型的字段配置。查询树、字典缓存及配置迁移包携带全部五个值；旧请求和旧配置包未携带或传 NULL 时保留现值，页面用空字符串明确清空（Oracle 兼容库保存为空值）。字段用途、关联及更新规则见 [数据库设计 13.2](database-design.md#132-sys_dict_item-系统字典明细表)。
+
+### 本次验证
+
+- 后端所选 **21 项测试通过**：新增 `DictionaryItemExtensionsTest` 的 8 项、`DictionaryItemExtensionsMigrationTest` 的 9 项，回归既有字典值查询和接口权限的 4 项。H2 MySQL 模式验证实际初始化脚本的字典表定义、MyBatis 保存与查询、500 字符及原文空白保留、缓存和树形 JSON、旧请求保留、空字符串清空、快捷创建、配置快照导入及旧包兼容，并逐个验证五个字段在所有写入入口拒绝超长内容。直接执行实际 SQL 文件，验证首次升级、Flyway validate 及重复 migrate 不重复增列；单独验证手工执行 SQL 后再执行会报重复列错误，已填写内容保持不变。
+- 七种方言的新增列逐项核对类型、500 字符长度、可空性、默认 NULL 及用途注释；七份脚本的 200 个表名和 2,797 个字段清单一致。与修改前比较，去除本次五列后的所有表 DDL 及全部种子 INSERT 保持一致。
+- 功能实现阶段管理端与嵌入端生产构建已通过；浏览器使用实际 `Dict.vue` 和接口夹具验证了五字段新增提交、编辑回显、清空、重新新增不残留、旧数据 NULL 回显为空，以及 500 字符输入限制。本轮只替换迁移形式并重跑所选后端测试，不重复运行未修改的前端。
+- 本轮未连接 MySQL、PostgreSQL、Oracle、达梦、人大金仓、OB MySQL 或 OB Oracle 的实际数据库实例，也未连接或修改业务数据库；七份脚本完成静态结构核对，H2 验证不替代七种数据库的实机验证。
+
+验证命令：在 `workflow-server` 执行 `mvn -o -pl workflow-admin,workflow-db-migrator -am -Dtest=DictionaryItemExtensionsTest,DictionaryItemExtensionsMigrationTest,SysDictItemValuesTest,SysDictControllerAccessPolicyTest -Dsurefire.failIfNoSpecifiedTests=false clean test`；前端功能验证命令为在 `workflow-frontend/workflow-web` 执行 `npm run build`。
+
+本次迁移文件清单：新增 **V133__dictionary_item_extensions.sql**；移除本任务新建、尚未合并的 **V133__dictionary_item_extensions.java**，由 SQL 替代；修改、删除、重命名主分支历史 SQL / Java 迁移：**无**。干净构建会移除旧 Java 迁移的编译产物，避免同一版本同时发现 SQL 与 Java。未建立基线、未执行 repair。
 
 ## 2026-11-12 补充 V131 MySQL 手工升级脚本
 
