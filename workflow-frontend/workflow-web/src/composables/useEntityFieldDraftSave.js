@@ -47,6 +47,8 @@ export function normalizeEntityFieldForEditing(rawField = {}) {
 
 export function normalizeEntityFieldForSave(source = {}) {
   const {
+    optionsJson,
+    options,
     optionSource,
     uiConfigurable,
     runtimeReadable,

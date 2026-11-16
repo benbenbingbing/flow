@@ -4,14 +4,27 @@ import { withEntityStatusRuntimeForm, PROCESS_STATUS_OPTIONS, resolveProcessStat
 import { normalizeEntityRecordForForm } from '../src/shared/form-runtime/index.js'
 import { useProcessDetail } from '../src/composables/useProcessDetail.js'
 import { resolveApprovalDialogTitle } from '../src/views/entity/components/approval/entityApprovalDisplay.js'
+import { projectRuntimeFields } from '../src/shared/form-runtime/formModel.js'
 
 test('lifecycle options are independent, readonly, and available to forms', () => {
   const form = withEntityStatusRuntimeForm({ fields: [{ id: 'f', fieldCode: 'processStatus' }], nodes: [{ nodeType: 'FIELD', bindingRef: 'f' }] }, [], [{ statusCode: 'RUNNING', statusName: '业务自定义状态' }])
   assert.deepEqual(form.fields[0].options, PROCESS_STATUS_OPTIONS)
   assert.equal(form.fields[0].editable, false)
   assert.equal(form.nodes[0].props.disabled, true)
+  assert.equal(form.nodes[0].props.options, undefined)
+  assert.deepEqual(projectRuntimeFields(form).fields[0].options, PROCESS_STATUS_OPTIONS)
   assert.equal(resolveProcessStatusLabel('COMPLETED'), '已完成')
   assert.equal(normalizeEntityRecordForForm({ processStatus: 'RUNNING', data: { processStatus: 'FORGED' } }).processStatus, 'RUNNING')
+})
+
+test('published inline arrays cannot become runtime candidates through node projection', () => {
+  const old = [{ value: 'old', label: '历史选项' }]
+  const field = { id: 'f', fieldCode: 'choice', fieldType: 'SELECT', options: old }
+  const node = { nodeType: 'FIELD', nodeKey: 'choice', bindingType: 'ENTITY_FIELD', bindingRef: 'f', props: { componentType: 'select', options: old } }
+  assert.equal(projectRuntimeFields({ fields: [field] }).fields[0].options, undefined)
+  assert.equal(projectRuntimeFields({ fields: [field], nodes: [node] }).fields[0].options, undefined)
+  const current = [{ value: 'new', label: '代码表项' }]
+  assert.deepEqual(projectRuntimeFields({ fields: [{ ...field, runtimeOptions: current }], nodes: [node] }).fields[0].options, current)
 })
 
 test('discarded progress requests cannot repopulate a newly opened record', async () => {

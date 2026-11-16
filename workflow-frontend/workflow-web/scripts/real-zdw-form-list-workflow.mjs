@@ -1664,12 +1664,11 @@ async function main() {
         refEntityId: field.refEntityId
       })),
     optionFields: (parentAfter.fields || [])
-      .filter(field => field.dictType || field.optionsJson)
+      .filter(field => field.dictType)
       .map(field => ({
         fieldCode: field.fieldCode,
         fieldType: field.fieldType,
-        dictType: field.dictType,
-        optionsJson: field.optionsJson
+        dictType: field.dictType
       })),
     parentListFields: (parentListRuntime.schema?.fields || [])
       .filter(field => [
@@ -1684,7 +1683,6 @@ async function main() {
         fieldCode: field.fieldCode,
         fieldType: field.fieldType,
         dictType: field.dictType,
-        optionsJson: field.optionsJson,
         refEntityType: field.refEntityType,
         refEntityId: field.refEntityId
       })),

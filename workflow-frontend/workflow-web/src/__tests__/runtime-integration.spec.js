@@ -29,7 +29,6 @@ import {
   getCellValue,
   isReferenceListField,
   parseDataSourceConfig,
-  parseJsonOptions,
   toRuntimeFieldKey
 } from '@/shared/list-runtime'
 import {
@@ -62,20 +61,20 @@ import {
 const optionField = {
   fieldCode: 'priority',
   fieldType: 'SELECT',
-  optionsJson: JSON.stringify([
+  options: [
     { label: '高', value: 'HIGH' },
     { label: '低', value: 'LOW' }
-  ])
+  ]
 }
 assert.equal(formatListFieldValue({ data: { priority: 'HIGH' } }, optionField), '高')
 
 const multiOptionField = {
   fieldCode: 'tags',
   fieldType: 'MULTI_SELECT',
-  optionsJson: JSON.stringify([
+  options: [
     { label: '研发', value: 'dev' },
     { label: '测试', value: 'qa' }
-  ])
+  ]
 }
 assert.equal(formatListFieldValue({ data: { tags: ['dev', 'qa'] } }, multiOptionField), '研发, 测试')
 assert.equal(formatListFieldValue({ data: { tags: '["dev","qa"]' } }, multiOptionField), '研发, 测试')
@@ -133,8 +132,6 @@ assert.equal(formatListFieldValue({ data: { lines: [{ id: 1 }, { id: 2 }] } }, {
 assert.equal(formatListFieldValue({ status: 'DRAFT' }, { fieldCode: 'status' }), '草稿')
 assert.equal(formatListFieldValue({ data: { missing: null } }, { fieldCode: 'missing' }), '-')
 
-assert.deepEqual(parseJsonOptions('[{"label":"是","value":true}]'), [{ label: '是', value: true }])
-assert.deepEqual(parseJsonOptions('{bad json'), [])
 assert.deepEqual(parseDataSourceConfig('{"url":"/api/demo"}'), { url: '/api/demo' })
 assert.deepEqual(parseDataSourceConfig('{bad json'), {})
 

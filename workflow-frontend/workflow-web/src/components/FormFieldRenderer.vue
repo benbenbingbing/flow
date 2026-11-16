@@ -12,19 +12,42 @@
       @focus="$emit('focus', $event)"
     />
     <el-alert v-else type="error" :closable="false" title="当前组件未安装或不支持此节点，请检查组件配置" />
+    <el-alert v-if="optionError" type="error" :closable="false" :title="optionError" />
   </div>
 </template>
 
 <script setup>
-import { computed, ref, provide } from 'vue'
+import { computed, ref, provide, watch } from 'vue'
 import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
 import { resolveFieldComponentDescriptor } from '@/extensions/core/registries/formFieldRegistry.js'
 import { FIELD_SCRIPT_EVENTS } from '@flow/workflow-core/browser/field-script-metadata'
 import { formFieldProps, formFieldEmits } from '@flow/workflow-core/extensions/contracts/form-field'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
+import { getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 
 const props = defineProps(formFieldProps)
 const emit = defineEmits(formFieldEmits)
+// 标准表单可传入已解析候选；独立组件和子表单则按绑定代码表加载，禁止使用字段内嵌选项。
+const hasDynamicOptions = computed(() =>
+  ['SELECT', 'MULTI_SELECT', 'SELECT_MULTIPLE', 'RADIO', 'CHECKBOX'].includes(String(props.field.componentType || props.field.fieldType).toUpperCase())
+    && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length > 0)
+const dictionaryOptions = useFieldDictionaryOptions(() => props.options == null && !hasDynamicOptions.value ? [props.field] : [])
+const dynamicOptions = ref([]), optionError = ref('')
+// 宿主未预加载时由统一入口执行发布的动态绑定；明确空结果同样有效，不回退其他来源。
+watch(() => [props.options, props.field, props.formData, props.dataSourceRuntime], async (_, __, onCleanup) => {
+  let current = true
+  onCleanup(() => { current = false })
+  dynamicOptions.value = []; optionError.value = ''
+  if (props.options != null || !hasDynamicOptions.value) return
+  try {
+    if (!props.dataSourceRuntime?.loadOptions) throw new Error('当前表单未提供动态选项查询能力')
+    const options = await props.dataSourceRuntime.loadOptions(props.field, {
+      form: props.context.form, record: props.formData, context: props.context, mode: props.mode
+    })
+    if (current) dynamicOptions.value = Array.isArray(options) ? options : []
+  } catch (error) { if (current) optionError.value = error.message || '动态选项加载失败' }
+}, { deep: true, immediate: true })
 provideFieldScriptContext(() => props.context)
 const componentRef = ref(null)
 const resolvedDescriptor = computed(() => resolveFieldComponentDescriptor(props.field))
@@ -32,6 +55,7 @@ const resolvedComponent = computed(() => resolvedDescriptor.value?.component)
 provide(FIELD_SCRIPT_EVENTS, computed(() => resolvedDescriptor.value?.capabilities.scriptEvents))
 const componentProps = computed(() => ({
   ...props,
+  options: props.options ?? (hasDynamicOptions.value ? dynamicOptions.value : dictionaryOptions.value[props.field.dictType]) ?? [],
   node: props.node || props.field.node || null,
   config: safeParseConfig(props.field.componentProps),
   disabled: props.disabled || props.readonly
@@ -46,7 +70,7 @@ function patchForm(patch) {
 }
 /** 统一收集组件内部校验，无组件实现时阻止提交，避免把错误配置当成普通文本控件。 */
 async function validate() {
-  return Boolean(resolvedComponent.value) && (await componentRef.value?.validate?.()) !== false
+  return !optionError.value && Boolean(resolvedComponent.value) && (await componentRef.value?.validate?.()) !== false
 }
 defineExpose({ validate })
 </script>

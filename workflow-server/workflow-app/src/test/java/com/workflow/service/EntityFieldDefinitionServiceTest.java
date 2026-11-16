@@ -6,7 +6,6 @@ import com.workflow.entity.data.application.EntityFieldFileItemService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.application.EntityFieldDefinitionService;
-import com.workflow.entity.definition.application.EntityFieldOptionService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -53,8 +52,6 @@ class EntityFieldDefinitionServiceTest {
     @Mock
     private EntityFieldFileItemService fileItemService;
 
-    @Mock
-    private EntityFieldOptionService fieldOptionService;
 
     @Mock
     private EntityFieldValidationRuleService validationRuleService;
@@ -89,8 +86,6 @@ class EntityFieldDefinitionServiceTest {
         existingField.setIsSystem(false);
         existingField.setIsPublished(false);
 
-        lenient().when(fieldOptionService.findOptions(anyString()))
-                .thenReturn(List.of());
     }
 
     @Test

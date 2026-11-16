@@ -1308,6 +1308,10 @@ public class ConfigMigrationImportApplyService {
             List<EntityFormField> formFields = new ArrayList<>();
             for (Map<String, Object> fieldValue : mapList(value.get("fields"))) {
                 EntityFormField formField = convert(fieldValue, EntityFormField.class);
+                // 旧快照字段稍后会投影为节点；先拒绝内嵌输入，不能因投影丢弃旧属性而绕过保存校验。
+                if (StringUtils.hasText(formField.getOptionsJson())) {
+                    throw new IllegalArgumentException("导入表单含旧内嵌选项，请重新配置代码表或动态数据源后导出");
+                }
                 EntityField entityField = fields.get(formField.getFieldCode());
                 // 组成关系节点投影的 dataKey 是聚合数据入口，没有对应的 entity_field。
                 // 仅允许有真实 RELATION 节点支撑的虚拟字段，普通缺失字段仍然拒绝。

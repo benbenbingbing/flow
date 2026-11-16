@@ -20,7 +20,9 @@ export async function loadProcessConditionFieldOptions(fields, loadDictionary) {
   }))
   return fields.map(field => {
     const code = dictionaryCode(field)
-    return code ? { ...field, options: optionsByCode.get(code) } : field
+    return getProcessConditionFieldType(field) === 'select'
+      ? { ...field, options: code ? optionsByCode.get(code) : [] }
+      : field
   })
 }
 

@@ -13,7 +13,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const moduleRoot = path.resolve(scriptDir, '..')
 const packagePath = path.join(
   moduleRoot,
-  'src/main/resources/project-config/packages/project-f01-f07-v3.wfpack'
+  'src/main/resources/project-config/packages/project-f01-f07-v4.wfpack'
 )
 const evidenceDir = path.resolve(
   moduleRoot,

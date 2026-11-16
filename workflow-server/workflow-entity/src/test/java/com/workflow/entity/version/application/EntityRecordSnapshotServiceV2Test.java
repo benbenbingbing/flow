@@ -8,7 +8,6 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
-import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.version.application.EntityRecordSnapshotService.SnapshotCaptureV2;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
@@ -35,8 +34,6 @@ class EntityRecordSnapshotServiceV2Test {
     @Mock
     private EntityPublishedSnapshotService publishedSnapshotService;
     @Mock
-    private EntityFieldOptionMapper optionMapper;
-    @Mock
     private EntityStatusMapper statusMapper;
     @Mock
     private SysDictItemService dictItemService;
@@ -53,7 +50,6 @@ class EntityRecordSnapshotServiceV2Test {
         objectMapper.findAndRegisterModules();
         service = new EntityRecordSnapshotService(
                 publishedSnapshotService,
-                optionMapper,
                 statusMapper,
                 dictItemService,
                 userService,
@@ -272,7 +268,7 @@ class EntityRecordSnapshotServiceV2Test {
                 scope("LINES", "ROOT", "asset_lines"),
                 scope("COMPONENTS", "LINES", "line_components")));
         EntityVersionScopeFreezer freezer = new EntityVersionScopeFreezer(
-                publishedSnapshotService, new ObjectMapper(), optionMapper);
+                publishedSnapshotService, new ObjectMapper(), dictItemService);
         EntityVersionConfiguration frozen = freezer.freeze(draft);
 
         Map<String, Object> check = nestedRow(

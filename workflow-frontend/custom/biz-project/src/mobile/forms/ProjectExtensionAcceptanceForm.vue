@@ -14,7 +14,7 @@ const value = ref(createAcceptanceValue(props.modelValue)), fieldsRef = ref(), l
 let alive = true
 const definitions = [
   { fieldCode: 'name', fieldName: '验收单名称', isRequired: true },
-  { fieldCode: 'acceptance_scene', fieldName: '验收场景', componentType: 'select', isRequired: true, componentProps: { options: [{ value: 'FULL_EXTENSION', label: '全扩展验收' }, { value: 'FORM_EXTENSION', label: '表单扩展验收' }, { value: 'LIST_EXTENSION', label: '列表扩展验收' }, { value: 'PROCESS_EXTENSION', label: '流程扩展验收' }] } },
+  { fieldCode: 'acceptance_scene', fieldName: '验收场景', componentType: 'select', dictType: 'project_acceptance_scene', isRequired: true },
   { fieldCode: 'owner_name', fieldName: '验收负责人', isRequired: true },
   { fieldCode: 'planned_date', fieldName: '计划日期', fieldType: 'DATE', componentType: 'date' },
   { fieldCode: 'acceptance_score', fieldName: '验收评分', fieldType: 'INTEGER', componentType: 'project_acceptance_score', isRequired: true },

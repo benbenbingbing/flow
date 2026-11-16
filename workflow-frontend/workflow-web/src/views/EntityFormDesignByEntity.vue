@@ -2545,20 +2545,7 @@ async function ensureChildFormReleaseBinding(field) {
   delete field.childFormReleaseVersion
     }
 
-// 检查字段的 componentProps 中是否已有选项
-function hasOptionsInComponentProps(field) {
-  if (!field.componentProps) return false
-  try {
-    const compProps = typeof field.componentProps === 'string'
-      ? JSON.parse(field.componentProps)
-      : field.componentProps
-    return compProps && compProps.options && compProps.options.length > 0
-  } catch (e) {
-    return false
-  }
-}
-
-// 给表单字段补充 fieldCode 和选项数据
+// 给表单字段补充实体编码与代码表绑定；不拷贝历史内嵌候选。
 function enrichFieldCodes() {
   if (entityFields.value.length === 0 || formFields.value.length === 0) return
   formFields.value.forEach(field => {
@@ -2573,16 +2560,8 @@ function enrichFieldCodes() {
         field.fieldCode = entityField.fieldCode
       }
     }
-    // 补充选项数据（用于选项联动等）
-    if (!field.optionsJson && !field.options && !hasOptionsInComponentProps(field) && field.fieldId) {
-      const fieldIdStr = String(field.fieldId)
-      const entityField = entityFields.value.find(ef => String(ef.id) === fieldIdStr)
-      if (entityField) {
-        if (entityField.optionsJson) field.optionsJson = entityField.optionsJson
-        if (entityField.componentProps) field.componentProps = entityField.componentProps
-        if (entityField.options) field.options = entityField.options
-      }
-    }
+    const entityField = entityFields.value.find(ef => String(ef.id) === String(field.fieldId))
+    if (entityField?.dictType) field.dictType = entityField.dictType
   })
 }
 
@@ -3088,16 +3067,7 @@ function addField(entityField) {
     }
   }
 
-  // 复制选项数据（用于选项联动等）
-  if (entityField.optionsJson) {
-    newField.optionsJson = entityField.optionsJson
-  }
-  if (entityField.componentProps) {
-    newField.componentProps = entityField.componentProps
-  }
-  if (entityField.options) {
-    newField.options = entityField.options
-  }
+  newField.dictType = entityField.dictType
   if (Array.isArray(entityField.fileItems)) {
     newField.fileItems = cloneAttachmentItems(entityField.fileItems)
   }

@@ -25,7 +25,6 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^cond\\.',
     '^entityData\\.',
     '^item\\.',
-    '^optionsText$',
     '^permissionForm\\.',
     '^quickDictForm\\.',
     '^row\\.enabled$',
@@ -126,6 +125,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^callForm\\.',
     '^ccForm\\.',
     '^conditionForm\\.',
+    '^conditionInterfaceForm\\.',
     '^formConfig\\.',
     '^manualForm\\.',
     '^option\\.',
@@ -178,7 +178,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
   ],
   'src/views/EntityDesign.vue': [
     '^activeDesignTab$', '^showSystemFields$', '^codeRuleVisible$', '^permissionVisible$', '^permissionEditVisible$',
-    '^permissionSqlPreviewVisible$', '^permissionSqlPreview\\.sql$', '^quickDictVisible$'
+    '^permissionSqlPreviewVisible$', '^permissionSqlPreview\\.sql$', '^quickDictVisible$', '^boundDictVisible$'
   ],
   'src/views/EntityListConfigDesign.vue': [
     '^activeConfigTab$', '^previewDialogVisible$', '^previewViewport$', '^previewQueryForm$',
@@ -726,7 +726,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityList.vue', '^publishMigrationForm\\.', '实体配置-实体-发布-发布与迁移'),
 
   locationRule('src/views/EntityDesign.vue', '^selectedField\\.(fieldName|fieldCode|fieldType|isRequired|isUnique|defaultValue|fieldLength|fieldPrecision)$', '实体配置-实体-设计-字段属性-基础信息'),
-  locationRule('src/views/EntityDesign.vue', '^(selectedField\\.(optionSource|dictType)|optionsText|quickDictForm\\.)', '实体配置-实体-设计-字段属性-代码表与选项'),
+  locationRule('src/views/EntityDesign.vue', '^(selectedField\\.(dictType)|quickDictForm\\.)', '实体配置-实体-设计-字段属性-代码表与选项'),
   locationRule('src/views/EntityDesign.vue', '^selectedField\\.(validateRules)$', '实体配置-实体-设计-字段属性-校验规则'),
   locationRule('src/views/EntityDesign.vue', '^selectedField\\.(relationType|childEntityId|childRefFieldCode|cascadeDelete)$', '实体配置-实体-设计-字段属性-子表单'),
   locationRule('src/views/EntityDesign.vue', '^item\\.', '实体配置-实体-设计-字段属性-文件上传'),
@@ -791,6 +791,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/NodeConfigPanel.vue', '^callForm\\.', '流程配置-流程-设计-调用活动属性-常用-调用流程'),
   locationRule('src/components/NodeConfigPanel.vue', '^subProcessSource$', '流程配置-流程-设计-子流程属性-常用-子流程来源'),
   locationRule('src/components/NodeConfigPanel.vue', '^conditionForm\\.', '流程配置-流程-设计-连线属性-常用-流转条件'),
+  locationRule('src/components/NodeConfigPanel.vue', '^conditionInterfaceForm\\.', '流程配置-流程-设计-连线属性-常用-流转条件'),
   locationRule('src/components/node-config/NodeSlaEditor.vue', '^slaForm\\.', '流程配置-流程-设计-用户任务属性-高级-任务 SLA'),
   locationRule('src/components/NodeConfigPanel.vue', '^advancedForm\\.(skipExpression|skipMode)$', '流程配置-流程-设计-用户任务属性-高级-自动跳过'),
   locationRule('src/components/NodeConfigPanel.vue', '^basicForm\\.', '流程配置-流程-设计-节点属性-常用-标识与备注'),
@@ -1291,7 +1292,6 @@ const KEY_GUIDANCE = Object.freeze({
   businessIntents: ['限制版本场景只处理指定业务意图编码。', ['APPROVAL_SUBMIT'], '写入上下文携带其中一个意图时场景才匹配；留空表示不限制。'],
   conditionText: ['设置数据版本场景进一步匹配的结构化条件或受控表达式。', '{"field":"status","operator":"EQ","value":"APPROVED"}', '来源、操作和业务意图命中后，还需条件为真才生成数据版本。'],
   versionTitleTemplate: ['设置数据版本记录标题的变量模板。', '采购申请 ${record.code} 审批变更', '生成版本时解析记录上下文，形成可读审计标题。'],
-  optionSource: ['选择枚举字段选项来自系统代码表还是只读旧内嵌选项。', 'DICT', '新配置从代码表加载；旧内嵌选项仅用于历史兼容。'],
   fileTypes: ['限制文件或图片字段允许上传的扩展名集合。', ['.jpg', '.png', '.pdf'], '选择文件时前端过滤类型，服务端仍执行最终文件策略校验。'],
   prefix: ['设置自动编码在日期和流水号前的固定前缀。', 'CG', '生成编码时以该前缀开头，便于区分业务单据类型。'],
   dateFormat: ['选择自动编码中日期部分的格式。', 'yyyyMMdd', '生成编码时把当前日期格式化后拼接到前缀和序号之间。'],
@@ -1895,9 +1895,25 @@ const CONTROL_OVERRIDES = Object.freeze({
   },
   'src/components/NodeConfigPanel.vue:conditionForm.type': {
     label: '顺序流条件类型',
-    meaning: '选择连线无条件通过、按表达式判断，或作为其他条件未命中时的默认流。',
+    meaning: '选择连线无条件通过、按表达式或业务接口判断，或作为其他条件未命中时的默认流。',
     example: 'expression',
     expectedEffect: '流程令牌按条件结果选择路径；默认流只在其他条件均不成立时使用。'
+  },
+  'src/components/NodeConfigPanel.vue:conditionInterfaceForm.providerCode': {
+    label: '顺序流业务条件接口',
+    meaning: '选择已注册的业务条件实现，流程经过连线时使用其布尔返回值判断是否命中。',
+    example: 'expenseRoute',
+    configureWhen: '分支条件依赖业务模块查询或审批记录时选择接口。',
+    skipWhen: '普通字段比较可用条件表达式完成时。',
+    expectedEffect: '返回 true 时命中该连线，执行异常会阻止本次流转。'
+  },
+  'src/components/NodeConfigPanel.vue:conditionInterfaceForm.extraParamsText': {
+    label: '业务条件接口参数',
+    meaning: '向业务条件实现传递固定 JSON 对象参数，用于指定查询节点或业务规则。',
+    example: { nodeIds: ['Task_Finance'] },
+    configureWhen: '所选接口需要节点列表或其他固定业务参数时。',
+    skipWhen: '接口不需要附加参数时保持空对象。',
+    expectedEffect: '参数按原始 JSON 类型传入业务条件接口；无效 JSON 或非对象内容不能保存。'
   },
   'src/components/FlowConditionGroupEditor.vue:child.operator': {
     label: '流程条件运算符',
@@ -2018,14 +2034,6 @@ const CONTROL_OVERRIDES = Object.freeze({
     meaning: '选择数据权限状态限制要允许或排除的实体状态编码。',
     example: ['DRAFT', 'PROCESSING'],
     expectedEffect: '权限 SQL 按限制模式只保留或排除这些状态的记录。'
-  },
-  'src/views/EntityDesign.vue:optionsText': {
-    label: '旧内嵌选项',
-    meaning: '只读展示历史字段内嵌选项，供迁移到系统代码表时核对。',
-    configureWhen: '当前字段仍保存旧版内嵌选项时查看。',
-    skipWhen: '新字段或已经迁移到系统代码表的字段无需使用。',
-    example: 'draft:草稿',
-    expectedEffect: '该控件已禁用，不会修改发布配置；新选项必须改用系统代码表。'
   },
   'src/components/form-designer/FormDesignerSettingsDrawer.vue:formLabelPosition': {
     label: '标签位置',
@@ -2419,7 +2427,7 @@ const USAGE_CONTEXT_BY_AREA = Object.freeze({
   ],
   '初始化与数据处理': [
     '初始化数据、加载后处理或提交校验需要调用受管理动态数据源时',
-    '表单数据完全来自当前记录和静态选项时'
+    '表单数据完全来自当前记录和系统代码表时'
   ],
   '表单按钮': [
     '平台默认表单按钮不足以完成当前表单的业务操作或摆放要求时',

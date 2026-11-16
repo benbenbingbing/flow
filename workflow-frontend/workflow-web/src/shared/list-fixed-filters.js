@@ -141,13 +141,10 @@ export function fixedFilterValueType(field = {}) {
   return 'text'
 }
 
-/** 静态选项允许直接选择；无选项或历史选项已下线时仍可录入真实存储值。 */
+/** 仅使用调用方解析的代码表候选；没有候选时仍可输入真实存储编码。 */
 export function fixedFilterFieldOptions(field = {}) {
-  for (let source of [field.options, field.optionsJson]) {
-    if (typeof source === 'string') {
-      try { source = JSON.parse(source) } catch { continue }
-    }
-    if (!Array.isArray(source)) continue
+  const source = field.options
+  if (Array.isArray(source)) {
     return source.map(option => typeof option === 'object' && option !== null
       ? { label: String(option.label ?? option.name ?? option.value), value: option.value }
       : { label: String(option), value: option }).filter(option => scalar(option.value))

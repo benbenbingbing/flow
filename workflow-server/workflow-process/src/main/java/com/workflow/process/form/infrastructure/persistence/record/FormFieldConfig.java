@@ -77,11 +77,10 @@ public class FormFieldConfig {
     private String defaultValue;
 
     /**
-     * 选项JSON
-     * 用于SELECT、RADIO、CHECKBOX类型
-     * 格式：[{"value":"1","label":"选项1"},{"value":"2","label":"选项2"}]
+     * 历史内嵌选项原文，仅保留存量数据；保存边界拒绝新输入，不再输出或执行。
      */
     @TableField("options_json")
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String optionsJson;
 
     /**

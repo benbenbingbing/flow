@@ -218,32 +218,7 @@ function getFieldOptions(fieldName) {
   const field = props.entityFields.find(item =>
     getProcessConditionFieldCode(item) === fieldName
     || item.fieldName === fieldName)
-  const sources = [
-    field?.options,
-    field?.optionsJson,
-    readComponentOptions(field?.componentProps)
-  ]
-  for (const source of sources) {
-    if (Array.isArray(source)) return normalizeOptions(source)
-    if (typeof source !== 'string' || !source.trim()) continue
-    try {
-      const options = JSON.parse(source)
-      if (Array.isArray(options)) return normalizeOptions(options)
-    } catch {
-      // 继续尝试其他选项来源。
-    }
-  }
-  return []
-}
-
-function readComponentOptions(componentProps) {
-  if (!componentProps) return null
-  if (typeof componentProps === 'object') return componentProps.options
-  try {
-    return JSON.parse(componentProps)?.options
-  } catch {
-    return null
-  }
+  return Array.isArray(field?.options) ? normalizeOptions(field.options) : []
 }
 
 function normalizeOptions(options) {

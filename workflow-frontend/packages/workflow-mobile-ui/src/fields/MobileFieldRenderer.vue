@@ -68,7 +68,7 @@ const props = defineProps({ ...formFieldProps, services: { type: Object, default
 const emit = defineEmits(['update:modelValue', 'patch-form', 'change', 'blur', 'focus'])
 const componentOptions = getCurrentInstance().type
 const mobileScriptEvents = computed(() => readComponentScriptEvents(componentOptions, mobileFieldType(props.field)))
-const { fieldValue, fieldLabel, parsedComponentProps, staticOptions, placeholder, handleChange, handleInput, handleBlur, handleFocus, handleSelectionChange } = useFormField(props, emit, { applyDefaults: () => !props.disabled, scriptEvents: mobileScriptEvents })
+const { fieldValue, fieldLabel, parsedComponentProps, placeholder, handleChange, handleInput, handleBlur, handleFocus, handleSelectionChange } = useFormField(props, emit, { applyDefaults: () => !props.disabled, scriptEvents: mobileScriptEvents })
 const type = computed(() => mobileFieldType(props.field))
 const labelPosition = computed(() => resolveMobileLabelPosition(props.context.form))
 const inputAlign = computed(() => labelPosition.value === 'top' ? 'left' : 'right')
@@ -101,16 +101,18 @@ const multiple = computed(() => type.value === 'select_multiple' || parsedCompon
 const remoteOptions = ref(null), optionError = ref(''), pickerOpen = ref(false), selectionDraft = ref([]), selectedRecords = ref([])
 const customRef = ref(), cascaderRef = ref(), dataPickerRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
 function normalizeOptions(options) { return (Array.isArray(options) ? options : []).map(option => typeof option === 'object' ? { ...option, text: option.text ?? option.label ?? option.name ?? String(option.value ?? option.id), value: option.value ?? option.id, ...(option.children ? { children: normalizeOptions(option.children) } : {}) } : { text: String(option), value: option }) }
-const choices = computed(() => normalizeOptions(props.options ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : staticOptions.value)))
+const choices = computed(() => normalizeOptions(props.options ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : [])))
 const selectionLabel = computed(() => {
   if (dateType.value) return props.modelValue == null ? '' : String(props.modelValue).replace('T', ' ')
   const values = Array.isArray(fieldValue.value) ? fieldValue.value : fieldValue.value == null || fieldValue.value === '' ? [] : [fieldValue.value]
   return values.map(value => selectedRecords.value.find(item => String(item.id) === String(value))?.name || selectedRecords.value.find(item => String(item.id) === String(value))?.nickname || choices.value.find(item => String(item.value) === String(value))?.text || String(value)).join('、')
 })
 let optionGeneration = 0, committed = JSON.stringify(props.modelValue)
-/** 先使用已发布的动态选项绑定，否则读取实体字段代码表；两者都没有时保留内嵌选项。 */
+/** 候选只来自已发布的动态选项绑定或实体代码表，缺少来源时提示重新配置。 */
 async function loadOptions() {
   const generation = ++optionGeneration; optionError.value = ''; remoteOptions.value = null
+  // 宿主已解析系统状态或动态候选时直接消费，包括明确的空结果，不重复请求或提示缺少来源。
+  if (props.options != null) return
   // 级联与数据选择器有独立的查询、回显与重试流程，不能被旧选项绑定重复加载或影响校验。
   if (['cascader', 'data_picker'].includes(type.value)) return
   try {
@@ -120,14 +122,17 @@ async function loadOptions() {
     } else if (['select', 'select_multiple', 'radio', 'checkbox'].includes(type.value) && props.field.dictType) {
       if (!props.services.loadDictionaryOptions) throw new Error('当前表单未提供代码表查询能力')
       result = await props.services.loadDictionaryOptions(props.field.dictType)
-    } else return
+    } else {
+      if (['select', 'select_multiple', 'radio', 'checkbox'].includes(type.value)) throw new Error('选择字段未配置代码表或动态数据源，请重新配置并发布')
+      return
+    }
     // 切换字段、代码表或离开页面后，旧响应不得覆盖当前候选项。
     if (generation === optionGeneration) remoteOptions.value = result
   }
   catch (cause) { if (generation === optionGeneration) optionError.value = cause.message }
 }
 // 仅在选项来源身份变化时重载；输入其它字段造成 context 重建时不重复请求代码表。
-watch([type, () => props.field.id, () => props.field.dictType, () => props.context.form?.configHash], loadOptions, { immediate: true })
+watch([type, () => props.field.id, () => props.field.dictType, () => props.options, () => props.context.form?.configHash], loadOptions, { immediate: true })
 onBeforeUnmount(() => { optionGeneration++ })
 function input(value) {
   if (type.value === 'number') {

@@ -23,7 +23,6 @@ final class EntityFieldViewMapper {
         dto.setIsRequired(field.getIsRequired());
         dto.setIsUnique(field.getIsUnique());
         dto.setDefaultValue(field.getDefaultValue());
-        dto.setOptionsJson(field.getOptionsJson());
         dto.setDictType(field.getDictType());
         dto.setValueStorage(field.getValueStorage());
         dto.setValidateRules(field.getValidateRules());

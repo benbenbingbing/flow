@@ -1,7 +1,6 @@
 package com.workflow.entity.definition.application;
 
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
 import com.workflow.contracts.audit.model.AuditRiskLevel;
@@ -34,10 +33,8 @@ public class EntityFieldDefinitionService {
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
     private final EntityFieldFileItemService fileItemService;
-    private final EntityFieldOptionService fieldOptionService;
     private final EntityFieldValidationRuleService validationRuleService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
-    private final ObjectMapper objectMapper;
 
     /**
      * 创建字段；结果供后续流程传递或持久化。
@@ -112,6 +109,7 @@ public class EntityFieldDefinitionService {
             String entityId,
             EntityFieldDTO dto) {
         requireDataFieldType(dto);
+        EntitySelectionOptionPolicy.validateSubmitted(dto);
         EntityField field = convertToEntity(dto);
         field.setId(null);
         field.setEntityId(entityId);
@@ -119,7 +117,6 @@ public class EntityFieldDefinitionService {
         field.setEditable(true);
         field.setIsPublished(false);
         fieldMapper.insert(field);
-        synchronizeFieldOptions(field, dto);
         fileItemService.saveFileItems(field.getId(), dto.getFileItems());
         return field;
     }
@@ -135,6 +132,7 @@ public class EntityFieldDefinitionService {
             EntityFieldDTO fieldDTO) {
         if (existingField.getFieldType() != fieldDTO.getFieldType()) requireDataFieldType(fieldDTO);
         assertPublishedStructureUnchanged(existingField, fieldDTO);
+        EntitySelectionOptionPolicy.validateSubmitted(fieldDTO);
         boolean structureLocked =
                 Boolean.TRUE.equals(existingField.getIsSystem())
                         || Boolean.TRUE.equals(existingField.getIsPublished());
@@ -150,8 +148,9 @@ public class EntityFieldDefinitionService {
         existingField.setIsRequired(fieldDTO.getIsRequired());
         existingField.setIsUnique(fieldDTO.getIsUnique());
         existingField.setDefaultValue(fieldDTO.getDefaultValue());
-        existingField.setOptionsJson(fieldDTO.getOptionsJson());
-        existingField.setDictType(fieldDTO.getDictType());
+        if (!structureLocked) {
+            existingField.setDictType(fieldDTO.getDictType());
+        }
         existingField.setValueStorage(resolveValueStorage(fieldDTO));
         existingField.setValidateRules(fieldDTO.getValidateRules());
         existingField.setSortOrder(fieldDTO.getSortOrder());
@@ -176,7 +175,6 @@ public class EntityFieldDefinitionService {
                 fieldDTO.getRefFieldCode()));
         existingField.setRefListKey(fieldDTO.getRefListKey());
         fieldMapper.updateById(existingField);
-        synchronizeFieldOptions(existingField, fieldDTO);
         fileItemService.saveFileItems(
                 existingField.getId(),
                 fieldDTO.getFileItems());
@@ -301,6 +299,13 @@ public class EntityFieldDefinitionService {
                     "ENTITY_FIELD_TYPE_LOCKED",
                     "系统字段或已发布字段不能修改字段类型");
         }
+        if (locked && !Objects.equals(
+                firstText(current.getDictType(), null), firstText(dto.getDictType(), null))) {
+            // 只以服务端保存的发布状态为准，不查询业务数据；换绑或清空都会改变历史值的解释。
+            throw new BusinessConflictException(
+                    "ENTITY_FIELD_DICTIONARY_LOCKED",
+                    "系统字段或已发布字段不能修改代码表绑定，请维护当前代码表的代码项");
+        }
         if (locked
                 && isReferenceTargetField(current.getFieldType())
                 && (!Objects.equals(
@@ -379,7 +384,6 @@ public class EntityFieldDefinitionService {
             EntityDefinition entity,
             EntityField field) {
         EntityFieldDTO dto = EntityFieldViewMapper.forDefinition(entity, field, systemEntityFieldPolicy);
-        dto.setOptions(fieldOptionService.findOptions(field.getId()));
         if (field.getFieldType() == EntityField.FieldType.FILE
                 || field.getFieldType() == EntityField.FieldType.IMAGE) {
             dto.setFileItems(fileItemService.findByFieldId(field.getId()));
@@ -418,31 +422,6 @@ public class EntityFieldDefinitionService {
     }
 
     /**
-     * 处理{@code synchronize}字段选项，并将结果传给后续步骤。
-     *
-     * @param field 字段，作为 {@code fieldOptionService.replace} 的输入影响后续处理
-     * @param dto DTO，作为 {@code fieldOptionService.parseDocument} 的输入影响后续处理
-     */
-    private void synchronizeFieldOptions(
-            EntityField field,
-            EntityFieldDTO dto) {
-        List<Map<String, Object>> options = dto.getOptions();
-        if (options == null
-                && StringUtils.isNotBlank(dto.getOptionsJson())) {
-            options = fieldOptionService.parseDocument(dto.getOptionsJson());
-        }
-        if (options == null) {
-            return;
-        }
-        fieldOptionService.replace(field.getId(), options);
-        field.setOptionsJson(
-                options.isEmpty()
-                        ? null
-                        : objectMapper.valueToTree(options).toString());
-        fieldMapper.updateById(field);
-    }
-
-    /**
      * 转换截止实体；输出作为后续校验或处理的输入。
      *
      * @param dto DTO，作为 {@code field.setId} 的输入影响后续处理
@@ -464,7 +443,6 @@ public class EntityFieldDefinitionService {
         field.setIsRequired(dto.getIsRequired());
         field.setIsUnique(dto.getIsUnique());
         field.setDefaultValue(dto.getDefaultValue());
-        field.setOptionsJson(dto.getOptionsJson());
         field.setDictType(dto.getDictType());
         field.setValueStorage(resolveValueStorage(dto));
         field.setValidateRules(dto.getValidateRules());

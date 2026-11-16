@@ -413,8 +413,7 @@ function modeAccess() {
   }
 }
 
-function runtimeFields() {
-  const options = {
+const runtimeDictionaryOptions = {
     status: [
       { label: '待处理', value: 'PENDING' },
       { label: '处理中', value: 'PROCESSING' },
@@ -426,6 +425,7 @@ function runtimeFields() {
       { label: '跟进', value: 'FOLLOW_UP' }
     ]
   }
+function runtimeFields() {
   const fields = [
     {
       id: 'field-title', fieldCode: 'title', fieldName: '标题', fieldLabel: '标题',
@@ -444,14 +444,14 @@ function runtimeFields() {
     {
       id: 'field-status', fieldCode: 'status', fieldName: '处理状态',
       fieldLabel: '处理状态', fieldType: 'STRING', componentType: 'select',
-      defaultValue: 'PROCESSING', optionsJson: JSON.stringify(options.status),
+      defaultValue: 'PROCESSING', dictType: 'embed_status',
       gridSpan: 12
     },
     {
       id: 'field-tags', fieldCode: 'tags', fieldName: '工单标签',
       fieldLabel: '工单标签', fieldType: 'STRING', componentType: 'select_multiple',
       defaultValue: JSON.stringify(['URGENT']),
-      optionsJson: JSON.stringify(options.tags), gridSpan: 12
+      dictType: 'embed_tags', gridSpan: 12
     },
     {
       id: 'field-enabled', fieldCode: 'enabled', fieldName: '是否启用',
@@ -995,6 +995,13 @@ async function main() {
           return
         }
 
+        if (request.method === 'GET' && url.pathname.startsWith('/api/system/dict/item/tree/code/embed_')) {
+          const key = url.pathname.endsWith('embed_tags') ? 'tags' : 'status'
+          sendJson(response, 200, runtimeDictionaryOptions[key].map(item => ({
+            itemCode: item.value, itemLabel: item.label, status: '0'
+          })))
+          return
+        }
         if (request.method === 'GET'
             && url.pathname === `/api/entity/code/${entityCode}`) {
           sendJson(response, 200, entityDefinition())

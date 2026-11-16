@@ -6,16 +6,6 @@ import {
   resolveProcessStatusLabel
 } from '@flow/workflow-core/entity-status-runtime'
 
-export function parseJsonOptions(optionsJson) {
-  if (!optionsJson) return []
-  try {
-    const options = typeof optionsJson === 'string' ? JSON.parse(optionsJson) : optionsJson
-    return Array.isArray(options) ? options : []
-  } catch {
-    return []
-  }
-}
-
 export function parseDataSourceConfig(dataSourceConfig) {
   if (!dataSourceConfig) return {}
   try {
@@ -212,9 +202,9 @@ export function formatListFieldValue(
   // 选项类字段
   if (['SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX'].includes(fieldType)) {
     const resolvedOptions = row?.extData?.[`${fieldCode}Options`]
-    const options = Array.isArray(resolvedOptions) && resolvedOptions.length
+    const options = Array.isArray(resolvedOptions)
       ? resolvedOptions
-      : parseJsonOptions(field.optionsJson)
+      : (Array.isArray(field.options) ? field.options : [])
     const isMultiple = componentType === 'select_multiple' || ['MULTI_SELECT', 'CHECKBOX'].includes(fieldType)
     if (isMultiple) {
       const values = normalizeMultipleValue(value)

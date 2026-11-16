@@ -31,7 +31,7 @@
       "fieldLength": 20,
       "isRequired": true,
       "defaultValue": "EXISTING",
-      "optionsJson": "[{\"label\":\"既有系统\",\"value\":\"EXISTING\"},{\"label\":\"拟建新系统\",\"value\":\"PROPOSED_NEW\"},{\"label\":\"待确认\",\"value\":\"TBD\"}]",
+      "dictType": "project_cfg_requirement_system_impact_system_scope_type",
       "sortOrder": 30
     },
     {
@@ -61,7 +61,7 @@
       "dbType": "varchar(500)",
       "fieldLength": 500,
       "isRequired": true,
-      "optionsJson": "[{\"label\":\"功能改造\",\"value\":\"FUNCTION\"},{\"label\":\"接口改造\",\"value\":\"INTERFACE\"},{\"label\":\"数据改造\",\"value\":\"DATA\"},{\"label\":\"部署变更\",\"value\":\"DEPLOYMENT\"},{\"label\":\"安全整改\",\"value\":\"SECURITY\"},{\"label\":\"系统下线\",\"value\":\"RETIREMENT\"}]",
+      "dictType": "project_cfg_requirement_system_impact_impact_type",
       "sortOrder": 60
     },
     {
@@ -104,7 +104,7 @@
       "fieldLength": 10,
       "isRequired": true,
       "defaultValue": "MEDIUM",
-      "optionsJson": "[{\"label\":\"低\",\"value\":\"LOW\"},{\"label\":\"中\",\"value\":\"MEDIUM\"},{\"label\":\"高\",\"value\":\"HIGH\"},{\"label\":\"极高\",\"value\":\"CRITICAL\"}]",
+      "dictType": "project_cfg_requirement_system_impact_risk_level",
       "sortOrder": 110
     },
     {
@@ -124,7 +124,7 @@
       "dbType": "varchar(30)",
       "fieldLength": 30,
       "isRequired": false,
-      "optionsJson": "[{\"label\":\"可实施\",\"value\":\"FEASIBLE\"},{\"label\":\"有条件可实施\",\"value\":\"CONDITIONAL\"},{\"label\":\"建议复用现有能力\",\"value\":\"REUSE\"},{\"label\":\"不建议实施\",\"value\":\"NOT_RECOMMENDED\"},{\"label\":\"待补充材料\",\"value\":\"NEED_MORE_INFO\"}]",
+      "dictType": "project_cfg_requirement_system_impact_assessment_conclusion",
       "sortOrder": 130
     },
     {

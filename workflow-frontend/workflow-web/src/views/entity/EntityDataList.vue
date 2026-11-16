@@ -515,9 +515,7 @@ const queryFields = computed(() => {
           defaultValue: queryConfig.defaultValue,
           fieldType: originField?.fieldType || f.fieldType || 'STRING',
           dictType,
-          optionsJson: dictOptions?.length
-            ? JSON.stringify(dictOptions)
-            : originField?.optionsJson || f.optionsJson,
+          options: dictOptions || [],
           refEntityType: originField?.refEntityType,
           refEntityId: originField?.refEntityId,
           queryType: f.queryType || 'LIKE'
@@ -536,9 +534,9 @@ const queryFields = computed(() => {
         ? dictOptionMap.value[field.dictType]
         : null
       return withEntityStatusFieldOptions(
-        dictOptions?.length
-          ? { ...field, optionsJson: JSON.stringify(dictOptions) }
-          : field,
+        dictOptions
+          ? { ...field, options: dictOptions }
+          : { ...field, options: [] },
         entityStatusOptions.value
       )
     })
@@ -561,9 +559,7 @@ const listFields = computed(() => {
           ...f,
           fieldType: originField?.fieldType || 'STRING',
           dictType,
-          optionsJson: dictOptions?.length
-            ? JSON.stringify(dictOptions)
-            : originField?.optionsJson || f.optionsJson,
+          options: dictOptions || [],
           refEntityType: originField?.refEntityType,
           refEntityId: originField?.refEntityId
         }
@@ -580,9 +576,9 @@ const listFields = computed(() => {
       const dictOptions = field.dictType
         ? dictOptionMap.value[field.dictType]
         : null
-      return dictOptions?.length
-        ? { ...field, optionsJson: JSON.stringify(dictOptions) }
-        : field
+      return dictOptions
+        ? { ...field, options: dictOptions }
+        : { ...field, options: [] }
     })
 })
 

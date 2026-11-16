@@ -30,7 +30,7 @@
       "isRequired": true,
       "sortOrder": 30,
       "fieldLength": 200,
-      "optionsJson": "[{\"label\":\"项目\",\"value\":\"PROJECT\"},{\"label\":\"系统\",\"value\":\"SYSTEM\"},{\"label\":\"发布\",\"value\":\"RELEASE\"}]"
+      "dictType": "project_cfg_project_role_catalog_allowed_scope"
     },
     {
       "fieldCode": "primary_unique_flag",

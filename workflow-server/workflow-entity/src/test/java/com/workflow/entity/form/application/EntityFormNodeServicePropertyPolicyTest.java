@@ -45,6 +45,28 @@ import static org.mockito.Mockito.when;
  */
 class EntityFormNodeServicePropertyPolicyTest {
 
+    /** 通用属性清洗前必须识别旧候选，不能静默丢弃后让请求保存成功。 */
+    @Test
+    void selectionCandidatesAreRejectedBeforePropertyNormalization() {
+        for (Map<String, Object> oldConfig : List.of(
+                Map.<String, Object>of("options", List.of(Map.of("value", "old"))),
+                Map.<String, Object>of("optionsJson", "[]"),
+                Map.<String, Object>of("componentProps", Map.of("options", List.of(Map.of("value", "old")))))) {
+            EntityFormNode current = boundAmountField();
+            current.setPropsDocument(current.getPropsDocument().replace("DECIMAL", "SELECT").replace("number", "select"));
+            Map<String, Object> props = new LinkedHashMap<>(oldConfig);
+            props.put("fieldType", "SELECT");
+            props.put("componentType", "select");
+            EntityFormNodePatchRequest request = new EntityFormNodePatchRequest();
+            request.setExpectedRevision(1);
+            request.setProps(props);
+            Fixture fixture = fixture(current);
+            assertThrows(IllegalArgumentException.class,
+                    () -> fixture.service().patch("form-1", current.getId(), request));
+            verify(fixture.nodeMapper(), never()).update(isNull(), any());
+        }
+    }
+
     /**
      * 验证折叠面板编辑接受空规则并清理历史污染字段属性，最终成功落库更新。
      */

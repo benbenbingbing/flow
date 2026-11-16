@@ -20,7 +20,7 @@
       "isRequired": true,
       "sortOrder": 20,
       "fieldLength": 20,
-      "optionsJson": "[{\"label\":\"新增关系\",\"value\":\"ADD\"},{\"label\":\"修改关系\",\"value\":\"UPDATE\"},{\"label\":\"移除关系\",\"value\":\"REMOVE\"}]"
+      "dictType": "project_cfg_project_system_change_request_operation_type"
     },
     {
       "fieldCode": "project_id",
@@ -63,7 +63,7 @@
       "isRequired": false,
       "sortOrder": 60,
       "fieldLength": 30,
-      "optionsJson": "[{\"label\":\"新建\",\"value\":\"NEW_BUILD\"},{\"label\":\"增强改造\",\"value\":\"ENHANCEMENT\"},{\"label\":\"系统集成\",\"value\":\"INTEGRATION\"},{\"label\":\"迁移\",\"value\":\"MIGRATION\"},{\"label\":\"安全整改\",\"value\":\"SECURITY_REMEDIATION\"},{\"label\":\"退役\",\"value\":\"RETIREMENT\"}]"
+      "dictType": "project_cfg_project_system_change_request_construction_mode"
     },
     {
       "fieldCode": "change_reason",
@@ -203,7 +203,7 @@
       "sortOrder": 220,
       "fieldLength": 10,
       "defaultValue": "MEDIUM",
-      "optionsJson": "[{\"label\":\"低\",\"value\":\"LOW\"},{\"label\":\"中\",\"value\":\"MEDIUM\"},{\"label\":\"高\",\"value\":\"HIGH\"},{\"label\":\"极高\",\"value\":\"CRITICAL\"}]"
+      "dictType": "project_cfg_project_system_change_request_risk_level"
     },
     {
       "fieldCode": "planned_start_date",

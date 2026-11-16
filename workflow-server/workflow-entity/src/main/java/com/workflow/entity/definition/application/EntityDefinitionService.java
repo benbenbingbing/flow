@@ -68,7 +68,7 @@ public class EntityDefinitionService {
     private final EntityPublishHistoryService publishHistoryService;
     private final EntitySchemaPublishLock schemaPublishLock;
     private final EntityFieldFileItemService fileItemService;
-    private final EntityFieldOptionService fieldOptionService;
+    private final com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper historicalOptionCleanup;
     private final EntityFieldValidationRuleService fieldValidationRuleService;
     private final EntityFieldDefinitionService fieldDefinitionService;
     private final EntityRelationDefinitionService relationDefinitionService;
@@ -243,6 +243,7 @@ public class EntityDefinitionService {
 
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
+        EntitySelectionOptionPolicy.validateSubmitted(dto.getFields());
         fieldValidationRuleService.validateAndNormalizeAll(dto.getFields());
 
         EntityDefinition entity = convertToEntity(dto);
@@ -537,6 +538,7 @@ public class EntityDefinitionService {
     public EntityDefinitionDTO update(String id, EntityDefinitionDTO dto) {
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
+        EntitySelectionOptionPolicy.validateSubmitted(dto.getFields());
         fieldValidationRuleService.validateAndNormalizeAll(dto.getFields());
 
         EntityDefinition snapshot = entityMapper.selectById(id);
@@ -617,7 +619,7 @@ public class EntityDefinitionService {
                 for (EntityField field : existingFields) {
                     if (!Boolean.TRUE.equals(field.getIsSystem()) &&
                             !newFieldCodes.contains(field.getFieldCode())) {
-                        fieldOptionService.delete(field.getId());
+                        historicalOptionCleanup.deleteByFieldId(field.getId());
                         fieldMapper.deleteById(field.getId());
                     }
                 }
@@ -771,6 +773,8 @@ public class EntityDefinitionService {
 
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(id);
+        // 未绑定代码表的历史选择字段必须先重新配置，不能将内嵌选项重新发布。
+        fields.forEach(EntitySelectionOptionPolicy::validatePublished);
         attachFileItems(fields);
         entity.setFields(fields);
         // 字段草稿可以迭代，但正式结构发布不能破坏仍在线上的 Excel 列映射。
@@ -1409,15 +1413,6 @@ public class EntityDefinitionService {
             EntityDefinition entity,
             EntityField field) {
         EntityFieldDTO dto = EntityFieldViewMapper.forDefinition(entity, field, systemEntityFieldPolicy);
-        List<Map<String, Object>> structuredOptions = fieldOptionService.findOptions(field.getId());
-        if (structuredOptions.isEmpty() && StringUtils.isNotBlank(field.getOptionsJson())) {
-            try {
-                structuredOptions = fieldOptionService.parseDocument(field.getOptionsJson());
-            } catch (RuntimeException exception) {
-                log.warn("实体字段选项解析失败: fieldId={}", field.getId(), exception);
-            }
-        }
-        dto.setOptions(structuredOptions);
         // 加载文件字段的多组附件配置
         if (field.getFieldType() == EntityField.FieldType.FILE || field.getFieldType() == EntityField.FieldType.IMAGE) {
             try {
@@ -1480,7 +1475,6 @@ public class EntityDefinitionService {
         field.setIsRequired(dto.getIsRequired());
         field.setIsUnique(dto.getIsUnique());
         field.setDefaultValue(dto.getDefaultValue());
-        field.setOptionsJson(dto.getOptionsJson());
         field.setDictType(dto.getDictType());
         field.setValueStorage(resolveValueStorage(dto));
         field.setValidateRules(dto.getValidateRules());

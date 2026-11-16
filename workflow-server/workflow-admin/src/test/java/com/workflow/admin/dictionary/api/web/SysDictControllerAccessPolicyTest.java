@@ -53,4 +53,13 @@ class SysDictControllerAccessPolicyTest {
                 new String[]{"system:dictionary:view"},
                 policy.value());
     }
+
+    @Test
+    void boundDictionaryDefinitionByCodeKeepsManagementReadPermission() throws Exception {
+        Method method = SysDictController.class.getDeclaredMethod("getByCode", String.class);
+        assertNull(AnnotatedElementUtils.findMergedAnnotation(method, AuthenticatedApi.class));
+        assertNull(AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class));
+        // 无方法级覆盖时沿用类上的 dictionary:view，不能把后台定义查询开放给普通运行时。
+        assertNotNull(AnnotatedElementUtils.findMergedAnnotation(SysDictController.class, RequiresPermission.class));
+    }
 }

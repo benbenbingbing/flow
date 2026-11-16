@@ -7,8 +7,7 @@ import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
-import com.workflow.entity.definition.infrastructure.persistence.record.EntityFieldOption;
+import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -43,7 +42,7 @@ public class EntityVersionScopeFreezer {
 
     private final EntityPublishedSnapshotService snapshotService;
     private final ObjectMapper objectMapper;
-    private final EntityFieldOptionMapper optionMapper;
+    private final SysDictItemService dictionaries;
 
     private static final int HARD_MAX_DEPTH = 8;
     private static final int HARD_MAX_SCOPE_NODES = 64;
@@ -544,52 +543,13 @@ public class EntityVersionScopeFreezer {
         return hash(EntityVersionFingerprint.relationDefinitionMaterial(parent, child, relation));
     }
 
-    /**
-     * 读取选项{@code labels}；查询结果供调用方展示或继续处理。
-     *
-     * @param field 字段，供本方法读取选项{@code labels}时使用
-     * @return 选项{@code labels}键值结果，供调用方继续处理
-     */
+    /** 冻结当前代码表名称供新版本展示；历史版本已冻结的展示值不回写、不重算。 */
     private Map<String, String> readOptionLabels(EntityField field) {
-        Map<String, String> structured = new LinkedHashMap<>();
-        if (StringUtils.hasText(field.getId())) {
-            for (EntityFieldOption option
-                    : optionMapper.findByFieldId(field.getId())) {
-                if (StringUtils.hasText(option.getOptionValue())) {
-                    structured.put(option.getOptionValue(),
-                            firstText(option.getOptionLabel(),
-                                    option.getOptionValue()));
-                }
-            }
-        }
-        if (!structured.isEmpty()) {
-            return structured;
-        }
-        String json = field.getOptionsJson();
-        if (!StringUtils.hasText(json)) {
-            return structured;
-        }
-        try {
-            List<Map<String, Object>> values = objectMapper.readValue(
-                    json, new TypeReference<>() { });
-            Map<String, String> result = new LinkedHashMap<>();
-            for (Map<String, Object> value : values) {
-                String code = firstText(
-                        text(value.get("value")),
-                        text(value.get("optionValue")),
-                        text(value.get("code")));
-                String label = firstText(
-                        text(value.get("label")),
-                        text(value.get("optionLabel")),
-                        text(value.get("name")), code);
-                if (code != null) {
-                    result.put(code, label);
-                }
-            }
-            return result;
-        } catch (JsonProcessingException ignored) {
-            return new LinkedHashMap<>();
-        }
+        if (!StringUtils.hasText(field.getDictType())) return Map.of();
+        Map<String, String> labels = new LinkedHashMap<>();
+        dictionaries.listDictionaryValues(field.getDictType())
+                .forEach(item -> labels.put(item.value(), item.label()));
+        return labels;
     }
 
     /**

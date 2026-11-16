@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { assertSupportedEntityOptions } from "./selection-option-policy.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +10,7 @@ const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 const resourcesRoot = path.join(moduleRoot, "src/main/resources");
 const output = path.join(
   resourcesRoot,
-  "project-config/packages/project-f01-f07-v3.wfpack"
+  "project-config/packages/project-f01-f07-v4.wfpack"
 );
 // 离线样例默认使用一次性随机密钥；目标系统可确认来源后导入。
 // 需要预先互认时显式提供本地密钥文件，不读取服务端环境配置。
@@ -41,7 +42,9 @@ const discoverAssets = (assetType, relativeDirectory) => {
     });
 };
 
+const dictionaries = JSON.parse(fs.readFileSync(path.join(resourcesRoot, "project-config/assets/dictionaries.json"), "utf8"));
 const assetSources = [
+  ...dictionaries.map(source => ["DICTIONARY", source.businessKey, source.assetName, null, source]),
   ...discoverAssets("ENTITY", "project-config/assets/entities"),
   ...discoverAssets("PROCESS", "project-config/assets/processes")
 ];
@@ -55,15 +58,6 @@ const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex"
 const addEntry = (entryPath, value) => {
   entries.set(entryPath, Buffer.isBuffer(value) ? value : Buffer.from(value));
 };
-const parseComponentProps = (value) => {
-  if (!value) return {};
-  if (typeof value === "object") return { ...value };
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
-};
 const enrichEntityFormFields = (source) => {
   const entityFields = new Map(
     (source.fields ?? []).map((field) => [field.fieldCode, field])
@@ -75,13 +69,6 @@ const enrichEntityFormFields = (source) => {
         return formField;
       }
       const enriched = { ...formField };
-      if (entityField.optionsJson != null) {
-        const componentProps = parseComponentProps(enriched.componentProps);
-        if (!Array.isArray(componentProps.options) || componentProps.options.length === 0) {
-          componentProps.options = JSON.parse(entityField.optionsJson);
-        }
-        enriched.componentProps = JSON.stringify(componentProps);
-      }
       if (enriched.defaultValue == null && entityField.defaultValue != null) {
         enriched.defaultValue = entityField.defaultValue;
       }
@@ -94,8 +81,8 @@ const enrichEntityFormFields = (source) => {
   return source;
 };
 
-for (const [assetType, businessKey, assetName, relativeSource] of assetSources) {
-  let source = JSON.parse(
+for (const [assetType, businessKey, assetName, relativeSource, dictionary] of assetSources) {
+  let source = dictionary || JSON.parse(
     fs.readFileSync(path.join(resourcesRoot, relativeSource), "utf8")
   );
   if (assetType === "PROCESS") {
@@ -104,19 +91,26 @@ for (const [assetType, businessKey, assetName, relativeSource] of assetSources) 
       "utf8"
     );
     delete source.bpmnFile;
-  } else {
+  } else if (assetType === "ENTITY") {
+    assertSupportedEntityOptions(source);
     source = enrichEntityFormFields(source);
+    for (const code of new Set((source.fields || []).map(field => field.dictType).filter(Boolean))) {
+      if (!dictionaries.some(dict => dict.businessKey === code)) throw new Error(`缺少代码表资产: ${code}`);
+      const dependency = { type: "DICTIONARY", key: code, required: true, reason: "实体选择字段代码表" };
+      source.dependencies = [...(source.dependencies || []), dependency];
+    }
   }
 
   const assetPath = assetType === "ENTITY"
     ? `assets/entities/${businessKey}-v1.json`
-    : `assets/processes/${businessKey}-v1.json`;
+    : assetType === "PROCESS" ? `assets/processes/${businessKey}-v1.json`
+    : `assets/dictionaries/${businessKey}-v1.json`;
   const snapshot = compact(source);
   addEntry(assetPath, snapshot);
 
   if (assetType === "PROCESS") {
     addEntry(`assets/processes/${businessKey}.bpmn`, source.bpmnXml);
-  } else {
+  } else if (assetType === "ENTITY") {
     for (const form of source.forms ?? []) {
       addEntry(
         `assets/forms/${businessKey}/${form.formKey}.json`,
@@ -152,8 +146,8 @@ for (const [assetType, businessKey, assetName, relativeSource] of assetSources) 
 addEntry("dependencies.json", compact([...packageDependencies.values()]));
 addEntry("manifest.json", compact({
   formatVersion: 1,
-  packageNo: "WFP-PROJECT-F01-F07-V3-20260730-R14",
-  migrationTag: "PROJECT-F01-F07-V3",
+  packageNo: "WFP-PROJECT-F01-F07-V4-20261116",
+  migrationTag: "PROJECT-F01-F07-V4",
   sourceEnvironment: "local",
   createdAt: new Date().toISOString(),
   assets: manifestAssets

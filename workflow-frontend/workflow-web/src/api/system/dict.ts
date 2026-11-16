@@ -17,6 +17,11 @@ export const getDictById = (id: string) => {
   return request.get(`/system/dict/${id}`)
 }
 
+// 字段按编码绑定；详情查询包含停用项，不依赖仅返回启用代码表的候选列表。
+export const getDictByCode = (dictCode: string) => {
+  return request.get(`/system/dict/code/${encodeURIComponent(dictCode)}`)
+}
+
 // 创建字典类型
 export const createDict = (data: any) => {
   return request.post('/system/dict', data)

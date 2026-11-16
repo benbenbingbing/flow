@@ -74,7 +74,7 @@ import { computed } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import SettingsCapability from '@/components/SettingsCapability.vue'
 import { useFieldValueLinkage } from '@/composables/useFieldValueLinkage'
-import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
 import { getDefaultFormFieldComponentType } from '@flow/workflow-core/extensions/core/fieldPolicy'
 
 const props = defineProps({
@@ -86,13 +86,8 @@ const fieldKey = field => field.fieldCode || field.fieldKey
 const availableFields = computed(() => props.fields.filter(item => item.uiConfigurable !== false && fieldKey(item) !== fieldKey(props.field)))
 const supportsOptions = computed(() => ['select', 'select_multiple', 'radio', 'checkbox', 'cascader'].includes(
   String(props.field.componentType || getDefaultFormFieldComponentType(props.field.fieldType)).toLowerCase()))
-const currentOptions = computed(() => {
-  const options = safeParseConfig(props.field.componentProps).options || props.field.options || props.field.optionsJson || []
-  try {
-    const parsed = typeof options === 'string' ? JSON.parse(options) : options
-    return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
-})
+const dictionaryOptions = useFieldDictionaryOptions(() => [props.field])
+const currentOptions = computed(() => dictionaryOptions.value[props.field.dictType] || [])
 const { model, persist: persistDraft } = useFieldValueLinkage(() => props.field, () => props.disabled)
 function persist(group) {
   if (props.disabled || group === 'options' && !supportsOptions.value) return

@@ -19,7 +19,7 @@ export const formFieldProps = {
   modelValue: { type: [String, Number, Array, Date, Object, Boolean], default: '' },
   // 宿主合并联动和权限后的禁用结果，组件必须遵守。
   disabled: { type: Boolean, default: false },
-  // 宿主提供的候选项覆盖；null 表示使用字段自身配置。
+  // 宿主解析的代码表或动态候选；null 表示由宿主加载来源，禁止回退字段内嵌配置。
   options: { type: Array, default: null },
   // 宿主运行上下文；可选能力须检查存在性，不自行构造可信身份。
   context: { type: Object, default: () => ({}) },

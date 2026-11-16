@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { assertSupportedEntityOptions } from "./selection-option-policy.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -10,7 +11,7 @@ const entityDir = path.join(resourcesRoot, "project-config/assets/entities");
 const processDir = path.join(resourcesRoot, "project-config/assets/processes");
 const packageFile = path.join(
   resourcesRoot,
-  "project-config/packages/project-f01-f07-v3.wfpack"
+  "project-config/packages/project-f01-f07-v4.wfpack"
 );
 // 包体检查始终执行；离线验签需显式提供与生成包相同的密钥。
 const keyFileIndex = process.argv.indexOf("--signing-key-file");
@@ -33,19 +34,6 @@ const assert = (condition, message) => {
     throw new Error(message);
   }
 };
-const parseComponentProps = (field) => {
-  if (!field?.componentProps) return {};
-  if (typeof field.componentProps === "object") return field.componentProps;
-  try {
-    return JSON.parse(field.componentProps);
-  } catch {
-    return {};
-  }
-};
-const hasStaticOptions = (field) => {
-  const componentProps = parseComponentProps(field);
-  return Array.isArray(componentProps.options) && componentProps.options.length > 0;
-};
 
 const entityFiles = fs.readdirSync(entityDir)
   .filter((name) => name.endsWith(".json"))
@@ -54,11 +42,17 @@ const processFiles = fs.readdirSync(processDir)
   .filter((name) => name.endsWith(".json"))
   .map((name) => path.join(processDir, name));
 const entities = entityFiles.map(readJson);
+const dictionaries = readJson(path.join(resourcesRoot, "project-config/assets/dictionaries.json"));
+const dictionaryCodes = new Set(dictionaries.map(dict => dict.businessKey));
 const processes = processFiles.map(readJson);
 const entityByCode = new Map(entities.map((entity) => [entity.businessKey, entity]));
 const processByKey = new Map(processes.map((process) => [process.businessKey, process]));
 
 for (const entity of entities) {
+  assertSupportedEntityOptions(entity);
+  for (const field of entity.fields) {
+    if (field.dictType) assert(dictionaryCodes.has(field.dictType), `${entity.businessKey}.${field.fieldCode}: 缺少代码表资产 ${field.dictType}`);
+  }
   assert(entity.assetType === "ENTITY", `${entity.businessKey}: assetType 必须为 ENTITY`);
   assert(
     entity.definition?.entityCode === entity.businessKey,
@@ -310,6 +304,7 @@ for (const [entry, expected] of Object.entries(checksums)) {
 }
 
 const expectedAssets = new Set([
+  ...dictionaries.map(dict => `DICTIONARY:${dict.businessKey}`),
   ...entities.map((entity) => `ENTITY:${entity.businessKey}`),
   ...processes.map((process) => `PROCESS:${process.businessKey}`)
 ]);
@@ -324,23 +319,11 @@ assert(
 
 for (const asset of manifest.assets.filter((item) => item.assetType === "ENTITY")) {
   const packagedEntity = JSON.parse(unzip(asset.path).toString("utf8"));
-  const packagedFields = new Map(
-    (packagedEntity.fields ?? []).map((field) => [field.fieldCode, field])
-  );
-  for (const form of packagedEntity.forms ?? []) {
-    for (const formField of form.fields ?? []) {
-      const entityField = packagedFields.get(formField.fieldCode);
-      if (entityField?.optionsJson) {
-        assert(
-          hasStaticOptions(formField),
-          `${asset.businessKey}/${form.formKey}.${formField.fieldCode}: 发布包表单字段缺少可持久化静态选项`
-        );
-      }
-    }
-  }
+  assertSupportedEntityOptions(packagedEntity);
 }
 
 console.log(JSON.stringify({
+  dictionaries: dictionaries.length,
   entities: entities.length,
   processes: processes.length,
   forms: entities.reduce((sum, entity) => sum + entity.forms.length, 0),

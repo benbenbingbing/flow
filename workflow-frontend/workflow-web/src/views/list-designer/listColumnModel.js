@@ -13,7 +13,7 @@ export function mergeFieldConfig(savedFields, { entityFields, availableListColum
       fieldCode: ef.fieldCode,
       fieldName: saved?.fieldName || ef.fieldName,
       fieldType: ef.fieldType,
-      optionsJson: ef.optionsJson,
+      dictType: ef.dictType,
       showInList: saved ? saved.showInList : ef.showInList,
       isQuery: saved ? saved.isQuery : ef.isQuery,
       queryType: saved?.queryType || 'LIKE',

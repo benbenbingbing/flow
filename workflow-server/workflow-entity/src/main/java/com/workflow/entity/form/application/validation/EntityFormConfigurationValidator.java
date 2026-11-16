@@ -402,7 +402,14 @@ public class EntityFormConfigurationValidator {
         Map<String, Object> extension = structuredConfigValidator.parseObject(
                 field.getExtensionConfig(),
                 "字段扩展配置");
-        structuredConfigValidator.parseObject(field.getComponentProps(), "字段组件配置");
+        Map<String, Object> componentProps = structuredConfigValidator.parseObject(field.getComponentProps(), "字段组件配置");
+        if (StringUtils.hasText(field.getOptionsJson())) {
+            throw new IllegalArgumentException("不再支持字段内嵌选项，请改用系统代码表或动态数据源");
+        }
+        com.workflow.entity.definition.application.EntitySelectionOptionPolicy.rejectEmbeddedOptions(
+                field.getComponentType(), componentProps, field.getFieldCode());
+        com.workflow.entity.definition.application.EntitySelectionOptionPolicy.rejectEmbeddedOptions(
+                field.getFieldType(), componentProps, field.getFieldCode());
         field.setValidationRules(blankToNull(field.getValidationRules()));
         field.setExtensionConfig(blankToNull(field.getExtensionConfig()));
         validateValidationRules(validation);

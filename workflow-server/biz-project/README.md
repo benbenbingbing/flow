@@ -17,6 +17,7 @@
 ```text
 src/main/resources/project-config/assets/entities/
 src/main/resources/project-config/assets/processes/
+src/main/resources/project-config/assets/dictionaries.json
 src/main/resources/project-config/bpmn/
 ```
 
@@ -33,7 +34,7 @@ node tools/build-project-config-package.mjs
 生成文件：
 
 ```text
-src/main/resources/project-config/packages/project-f01-f07-v3.wfpack
+src/main/resources/project-config/packages/project-f01-f07-v4.wfpack
 ```
 
 离线构建默认生成一次性随机签名密钥，目标系统导入时需要确认来源。
@@ -82,13 +83,16 @@ mvn -pl workflow-app -am clean package -DskipTests
 4. 发布。
 5. 使用真实数据执行 F01、F03、F05、F06、F07 验收。
 
-当前发布包编号：
+当前示例包编号：
 
 ```text
-WFP-PROJECT-F01-F07-V3-20260730-R14
+WFP-PROJECT-F01-F07-V4-20261116
 ```
 
-R14 已在本机目标环境完成上传、分析、发布和单账号模拟验收：
+V4 将 46 个实体内嵌选择字段改为独立代码表资产，包含 66 个资产；构建与验证入口拒绝旧内嵌配置。
+本次仅完成离线包完整性与配置校验，尚未向目标环境发布 V4。V1/V2/V3 包保留为历史制品，不再支持直接导入发布。
+
+以下为旧 R14 在本机目标环境完成的历史验收记录：
 
 - F01 完成 7 个审批任务，最终进入需求池。
 - F05 完成 6 个审批任务，并自动创建系统资产。

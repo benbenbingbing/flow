@@ -215,12 +215,7 @@ const acceptanceFields = [
     'SELECT',
     {
       isRequired: true,
-      optionsJson: json([
-        { label: '全扩展链路', value: 'FULL_EXTENSION' },
-        { label: '表单扩展', value: 'FORM_EXTENSION' },
-        { label: '列表扩展', value: 'LIST_EXTENSION' },
-        { label: '流程扩展', value: 'PROCESS_EXTENSION' }
-      ]),
+      dictType: 'project_acceptance_scene',
       sortOrder: 10
     }
   ),
@@ -317,16 +312,29 @@ const acceptanceFields = [
     '验收结论',
     'RADIO',
     {
-      optionsJson: json([
-        { label: '通过', value: 'PASS' },
-        { label: '待改进', value: 'IMPROVE' }
-      ]),
+      dictType: 'project_acceptance_decision',
       sortOrder: 160
     }
   )
 ]
 
+/** 验收也通过正式代码表建模，避免脚本重新引入实体内嵌候选。 */
+async function ensureAcceptanceDictionaries() {
+  const existing = await api('GET', '/system/dict/list')
+  for (const [dictCode, dictName, choices] of [
+    ['project_acceptance_scene', '项目验收场景', [['FULL_EXTENSION', '全扩展链路'], ['FORM_EXTENSION', '表单扩展'], ['LIST_EXTENSION', '列表扩展'], ['PROCESS_EXTENSION', '流程扩展']]],
+    ['project_acceptance_decision', '项目验收结论', [['PASS', '通过'], ['IMPROVE', '待改进']]]
+  ]) {
+    if ((existing || []).some(dict => dict.dictCode === dictCode)) continue
+    await api('POST', '/system/dict/with-items', {
+      dict: { dictCode, dictName, status: '0', sort: 900 },
+      items: choices.map(([itemCode, itemLabel], index) => ({ itemCode, itemLabel, itemValue: itemCode, status: '0', sort: (index + 1) * 10 }))
+    })
+  }
+}
+
 async function ensureEntity() {
+  await ensureAcceptanceDictionaries()
   let entity = await optionalApi('GET', `/entity/code/${entityCode}`)
   if (!entity) {
     entity = await api('POST', '/entity', {

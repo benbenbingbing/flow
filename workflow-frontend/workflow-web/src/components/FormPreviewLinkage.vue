@@ -185,9 +185,10 @@ import SectionField from '../extensions/builtin/fields/components/SectionField.v
 import LinkageEngine from '@flow/workflow-core/utils/linkageEngine'
 import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
 import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
+import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
 import { CROSS_FIELD_ERROR_CODE } from '@flow/workflow-core/form-cross-field-validation'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
-import { buildRuntimeFieldRules, getFieldKey } from '@flow/workflow-core/form-runtime'
+import { buildRuntimeFieldRules, getFieldKey, getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 import {
   createCustomFormActionSlotContract,
   formActionsForOwner,
@@ -279,6 +280,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'form-action'])
+const dictionaryOptions = useFieldDictionaryOptions(() =>
+  [...(props.form?.fields || []), ...props.entityFields].filter(field => field.runtimeOptions == null)
+)
 const formViewConfig = computed(() => safeParseConfig(props.form?.viewConfig))
 
 const previewStyle = computed(() => ({
@@ -447,9 +451,21 @@ const processedFields = computed(() => {
         String(item?.id || '') === String(field?.fieldId || field?.id || '')
           || item?.fieldCode === field?.fieldCode
       )
+      const dictType = field.dictType || entityField?.dictType
+      const node = (props.form?.nodes || []).find(node =>
+        node.bindingRef === field.fieldCode || String(node.bindingRef) === String(field.fieldId || field.id))
+      const hasDynamicOptions = getFormDataSourceBindings(node || field, 'FIELD_OPTIONS').length > 0
+      // 发布快照可能仍留有 options；只接受宿主本次解析结果或当前代码表查询结果。
+      // 节点动态绑定优先；预加载完成前不能用代码表候选阻止组件加载该绑定。
+      const options = hasDynamicOptions && field.runtimeOptionsSource !== 'DATA_SOURCE'
+        ? undefined
+        : field.runtimeOptions ?? entityField?.runtimeOptions ?? dictionaryOptions.value[dictType]
       return {
         ...(entityField || {}),
         ...field,
+        dictType,
+        options,
+        runtimeOptions: options,
         isRequired: entityField?.isRequired === true
           || entityField?.isRequired === 1
           || field?.isRequired === true

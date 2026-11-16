@@ -20,7 +20,7 @@
       "isRequired": true,
       "sortOrder": 20,
       "fieldLength": 30,
-      "optionsJson": "[{\"label\":\"战略项目群\",\"value\":\"STRATEGIC\"},{\"label\":\"业务域项目群\",\"value\":\"BUSINESS_DOMAIN\"},{\"label\":\"年度计划项目群\",\"value\":\"ANNUAL_PLAN\"}]"
+      "dictType": "project_cfg_project_group_group_type"
     },
     {
       "fieldCode": "sponsor_id",

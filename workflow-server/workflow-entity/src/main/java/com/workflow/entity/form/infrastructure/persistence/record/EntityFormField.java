@@ -95,8 +95,9 @@ public class EntityFormField {
     private String componentProps;
 
     /**
-     * 选项配置JSON（用于下拉、单选、多选，非数据库字段，从entity_field补充）
+     * 仅接收历史内嵌输入以便保存边界报错，不再从实体字段补充或对外输出。
      */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String optionsJson;
 
     /**

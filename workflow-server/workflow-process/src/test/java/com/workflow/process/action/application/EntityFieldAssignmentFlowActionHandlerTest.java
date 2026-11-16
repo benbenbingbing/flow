@@ -41,7 +41,10 @@ class EntityFieldAssignmentFlowActionHandlerTest {
                 field("serial", EntityField.FieldType.LONG), field("amount", EntityField.FieldType.DECIMAL),
                 field("date", EntityField.FieldType.DATE), field("time", EntityField.FieldType.DATETIME),
                 field("choice", EntityField.FieldType.SELECT))));
-        snapshot.getFields().get(7).setOptionsJson("[{\"value\":\"A\",\"label\":\"可选\"},{\"value\":\"B\",\"disabled\":true}]");
+        snapshot.getFields().get(7).setDictType("choices");
+        lenient().when(dictionaries.listDictionaryValues("choices")).thenReturn(List.of(
+                new SysDictItemService.DictionaryValue("A", "可选", true),
+                new SysDictItemService.DictionaryValue("B", "停用", false)));
         when(catalog.findEntityCodeByProcessDefinitionId("process")).thenReturn("expense");
         when(snapshots.getLatestByEntityCode("expense")).thenReturn(snapshot);
     }

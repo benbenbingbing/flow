@@ -120,47 +120,8 @@ export function useFormField(props, emit, options = {}) {
     }
   })
 
-  // 解析静态选项（多来源：componentProps.options -> optionsJson -> options）
-  const staticOptions = computed(() => {
-    const field = props.field
-    if (!field) return []
-
-    // 1. 从 componentProps 解析
-    if (parsedComponentProps.value.options) {
-      return parsedComponentProps.value.options
-    }
-
-    // 2. 从 optionsJson 解析
-    if (field.optionsJson) {
-      try {
-        return JSON.parse(field.optionsJson)
-      } catch (e) {
-        return []
-      }
-    }
-
-    // 3. 从 options 解析
-    if (field.options) {
-      if (typeof field.options === 'string') {
-        try {
-          return JSON.parse(field.options)
-        } catch (e) {
-          return []
-        }
-      }
-      return field.options
-    }
-
-    return []
-  })
-
-  // 当前选项（外部传入的动态选项优先）
-  const currentOptions = computed(() => {
-    if (props.options && props.options.length > 0) {
-      return props.options
-    }
-    return staticOptions.value
-  })
+  // 候选只由宿主按代码表或数据源解析；不读取字段及组件中的内嵌配置。
+  const currentOptions = computed(() => Array.isArray(props.options) ? props.options : [])
 
   // 占位文本
   const placeholder = computed(() => {
@@ -351,7 +312,6 @@ export function useFormField(props, emit, options = {}) {
     fieldLabel,
     fieldValue,
     parsedComponentProps,
-    staticOptions,
     currentOptions,
     placeholder,
     isDisabled,

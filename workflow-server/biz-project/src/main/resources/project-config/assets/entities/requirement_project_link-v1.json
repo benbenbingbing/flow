@@ -43,7 +43,7 @@
       "sortOrder": 40,
       "fieldLength": 20,
       "defaultValue": "PRIMARY",
-      "optionsJson": "[{\"label\":\"主承接\",\"value\":\"PRIMARY\"},{\"label\":\"协同承接\",\"value\":\"SUPPORTING\"},{\"label\":\"依赖项目\",\"value\":\"DEPENDENCY\"}]"
+      "dictType": "project_cfg_requirement_project_link_relation_role"
     },
     {
       "fieldCode": "delivery_scope",

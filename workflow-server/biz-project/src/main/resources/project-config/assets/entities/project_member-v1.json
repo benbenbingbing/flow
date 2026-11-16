@@ -52,7 +52,7 @@
       "sortOrder": 50,
       "fieldLength": 20,
       "defaultValue": "INTERNAL",
-      "optionsJson": "[{\"label\":\"内部员工\",\"value\":\"INTERNAL\"},{\"label\":\"供应商\",\"value\":\"VENDOR\"},{\"label\":\"合同人员\",\"value\":\"CONTRACTOR\"},{\"label\":\"兼职投入\",\"value\":\"PART_TIME\"}]"
+      "dictType": "project_cfg_project_member_employment_type"
     },
     {
       "fieldCode": "join_date",
@@ -150,7 +150,7 @@
       "isRequired": false,
       "sortOrder": 160,
       "fieldLength": 500,
-      "optionsJson": "[{\"label\":\"开发\",\"value\":\"DEV\"},{\"label\":\"测试\",\"value\":\"TEST\"},{\"label\":\"UAT\",\"value\":\"UAT\"},{\"label\":\"生产只读\",\"value\":\"PROD_READ\"},{\"label\":\"生产操作\",\"value\":\"PROD_OPERATE\"}]"
+      "dictType": "project_cfg_project_member_environment_scope"
     },
     {
       "fieldCode": "access_revoked_flag",

@@ -95,8 +95,7 @@ export function withEntityStatusFieldOptions(
     return { ...field, fieldType: 'SELECT',
       componentType: runtimeOptions.allowMultiple === true
         && ['select_multiple', 'multi_select'].includes(field?.componentType) ? 'select_multiple' : 'select', editable: false,
-      readonly: true, options: PROCESS_STATUS_OPTIONS,
-      optionsJson: JSON.stringify(PROCESS_STATUS_OPTIONS) }
+      readonly: true, options: PROCESS_STATUS_OPTIONS, runtimeOptions: PROCESS_STATUS_OPTIONS }
   }
   if (!isEntityStatusField(field)) return field
   const statusOptions = getEffectiveEntityStatusOptions(statuses)
@@ -112,7 +111,7 @@ export function withEntityStatusFieldOptions(
     fieldType: 'SELECT',
     componentType,
     options: statusOptions,
-    optionsJson: JSON.stringify(statusOptions)
+    runtimeOptions: statusOptions
   }
 }
 
@@ -145,12 +144,12 @@ export function withEntityStatusRuntimeNodes(nodes = [], fields = [], statuses =
       fieldCode: processStatus ? fieldCode : 'status',
       fieldType: 'SELECT',
       componentType: 'select',
-      options: processStatus ? PROCESS_STATUS_OPTIONS : options,
-      optionsJson: JSON.stringify(processStatus ? PROCESS_STATUS_OPTIONS : options),
       ...(processStatus ? { readonly: true, disabled: true } : {})
     }
     return {
       ...node,
+      // 系统状态候选是本次请求的解析结果，不写进节点配置，避免形成新的内嵌来源。
+      runtimeOptions: processStatus ? PROCESS_STATUS_OPTIONS : options,
       props: runtimeProps,
       propsDocument: JSON.stringify(runtimeProps)
     }

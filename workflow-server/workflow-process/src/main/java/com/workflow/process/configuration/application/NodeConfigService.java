@@ -241,14 +241,13 @@ public class NodeConfigService {
         dto.setFieldType(field.getFieldType());
         dto.setIsRequired(field.getIsRequired());
         dto.setDefaultValue(field.getDefaultValue());
-        dto.setOptionsJson(field.getOptionsJson());
         dto.setValidateRules(field.getValidateRules());
         dto.setSortOrder(field.getSortOrder());
         return dto;
     }
     
     /**
-     * 转换截止实体；输出作为后续校验或处理的输入。
+     * 转换节点自有表单字段；该旧模型不能绑定代码表，选择字段应改用实体表单。
      *
      * @param dto DTO，作为 {@code node.setId} 的输入影响后续处理
      * @return 转换后的截止实体结果，供调用方继续处理
@@ -299,8 +298,9 @@ public class NodeConfigService {
     /**
      * 转换截止实体；输出作为后续校验或处理的输入。
      *
-     * @param dto DTO，作为 {@code field.setId} 的输入影响后续处理
-     * @return 转换后的截止实体结果，供调用方继续处理
+     * @param dto 待保存字段
+     * @return 不含内嵌候选的持久化字段
+     * @throws IllegalArgumentException 仍提交旧内嵌选项或无候选来源的选择字段
      */
     private FormFieldConfig convertToEntity(FormFieldConfigDTO dto) {
         FormFieldConfig field = new FormFieldConfig();
@@ -310,7 +310,11 @@ public class NodeConfigService {
         field.setFieldType(dto.getFieldType());
         field.setIsRequired(dto.getIsRequired());
         field.setDefaultValue(dto.getDefaultValue());
-        field.setOptionsJson(dto.getOptionsJson());
+        if (org.springframework.util.StringUtils.hasText(dto.getOptionsJson())
+                || java.util.Set.of("SELECT", "MULTI_SELECT", "SELECT_MULTIPLE", "RADIO", "CHECKBOX")
+                    .contains(String.valueOf(dto.getFieldType()).toUpperCase(java.util.Locale.ROOT))) {
+            throw new IllegalArgumentException("不再支持内嵌选项，请使用绑定代码表的实体表单");
+        }
         field.setValidateRules(dto.getValidateRules());
         field.setSortOrder(dto.getSortOrder());
         return field;

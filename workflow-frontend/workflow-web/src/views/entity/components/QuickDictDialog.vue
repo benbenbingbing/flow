@@ -60,6 +60,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createDictWithItems } from '@/api/system/dict'
+import { showRequestError } from '@/shared/request'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -169,7 +170,7 @@ async function createAndBindDict() {
     ElMessage.success('代码表已创建并绑定')
   } catch (error) {
     console.error(error)
-    ElMessage.error('创建代码表失败')
+    showRequestError(error, '创建代码表失败')
   } finally {
     saving.value = false
   }

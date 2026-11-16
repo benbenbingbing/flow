@@ -8,9 +8,6 @@ const entityDir = path.join(resourcesRoot, "project-config/assets/entities");
 const processDir = path.join(resourcesRoot, "project-config/assets/processes");
 const bpmnDir = path.join(resourcesRoot, "project-config/bpmn");
 
-const optionJson = (items) => JSON.stringify(
-  items.map(([label, value]) => ({ label, value }))
-);
 const linkage = (rules) => JSON.stringify({ linkageRules: rules });
 const matchAll = JSON.stringify({
   version: 1,
@@ -375,11 +372,7 @@ const projectGroup = baseEntity({
   fields: [
     field("group_type", "项目群类型", "SELECT", "varchar(30)", true, 20, {
       fieldLength: 30,
-      optionsJson: optionJson([
-        ["战略项目群", "STRATEGIC"],
-        ["业务域项目群", "BUSINESS_DOMAIN"],
-        ["年度计划项目群", "ANNUAL_PLAN"]
-      ])
+      dictType: "project_cfg_project_group_group_type"
     }),
     refField("sponsor_id", "项目群发起人", "USER", null, true, 30),
     refField("pmo_owner_id", "PMO负责人", "USER", null, true, 40),
@@ -477,11 +470,7 @@ const requirementProjectLink = baseEntity({
     field("relation_role", "承接角色", "SELECT", "varchar(20)", true, 40, {
       fieldLength: 20,
       defaultValue: "PRIMARY",
-      optionsJson: optionJson([
-        ["主承接", "PRIMARY"],
-        ["协同承接", "SUPPORTING"],
-        ["依赖项目", "DEPENDENCY"]
-      ])
+      dictType: "project_cfg_requirement_project_link_relation_role"
     }),
     field("delivery_scope", "承接范围", "TEXT", "text", true, 50),
     field("allocation_percentage", "分配比例(%)", "DECIMAL", "decimal(5,2)", true, 60, {
@@ -598,12 +587,7 @@ const projectMember = baseEntity({
     field("employment_type", "人员类型", "SELECT", "varchar(20)", true, 50, {
       fieldLength: 20,
       defaultValue: "INTERNAL",
-      optionsJson: optionJson([
-        ["内部员工", "INTERNAL"],
-        ["供应商", "VENDOR"],
-        ["合同人员", "CONTRACTOR"],
-        ["兼职投入", "PART_TIME"]
-      ])
+      dictType: "project_cfg_project_member_employment_type"
     }),
     field("join_date", "加入日期", "DATE", "date", true, 60),
     field("planned_leave_date", "计划退出日期", "DATE", "date", false, 70),
@@ -625,13 +609,7 @@ const projectMember = baseEntity({
     }),
     field("environment_scope", "环境权限范围", "MULTI_SELECT", "varchar(500)", false, 160, {
       fieldLength: 500,
-      optionsJson: optionJson([
-        ["开发", "DEV"],
-        ["测试", "TEST"],
-        ["UAT", "UAT"],
-        ["生产只读", "PROD_READ"],
-        ["生产操作", "PROD_OPERATE"]
-      ])
+      dictType: "project_cfg_project_member_environment_scope"
     }),
     field("access_revoked_flag", "权限已回收", "BOOLEAN", "tinyint", true, 170, {
       defaultValue: "false"
@@ -760,11 +738,7 @@ const projectRoleCatalog = baseEntity({
     }),
     field("allowed_scope", "允许作用域", "MULTI_SELECT", "varchar(200)", true, 30, {
       fieldLength: 200,
-      optionsJson: optionJson([
-        ["项目", "PROJECT"],
-        ["系统", "SYSTEM"],
-        ["发布", "RELEASE"]
-      ])
+      dictType: "project_cfg_project_role_catalog_allowed_scope"
     }),
     field("primary_unique_flag", "主负责人唯一", "BOOLEAN", "tinyint", true, 40, {
       defaultValue: "false"
@@ -866,11 +840,7 @@ const projectRoleAssignment = baseEntity({
     }),
     field("role_scope", "角色作用域", "SELECT", "varchar(20)", true, 90, {
       fieldLength: 20,
-      optionsJson: optionJson([
-        ["项目", "PROJECT"],
-        ["系统", "SYSTEM"],
-        ["发布", "RELEASE"]
-      ])
+      dictType: "project_cfg_project_role_assignment_role_scope"
     }),
     field("primary_flag", "主负责人", "BOOLEAN", "tinyint", true, 100, {
       defaultValue: "false"
@@ -1003,14 +973,7 @@ const projectSystemLink = baseEntity({
     refField("system_id", "系统", "CUSTOM", "system_asset", true, 30),
     field("construction_mode", "建设方式", "SELECT", "varchar(30)", true, 40, {
       fieldLength: 30,
-      optionsJson: optionJson([
-        ["新建", "NEW_BUILD"],
-        ["增强改造", "ENHANCEMENT"],
-        ["系统集成", "INTEGRATION"],
-        ["迁移", "MIGRATION"],
-        ["安全整改", "SECURITY_REMEDIATION"],
-        ["退役", "RETIREMENT"]
-      ])
+      dictType: "project_cfg_project_system_link_construction_mode"
     }),
     field("relation_reason", "关联原因", "TEXT", "text", true, 50),
     field("affected_modules", "影响模块", "TEXT", "text", true, 60),
@@ -1039,12 +1002,7 @@ const projectSystemLink = baseEntity({
     field("risk_level", "关系风险等级", "SELECT", "varchar(10)", true, 130, {
       fieldLength: 10,
       defaultValue: "MEDIUM",
-      optionsJson: optionJson([
-        ["低", "LOW"],
-        ["中", "MEDIUM"],
-        ["高", "HIGH"],
-        ["极高", "CRITICAL"]
-      ])
+      dictType: "project_cfg_project_system_link_risk_level"
     }),
     field("planned_start_date", "计划开始日期", "DATE", "date", true, 140),
     field("planned_end_date", "计划完成日期", "DATE", "date", true, 150),
@@ -1165,25 +1123,12 @@ const projectSystemLink = baseEntity({
 const projectFields = [
   field("project_type", "项目类型", "SELECT", "varchar(30)", true, 20, {
     fieldLength: 30,
-    optionsJson: optionJson([
-      ["新系统建设", "NEW_SYSTEM"],
-      ["系统增强", "ENHANCEMENT"],
-      ["系统集成", "INTEGRATION"],
-      ["数据项目", "DATA"],
-      ["安全项目", "SECURITY"],
-      ["系统迁移", "MIGRATION"],
-      ["研究咨询", "RESEARCH"]
-    ])
+    dictType: "project_cfg_project_project_type"
   }),
   field("project_level", "项目级别", "SELECT", "varchar(30)", true, 30, {
     fieldLength: 30,
     defaultValue: "DEPARTMENT",
-    optionsJson: optionJson([
-      ["企业级", "ENTERPRISE"],
-      ["跨部门", "CROSS_DEPARTMENT"],
-      ["部门级", "DEPARTMENT"],
-      ["小型变更", "SMALL_CHANGE"]
-    ])
+    dictType: "project_cfg_project_project_level"
   }),
   refField("project_group_id", "所属项目群", "CUSTOM", "project_group", false, 40),
   refField("sponsor_dept_id", "发起部门", "DEPT", null, true, 50),
@@ -1207,22 +1152,12 @@ const projectFields = [
   field("priority", "项目优先级", "SELECT", "varchar(10)", true, 210, {
     fieldLength: 10,
     defaultValue: "P2",
-    optionsJson: optionJson([
-      ["P0", "P0"],
-      ["P1", "P1"],
-      ["P2", "P2"],
-      ["P3", "P3"]
-    ])
+    dictType: "project_cfg_project_priority"
   }),
   field("risk_level", "项目风险等级", "SELECT", "varchar(10)", true, 220, {
     fieldLength: 10,
     defaultValue: "MEDIUM",
-    optionsJson: optionJson([
-      ["低", "LOW"],
-      ["中", "MEDIUM"],
-      ["高", "HIGH"],
-      ["极高", "CRITICAL"]
-    ])
+    dictType: "project_cfg_project_risk_level"
   }),
   field("cross_system_flag", "是否跨系统", "BOOLEAN", "tinyint", true, 230, {
     defaultValue: "false"
@@ -1237,12 +1172,7 @@ const projectFields = [
   field("data_scope", "数据范围", "TEXT", "text", false, 270),
   field("data_classification", "最高数据等级", "SELECT", "varchar(20)", false, 280, {
     fieldLength: 20,
-    optionsJson: optionJson([
-      ["公开", "PUBLIC"],
-      ["内部", "INTERNAL"],
-      ["敏感", "SENSITIVE"],
-      ["高度敏感", "HIGHLY_SENSITIVE"]
-    ])
+    dictType: "project_cfg_project_data_classification"
   }),
   field("completion_percentage", "项目完成比例(%)", "DECIMAL", "decimal(5,2)", true, 290, {
     defaultValue: "0",
@@ -1742,11 +1672,7 @@ const project = baseEntity({
 const projectSystemChangeFields = [
   field("operation_type", "操作类型", "SELECT", "varchar(20)", true, 20, {
     fieldLength: 20,
-    optionsJson: optionJson([
-      ["新增关系", "ADD"],
-      ["修改关系", "UPDATE"],
-      ["移除关系", "REMOVE"]
-    ])
+    dictType: "project_cfg_project_system_change_request_operation_type"
   }),
   refField("project_id", "项目", "CUSTOM", "project", true, 30),
   refField("system_id", "系统", "CUSTOM", "system_asset", true, 40),
@@ -1760,14 +1686,7 @@ const projectSystemChangeFields = [
   ),
   field("construction_mode", "建设方式", "SELECT", "varchar(30)", false, 60, {
     fieldLength: 30,
-    optionsJson: optionJson([
-      ["新建", "NEW_BUILD"],
-      ["增强改造", "ENHANCEMENT"],
-      ["系统集成", "INTEGRATION"],
-      ["迁移", "MIGRATION"],
-      ["安全整改", "SECURITY_REMEDIATION"],
-      ["退役", "RETIREMENT"]
-    ])
+    dictType: "project_cfg_project_system_change_request_construction_mode"
   }),
   field("change_reason", "变更原因", "TEXT", "text", true, 70),
   field("before_snapshot", "变更前快照", "TEXT", "longtext", false, 80),
@@ -1807,12 +1726,7 @@ const projectSystemChangeFields = [
   field("risk_level", "变更风险", "SELECT", "varchar(10)", true, 220, {
     fieldLength: 10,
     defaultValue: "MEDIUM",
-    optionsJson: optionJson([
-      ["低", "LOW"],
-      ["中", "MEDIUM"],
-      ["高", "HIGH"],
-      ["极高", "CRITICAL"]
-    ])
+    dictType: "project_cfg_project_system_change_request_risk_level"
   }),
   field("planned_start_date", "计划开始日期", "DATE", "date", false, 230),
   field("planned_end_date", "计划完成日期", "DATE", "date", false, 240),
@@ -2273,13 +2187,7 @@ const projectMemberChangeRequest = baseEntity({
   fields: [
     field("operation_type", "变更类型", "SELECT", "varchar(30)", true, 20, {
       fieldLength: 30,
-      optionsJson: optionJson([
-        ["成员加入", "JOIN"],
-        ["成员退出", "LEAVE"],
-        ["暂停参与", "SUSPEND"],
-        ["恢复参与", "RESUME"],
-        ["调整投入", "ALLOCATION_CHANGE"]
-      ])
+      dictType: "project_cfg_project_member_change_request_operation_type"
     }),
     refField("project_id", "所属项目", "CUSTOM", "project", true, 30),
     refField("project_member_id", "目标项目成员", "CUSTOM", "project_member", false, 40),
@@ -2287,11 +2195,7 @@ const projectMemberChangeRequest = baseEntity({
     refField("source_dept_id", "来源部门", "DEPT", null, false, 60),
     field("employment_type", "人员类型", "SELECT", "varchar(30)", false, 70, {
       fieldLength: 30,
-      optionsJson: optionJson([
-        ["内部员工", "INTERNAL"],
-        ["合同人员", "CONTRACTOR"],
-        ["供应商人员", "VENDOR"]
-      ])
+      dictType: "project_cfg_project_member_change_request_employment_type"
     }),
     field("effective_date", "计划生效日期", "DATE", "date", true, 80),
     field("planned_leave_date", "计划退出日期", "DATE", "date", false, 90),
@@ -2309,13 +2213,7 @@ const projectMemberChangeRequest = baseEntity({
     }),
     field("environment_scope", "环境范围", "MULTI_SELECT", "varchar(500)", false, 140, {
       fieldLength: 500,
-      optionsJson: optionJson([
-        ["开发环境", "DEV"],
-        ["测试环境", "TEST"],
-        ["验收环境", "UAT"],
-        ["生产只读", "PROD_READ"],
-        ["生产操作", "PROD_OPERATE"]
-      ])
+      dictType: "project_cfg_project_member_change_request_environment_scope"
     }),
     field("sensitive_access_flag", "涉及敏感权限", "BOOLEAN", "tinyint", true, 150, {
       defaultValue: "false"

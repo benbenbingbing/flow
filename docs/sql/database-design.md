@@ -265,7 +265,7 @@ active_process_definition_key bigint GENERATED ALWAYS AS ( CASE WHEN COALESCE(`d
 | `is_required` | 是否必填 | `tinyint(1)` | 是 | `'0'` | 是否必填。 | 现存 |
 | `is_unique` | 是否唯一 | `tinyint(1)` | 是 | `'0'` | 是否唯一。 | 现存 |
 | `default_value` | 默认值 | `varchar(500)` | 是 | `NULL` | 默认值。 | 现存 |
-| `options_json` | 选项配置JSON | `text` | 是 | `NULL`（隐式） | 选项配置JSON。 | 现存 |
+| `options_json` | 选项配置JSON | `text` | 是 | `NULL`（隐式） | 历史内嵌选项，仅保留数据，不再作为候选来源；新配置使用代码表。 | 历史保留 |
 | `validate_rules` | 验证规则JSON | `text` | 是 | `NULL`（隐式） | 验证规则JSON。 | 现存 |
 | `sort_order` | 排序号 | `int` | 是 | `'0'` | 排序顺序。 | 现存 |
 | `is_system` | 是否系统字段 | `tinyint(1)` | 是 | `'0'` | 是否系统字段：0-否 1-是（系统自动添加的字段，不可删除）。 | 现存 |
@@ -312,9 +312,11 @@ active_process_definition_key bigint GENERATED ALWAYS AS ( CASE WHEN COALESCE(`d
 
 ### 1.3 entity_field_option 实体字段静态选项表
 
+> 已停止读取和写入选项配置，保留存量数据；仅在所属实体字段被删除时清理。从代码表解析新候选，详见 [内嵌选项停用](../inline-options-retirement.md)。
+
 #### 1.3.1 业务说明
 
-按字段维护离散的选项值、标签、顺序与可用状态，供选择控件和字段值展示使用。
+仅保留历史内嵌选项数据，不再读写候选；选择字段统一绑定系统代码表。删除所属字段时仍清理对应历史记录。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 10 个。
 
@@ -347,13 +349,13 @@ active_process_definition_key bigint GENERATED ALWAYS AS ( CASE WHEN COALESCE(`d
 
 #### 1.3.4 业务规则
 
-同一字段的选项值由唯一索引约束；选项配置与字段物理列分别管理。
+历史记录仍受同一字段内选项值唯一约束。新配置不再写入本表，也不读取本表作为运行时候选。
 
 #### 1.3.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[EntityFieldOptionMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/infrastructure/persistence/mapper/EntityFieldOptionMapper.java)、[EntityFieldOption.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/infrastructure/persistence/record/EntityFieldOption.java)、[EntityFieldOptionService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/application/EntityFieldOptionService.java)。
+实现定位：[EntityFieldOptionMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/infrastructure/persistence/mapper/EntityFieldOptionMapper.java) 仅负责随字段删除清理历史记录；原读写服务和记录模型已移除。
 
 ### 1.4 entity_field_file_item 实体字段附件项表
 
@@ -2476,7 +2478,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 | `field_type` | 字段类型 | `varchar(50)` | 否 | 无 | 字段类型。 | 现存 |
 | `is_required` | 是否必填 | `tinyint(1)` | 是 | `'0'` | 是否必填。 | 现存 |
 | `default_value` | 默认值 | `varchar(500)` | 是 | `NULL` | 默认值。 | 现存 |
-| `options_json` | 选项配置JSON | `text` | 是 | `NULL`（隐式） | 选项配置JSON。 | 现存 |
+| `options_json` | 选项配置JSON | `text` | 是 | `NULL`（隐式） | 历史内嵌选项，仅保留数据，不再作为候选来源；新配置使用代码表。 | 历史保留 |
 | `validate_rules` | 验证规则JSON | `text` | 是 | `NULL`（隐式） | 验证规则JSON。 | 现存 |
 | `sort_order` | 排序号 | `int` | 是 | `'0'` | 排序顺序。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |

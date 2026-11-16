@@ -1,6 +1,6 @@
 <template>
   <div class="dict-definition-picker">
-    <button type="button" class="picker-trigger" @click="openPicker">
+    <button type="button" class="picker-trigger" :disabled="disabled" @click="openPicker">
       <span v-if="modelValue" class="trigger-content">
         <span class="trigger-primary">{{ selectedDict?.dictName || modelValue }}</span>
         <span v-if="selectedDict?.dictName" class="secondary-text">{{ modelValue }}</span>
@@ -100,6 +100,7 @@ import PageState from '@/components/PageState.vue'
 const props = defineProps({
   modelValue: { type: String, default: '' },
   options: { type: Array, default: () => [] },
+  disabled: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' }
 })
@@ -128,9 +129,11 @@ watch(() => filteredOptions.value.length, total => {
   pageNum.value = Math.min(pageNum.value, Math.max(1, Math.ceil(total / pageSize.value)))
 })
 watch(() => props.modelValue, () => { visible.value = false })
+watch(() => props.disabled, value => { if (value) visible.value = false })
 
 /** 每次打开都从字段当前值恢复临时选择，并定位到所在页，便于核对已有配置。 */
 function openPicker() {
+  if (props.disabled) return
   keyword.value = ''
   draftCode.value = props.modelValue || ''
   visible.value = true
@@ -143,7 +146,7 @@ function selectRow(row) {
 
 /** 仅提交仍在候选列表中的代码表编码；字段的持久化沿用页面原有保存流程。 */
 function confirmSelection() {
-  if (!draftDict.value || props.loading || props.error) return
+  if (props.disabled || !draftDict.value || props.loading || props.error) return
   emit('update:modelValue', draftCode.value)
   visible.value = false
 }
@@ -175,6 +178,12 @@ function confirmSelection() {
 .picker-trigger:hover,
 .picker-trigger:focus-visible {
   border-color: var(--el-color-primary);
+}
+
+.picker-trigger:disabled {
+  cursor: not-allowed;
+  border-color: var(--el-border-color);
+  background: var(--el-disabled-bg-color);
 }
 
 .picker-trigger > .el-icon {

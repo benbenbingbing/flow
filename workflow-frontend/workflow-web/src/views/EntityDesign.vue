@@ -288,27 +288,26 @@
             </template>
 
             <template v-if="showOptions">
-              <el-form-item label="选项来源" required>
-                <el-radio-group v-model="selectedField.optionSource">
-                  <el-radio-button value="DICT">系统代码表</el-radio-button>
-                  <el-radio-button value="LEGACY_INLINE" disabled>旧内嵌选项</el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item v-if="selectedField.optionSource === 'DICT'" label="代码表" required>
-                <DictDefinitionPicker
-                  v-model="selectedField.dictType"
-                  :options="dictOptions"
-                  :loading="dictOptionsLoading"
-                  :error="dictOptionsError"
-                  style="width: calc(100% - 88px)"
-                  @retry="loadDictOptions"
-                />
-                <el-button style="margin-left: 8px" @click="openQuickDictDialog">新建</el-button>
+              <el-form-item label="代码表" required>
+                <div class="field-dict-binding">
+                  <DictDefinitionPicker
+                    v-model="selectedField.dictType"
+                    :options="dictOptions"
+                    :loading="dictOptionsLoading"
+                    :error="dictOptionsError"
+                    :disabled="isSelectedFieldStructureLocked"
+                    @retry="loadDictOptions"
+                  />
+                  <div class="field-dict-actions">
+                    <el-button v-if="selectedField.dictType && canViewDictionary" @click="openBoundDict(false)">查看</el-button>
+                    <el-button v-if="selectedField.dictType && canManageDictionary" @click="openBoundDict(true)">维护</el-button>
+                    <el-button v-if="!isSelectedFieldStructureLocked && canManageDictionary" @click="openQuickDictDialog">
+                      {{ selectedField.dictType ? '新建其他' : '新建' }}
+                    </el-button>
+                  </div>
+                </div>
+                <div v-if="isSelectedFieldStructureLocked" class="form-tip">字段已发布，代码表绑定已锁定；可查看或维护当前代码表。</div>
                 <div class="form-tip">数据保存代码项编码，显示名称从代码表关联解析。</div>
-              </el-form-item>
-              <el-form-item v-else label="旧选项">
-                <el-input v-model="optionsText" type="textarea" rows="4" disabled />
-                <div class="form-tip text-warning">旧内嵌选项仅用于兼容，请迁移到系统代码表。</div>
               </el-form-item>
             </template>
 
@@ -924,6 +923,12 @@
     :dict-code="quickDictForm.dictCode"
     @created="handleQuickDictCreated"
   />
+  <BoundDictDrawer
+    v-model="boundDictVisible"
+    :dict-code="boundDictCode"
+    :manage="boundDictManage"
+    @changed="loadDictOptions"
+  />
 </template>
 
 <script setup>
@@ -948,6 +953,7 @@ import EntityExcelSettings from '@/components/excel/EntityExcelSettings.vue'
 import EntityDefaultEventPanel from '@/views/entity/components/EntityDefaultEventPanel.vue'
 import EntityRelationManagement from '@/views/entity/components/EntityRelationManagement.vue'
 import QuickDictDialog from '@/views/entity/components/QuickDictDialog.vue'
+import BoundDictDrawer from '@/views/entity/components/BoundDictDrawer.vue'
 import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
@@ -975,6 +981,10 @@ const relationCount = ref(0)
 const canManageEntityDefinition = computed(() => userStore.isSuperAdmin
   || userStore.permissions.includes('*')
   || userStore.permissions.includes('entity:definition:manage'))
+const canManageDictionary = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*') || userStore.permissions.includes('system:dictionary:manage'))
+const canViewDictionary = computed(() => canManageDictionary.value
+  || userStore.permissions.includes('system:dictionary:view'))
 
 // 字段类型定义
 const fieldTypes = ENTITY_DESIGN_FIELD_TYPES
@@ -1054,13 +1064,16 @@ const isSelectedFieldStructureLocked = computed(() => Boolean(
   && (isSystemEntity.value || selectedField.value.isPublished || selectedField.value.isSystem)
 ))
 const draggedType = ref(null)
-const optionsText = ref('')
 const refEntityFields = ref([])
 const dictOptions = ref([])
 const dictOptionsLoading = ref(false)
 const dictOptionsError = ref('')
 const quickDictVisible = ref(false)
 const quickDictForm = ref({ dictName: '', dictCode: '' })
+const quickDictField = ref(null)
+const boundDictVisible = ref(false)
+const boundDictCode = ref('')
+const boundDictManage = ref(false)
 
 const {
   permissionLoading,
@@ -1162,17 +1175,6 @@ const onReferenceEntityChange = async (entityId) => {
   await onRefEntityChange(entityId)
 }
 
-// 监听选项文本变化
-watch(optionsText, (val) => {
-  if (selectedField.value && showOptions.value) {
-    const options = val.split('\n').map(line => {
-      const [value, label] = line.split(':')
-      return { value: value?.trim(), label: label?.trim() || value?.trim() }
-    }).filter(opt => opt.value)
-    selectedField.value.optionsJson = JSON.stringify(options)
-  }
-})
-
 // 加载实体数据
 const loadEntity = async () => {
   loadError.value = ''
@@ -1203,7 +1205,6 @@ const handleAddField = (type) => {
     isRequired: false,
     isUnique: false,
     sortOrder: fields.value.length,
-    optionSource: ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(type?.value) ? 'DICT' : undefined,
     dictType: ''
   }
   fields.value.push(newField)
@@ -1214,10 +1215,6 @@ const handleAddField = (type) => {
 const selectField = (field) => {
   selectedField.value = field
   refEntityFields.value = []
-  if (showOptions.value) {
-    field.optionSource = field.dictType ? 'DICT' : 'LEGACY_INLINE'
-  }
-  
   // FILE/IMAGE 字段自动初始化 fileItems
   if ((field.fieldType === 'FILE' || field.fieldType === 'IMAGE') && (!field.fileItems || field.fileItems.length === 0)) {
     field.fileItems = [{
@@ -1230,38 +1227,45 @@ const selectField = (field) => {
     }]
   }
   
-  if (showOptions.value && field.optionsJson) {
-    try {
-      const options = JSON.parse(field.optionsJson)
-      optionsText.value = options.map(opt => `${opt.value}:${opt.label}`).join('\n')
-    } catch (e) {
-      optionsText.value = ''
-    }
-  } else {
-    optionsText.value = ''
-  }
-  
   if (isReference.value && field.refEntityId) {
     field.refEntityType = 'CUSTOM'
     onRefEntityChange(field.refEntityId)
   }
 }
 
+/** 只允许未发布字段新建并换绑；以字段状态判断，不检查是否存在业务数据。 */
 const openQuickDictDialog = () => {
+  if (!selectedField.value || isSelectedFieldStructureLocked.value || !canManageDictionary.value) return
+  quickDictField.value = selectedField.value
   const fieldCode = selectedField.value?.fieldCode || ''
+  const baseCode = fieldCode ? `${entityData.value.entityCode}_${fieldCode}`.toLowerCase() : ''
+  // 新建其他代码表时避开已知编码；服务端仍负责覆盖停用代码表和并发创建的唯一性校验。
+  const usedCodes = new Set([...dictOptions.value.map(dict => dict.dictCode), selectedField.value.dictType])
+  let dictCode = baseCode
+  for (let suffix = 2; dictCode && usedCodes.has(dictCode); suffix++) dictCode = `${baseCode}_${suffix}`
   quickDictForm.value = {
     dictName: selectedField.value?.fieldName || '',
-    dictCode: fieldCode ? `${entityData.value.entityCode}_${fieldCode}`.toLowerCase() : ''
+    dictCode
   }
   quickDictVisible.value = true
 }
 
 /** 新代码表创建后更新当前字段草稿，并刷新可选代码表；字段仍由原有保存流程持久化。 */
 const handleQuickDictCreated = async (dict) => {
-  selectedField.value.optionSource = 'DICT'
-  selectedField.value.dictType = dict.dictCode
-  selectedField.value.optionsJson = null
+  // 异步创建期间即使当前选中字段变化，也只能回写打开弹窗时的未发布字段。
+  const field = quickDictField.value
+  if (field && fields.value.includes(field) && !field.isPublished && !field.isSystem) {
+    field.dictType = dict.dictCode
+  }
   await loadDictOptions()
+}
+
+/** 查看和维护都使用当前绑定，不触碰字段草稿；抽屉按编码读取，支持已停用代码表。 */
+const openBoundDict = (manage) => {
+  if (!selectedField.value?.dictType || !canViewDictionary.value || (manage && !canManageDictionary.value)) return
+  boundDictCode.value = selectedField.value.dictType
+  boundDictManage.value = manage
+  boundDictVisible.value = true
 }
 
 // 删除字段
@@ -1309,7 +1313,6 @@ const convertToFormField = (field) => {
     fieldType: field.fieldType,
     isRequired: field.isRequired,
     defaultValue: field.defaultValue,
-    optionsJson: field.optionsJson,
     // 子表单/实体引用相关属性
     refEntityId: field.refEntityId,
     refEntityType: field.refEntityType,
@@ -1445,6 +1448,17 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.field-dict-binding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.field-dict-binding > .dict-definition-picker { flex: 1 1 200px; }
+.field-dict-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.field-dict-actions .el-button + .el-button { margin-left: 0; }
+
 .entity-design {
   /* 页签内容共用上下间距，左右边界与顶部导航保持对齐。 */
   --entity-design-panel-gap: 16px;

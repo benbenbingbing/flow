@@ -1228,7 +1228,7 @@ const previewQueryFields = computed(() =>
         componentType: queryConfig.componentType || field.componentType,
         placeholder: queryConfig.placeholder || field.placeholder,
         fieldType: originField?.fieldType || field.fieldType || 'STRING',
-        optionsJson: originField?.optionsJson || field.optionsJson
+        dictType: originField?.dictType || field.dictType
       }
     })
 )

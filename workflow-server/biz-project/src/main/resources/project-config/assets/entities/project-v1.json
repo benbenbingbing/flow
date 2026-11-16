@@ -20,7 +20,7 @@
       "isRequired": true,
       "sortOrder": 20,
       "fieldLength": 30,
-      "optionsJson": "[{\"label\":\"新系统建设\",\"value\":\"NEW_SYSTEM\"},{\"label\":\"系统增强\",\"value\":\"ENHANCEMENT\"},{\"label\":\"系统集成\",\"value\":\"INTEGRATION\"},{\"label\":\"数据项目\",\"value\":\"DATA\"},{\"label\":\"安全项目\",\"value\":\"SECURITY\"},{\"label\":\"系统迁移\",\"value\":\"MIGRATION\"},{\"label\":\"研究咨询\",\"value\":\"RESEARCH\"}]"
+      "dictType": "project_cfg_project_project_type"
     },
     {
       "fieldCode": "project_level",
@@ -31,7 +31,7 @@
       "sortOrder": 30,
       "fieldLength": 30,
       "defaultValue": "DEPARTMENT",
-      "optionsJson": "[{\"label\":\"企业级\",\"value\":\"ENTERPRISE\"},{\"label\":\"跨部门\",\"value\":\"CROSS_DEPARTMENT\"},{\"label\":\"部门级\",\"value\":\"DEPARTMENT\"},{\"label\":\"小型变更\",\"value\":\"SMALL_CHANGE\"}]"
+      "dictType": "project_cfg_project_project_level"
     },
     {
       "fieldCode": "project_group_id",
@@ -192,7 +192,7 @@
       "sortOrder": 210,
       "fieldLength": 10,
       "defaultValue": "P2",
-      "optionsJson": "[{\"label\":\"P0\",\"value\":\"P0\"},{\"label\":\"P1\",\"value\":\"P1\"},{\"label\":\"P2\",\"value\":\"P2\"},{\"label\":\"P3\",\"value\":\"P3\"}]"
+      "dictType": "project_cfg_project_priority"
     },
     {
       "fieldCode": "risk_level",
@@ -203,7 +203,7 @@
       "sortOrder": 220,
       "fieldLength": 10,
       "defaultValue": "MEDIUM",
-      "optionsJson": "[{\"label\":\"低\",\"value\":\"LOW\"},{\"label\":\"中\",\"value\":\"MEDIUM\"},{\"label\":\"高\",\"value\":\"HIGH\"},{\"label\":\"极高\",\"value\":\"CRITICAL\"}]"
+      "dictType": "project_cfg_project_risk_level"
     },
     {
       "fieldCode": "cross_system_flag",
@@ -256,7 +256,7 @@
       "isRequired": false,
       "sortOrder": 280,
       "fieldLength": 20,
-      "optionsJson": "[{\"label\":\"公开\",\"value\":\"PUBLIC\"},{\"label\":\"内部\",\"value\":\"INTERNAL\"},{\"label\":\"敏感\",\"value\":\"SENSITIVE\"},{\"label\":\"高度敏感\",\"value\":\"HIGHLY_SENSITIVE\"}]"
+      "dictType": "project_cfg_project_data_classification"
     },
     {
       "fieldCode": "completion_percentage",

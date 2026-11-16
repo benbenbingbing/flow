@@ -211,6 +211,7 @@ import {
 } from '@flow/workflow-core/subform-value-sync'
 import { resolveFormContainerAppearance } from '@flow/workflow-core/form-container-appearance'
 import { hasOneToOneSubFormContent } from '@/shared/subform-row-presence'
+import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
 
 const props = defineProps({
   config: {
@@ -255,6 +256,7 @@ const emit = defineEmits([
 ])
 
 const rowData = ref([])
+const dictionaryOptions = useFieldDictionaryOptions(() => props.config.fields || [])
 
 const fieldErrors = ref({})
 
@@ -477,19 +479,9 @@ function formatCellValue(value, field) {
   return value
 }
 
-// 获取字段选项
+// 只读子表同样使用代码表名称；没有绑定时保留原始值，不解析历史字段选项。
 function getFieldOptions(field) {
-  if (!field.options) return []
-  
-  if (typeof field.options === 'string') {
-    try {
-      return JSON.parse(field.options)
-    } catch (e) {
-      return []
-    }
-  }
-  
-  return field.options
+  return field.runtimeOptions ?? dictionaryOptions.value[field.dictType] ?? []
 }
 
 // 添加行

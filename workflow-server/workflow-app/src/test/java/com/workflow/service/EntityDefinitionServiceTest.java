@@ -6,7 +6,7 @@ import com.workflow.entity.data.application.EntityPhysicalTableNaming;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldDefinitionService;
-import com.workflow.entity.definition.application.EntityFieldOptionService;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
 import com.workflow.entity.definition.application.EntityRelationDefinitionService;
@@ -111,7 +111,7 @@ public class EntityDefinitionServiceTest {
     private EntityRecordTeamService entityRecordTeamService;
 
     @Mock
-    private EntityFieldOptionService fieldOptionService;
+    private EntityFieldOptionMapper historicalOptionCleanup;
 
     @Mock
     private EntityFieldValidationRuleService fieldValidationRuleService;
@@ -202,8 +202,6 @@ public class EntityDefinitionServiceTest {
                 .thenAnswer(invocation -> Optional.of(testEntity));
         lenient().when(physicalTableNaming.generate(anyString()))
                 .thenAnswer(invocation -> "biz_" + invocation.getArgument(0));
-        lenient().when(fieldOptionService.findOptions(anyString()))
-                .thenReturn(List.of());
 
         EntityPublishHistory history = new EntityPublishHistory();
         history.setId("history-1");
@@ -254,6 +252,21 @@ public class EntityDefinitionServiceTest {
         assertEquals("name", result.getFields().get(0).getFieldCode());
         verify(entityMapper, times(1)).selectById("1");
         verify(fieldMapper, times(1)).findByEntityId("1");
+    }
+
+    /** 旧配置必须仍能打开以便重新配置，但不能重新输出旧候选或直接发布。 */
+    @Test
+    void legacySelectionCanBeReadButCannotBePublishedWithoutDictionary() {
+        testField.setFieldType(EntityField.FieldType.SELECT);
+        testField.setOptionsJson("[{\"value\":\"old\",\"label\":\"历史项\"}]");
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1")).thenReturn(List.of(testField));
+        EntityDefinitionDTO result = entityService.findById("1");
+        assertNull(result.getFields().get(0).getOptionsJson());
+        assertNull(result.getFields().get(0).getOptions());
+        assertThrows(IllegalArgumentException.class, () -> entityService.publish("1", "user1", "测试用户"));
+        assertNotNull(testField.getOptionsJson());
+        verify(dynamicTableService, never()).syncEntityTableStructure(any(EntityDefinition.class));
     }
 
     /** 测试按 ID 查询返回子表单关系元数据：验证字段上的子实体、引用字段、关系类型等映射正确 */

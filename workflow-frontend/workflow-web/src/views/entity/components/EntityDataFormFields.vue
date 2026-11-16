@@ -135,7 +135,6 @@ import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
 import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
-import { parseJsonOptions } from '@/shared/list-runtime'
 import {
   createCustomFormActionSlotContract,
   formActionsForOwner
@@ -373,17 +372,7 @@ function getFieldOptions(field: any) {
   if (field.dictType && dictOptionMap.value[field.dictType]) {
     return dictOptionMap.value[field.dictType]
   }
-  if (field.optionsJson) {
-    return parseJsonOptions(field.optionsJson)
-  }
-  if (field.componentProps) {
-    try {
-      const compProps = JSON.parse(field.componentProps)
-      if (compProps.options && Array.isArray(compProps.options)) {
-        return compProps.options
-      }
-    } catch (e) {}
-  }
+  if (Array.isArray(field.options) && ['status', 'processStatus', 'process_status'].includes(field.fieldCode)) return field.options
   return []
 }
 
@@ -544,7 +533,8 @@ const runtimeFormFields = computed(() =>
       const entityField = props.entityFields.find((item: any) =>
         item.fieldCode === field.fieldCode || item.id === field.fieldId)
       const dictType = field.dictType || entityField?.dictType
-      const options = dictType ? dictOptionMap.value[dictType] : null
+      const dynamicOptions = dataSourceOptionMap.value[field.fieldCode]
+      const options = dynamicOptions ?? (dictType ? dictOptionMap.value[dictType] : null)
       const runtimeField = {
         ...(entityField || {}),
         ...field,
@@ -558,9 +548,10 @@ const runtimeFormFields = computed(() =>
           ? field.fileItems
           : (entityField?.fileItems || []),
         entityFileItems: entityField?.fileItems || [],
-        ...(options
-          ? { dictType, optionsJson: JSON.stringify(options) }
-          : {})
+        dictType,
+        options: options ?? undefined,
+        runtimeOptions: options ?? undefined,
+        runtimeOptionsSource: dynamicOptions != null ? 'DATA_SOURCE' : 'DICTIONARY'
       }
       return withEntityStatusFieldOptions(
         runtimeField,

@@ -229,17 +229,7 @@ public class EntityFieldAssignmentFlowActionHandler implements FlowActionProvide
             return dictionaries.listDictionaryValues(field.getDictType()).stream()
                     .map(value -> new ValueOption(value.value(), value.label(), !value.enabled())).toList();
         }
-        if (!StringUtils.hasText(field.getOptionsJson())) return List.of();
-        try {
-            JsonNode options = objectMapper.readTree(field.getOptionsJson());
-            if (!options.isArray()) throw invalid(field, "选项配置不合法");
-            List<ValueOption> result = new ArrayList<>();
-            for (JsonNode option : options) result.add(new ValueOption(option.path("value").asText(),
-                    option.path("label").asText(), option.path("disabled").asBoolean(false)));
-            return result;
-        } catch (java.io.IOException error) {
-            throw invalid(field, "选项配置不合法");
-        }
+        throw invalid(field, "选择字段未绑定代码表，请重新配置并发布实体");
     }
 
     /** 面向设计器的发布字段投影，不暴露持久化字段对象。 */

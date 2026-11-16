@@ -1062,8 +1062,8 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 
 | 配置项 | 含义 | 测试点 |
 |---|---|---|
-| `options` | 静态选项 | 选项 label/value 正确回显 |
-| `optionsJson` | 选项 JSON | 从 entity_field 或 componentProps 解析 |
+| `options` | 本次运行解析出的候选 | 代码表或动态数据源的 label/value 正确回显，显式空结果不回退旧配置 |
+| 运行时 `options` | 已解析候选数组 | 仅从系统代码表或动态数据源解析，禁止读取实体及组件内嵌选项 |
 | `multiple` | 是否多选 | 多选时值为数组 |
 | `linkageState.options` | 动态选项 | 联动过滤后选项更新 |
 
@@ -1214,11 +1214,11 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 
 #### 选项加载优先级
 
-1. `props.options`（联动引擎动态选项）
-2. `componentProps.options`
-3. `field.optionsJson`
-4. `field.options`
-5. 引用实体动态加载（用户/部门/自定义实体）
+1. 宿主通过 `props.options` 传入代码表、系统状态或动态数据源解析结果；显式空数组表示无候选。
+2. 未传入候选时，根据 `dictType` 加载代码表，或由组件加载其已配置的动态数据源。
+3. 引用实体控件使用独立协议加载用户、部门或自定义实体。
+
+禁止回退存储在字段 `options`、`optionsJson` 或 `componentProps.options` 中的内嵌配置；无有效来源时要求重新配置。
 
 ### 5.16.19 表单校验时机与规则
 
@@ -1356,7 +1356,7 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 | `is_required` | 是否必填 | `false` | 提交时校验 | 空值拒绝 |
 | `is_unique` | 是否唯一 | `false` | 数据库唯一约束 | 重复拒绝 |
 | `default_value` | 默认值 | 字符串 | 新建时自动填充 | 各类型默认值解析 |
-| `options_json` | 选项配置 | `[{"label":"","value":""}]` | 下拉/单选/多选选项 | 选项回显、存储值 |
+| `dict_type` | 代码表绑定 | `leave_type` | 下拉/单选/多选候选 | 代码项编码存储与名称回显；旧 `options_json` 仅保留历史数据 |
 | `validate_rules` | 校验规则 JSON | 如 `{"minLength":5}` | 自定义校验 | 正则、长度、范围 |
 | `ref_entity_id` / `ref_entity_type` | 关联实体 | `CUSTOM`/`USER`/`DEPT`/`ROLE`/`GROUP` | 子表单、用户选择、部门选择 | 引用数据加载 |
 | `display_type` | 子表单显示方式 | `embedded`/`tab` | 子表单嵌入或 Tab 页展示 | 前端渲染 |

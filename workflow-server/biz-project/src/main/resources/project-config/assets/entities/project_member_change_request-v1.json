@@ -20,7 +20,7 @@
       "isRequired": true,
       "sortOrder": 20,
       "fieldLength": 30,
-      "optionsJson": "[{\"label\":\"成员加入\",\"value\":\"JOIN\"},{\"label\":\"成员退出\",\"value\":\"LEAVE\"},{\"label\":\"暂停参与\",\"value\":\"SUSPEND\"},{\"label\":\"恢复参与\",\"value\":\"RESUME\"},{\"label\":\"调整投入\",\"value\":\"ALLOCATION_CHANGE\"}]"
+      "dictType": "project_cfg_project_member_change_request_operation_type"
     },
     {
       "fieldCode": "project_id",
@@ -72,7 +72,7 @@
       "isRequired": false,
       "sortOrder": 70,
       "fieldLength": 30,
-      "optionsJson": "[{\"label\":\"内部员工\",\"value\":\"INTERNAL\"},{\"label\":\"合同人员\",\"value\":\"CONTRACTOR\"},{\"label\":\"供应商人员\",\"value\":\"VENDOR\"}]"
+      "dictType": "project_cfg_project_member_change_request_employment_type"
     },
     {
       "fieldCode": "effective_date",
@@ -135,7 +135,7 @@
       "isRequired": false,
       "sortOrder": 140,
       "fieldLength": 500,
-      "optionsJson": "[{\"label\":\"开发环境\",\"value\":\"DEV\"},{\"label\":\"测试环境\",\"value\":\"TEST\"},{\"label\":\"验收环境\",\"value\":\"UAT\"},{\"label\":\"生产只读\",\"value\":\"PROD_READ\"},{\"label\":\"生产操作\",\"value\":\"PROD_OPERATE\"}]"
+      "dictType": "project_cfg_project_member_change_request_environment_scope"
     },
     {
       "fieldCode": "sensitive_access_flag",

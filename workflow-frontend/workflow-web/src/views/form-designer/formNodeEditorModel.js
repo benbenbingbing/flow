@@ -5,6 +5,7 @@ import { buildFormNodePayload, extractFormNodeComponentConfig, formNodeSupports,
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListDisplayConfig, SUB_LIST_ACTION_DISPLAY_VERSION } from '@/shared/sub-list'
 import { readFieldScripts } from '@flow/workflow-core/browser/field-event-scripts'
+import { assertNoEmbeddedSelectionOptions } from '@/shared/selection-option-policy'
 
 /**
  * 统一组件目录按宿主节点、绑定与实体类型筛选；平台预置和项目组件遵守相同约束。
@@ -152,6 +153,7 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
 
   /** 序列化草稿而不修改原对象，保留发布引用、节点标识和字段约束。 */
   function fieldToNodePayload(field, options = {}) {
+    assertNoEmbeddedSelectionOptions(field)
     const effectiveRequired = isEntityFieldFixedRequired(field)
       ? 1
       : field.isRequired
@@ -340,16 +342,6 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
         compProps.events = events
       } else {
         delete compProps.events
-      }
-
-      // 序列化选项配置（optionsJson → componentProps.options）
-      if (field.optionsJson) {
-        try {
-          const options = JSON.parse(field.optionsJson)
-          if (Array.isArray(options) && options.length > 0) {
-            compProps.options = options
-          }
-        } catch (e) {}
       }
 
       return compProps

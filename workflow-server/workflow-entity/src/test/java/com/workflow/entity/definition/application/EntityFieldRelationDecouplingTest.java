@@ -41,10 +41,8 @@ class EntityFieldRelationDecouplingTest {
                         fieldMapper,
                         relationMapper,
                         mock(EntityFieldFileItemService.class),
-                        mock(EntityFieldOptionService.class),
                         mock(EntityFieldValidationRuleService.class),
-                        mock(SystemEntityFieldPolicy.class),
-                        new ObjectMapper());
+                        mock(SystemEntityFieldPolicy.class));
         EntityFieldDTO field = new EntityFieldDTO();
         field.setFieldCode("details");
         field.setFieldName("订单明细");
@@ -72,10 +70,8 @@ class EntityFieldRelationDecouplingTest {
                         mock(EntityFieldMapper.class),
                         relationMapper,
                         mock(EntityFieldFileItemService.class),
-                        mock(EntityFieldOptionService.class),
                         mock(EntityFieldValidationRuleService.class),
-                        mock(SystemEntityFieldPolicy.class),
-                        new ObjectMapper());
+                        mock(SystemEntityFieldPolicy.class));
 
         service.syncRelations(
                 new EntityDefinition(),

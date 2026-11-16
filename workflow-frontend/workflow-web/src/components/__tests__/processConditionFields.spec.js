@@ -29,14 +29,15 @@ test('所有选择类字段从代码表加载候选，按代码表去重且保�
   assert.deepEqual(fields, original)
 })
 
-test('旧内嵌选项和非选择类字段原样保留，不触发代码表请求', async () => {
+test('未绑定代码表的选择字段不能使用任何旧内嵌来源，非选择字段原样保留', async () => {
   const fields = [
     { fieldCode: 'legacy', fieldType: 'SELECT', optionsJson: '[{"value":"old","label":"旧选项"}]' },
     { fieldCode: 'component', fieldType: 'RADIO', componentProps: '{"options":["A"]}' },
     { fieldCode: 'note', fieldType: 'STRING', dictType: 'unused' }
   ]
   const loaded = await loadProcessConditionFieldOptions(fields, () => assert.fail('不应加载代码表'))
-  assert.deepEqual(loaded, fields)
+  assert.deepEqual(loaded.slice(0, 2).map(field => field.options), [[], []])
+  assert.equal(loaded[2], fields[2])
 })
 
 test('空代码表、失败和异常响应不使用过期内嵌值，也不影响其他代码表', async t => {

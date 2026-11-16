@@ -12,10 +12,8 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
-import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.definition.infrastructure.persistence.record.EntityFieldOption;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.application.model.EntityVersionScopePreview;
@@ -71,7 +69,6 @@ public class EntityRecordSnapshotService {
             new SystemField("update_by", "更新人", "USER"));
 
     private final EntityPublishedSnapshotService publishedSnapshotService;
-    private final EntityFieldOptionMapper optionMapper;
     private final EntityStatusMapper statusMapper;
     private final SysDictItemService dictItemService;
     private final SysUserService userService;
@@ -673,9 +670,6 @@ public class EntityRecordSnapshotService {
                     field.getDictType(),
                     value);
         }
-        if (isOptionField(field)) {
-            return displayOptions(field, value);
-        }
         if (field.getFieldType()
                 == EntityField.FieldType.BOOLEAN) {
             return Boolean.parseBoolean(
@@ -742,48 +736,6 @@ public class EntityRecordSnapshotService {
     }
 
     /**
-     * 处理展示选项，并将结果传给后续步骤。
-     *
-     * @param field 字段，供本方法处理展示选项时使用
-     * @param value 待处理展示选项的原始输入，结果供调用方继续使用
-     * @return 处理后的展示选项结果，供调用方继续处理
-     */
-    private Object displayOptions(
-            EntityField field,
-            Object value) {
-        Map<String, String> labels = new LinkedHashMap<>();
-        if (StringUtils.hasText(field.getId())) {
-            for (EntityFieldOption option
-                    : optionMapper.findByFieldId(field.getId())) {
-                labels.put(
-                        option.getOptionValue(),
-                        option.getOptionLabel());
-            }
-        }
-        if (labels.isEmpty()
-                && StringUtils.hasText(field.getOptionsJson())) {
-            for (Map<String, Object> option
-                    : readOptions(field.getOptionsJson())) {
-                String optionValue = firstText(
-                        option.get("value"),
-                        option.get("optionValue"),
-                        option.get("code"));
-                String optionLabel = firstText(
-                        option.get("label"),
-                        option.get("optionLabel"),
-                        option.get("name"));
-                if (optionValue != null) {
-                    labels.put(optionValue,
-                            optionLabel == null
-                                    ? optionValue
-                                    : optionLabel);
-                }
-            }
-        }
-        return displayMapped(value, labels);
-    }
-
-    /**
      * 处理展示{@code mapped}，并将结果传给后续步骤。
      *
      * @param value 待处理展示{@code mapped}的原始输入，结果供调用方继续使用
@@ -843,19 +795,6 @@ public class EntityRecordSnapshotService {
     }
 
     /**
-     * 判断是否选项字段；判断结果决定调用方的后续分支。
-     *
-     * @param field 字段，供本方法判断是否选项字段时使用
-     * @return 选项字段条件成立时为 true，否则为 false
-     */
-    private boolean isOptionField(EntityField field) {
-        return switch (field.getFieldType()) {
-            case SELECT, MULTI_SELECT, RADIO, CHECKBOX -> true;
-            default -> false;
-        };
-    }
-
-    /**
      * 处理{@code flatten}字典条目，并将结果传给后续步骤。
      *
      * @param items 条目，供本方法处理{@code flatten}字典条目时使用
@@ -902,24 +841,6 @@ public class EntityRecordSnapshotService {
         return value == null
                 ? List.of()
                 : List.of(String.valueOf(value));
-    }
-
-    /**
-     * 读取选项；查询结果供调用方展示或继续处理。
-     *
-     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
-     * @return 实体记录快照集合，供调用方遍历或展示
-     */
-    private List<Map<String, Object>> readOptions(
-            String json) {
-        try {
-            return objectMapper.readValue(
-                    json,
-                    new TypeReference<>() {
-                    });
-        } catch (JsonProcessingException exception) {
-            return List.of();
-        }
     }
 
     /**

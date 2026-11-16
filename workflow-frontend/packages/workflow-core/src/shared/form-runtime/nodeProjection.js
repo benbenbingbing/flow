@@ -47,6 +47,8 @@ export function resolveRuntimeNodeField(node, fields = [], nestedNodes = []) {
     snapshotVersion: node.snapshotVersion || 1,
     // 保留原节点供统一组件读取绑定/布局；NONE 节点只展示，不生成可提交字段。
     node,
+    // 动态候选绑定属于发布节点；投影后仍以该节点身份加载，不能丢失来源后回退旧选项。
+    dataSourceBindings: safeParseConfig(node.dataSourceBindingsDocument || node.dataSourceBindings),
     bindingType: node.bindingType,
     isDisplayOnly: displayOnly,
     placeholder: nodeProps.placeholder ?? linked?.placeholder,
@@ -54,8 +56,9 @@ export function resolveRuntimeNodeField(node, fields = [], nestedNodes = []) {
     isRequired: nodeProps.required === true ? 1 : (linked?.isRequired || 0),
     isReadonly: nodeProps.readonly === true ? 1 : (linked?.isReadonly || 0),
     isHidden: nodeProps.hidden === true ? 1 : (linked?.isHidden || 0),
-    options: nodeProps.options ?? linked?.options,
-    optionsJson: nodeProps.optionsJson ?? linked?.optionsJson,
+    // 节点不得携带持久化候选，只有宿主解析出的实体运行时选项可传给联动。
+    options: node.runtimeOptions ?? linked?.runtimeOptions,
+    runtimeOptions: node.runtimeOptions ?? linked?.runtimeOptions,
     componentProps: Object.keys(componentProps).length ? componentProps : linked?.componentProps,
     validationRules: nodeFieldRules.validationRules,
     extensionConfig: nodeFieldRules.extensionConfig,

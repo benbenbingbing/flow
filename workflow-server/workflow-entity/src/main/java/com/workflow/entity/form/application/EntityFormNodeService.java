@@ -1400,6 +1400,7 @@ public class EntityFormNodeService {
         private void normalizeAndValidateConfiguration(
                         EntityFormNode node,
                         boolean migrateUnsupported) {
+                if (!migrateUnsupported) validateSelectionOptions(node);
                 String nodeType = normalize(node.getNodeType(), "FIELD");
                 Map<String, Object> inactive = new LinkedHashMap<>();
 
@@ -1548,6 +1549,23 @@ public class EntityFormNodeService {
                 return StringUtils.hasText(type) && !EntityFormNodePropertyPolicy.isBuiltInComponent(type);
         }
 
+        /** 保存前先拒绝旧选项，避免通用属性清洗丢弃旧属性后绕过校验；发布时也检查存量节点。 */
+        private void validateSelectionOptions(EntityFormNode node) {
+                Map<String, Object> optionProps = read(node.getPropsDocument(), "表单节点属性");
+                if (optionProps == null) optionProps = Map.of();
+                String optionType = String.valueOf(optionProps.getOrDefault("componentType", optionProps.get("fieldType")));
+                com.workflow.entity.definition.application.EntitySelectionOptionPolicy.rejectEmbeddedOptions(
+                                optionType, optionProps, node.getNodeKey());
+                com.workflow.entity.definition.application.EntitySelectionOptionPolicy.rejectEmbeddedOptions(
+                                String.valueOf(optionProps.get("fieldType")), optionProps, node.getNodeKey());
+                Object componentConfig = optionProps.get("componentProps");
+                Map<String, Object> optionComponentProps = objectMap(componentConfig, "字段组件配置");
+                com.workflow.entity.definition.application.EntitySelectionOptionPolicy.rejectEmbeddedOptions(
+                                optionType, optionComponentProps, node.getNodeKey());
+                com.workflow.entity.definition.application.EntitySelectionOptionPolicy.rejectEmbeddedOptions(
+                                String.valueOf(optionProps.get("fieldType")), optionComponentProps, node.getNodeKey());
+        }
+
         /**
          * 校验节点；不满足约束时阻止后续处理。
          *
@@ -1560,6 +1578,7 @@ public class EntityFormNodeService {
                                 || !NODE_KEY.matcher(node.getNodeKey()).matches()) {
                         throw new IllegalArgumentException("节点编码格式不正确");
                 }
+                validateSelectionOptions(node);
                 node.setNodeType(normalize(node.getNodeType(), "FIELD"));
                 node.setBindingType(normalize(node.getBindingType(), "NONE"));
                 if (!NODE_TYPES.contains(node.getNodeType())) {

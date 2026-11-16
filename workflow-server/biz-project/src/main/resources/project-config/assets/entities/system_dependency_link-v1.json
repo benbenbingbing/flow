@@ -14,11 +14,11 @@
   "fields": [
     {"fieldCode":"source_system_id","fieldName":"来源系统","fieldType":"REFERENCE","dbType":"varchar(64)","fieldLength":64,"isRequired":true,"refEntityType":"CUSTOM","refEntityCode":"system_asset","sortOrder":20},
     {"fieldCode":"target_system_id","fieldName":"目标系统","fieldType":"REFERENCE","dbType":"varchar(64)","fieldLength":64,"isRequired":true,"refEntityType":"CUSTOM","refEntityCode":"system_asset","sortOrder":30},
-    {"fieldCode":"dependency_type","fieldName":"依赖类型","fieldType":"SELECT","dbType":"varchar(20)","fieldLength":20,"isRequired":true,"optionsJson":"[{\"label\":\"API 接口\",\"value\":\"API\"},{\"label\":\"消息\",\"value\":\"MESSAGE\"},{\"label\":\"数据同步\",\"value\":\"DATA_SYNC\"},{\"label\":\"单点登录\",\"value\":\"SSO\"},{\"label\":\"文件交换\",\"value\":\"FILE\"},{\"label\":\"批处理\",\"value\":\"BATCH\"}]","sortOrder":40},
+    {"fieldCode":"dependency_type","fieldName":"依赖类型","fieldType":"SELECT","dbType":"varchar(20)","fieldLength":20,"isRequired":true,"dictType": "project_cfg_system_dependency_link_dependency_type","sortOrder":40},
     {"fieldCode":"dependency_name","fieldName":"依赖名称","fieldType":"STRING","dbType":"varchar(200)","fieldLength":200,"isRequired":true,"sortOrder":50},
-    {"fieldCode":"direction","fieldName":"依赖方向","fieldType":"SELECT","dbType":"varchar(20)","fieldLength":20,"isRequired":true,"defaultValue":"SOURCE_TO_TARGET","optionsJson":"[{\"label\":\"来源到目标\",\"value\":\"SOURCE_TO_TARGET\"},{\"label\":\"双向\",\"value\":\"BIDIRECTIONAL\"}]","sortOrder":60},
+    {"fieldCode":"direction","fieldName":"依赖方向","fieldType":"SELECT","dbType":"varchar(20)","fieldLength":20,"isRequired":true,"defaultValue":"SOURCE_TO_TARGET","dictType": "project_cfg_system_dependency_link_direction","sortOrder":60},
     {"fieldCode":"protocol","fieldName":"协议或通道","fieldType":"STRING","dbType":"varchar(100)","fieldLength":100,"isRequired":false,"sortOrder":70},
-    {"fieldCode":"data_classification","fieldName":"交换数据最高等级","fieldType":"SELECT","dbType":"varchar(20)","fieldLength":20,"isRequired":true,"defaultValue":"INTERNAL","optionsJson":"[{\"label\":\"公开\",\"value\":\"PUBLIC\"},{\"label\":\"内部\",\"value\":\"INTERNAL\"},{\"label\":\"敏感\",\"value\":\"SENSITIVE\"},{\"label\":\"高度敏感\",\"value\":\"HIGHLY_SENSITIVE\"}]","sortOrder":80},
+    {"fieldCode":"data_classification","fieldName":"交换数据最高等级","fieldType":"SELECT","dbType":"varchar(20)","fieldLength":20,"isRequired":true,"defaultValue":"INTERNAL","dictType": "project_cfg_system_dependency_link_data_classification","sortOrder":80},
     {"fieldCode":"business_owner_id","fieldName":"业务责任人","fieldType":"USER","dbType":"varchar(64)","fieldLength":64,"isRequired":true,"refEntityType":"USER","sortOrder":90},
     {"fieldCode":"technical_owner_id","fieldName":"技术责任人","fieldType":"USER","dbType":"varchar(64)","fieldLength":64,"isRequired":true,"refEntityType":"USER","sortOrder":100},
     {"fieldCode":"effective_from","fieldName":"生效日期","fieldType":"DATE","dbType":"date","isRequired":true,"sortOrder":110},
@@ -54,7 +54,7 @@
       "viewConfig": "{\"labelWidth\":140,\"columns\":2}",
       "fields": [
         {"fieldCode":"code","fieldName":"依赖编号","fieldLabel":"依赖编号","fieldType":"STRING","sortOrder":10,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"input","gridSpan":8},
-        {"fieldCode":"status","fieldName":"依赖状态","fieldLabel":"依赖状态","fieldType":"STRING","sortOrder":20,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8,"componentProps":"{\"options\":[{\"label\":\"规划中\",\"value\":\"PLANNED\"},{\"label\":\"运行中\",\"value\":\"ACTIVE\"},{\"label\":\"已暂停\",\"value\":\"SUSPENDED\"},{\"label\":\"已退役\",\"value\":\"RETIRED\"}]}"},
+        {"fieldCode":"status","fieldName":"依赖状态","fieldLabel":"依赖状态","fieldType":"STRING","sortOrder":20,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8,"componentProps":"{}"},
         {"fieldCode":"dependency_type","fieldName":"依赖类型","fieldLabel":"依赖类型","fieldType":"SELECT","sortOrder":30,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8},
         {"fieldCode":"source_system_id","fieldName":"来源系统","fieldLabel":"来源系统","fieldType":"REFERENCE","sortOrder":40,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"reference","gridSpan":12},
         {"fieldCode":"target_system_id","fieldName":"目标系统","fieldLabel":"目标系统","fieldType":"REFERENCE","sortOrder":50,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"reference","gridSpan":12},

@@ -31,6 +31,7 @@ class EntityFieldAssignmentFieldsTest {
     private final EntityDefinitionMapper definitions = mock(EntityDefinitionMapper.class);
     private final EntityPublishHistoryMapper histories = mock(EntityPublishHistoryMapper.class);
     private final EntityPublishHistory history = new EntityPublishHistory();
+    private final SysDictItemService dictionaries = mock(SysDictItemService.class);
     private FlowActionController controller;
     private MockMvc http;
 
@@ -45,7 +46,7 @@ class EntityFieldAssignmentFieldsTest {
         when(histories.findLatestByEntityCode("legacy_entity")).thenReturn(history);
         var fields = new EntityFieldAssignmentFlowActionHandler(new EntityCodeCatalogAdapter(definitions),
                 new EntityPublishedSnapshotService(histories, json), new EntityFieldValidationRuleService(json),
-                mock(SysDictItemService.class), mock(EntityMutationPort.class), json);
+                dictionaries, mock(EntityMutationPort.class), json);
         controller = new FlowActionController(mock(FlowActionService.class), mock(FlowActionTimingCatalog.class),
                 mock(FlowActionFailureStrategyCatalog.class), fields);
         http = MockMvcBuilders.standaloneSetup(controller).build();
@@ -56,10 +57,12 @@ class EntityFieldAssignmentFieldsTest {
         history.setFieldsSnapshot("""
                 [{"fieldCode":"legacy_note","fieldName":"历史说明","fieldType":"string"},
                  {"fieldCode":"legacy_result","fieldName":"历史结论","fieldType":"select",
-                  "optionsJson":"[{\\"value\\":\\"PASS\\",\\"label\\":\\"通过\\"}]"},
+                  "dictType":"results"},
                  {"fieldCode":"status","fieldName":"状态","fieldType":"STRING","isSystem":true},
                  {"fieldCode":"old_items","fieldName":"旧子列表","fieldType":"SUB_FORM_LIST"}]
                 """);
+        when(dictionaries.listDictionaryValues("results")).thenReturn(List.of(
+                new SysDictItemService.DictionaryValue("PASS", "通过", true)));
         http.perform(get("/api/process-actions/process/legacy_process/assignable-fields"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))

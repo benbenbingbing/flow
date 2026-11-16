@@ -72,6 +72,17 @@ public class SysDictController {
     }
 
     /**
+     * 按字段保存的代码表编码读取定义，包含停用的代码表，便于在绑定锁定后查看和维护。
+     *
+     * @param dictCode 字段绑定的代码表编码
+     * @return 代码表定义；不存在时返回 null，由调用方提示绑定异常
+     */
+    @GetMapping("/code/{dictCode}")
+    public Result<SysDict> getByCode(@PathVariable String dictCode) {
+        return Result.success(dictService.getByCode(dictCode));
+    }
+
+    /**
      * 新增字典类型
      *
      * @param dict 字典对象

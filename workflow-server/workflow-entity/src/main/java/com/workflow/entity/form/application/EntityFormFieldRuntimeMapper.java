@@ -54,10 +54,6 @@ public final class EntityFormFieldRuntimeMapper {
         if (field.getExtensionConfig() != null) {
             result.put("extensionConfig", parseJsonObject(field.getExtensionConfig(), objectMapper));
         }
-
-        if (field.getOptionsJson() != null) {
-            result.put("optionsJson", field.getOptionsJson());
-        }
         if (field.getRefEntityId() != null) {
             result.put("refEntityId", field.getRefEntityId());
         }

@@ -392,7 +392,7 @@ export const LinkageEngine = {
 
       // 处理选项联动
       if (rules.optionsLinkage) {
-        const opts = field.options || (field.optionsJson ? JSON.parse(field.optionsJson) : null)
+        const opts = Array.isArray(field.options) ? field.options : null
         if (opts) {
           result.options[fieldKey] = this.getLinkedOptions(
             opts,

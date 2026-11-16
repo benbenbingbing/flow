@@ -34,10 +34,12 @@ public class EntityFieldDTO {
     private Boolean isUnique;
     /** 默认值 */
     private String defaultValue;
-    /** 选项 JSON */
+    /** 仅接收用于拒绝旧客户端配置；不再输出或持久化内嵌选项。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String optionsJson;
 
-    /** 选项列表（结构化形式） */
+    /** 仅接收用于拒绝旧结构化选项，选项只能由代码表在运行时解析。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private List<Map<String, Object>> options;
     /** 字典类型 */
     private String dictType;

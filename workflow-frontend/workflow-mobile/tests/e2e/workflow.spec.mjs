@@ -230,33 +230,23 @@ test('流程表单未返回实体 ID 时按实体编码补齐单选、多选代�
   expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
 })
 
-test('旧内嵌单选、多选选项兼容三种配置来源', async ({ page }) => {
-  const options = [{ label: '第一个', value: 0 }, { label: '第二个', value: 2 }]
+test('旧内嵌三种来源均不再作为选择候选，历史值保留且提示重新配置', async ({ page }) => {
+  const options = [{ label: '历史选项', value: 0 }]
   const sources = [{ componentProps: JSON.stringify({ options }) }, { optionsJson: JSON.stringify(options) }, { options }]
-  const fields = sources.flatMap((source, index) => [
-    { id: `single-${index}`, fieldCode: `single-${index}`, fieldName: `单选${index}`, componentType: 'select', ...source },
-    { id: `multi-${index}`, fieldCode: `multi-${index}`, fieldName: `多选${index}`, componentType: 'select_multiple', ...source }
-  ])
-  const record = Object.fromEntries(fields.map(item => [item.fieldCode, item.componentType === 'select' ? 0 : [0]]))
+  const fields = sources.map((source, index) => ({
+    id: `single-${index}`, fieldCode: `single-${index}`, fieldName: `单选${index}`, componentType: 'select', ...source
+  }))
+  const record = Object.fromEntries(fields.map(item => [item.fieldCode, 0]))
   const state = await fixture(page, { form: { ...simpleForm(), fields, nodes: [] }, record })
   await detail(page)
   for (let index = 0; index < sources.length; index++) {
-    const single = page.getByPlaceholder(`请选择单选${index}`), multiple = page.getByPlaceholder(`请选择多选${index}`)
-    await expect(single).toHaveValue('第一个'); await expect(multiple).toHaveValue('第一个')
-    await single.click()
-    const popup = page.locator('.van-popup:visible')
-    await expect(popup.locator('.van-picker-column__item')).toHaveText(['第一个', '第二个'])
-    await popup.getByRole('button', { name: '取消', exact: true }).click()
-    await multiple.click()
-    await expect(popup.getByRole('checkbox').first()).toHaveAttribute('aria-checked', 'true')
-    await popup.getByText('第二个', { exact: true }).click(); await popup.getByText('确定', { exact: true }).click()
-    await expect(multiple).toHaveValue('第一个、第二个')
+    await expect(page.getByPlaceholder(`请选择单选${index}`)).toHaveValue('0')
   }
-  await submit(page); await expect(page).toHaveURL(/inbox\/todo/)
-  for (let index = 0; index < sources.length; index++) {
-    expect(state.writes[0].body.formData[`single-${index}`]).toBe(0)
-    expect(state.writes[0].body.formData[`multi-${index}`]).toEqual([0, 2])
+  await expect(page.getByRole('alert')).toHaveCount(3)
+  for (const alert of await page.getByRole('alert').all()) {
+    await expect(alert).toContainText('选择字段未配置代码表或动态数据源，请重新配置并发布')
   }
+  expect(state.writes).toEqual([])
   expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
 })
 

@@ -14,10 +14,10 @@
   "fields": [
     {"fieldCode":"source_requirement_id","fieldName":"来源需求","fieldType":"REFERENCE","dbType":"varchar(64)","fieldLength":64,"isRequired":true,"refEntityType":"CUSTOM","refEntityCode":"requirement","sortOrder":20},
     {"fieldCode":"target_requirement_id","fieldName":"目标需求","fieldType":"REFERENCE","dbType":"varchar(64)","fieldLength":64,"isRequired":true,"refEntityType":"CUSTOM","refEntityCode":"requirement","sortOrder":30},
-    {"fieldCode":"relation_type","fieldName":"关系类型","fieldType":"SELECT","dbType":"varchar(30)","fieldLength":30,"isRequired":true,"optionsJson":"[{\"label\":\"父子关系\",\"value\":\"PARENT_CHILD\"},{\"label\":\"拆分为\",\"value\":\"SPLIT_TO\"},{\"label\":\"合并到\",\"value\":\"MERGED_INTO\"},{\"label\":\"依赖于\",\"value\":\"DEPENDS_ON\"},{\"label\":\"重复于\",\"value\":\"DUPLICATE_OF\"},{\"label\":\"相关需求\",\"value\":\"RELATED_TO\"}]","sortOrder":40},
+    {"fieldCode":"relation_type","fieldName":"关系类型","fieldType":"SELECT","dbType":"varchar(30)","fieldLength":30,"isRequired":true,"dictType": "project_cfg_requirement_relation_relation_type","sortOrder":40},
     {"fieldCode":"scope_description","fieldName":"关系范围说明","fieldType":"TEXT","dbType":"text","isRequired":true,"sortOrder":50},
     {"fieldCode":"allocation_percentage","fieldName":"拆分比例(%)","fieldType":"DECIMAL","dbType":"decimal(5,2)","fieldPrecision":2,"isRequired":false,"validateRules":"{\"min\":0.01,\"max\":100}","sortOrder":60},
-    {"fieldCode":"dependency_type","fieldName":"依赖强度","fieldType":"SELECT","dbType":"varchar(10)","fieldLength":10,"isRequired":false,"optionsJson":"[{\"label\":\"强依赖\",\"value\":\"STRONG\"},{\"label\":\"弱依赖\",\"value\":\"WEAK\"}]","sortOrder":70},
+    {"fieldCode":"dependency_type","fieldName":"依赖强度","fieldType":"SELECT","dbType":"varchar(10)","fieldLength":10,"isRequired":false,"dictType": "project_cfg_requirement_relation_dependency_type","sortOrder":70},
     {"fieldCode":"relation_owner_id","fieldName":"关系责任人","fieldType":"USER","dbType":"varchar(64)","fieldLength":64,"isRequired":true,"refEntityType":"USER","sortOrder":80},
     {"fieldCode":"effective_at","fieldName":"生效时间","fieldType":"DATETIME","dbType":"datetime","isRequired":true,"sortOrder":90},
     {"fieldCode":"invalid_at","fieldName":"失效时间","fieldType":"DATETIME","dbType":"datetime","isRequired":false,"sortOrder":100},
@@ -53,7 +53,7 @@
       "viewConfig": "{\"labelWidth\":130,\"columns\":2}",
       "fields": [
         {"fieldCode":"code","fieldName":"关系编号","fieldLabel":"关系编号","fieldType":"STRING","sortOrder":10,"isRequired":0,"isReadonly":1,"isHidden":0,"componentType":"input","gridSpan":8},
-        {"fieldCode":"status","fieldName":"关系状态","fieldLabel":"关系状态","fieldType":"STRING","sortOrder":20,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8,"componentProps":"{\"options\":[{\"label\":\"拟建立\",\"value\":\"PROPOSED\"},{\"label\":\"有效\",\"value\":\"ACTIVE\"},{\"label\":\"已失效\",\"value\":\"INVALID\"},{\"label\":\"已拒绝\",\"value\":\"REJECTED\"},{\"label\":\"已取消\",\"value\":\"CANCELLED\"}]}"},
+        {"fieldCode":"status","fieldName":"关系状态","fieldLabel":"关系状态","fieldType":"STRING","sortOrder":20,"isRequired":0,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8,"componentProps":"{}"},
         {"fieldCode":"relation_type","fieldName":"关系类型","fieldLabel":"关系类型","fieldType":"SELECT","sortOrder":30,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"select","gridSpan":8},
         {"fieldCode":"source_requirement_id","fieldName":"来源需求","fieldLabel":"来源需求","fieldType":"REFERENCE","sortOrder":40,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"reference","gridSpan":12},
         {"fieldCode":"target_requirement_id","fieldName":"目标需求","fieldLabel":"目标需求","fieldType":"REFERENCE","sortOrder":50,"isRequired":1,"isReadonly":0,"isHidden":0,"componentType":"reference","gridSpan":12},

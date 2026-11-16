@@ -432,8 +432,8 @@ const required = computed(() => Boolean(
 ))
 const options = computed(() =>
   props.linkageState?.options?.[fieldKey.value]
-    || runtimeField.value?.options
-    || []
+    ?? runtimeField.value?.options
+    ?? null
 )
 const attachmentItemRequiredState = computed(() =>
   props.linkageState?.attachmentItemRequired?.[fieldKey.value] || {}

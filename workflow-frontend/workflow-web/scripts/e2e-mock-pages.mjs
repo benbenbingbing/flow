@@ -309,14 +309,14 @@ function apiData(pathname) {
     status: 'PUBLISHED',
     fields: [
       { id: 'f-name', fieldCode: 'name', fieldName: '名称', fieldType: 'STRING', componentType: 'input', isRequired: true },
-      { id: 'f-priority', fieldCode: 'priority', fieldName: '优先级', fieldType: 'SELECT', componentType: 'select', optionsJson: '[{"label":"高","value":"HIGH"},{"label":"低","value":"LOW"}]' },
+      { id: 'f-priority', fieldCode: 'priority', fieldName: '优先级', fieldType: 'SELECT', componentType: 'select', dictType: 'priority' },
       { id: 'f-date', fieldCode: 'planDate', fieldName: '计划日期', fieldType: 'DATE', componentType: 'date' }
     ]
   }
   const row = { id: 'row-1', code: 'D-001', name: '演示数据', status: 'DRAFT', create_time: '2026-07-15T08:00:00Z', data: { name: '演示数据', priority: 'HIGH', planDate: '2026-07-15' } }
   const listFields = [
     { fieldCode: 'name', fieldName: '名称', fieldType: 'STRING', showInList: true, isQuery: true, queryType: 'LIKE', width: 160, align: 'left' },
-    { fieldCode: 'priority', fieldName: '优先级', fieldType: 'SELECT', showInList: true, isQuery: true, queryType: 'EQ', optionsJson: '[{"label":"高","value":"HIGH"},{"label":"低","value":"LOW"}]', width: 100, align: 'center' }
+    { fieldCode: 'priority', fieldName: '优先级', fieldType: 'SELECT', showInList: true, isQuery: true, queryType: 'EQ', dictType: 'priority', width: 100, align: 'center' }
   ]
   const process = {
     id: 'e2e-process',
@@ -371,6 +371,7 @@ function apiData(pathname) {
   if (pathname.includes('/system/role/list')) return [{ id: 'r1', roleName: '管理员', roleCode: 'admin', status: '0' }]
   if (pathname.includes('/system/group')) return [{ id: 'g1', groupName: '默认用户组', status: '0' }]
   if (pathname.includes('/system/org/tree')) return [{ id: 'o1', orgName: '总部', name: '总部', children: [] }]
+  if (pathname === '/system/dict/item/tree/code/priority') return [{ itemCode: 'HIGH', itemLabel: '高', status: '0' }, { itemCode: 'LOW', itemLabel: '低', status: '0' }]
   if (pathname.includes('/system/dict')) return [{ id: 'd1', dictName: '状态', dictCode: 'status', status: '0', items: [] }]
   if (pathname === '/extension-catalog/manage') {
     return {

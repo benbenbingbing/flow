@@ -11,7 +11,9 @@ const flag = value => value === true || value === 1 || value === '1'
 export function projectRuntimeFields(form = {}, entityFields = [], { rootParentId = '' } = {}) {
   const fields = (form.fields || []).map(field => {
     const metadata = entityFields.find(item => (field.fieldCode && item.fieldCode === field.fieldCode) || ((field.fieldId || field.id) != null && String(item.id) === String(field.fieldId || field.id))) || {}
-    return { ...metadata, ...field, isRequired: flag(metadata.isRequired) || flag(field.isRequired), fileItems: field.fileItems?.length ? field.fileItems : metadata.fileItems || [], entityFileItems: metadata.fileItems || [] }
+    // 原始字段中的 options 可能来自旧发布快照；只有宿主本次解析的候选才参与联动。
+    const options = field.runtimeOptions ?? metadata.runtimeOptions
+    return { ...metadata, ...field, options, runtimeOptions: options, isRequired: flag(metadata.isRequired) || flag(field.isRequired), fileItems: field.fileItems?.length ? field.fileItems : metadata.fileItems || [], entityFileItems: metadata.fileItems || [] }
   }).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
   const nodes = normalizeRuntimeNodes(form.nodes || [])
   if (!nodes.length) return { fields, nodes }

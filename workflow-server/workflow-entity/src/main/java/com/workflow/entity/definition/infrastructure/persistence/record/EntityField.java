@@ -88,7 +88,9 @@ public class EntityField {
     /**
      * 选项配置（JSON格式，用于下拉、单选、多选）
      */
+    // 历史列保留以保护数据；不向客户端输出，也不作为候选来源。
     @TableField("options_json")
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String optionsJson;
 
     /**

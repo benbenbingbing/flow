@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
-import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
+import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.definition.infrastructure.persistence.record.EntityFieldOption;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,14 +29,14 @@ class EntityVersionScopeFreezerTest {
     @Mock
     private EntityPublishedSnapshotService snapshotService;
     @Mock
-    private EntityFieldOptionMapper optionMapper;
+    private SysDictItemService dictionaries;
 
     private EntityVersionScopeFreezer freezer;
 
     @BeforeEach
     void setUp() {
         freezer = new EntityVersionScopeFreezer(
-                snapshotService, new ObjectMapper(), optionMapper);
+                snapshotService, new ObjectMapper(), dictionaries);
         // 多层快照是共享夹具；部分兼容性用例只会访问其中一段路径。
         lenient().when(snapshotService.getLatestByEntityCode("asset"))
                 .thenReturn(rootSnapshot());
@@ -47,10 +46,8 @@ class EntityVersionScopeFreezerTest {
                 .thenReturn(componentSnapshot());
         lenient().when(snapshotService.getLatestByEntityCode("asset_check"))
                 .thenReturn(checkSnapshot());
-        when(optionMapper.findByFieldId(anyString()))
-                .thenAnswer(invocation -> "field-category".equals(
-                        invocation.getArgument(0))
-                        ? List.of(option("HW", "硬件")) : List.of());
+        lenient().when(dictionaries.listDictionaryValues("category_dict"))
+                .thenReturn(List.of(new SysDictItemService.DictionaryValue("HW", "硬件", true)));
     }
 
     @Test
@@ -267,13 +264,9 @@ class EntityVersionScopeFreezerTest {
         value.setFieldName(name);
         value.setFieldType(type);
         value.setSortOrder(1);
+        if (type == EntityField.FieldType.SELECT) value.setDictType("category_dict");
         return value;
     }
 
-    private EntityFieldOption option(String code, String label) {
-        EntityFieldOption value = new EntityFieldOption();
-        value.setOptionValue(code);
-        value.setOptionLabel(label);
-        return value;
-    }
+
 }

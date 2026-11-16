@@ -359,7 +359,6 @@ public class EntityPublishHistoryService {
         dto.setIsRequired(field.getIsRequired());
         dto.setIsUnique(field.getIsUnique());
         dto.setDefaultValue(field.getDefaultValue());
-        dto.setOptionsJson(field.getOptionsJson());
         dto.setIsSystem(field.getIsSystem());
         dto.setEditable(field.getEditable());
         dto.setSortOrder(field.getSortOrder());
