@@ -99,8 +99,27 @@ final class BpmnExecutableContentValidator {
             String expression,
             Element element,
             String feature) {
+        // 只豁免本连线上已声明业务接口配置的固定调用，不能放开普通表达式的方法访问。
+        if ("conditionExpression".equals(feature)
+                && element.getParentNode() instanceof Element flow
+                && "sequenceFlow".equals(flow.getLocalName())
+                && isConfiguredInterfaceExpression(expression, flow)) return;
         if (!isSafeDataExpression(expression)) {
             throw rejected(element, feature);
+        }
+    }
+
+    private static boolean isConfiguredInterfaceExpression(String expression, Element flow) {
+        try {
+            if (!com.workflow.process.condition.application.SequenceFlowConditionConfig
+                    .expression(flow.getAttribute("id")).equals(expression)) return false;
+            var properties = flow.getElementsByTagNameNS("*", "property");
+            for (int i = 0; i < properties.getLength(); i++) {
+                if ("sequenceFlowCondition".equals(((Element) properties.item(i)).getAttribute("name"))) return true;
+            }
+            return false;
+        } catch (IllegalArgumentException exception) {
+            return false;
         }
     }
 

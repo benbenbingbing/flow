@@ -24,6 +24,11 @@ public class IdentityManagementSupport {
         same(requested.getEmail(), existing.getEmail()); same(requested.getPhone(), existing.getPhone());
         same(requested.getAvatar(), existing.getAvatar()); same(requested.getOrgId(), existing.getOrgId());
         same(requested.getDeptId(), existing.getDeptId());
+        same(requested.getExt1(), existing.getExt1());
+        same(requested.getExt2(), existing.getExt2());
+        same(requested.getExt3(), existing.getExt3());
+        same(requested.getExt4(), existing.getExt4());
+        same(requested.getExt5(), existing.getExt5());
         requested.setUsername(existing.getUsername()); requested.setNickname(existing.getNickname());
         requested.setEmail(existing.getEmail()); requested.setPhone(existing.getPhone());
         requested.setAvatar(existing.getAvatar()); requested.setOrgId(existing.getOrgId());
@@ -37,6 +42,11 @@ public class IdentityManagementSupport {
         same(requested.getBusinessLevelCode(), existing.getBusinessLevelCode());
         same(requested.getPhone(), existing.getPhone()); same(requested.getEmail(), existing.getEmail());
         same(requested.getAddress(), existing.getAddress()); same(requested.getDescription(), existing.getDescription());
+        same(requested.getExt1(), existing.getExt1());
+        same(requested.getExt2(), existing.getExt2());
+        same(requested.getExt3(), existing.getExt3());
+        same(requested.getExt4(), existing.getExt4());
+        same(requested.getExt5(), existing.getExt5());
         if (requested.getSortOrder() != null && !Objects.equals(requested.getSortOrder(), existing.getSortOrder())) denied();
         requested.setOrgCode(existing.getOrgCode()); requested.setOrgName(existing.getOrgName());
         requested.setType(existing.getType()); requested.setParentId(existing.getParentId());

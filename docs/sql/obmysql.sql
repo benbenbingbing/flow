@@ -1,4 +1,5 @@
 -- OceanBase 4.x MySQL 模式平台基础表空库初始化脚本。
+-- 2026-11-16 同步至 V135，用户、组织主表各增加 ext1～ext5 五个可空文本查询字段。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
@@ -3632,6 +3633,11 @@ CREATE TABLE `sys_organization` (
   `deleted` int DEFAULT '0' COMMENT '逻辑删除标记：是否删除：0-未删除 1-已删除。',
   `create_by` varchar(64) DEFAULT NULL COMMENT '创建人用户ID，用于流程关系路径解析；历史创建人不可推断时保留NULL',
   `hierarchy_ready` smallint DEFAULT 1 NOT NULL COMMENT '父链完整标志，1 表示已接到真实根节点，0 表示等待祖先补齐，供组织树过滤及流程组织链校验使用',
+  `ext1` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段1：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext2` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段2：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext3` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段3：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext4` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段4：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext5` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段5：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_org_code` (`org_code`),
   KEY `idx_parent_id` (`parent_id`),
@@ -3731,6 +3737,11 @@ CREATE TABLE `sys_user` (
   `password_reset_required` tinyint NOT NULL DEFAULT '0' COMMENT '是否必须在继续使用系统前修改密码。',
   `token_version` bigint NOT NULL DEFAULT '0' COMMENT '令牌版本：用户令牌撤销版本；递增后此前签发的会话需按安全校验失效。',
   `authentication_mode` varchar(32) NOT NULL DEFAULT 'LOCAL_PASSWORD' COMMENT '认证策略由框架维护；LOCAL_PASSWORD 使用本地密码，EXTERNAL_ONLY 禁止本地密码登录或重置',
+  `ext1` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段1：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext2` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段2：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext3` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段3：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext4` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段4：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
+  `ext5` VARCHAR(500) DEFAULT NULL COMMENT '扩展字段5：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
   KEY `idx_status` (`status`),

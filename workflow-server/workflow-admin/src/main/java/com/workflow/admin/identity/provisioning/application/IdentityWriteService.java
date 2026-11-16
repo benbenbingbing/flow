@@ -52,7 +52,8 @@ public class IdentityWriteService implements IdentityWritePort {
         if (model.base() == null) fail("INVALID_MODEL", "base", "基础快照不能为空");
         validateUser(model.base());
         var groups = extensions.prepareSource(IdentityObjectType.USER, model.extensions(), writer);
-        String digest = digest(model.base(), groups);
+        validateMainFields(model.mainFields());
+        String digest = digest(model.base(), groups, model.mainFields());
         validateVersion(model.sourceVersion(), writer);
         var previous = store.find(IdentityObjectType.USER, model.key());
         var unchanged = previousResult(IdentityObjectType.USER, model.key(), model.sourceVersion(), digest, previous);
@@ -85,6 +86,7 @@ public class IdentityWriteService implements IdentityWritePort {
             persistence.updateUser(id, base, status, org, dept);
             if ("1".equals(status) && !"1".equals(existing.getStatus())) users.revokeSessions(id);
         }
+        if (model.mainFields() != null) persistence.updateUserMainFields(id, model.mainFields());
         extensions.saveSource(IdentityObjectType.USER, id, groups);
         saveBinding(IdentityObjectType.USER, model.key(), model.sourceVersion(), digest, id, base.account(), base.enabled(), previous);
         snapshots.save(IdentityObjectType.USER, model.key(), id, model.sourceVersion(), digest, raw, writer, true);
@@ -107,7 +109,8 @@ public class IdentityWriteService implements IdentityWritePort {
         text(base.address(), 200, false, "address"); text(base.description(), 500, false, "description");
         if (base.type() == null) fail("INVALID_MODEL", "type", "组织类型不能为空");
         var groups = extensions.prepareSource(IdentityObjectType.ORGANIZATION, model.extensions(), writer);
-        String digest = digest(base, groups);
+        validateMainFields(model.mainFields());
+        String digest = digest(base, groups, model.mainFields());
         validateVersion(model.sourceVersion(), writer);
         var previous = store.find(IdentityObjectType.ORGANIZATION, model.key());
         var unchanged = previousResult(IdentityObjectType.ORGANIZATION, model.key(), model.sourceVersion(), digest, previous);
@@ -136,6 +139,7 @@ public class IdentityWriteService implements IdentityWritePort {
         org.setStatus(base.enabled() && allowed ? "0" : "1"); org.setCreateBy(writer.actorId());
         organizations.saveProvisionedOrganization(org);
         persistence.clearableOrganizationFields(id, base);
+        if (model.mainFields() != null) persistence.updateOrganizationMainFields(id, model.mainFields());
         extensions.saveSource(IdentityObjectType.ORGANIZATION, id, groups);
         saveBinding(IdentityObjectType.ORGANIZATION, model.key(), model.sourceVersion(), digest, id, base.externalCode(), base.enabled(), previous);
         organizationHierarchy.reconcile(model.key(), base.parentExternalId(), org);
@@ -301,11 +305,15 @@ public class IdentityWriteService implements IdentityWritePort {
         else persistence.updateBinding(values);
     }
 
-    private String digest(Object base, Map<String, Map<String, Object>> groups) {
+    /** 主表扩展采用完整组快照；省略本组时沿用旧摘要，避免升级后旧调用误报同版本冲突。 */
+    private String digest(Object base, Map<String, Map<String, Object>> groups, IdentityMainFields mainFields) {
         try {
             ObjectMapper canonical = mapper.copy().configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
                     .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
-            return IdentitySourceStore.digest(canonical.writeValueAsString(Map.of("base", base, "extensions", groups)));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("base", base); payload.put("extensions", groups);
+            if (mainFields != null) payload.put("mainFields", mainFields);
+            return IdentitySourceStore.digest(canonical.writeValueAsString(payload));
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException("无法规范化写入快照", e); }
     }
     private void record(String actor, IdentityObjectType type, String id, ExternalIdentityKey key) {
@@ -318,6 +326,15 @@ public class IdentityWriteService implements IdentityWritePort {
         text(base.account(), 50, true, "account"); text(base.nickname(), 50, true, "nickname");
         text(base.email(), 100, false, "email"); text(base.phone(), 20, false, "phone");
         text(base.avatar(), 255, false, "avatar");
+    }
+    /** 不裁剪或转换业务编码；按字符数限制，保留前导零及原有空白供精确查询。 */
+    private void validateMainFields(IdentityMainFields fields) {
+        if (fields == null) return;
+        text(fields.ext1(), 500, false, "mainFields.ext1");
+        text(fields.ext2(), 500, false, "mainFields.ext2");
+        text(fields.ext3(), 500, false, "mainFields.ext3");
+        text(fields.ext4(), 500, false, "mainFields.ext4");
+        text(fields.ext5(), 500, false, "mainFields.ext5");
     }
     private void text(String value, int max, boolean required, String field) {
         if (required && (value == null || value.isBlank()) || value != null && value.codePointCount(0, value.length()) > max) {

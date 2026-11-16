@@ -38,6 +38,7 @@ class OrganizationSelectionPaginationTest {
         jdbc.execute("""
                 CREATE TABLE sys_organization (
                   id VARCHAR(64) PRIMARY KEY, org_code VARCHAR(100), org_name VARCHAR(100),
+                  ext1 VARCHAR(500), ext2 VARCHAR(500), ext3 VARCHAR(500), ext4 VARCHAR(500), ext5 VARCHAR(500),
                   type VARCHAR(20), business_level_code VARCHAR(100), parent_id VARCHAR(64),
                   hierarchy_ready SMALLINT DEFAULT 1, level INT, path VARCHAR(500), sort_order INT DEFAULT 0,
                   leader_id VARCHAR(64), leader_name VARCHAR(100), phone VARCHAR(50), email VARCHAR(100),

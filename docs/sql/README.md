@@ -4,6 +4,36 @@
 
 本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132、V133 的 MySQL 增量脚本及执行限制见下文。
 
+## 2026-11-16 同步 V135 用户、组织主表文本扩展
+
+已同时检查 SQL 和 Java 迁移，原最高版本为 V134，本次新增唯一的 V135：[`V135__identity_main_table_extensions.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V135__identity_main_table_extensions.sql)。七份空库脚本均为 **200 张表、2,807 个字段**，相对 V134 仅增加用户、组织主表的 10 个字段，不改变其他表、索引、约束或系统种子数据。
+
+| 表 | 新增字段 | 物理语义及用途 |
+| --- | --- | --- |
+| `sys_user` | `ext1`～`ext5` | 五个可空、默认 NULL、最多 500 字符的独立文本列，用于保存映射后的来源字段，支持主表查询和关联。 |
+| `sys_organization` | `ext1`～`ext5` | 同上，具体用途由接入业务约定，组织父级后到不会改写这些列。 |
+
+MySQL / OB MySQL、PostgreSQL / 人大金仓使用 VARCHAR(500)，Oracle / 达梦 / OB Oracle 使用 VARCHAR2(500 CHAR)，均保留可空性、默认 NULL 和用途注释。新增 Flyway SQL 沿用现有 MySQL 兼容迁移写法，由 Flyway 按版本执行一次，其他数据库存量升级语法须按方言调整；七份脚本是空库最终结构，不用于覆盖存量结构。
+
+保存模型新增可选 `mainFields`，省略整组保留现值，提供时整体替换五列，组内 NULL 显式清空。与业务资料共用来源版本、摘要、事务及必需审计；旧调用省略该组时沿用历史摘要算法。普通管理响应携带五列，请求只读，数据通过来源同步维护。旧记录默认 NULL，不从来源原文自动回填。接入示例及规则见 [身份写入设计](../architecture/identity-write-and-extension-design.md#31-主表文本扩展v135)，字段及关联见 [数据库设计 9.1](database-design.md#91-sys_organization-组织部门表) 和 [9.5](database-design.md#95-sys_user-系统用户表)。
+
+本次验证：
+
+- 所选后端 **152 项测试通过**：身份写入、原文授权、来源权限、组织父链、组织选择器、V135 迁移、biz 接入示例及用户/组织管理回归。新增覆盖五列保存、读取及按列筛选、500 字符边界、逐字段超长拒绝、原文空白和前导零、旧调用保留、显式清空、幂等与版本冲突、旧版本忽略、批次及必需审计失败回滚、组织父级后到、普通管理请求只读。
+- H2 MySQL 模式执行实际 V135 SQL，验证两张已有表各增加五个可空列、旧行保持 NULL、原列和数据保留、用途注释，以及 Flyway migrate / validate / 重复 migrate；写入后的字段可直接作为 SQL 查询条件。
+- 七份初始化脚本逐项核对十个新增列的类型、500 字符长度、可空性、默认 NULL 和用途注释；全量 200 个表名及 2,807 个字段名一致，`sys_user` 为 21 列、`sys_organization` 为 26 列。移除新增列、对应注释及版本头后，脚本与任务前逐字相同，其他 DDL 和所有系统种子数据保持不变。
+- 同时扫描 SQL / Java 迁移，最高版本 V135，无重复版本；Git 差异确认主分支已有迁移没有修改、删除或重命名，`git diff --check` 通过。
+- 未连接或修改业务数据库。MySQL、PostgreSQL、Oracle、达梦、人大金仓和两种 OceanBase 均未进行实机迁移或全量导入；七种方言完成静态核对，H2 测试不替代实机验证。
+
+验证命令（`workflow-server` 目录）：
+
+```sh
+mvn -o -pl workflow-admin,workflow-db-migrator,biz-project -am -Dtest=IdentityWriteIntegrationTest,IdentitySourceSnapshotAccessTest,IdentityAccessServiceTest,IdentityOrganizationHierarchyServiceTest,OrganizationSelectionPaginationTest,IdentityMainTableExtensionsMigrationTest,ProjectIdentityImporterTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -o -pl workflow-app -am -Dtest=OrganizationManagementPaginationTest,MapperWrapperBehaviorTest,SysUserServiceTest,SysUserServiceOrganizationMembershipTest,SysOrganizationServiceImplPositionCompatibilityTest,SysOrganizationControllerAccessPolicyTest,IdentityDirectoryAdapterHandoverTest,PositionAssignmentServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+迁移文件清单：新增 **V135__identity_main_table_extensions.sql**；修改、删除、重命名已有 SQL / Java 迁移均为 **无**。未修改 V001，未执行 repair，未建立基线。
+
 ## 2026-11-15 同步 V134 文件业务引用
 
 已同时检查 SQL 迁移和 Java 迁移，当前最高版本为 V134，无重复版本。新增 [`V134__file_references_use_file_id.java`](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V134__file_references_use_file_id.java)，一次性通过参数化 UPDATE 转换历史附件数据，不新增、删除表或字段，也不改变索引、约束和系统种子数据。七份空库脚本均为 **200 张表、2,797 个字段**，空库没有历史附件需转换；版本说明及文件表 `id`、`storage_url`、`storage_key` 的用途注释已同步。

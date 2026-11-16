@@ -201,7 +201,7 @@
                 调试
               </el-button>
               <el-button
-                v-if="canUpdate && row.available !== false && !row.buildOnly"
+                v-if="canUpdate && row.available !== false && !row.buildOnly && row.capabilityType !== 'FLOW_CONDITION'"
                 link
                 type="primary"
                 @click="openEdit(row)"
@@ -329,6 +329,7 @@ const typeOptions = [
   { value: 'INTERFACE', label: '扩展接口' },
   { value: 'FLOW_ACTION', label: '流程动作' },
   { value: 'PERSON_RESOLVER', label: '人员接口' },
+  { value: 'FLOW_CONDITION', label: '流程条件接口' },
   { value: 'UI_FORM', label: '自定义表单' },
   { value: 'UI_LIST', label: '自定义列表' },
   { value: 'UI_FIELD', label: '表单字段' },
@@ -697,7 +698,7 @@ function scopeSummary(row) {
     if (row.visibilityScope === 'GLOBAL') return '全部实体'
     return row.entityCodes?.length ? `${row.entityCodes.length} 个实体` : '尚未指定实体'
   }
-  if (row.capabilityType === 'PERSON_RESOLVER') return '全局受控接口'
+  if (['PERSON_RESOLVER', 'FLOW_CONDITION'].includes(row.capabilityType)) return '全局受控接口'
   if (row.capabilityType === 'UI_FORM') {
     if (row.visibilityScope !== 'ENTITY') return '全部实体'
     return row.entityCodes?.length
@@ -708,6 +709,7 @@ function scopeSummary(row) {
 }
 
 function capabilitySummary(row) {
+  if (row.capabilityType === 'FLOW_CONDITION') return '返回 true 命中分支，返回 false 不命中'
   if (isInterface(row)) {
     const kind = row.interfaceKind === 'WRITE' ? '写接口' : '读接口'
     const context = {

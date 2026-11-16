@@ -37,6 +37,7 @@ class OrganizationManagementPaginationTest {
         jdbc = new JdbcTemplate(source);
         jdbc.execute("""
                 CREATE TABLE sys_organization (
+                  ext1 VARCHAR(500), ext2 VARCHAR(500), ext3 VARCHAR(500), ext4 VARCHAR(500), ext5 VARCHAR(500),
                   id VARCHAR(64) PRIMARY KEY, org_code VARCHAR(100), org_name VARCHAR(100),
                   type VARCHAR(20), business_level_code VARCHAR(100), parent_id VARCHAR(64),
                   hierarchy_ready SMALLINT DEFAULT 1, level INT, path VARCHAR(500), sort_order INT DEFAULT 0,

@@ -448,8 +448,8 @@ public class TaskActionService {
                     taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
                 }
 
-                taskService.complete(taskId, customVars);
                 processTaskService.completeTask(taskId, normalizedAction, comment, actionLabel);
+                taskService.complete(taskId, customVars);
 
                 log.info("任务 {} 已通过自定义操作完成: action={}, user={}",
                         LogValue.safe(taskId), LogValue.safe(normalizedAction), LogValue.safe(userId));
@@ -761,8 +761,10 @@ public class TaskActionService {
             taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
         }
 
-        taskService.complete(taskId, vars);
+        // 网关业务条件可能查询各节点审批记录，必须先保存本次结果，再让引擎选路。
+        // 两次写入仍在同一审批事务内；接口或引擎失败时一并回滚。
         processTaskService.completeTask(taskId, "approve", comment, actionLabel);
+        taskService.complete(taskId, vars);
 
         log.info("任务 {} 已通过，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
     }
@@ -797,8 +799,8 @@ public class TaskActionService {
             taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
         }
 
-        taskService.complete(taskId, vars);
         processTaskService.completeTask(taskId, "reject", comment, actionLabel);
+        taskService.complete(taskId, vars);
 
         log.info("任务 {} 已驳回，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
     }

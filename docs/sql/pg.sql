@@ -1,4 +1,5 @@
 -- PostgreSQL 16 平台基础表空库初始化脚本。
+-- 2026-11-16 同步至 V135，用户、组织主表各增加 ext1～ext5 五个可空文本查询字段。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
@@ -3082,6 +3083,11 @@ CREATE TABLE "sys_organization" (
   "deleted" integer DEFAULT '0',
   "create_by" varchar(64),
   "hierarchy_ready" smallint DEFAULT 1 NOT NULL,
+  "ext1" VARCHAR(500) DEFAULT NULL,
+  "ext2" VARCHAR(500) DEFAULT NULL,
+  "ext3" VARCHAR(500) DEFAULT NULL,
+  "ext4" VARCHAR(500) DEFAULT NULL,
+  "ext5" VARCHAR(500) DEFAULT NULL,
   CONSTRAINT "pk_sys_organization_sys_organization" PRIMARY KEY ("id")
 );
 
@@ -3163,6 +3169,11 @@ CREATE TABLE "sys_user" (
   "password_reset_required" smallint NOT NULL DEFAULT '0',
   "token_version" bigint NOT NULL DEFAULT '0',
   "authentication_mode" varchar(32) NOT NULL DEFAULT 'LOCAL_PASSWORD',
+  "ext1" VARCHAR(500) DEFAULT NULL,
+  "ext2" VARCHAR(500) DEFAULT NULL,
+  "ext3" VARCHAR(500) DEFAULT NULL,
+  "ext4" VARCHAR(500) DEFAULT NULL,
+  "ext5" VARCHAR(500) DEFAULT NULL,
   CONSTRAINT "pk_sys_user_sys_user" PRIMARY KEY ("id")
 );
 
@@ -6902,6 +6913,11 @@ COMMENT ON COLUMN "sys_menu"."entity_code" IS '关联实体编码，当菜单类
 COMMENT ON COLUMN "sys_menu"."resource_type" IS '菜单资源类型，ENTITY_LIST 表示动态实体列表。';
 COMMENT ON COLUMN "sys_menu"."list_key" IS '实体列表稳定编码。';
 COMMENT ON TABLE "sys_organization" IS '组织部门表';
+COMMENT ON COLUMN "sys_organization"."ext1" IS '扩展字段1：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_organization"."ext2" IS '扩展字段2：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_organization"."ext3" IS '扩展字段3：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_organization"."ext4" IS '扩展字段4：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_organization"."ext5" IS '扩展字段5：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
 COMMENT ON COLUMN "sys_organization"."id" IS '主键ID。';
 COMMENT ON COLUMN "sys_organization"."org_code" IS '组织编码（唯一）。';
 COMMENT ON COLUMN "sys_organization"."org_name" IS '组织名称。';
@@ -6964,6 +6980,11 @@ COMMENT ON COLUMN "sys_role_menu"."role_id" IS '角色ID。';
 COMMENT ON COLUMN "sys_role_menu"."menu_id" IS '菜单ID。';
 COMMENT ON COLUMN "sys_role_menu"."create_time" IS '创建时间。';
 COMMENT ON TABLE "sys_user" IS '系统用户表';
+COMMENT ON COLUMN "sys_user"."ext1" IS '扩展字段1：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_user"."ext2" IS '扩展字段2：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_user"."ext3" IS '扩展字段3：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_user"."ext4" IS '扩展字段4：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
+COMMENT ON COLUMN "sys_user"."ext5" IS '扩展字段5：供接入业务约定用途，保存来源映射后的文本，用于主表查询和关联。';
 COMMENT ON COLUMN "sys_user"."id" IS '主键ID：用户ID。';
 COMMENT ON COLUMN "sys_user"."username" IS '用户名。';
 COMMENT ON COLUMN "sys_user"."nickname" IS '昵称。';

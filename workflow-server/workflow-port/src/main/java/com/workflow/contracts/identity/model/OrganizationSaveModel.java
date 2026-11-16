@@ -5,9 +5,14 @@ import java.util.List;
 
 /** biz 主动提交的组织快照；不包含负责人任职和产品权限。
  * @param rawDataJson 可选单条来源 JSON 对象原文，在字段映射前取得；独立留存，不参与业务版本哈希，调用方须剔除凭据
+ * @param mainFields 可选主表文本槽位；省略保留，携带时完整替换，参与来源业务版本校验
  */
 @Builder
-public record OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions, String rawDataJson) {
+public record OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions, String rawDataJson, IdentityMainFields mainFields) {
+    /** 兼容已接入原文留存的调用；不携带主表扩展列，保留原有值和摘要规则。 */
+    public OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions, String rawDataJson) {
+        this(key, sourceVersion, base, extensions, rawDataJson, null);
+    }
     /** 兼容已有调用；省略原文时按来源 raw-data-required 配置校验。 */
     public OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions) {
         this(key, sourceVersion, base, extensions, null);

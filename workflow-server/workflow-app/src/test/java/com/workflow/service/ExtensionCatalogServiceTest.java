@@ -26,6 +26,25 @@ import static org.mockito.Mockito.when;
 class ExtensionCatalogServiceTest {
 
     @Test
+    void registeredConditionInterfacesAreSelectableWithoutDatabaseDefinitions() {
+        var provider = mock(com.workflow.contracts.process.condition.spi.SequenceFlowConditionProvider.class);
+        when(provider.getCode()).thenReturn("financeDecision");
+        when(provider.getDisplayName()).thenReturn("财务审批分支判断");
+        when(provider.implementationOrigin()).thenReturn(ExtensionImplementationOrigin.CUSTOM);
+        ObjectProvider<com.workflow.contracts.process.condition.spi.SequenceFlowConditionProvider> conditions = mock(ObjectProvider.class);
+        when(conditions.stream()).thenAnswer(ignored -> Stream.of(provider));
+        var uiPort = mock(UiExtensionCatalogPort.class);
+        var service = new ExtensionCatalogService(mock(FlowActionCatalogService.class),
+                mock(PersonResolverCatalogService.class), uiPort,
+                mock(ObjectProvider.class), mock(ObjectProvider.class), conditions);
+        var options = service.options("FLOW_CONDITION", "财务", 20, null, null, null);
+        assertEquals(1, options.size());
+        assertEquals("financeDecision", options.get(0).getKey());
+        assertEquals("ACTIVE", options.get(0).getStatus());
+        assertEquals(0, service.options("FLOW_CONDITION", "missing", 20, null, null, null).size());
+    }
+
+    @Test
     void filtersScopedUiFormsByCurrentEntity() {
         UiExtensionCatalogPort uiPort =
                 mock(UiExtensionCatalogPort.class);
@@ -36,6 +55,7 @@ class ExtensionCatalogServiceTest {
                 mock(FlowActionCatalogService.class),
                 mock(PersonResolverCatalogService.class),
                 uiPort,
+                mock(ObjectProvider.class),
                 mock(ObjectProvider.class),
                 mock(ObjectProvider.class));
 
@@ -70,6 +90,7 @@ class ExtensionCatalogServiceTest {
                 mock(PersonResolverCatalogService.class),
                 uiPort,
                 dataSourceProviders,
+                mock(ObjectProvider.class),
                 mock(ObjectProvider.class));
 
         var customPage = service.manage(

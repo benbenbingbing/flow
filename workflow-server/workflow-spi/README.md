@@ -37,6 +37,7 @@
 | --- | --- | --- |
 | entity.list.spi.ListFieldDataProvider | entity.list.model.ListFieldDataRecord / ListFieldDataConfig | workflow-entity 的 Registry 与列表服务 |
 | entity.permission.spi.EntityPermissionOptionProvider | entity.permission.model.EntityPermissionOption | workflow-entity 的权限目录与配置服务 |
+| process.condition.spi.SequenceFlowConditionProvider | process.condition.model.SequenceFlowConditionRequest | workflow-process 的顺序流业务条件编译与执行，admin 聚合接口目录 |
 | storage.spi.FileStorageProvider | storage.model.FileUpload / StoredFile | workflow-storage 的工厂与上传控制器 |
 | outbox.spi.OutboxEventHandlerProvider | outbox.model.OutboxEvent | workflow-outbox 的 Processor |
 

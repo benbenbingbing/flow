@@ -59,6 +59,8 @@ class IdentityWriteIntegrationTest {
     SysOrganizationServiceImpl organizations;
     IdentityWriteProperties properties;
     IdentitySourceSnapshotService snapshots;
+    SysUserMapper actualUserMapper;
+    SysOrganizationMapper actualOrganizationMapper;
 
     @BeforeEach
     void setup() throws Exception {
@@ -71,6 +73,8 @@ class IdentityWriteIntegrationTest {
         jdbc.execute("CREATE TABLE sys_user_role (id VARCHAR(64) PRIMARY KEY, user_id VARCHAR(64) NOT NULL, role_id VARCHAR(64) NOT NULL, create_time TIMESTAMP, UNIQUE(user_id, role_id))");
         // 组织使用真实领域服务及 Mapper，包含 V129 结构，迁移本身另由 db-migrator 的测试验证。
         jdbc.execute("CREATE TABLE sys_organization (id VARCHAR(64) PRIMARY KEY, org_code VARCHAR(100) UNIQUE, org_name VARCHAR(100), parent_id VARCHAR(64), type VARCHAR(20), hierarchy_ready SMALLINT DEFAULT 1 NOT NULL, level INT, path VARCHAR(500), business_level_code VARCHAR(64), sort_order INT, leader_id VARCHAR(64), leader_name VARCHAR(100), status CHAR(1), deleted INT DEFAULT 0, phone VARCHAR(50), email VARCHAR(100), address VARCHAR(200), description VARCHAR(500), create_by VARCHAR(64), create_time TIMESTAMP, update_time TIMESTAMP)");
+        new ResourceDatabasePopulator(new org.springframework.core.io.FileSystemResource(
+                "../workflow-db-migrator/src/main/resources/db/migration/V135__identity_main_table_extensions.sql")).execute(dataSource);
         jdbc.execute("CREATE TABLE entity_definition (id BIGINT, table_name VARCHAR(100), deleted INT)");
         jdbc.execute("CREATE TABLE entity_field (entity_id BIGINT, field_code VARCHAR(100), is_required INT)");
         String migration = Files.readString(Path.of("../workflow-db-migrator/src/main/resources/db/migration/V126__identity_source_write_and_external_accounts.sql"))
@@ -88,6 +92,7 @@ class IdentityWriteIntegrationTest {
         configuration.addMapper(IdentityPersistenceMapper.class);
         configuration.addMapper(IdentitySourceSnapshotMapper.class);
         configuration.addMapper(SysOrganizationMapper.class);
+        configuration.addMapper(SysUserMapper.class);
         configuration.addMapper(SysRoleMapper.class);
         configuration.addMapper(SysUserRoleMapper.class);
         var factory = new MybatisSqlSessionFactoryBean();
@@ -95,6 +100,8 @@ class IdentityWriteIntegrationTest {
         var session = new SqlSessionTemplate(factory.getObject());
         var persistence = session.getMapper(IdentityPersistenceMapper.class);
         var organizationMapper = session.getMapper(SysOrganizationMapper.class);
+        actualOrganizationMapper = organizationMapper;
+        actualUserMapper = session.getMapper(SysUserMapper.class);
         var roleMapper = session.getMapper(SysRoleMapper.class);
         store = new IdentitySourceStore(persistence);
         properties = new IdentityWriteProperties();
@@ -865,8 +872,110 @@ class IdentityWriteIntegrationTest {
         assertEquals("{}", jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot", String.class));
     }
 
+    @Test
+    void userMainFieldsAreQueryableAndPreserveOmissionWhileAllowingExplicitClear() throws Exception {
+        var fields = new IdentityMainFields(" 0007 ", "合同工", "CC001", "零".repeat(500), "5");
+        var first = save(main(user("E1", 1L, "alice", null, List.of()), fields));
+        var stored = actualUserMapper.selectById(first.localId());
+        assertEquals(fields.ext1(), stored.getExt1()); assertEquals(fields.ext2(), stored.getExt2());
+        assertEquals(fields.ext3(), stored.getExt3()); assertEquals(fields.ext4(), stored.getExt4());
+        assertEquals(fields.ext5(), stored.getExt5());
+        assertEquals(1, actualUserMapper.selectList(com.baomidou.mybatisplus.core.toolkit.Wrappers.<SysUser>lambdaQuery()
+                .eq(SysUser::getExt2, "合同工").eq(SysUser::getExt3, "CC001")).size());
+        String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(stored);
+        assertTrue(json.contains("\"ext5\":\"5\""));
+        // 普通管理请求不可修改来源槽位，防止下次同步覆盖人工编辑且绕过来源版本。
+        assertNull(new ObjectMapper().readValue("{\"ext1\":\"伪造\"}", SysUser.class).getExt1());
+        save(user("E1", 2L, "alice", "new@example.com", List.of()));
+        assertEquals(fields.ext1(), actualUserMapper.selectById(first.localId()).getExt1());
+        save(main(user("E1", 3L, "alice", null, List.of()), new IdentityMainFields(null, null, null, null, null)));
+        var cleared = actualUserMapper.selectById(first.localId());
+        assertNull(cleared.getExt1()); assertNull(cleared.getExt2()); assertNull(cleared.getExt3());
+        assertNull(cleared.getExt4()); assertNull(cleared.getExt5());
+    }
+
+    @Test
+    void mainFieldsRespectVersionIdempotenceAndLegacyPayloadHashes() {
+        var legacy = user("E1", 1L, "alice", null, List.of());
+        save(legacy);
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(legacy).outcome());
+        var fields = new IdentityMainFields("007", null, null, null, null);
+        var current = main(user("E1", 2L, "alice", null, List.of()), fields);
+        var saved = save(current);
+        assertEquals(IdentitySaveOutcome.UPDATED, saved.outcome());
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(current).outcome());
+        assertEquals("SOURCE_VERSION_CONFLICT", assertThrows(IdentityWriteException.class,
+                () -> save(main(user("E1", 2L, "alice", null, List.of()), IdentityMainFields.builder().ext5("changed").build()))).code());
+        assertEquals(IdentitySaveOutcome.STALE_IGNORED, save(main(legacy, IdentityMainFields.builder().ext1("old").build())).outcome());
+        assertEquals("007", actualUserMapper.selectById(saved.localId()).getExt1());
+    }
+
+    @Test
+    void organizationMainFieldsSurviveHierarchyReconciliationAndCanBeCleared() throws Exception {
+        var fields = new IdentityMainFields("华东", "制造", "003", "4", "5");
+        var child = organization("child", "parent");
+        var input = new OrganizationSaveModel(child.key(), 1L, child.base(), List.of(), "{}", fields);
+        var saved = tx.execute(s -> service.saveOrganization(input));
+        assertEquals(IdentitySaveOutcome.UNCHANGED, tx.execute(s -> service.saveOrganization(input)).outcome());
+        tx.execute(s -> service.saveOrganization(organization("parent", null)));
+        var stored = actualOrganizationMapper.selectById(saved.localId());
+        assertTrue(stored.isHierarchyReady());
+        assertEquals(fields.ext1(), stored.getExt1()); assertEquals(fields.ext2(), stored.getExt2());
+        assertEquals(fields.ext3(), stored.getExt3()); assertEquals(fields.ext4(), stored.getExt4());
+        assertEquals(fields.ext5(), stored.getExt5());
+        assertEquals(1, actualOrganizationMapper.selectList(com.baomidou.mybatisplus.core.toolkit.Wrappers.<SysOrganization>lambdaQuery()
+                .eq(SysOrganization::getExt1, "华东")).size());
+        assertTrue(new ObjectMapper().findAndRegisterModules().writeValueAsString(stored).contains("\"ext5\":\"5\""));
+        assertNull(new ObjectMapper().readValue("{\"ext1\":\"伪造\"}", SysOrganization.class).getExt1());
+        tx.execute(s -> service.saveOrganization(new OrganizationSaveModel(child.key(), 2L, child.base(), List.of())));
+        assertEquals("华东", actualOrganizationMapper.selectById(saved.localId()).getExt1());
+        tx.execute(s -> service.saveOrganization(new OrganizationSaveModel(child.key(), 3L, child.base(), List.of(), null,
+                new IdentityMainFields(null, null, null, null, null))));
+        var cleared = actualOrganizationMapper.selectById(saved.localId());
+        assertNull(cleared.getExt1()); assertNull(cleared.getExt2()); assertNull(cleared.getExt3());
+        assertNull(cleared.getExt4()); assertNull(cleared.getExt5());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3, 4, 5})
+    void rejectsOversizedMainFieldsForUsersAndOrganizations(int index) {
+        String[] values = new String[5]; values[index - 1] = "中".repeat(501);
+        var fields = new IdentityMainFields(values[0], values[1], values[2], values[3], values[4]);
+        var userError = assertThrows(IdentityWriteException.class,
+                () -> save(main(user("E1", 1L, "alice", null, List.of()), fields)));
+        assertEquals("INVALID_MODEL", userError.code());
+        assertEquals("mainFields.ext" + index, userError.field());
+        var org = organization("org", null);
+        var orgError = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveOrganization(
+                new OrganizationSaveModel(org.key(), 1L, org.base(), List.of(), null, fields))));
+        assertEquals("mainFields.ext" + index, orgError.field());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_organization", Integer.class));
+    }
+
+    @Test
+    void mainFieldsRollBackTogetherWithBaseRawDataAndBatchFailures() {
+        var original = main(raw(user("E1", 1L, "alice", null, List.of()), "{}"), IdentityMainFields.builder().ext1("old").build());
+        var saved = save(original);
+        var updated = main(raw(user("E1", 2L, "alice", "new@example.com", List.of()), "{\"new\":true}"),
+                IdentityMainFields.builder().ext1("new").build());
+        var invalid = main(user("E2", 1L, "bob", null, List.of()), IdentityMainFields.builder().ext5("x".repeat(501)).build());
+        assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveUsers(List.of(updated, invalid))));
+        assertEquals("old", actualUserMapper.selectById(saved.localId()).getExt1());
+        assertNull(actualUserMapper.selectById(saved.localId()).getEmail());
+        assertEquals("{}", jdbc.queryForObject("SELECT raw_json FROM sys_identity_source_snapshot", String.class));
+        doThrow(new IllegalStateException("audit unavailable")).when(audit).record(any());
+        assertThrows(IllegalStateException.class, () -> save(updated));
+        assertEquals("old", actualUserMapper.selectById(saved.localId()).getExt1());
+        assertEquals(1L, jdbc.queryForObject("SELECT source_version FROM sys_identity_source_binding", Long.class));
+    }
+
+    private UserSaveModel main(UserSaveModel model, IdentityMainFields fields) {
+        return new UserSaveModel(model.key(), model.sourceVersion(), model.base(), model.extensions(), model.rawDataJson(), fields);
+    }
+
     private UserSaveModel raw(UserSaveModel model, String raw) {
-        return new UserSaveModel(model.key(), model.sourceVersion(), model.base(), model.extensions(), raw);
+        return new UserSaveModel(model.key(), model.sourceVersion(), model.base(), model.extensions(), raw, model.mainFields());
     }
     private IdentitySaveResult save(UserSaveModel model) { return tx.execute(s -> service.saveUser(model)); }
     private UserSaveModel user(String id, Long revision, String account, String email, List<UserExtension> groups) {

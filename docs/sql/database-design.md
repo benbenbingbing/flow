@@ -2,7 +2,7 @@
 
 文档版本：1.8；整理日期：2026-10-08。
 
-2026-11-15 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V134，均包含 200 张平台及 Flowable 表、2,797 个字段。V130 职务管理收敛为当前人员关系；V131 增加身份来源最新原文快照，相关字段与业务规则见第 9 章；V132 仅新增内置实体字段赋值动作目录种子，复用第 5.11–5.12 节存储，结构计数不变。V133 为字典项新增 ext1～ext5 五个可选文本字段，用途及兼容规则见第 13.2 节。V134 将当前业务附件和流程表单中的文件地址转换为业务文件引用，表结构及种子数据不变，规则见第 13.3 节。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的统计仍是历史核对记录。
+2026-11-16 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V135，均包含 200 张平台及 Flowable 表、2,807 个字段。V130 职务管理收敛为当前人员关系；V131 增加身份来源最新原文快照，相关字段与业务规则见第 9 章；V132 仅新增内置实体字段赋值动作目录种子，复用第 5.11–5.12 节存储，结构计数不变。V133 为字典项新增 ext1～ext5 五个可选文本字段，用途及兼容规则见第 13.2 节。V134 将当前业务附件和流程表单中的文件地址转换为业务文件引用，表结构及种子数据不变，规则见第 13.3 节。V135 为用户和组织主表各增加 ext1～ext5 五个可查询文本字段，语义及维护规则见第 9.1、9.5 节。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的统计仍是历史核对记录。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
@@ -4258,7 +4258,7 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 
 维护组织树、类型、业务层级和启用状态，作为用户归属及职务任职的组织单元。
 
-物理属性为 InnoDB，字符集 utf8mb4，表排序规则 utf8mb4_unicode_ci。V129 后字段 21 个。
+物理属性为 InnoDB，字符集 utf8mb4，表排序规则 utf8mb4_unicode_ci。V135 后字段 26 个。
 
 #### 9.1.2 字段设计
 
@@ -4285,6 +4285,13 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 | `deleted` | 逻辑删除标记 | `int` | 是 | `'0'` | 是否删除：0-未删除 1-已删除。 | 现存 |
 | `create_by` | 创建人用户 ID | `varchar(64)` | 是 | `NULL` | 用于流程关系路径解析，历史创建人不可推断时保留 NULL。 | V119 新增 |
 | `hierarchy_ready` | 父链完整标志 | `smallint` | 否 | `1` | 1 表示已接到真实根节点，0 表示等待祖先补齐，供组织树过滤及流程组织链校验使用。 | V129 新增 |
+| `ext1` | 扩展字段1 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext2` | 扩展字段2 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext3` | 扩展字段3 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext4` | 扩展字段4 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext5` | 扩展字段5 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+
+五列由来源同步的可选 `mainFields` 完整组维护：省略整组保留原值，携带时组内 NULL 显式清空。每项最多 500 字符，保留原文空白及前导零；Oracle / 达梦 / OB Oracle 使用 `VARCHAR2(500 CHAR)`，空字符串按目标数据库语义存为空值。普通管理请求只读，业务通过同步入口写入；写入参与来源版本、摘要、事务和审计，不从大 JSON 自动推断或回填。没有新增索引、唯一约束或外键，用途固定后可按查询需要另加索引。
 
 #### 9.1.3 索引与关联
 
@@ -4313,7 +4320,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 #### 9.1.5 来源与迁移
 
-结构依据见 [V001 初始化](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V069 组织职务模型](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)、[V119 用户关系路径](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V119__entity_user_relation_path.sql) 和 [V129 乱序组织父链支持](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V129__allow_out_of_order_organization_provisioning.java)。
+结构依据见 [V001 初始化](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V069 组织职务模型](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)、[V119 用户关系路径](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V119__entity_user_relation_path.sql) 、[V129 乱序组织父链支持](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V129__allow_out_of_order_organization_provisioning.java) 和 [V135 主表文本扩展](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V135__identity_main_table_extensions.sql)。
 
 实现定位：[SysOrganizationMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/infrastructure/persistence/mapper/SysOrganizationMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[SysOrganizationService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/application/SysOrganizationService.java)。
 
@@ -4423,7 +4430,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 保存平台用户身份、登录凭证摘要、联系信息、组织归属和账号状态。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。V126 后字段 16 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。V135 后字段 21 个。
 
 #### 9.5.2 字段设计
 
@@ -4445,6 +4452,13 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 | `password_reset_required` | 是否必须在继续使用系统前修改密码 | `tinyint` | 否 | `'0'` | 是否必须在继续使用系统前修改密码。 | 现存 |
 | `token_version` | 令牌版本 | `bigint` | 否 | `0` | 用户令牌撤销版本；递增后此前签发的会话需按安全校验失效。 | 现存 |
 | `authentication_mode` | 认证策略 | `varchar(32)` | 否 | `'LOCAL_PASSWORD'` | 框架维护；`LOCAL_PASSWORD` 使用本地口令，`EXTERNAL_ONLY` 禁止本地密码登录和重置。 | V126 新增 |
+| `ext1` | 扩展字段1 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext2` | 扩展字段2 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext3` | 扩展字段3 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext4` | 扩展字段4 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+| `ext5` | 扩展字段5 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
+
+五列由来源同步的可选 `mainFields` 完整组维护：省略整组保留原值，携带时组内 NULL 显式清空。每项最多 500 字符，保留原文空白及前导零；Oracle / 达梦 / OB Oracle 使用 `VARCHAR2(500 CHAR)`，空字符串按目标数据库语义存为空值。普通管理请求只读，业务通过同步入口写入；写入参与来源版本、摘要、事务和审计，不从大 JSON 自动推断或回填。没有新增索引、唯一约束或外键，用途固定后可按查询需要另加索引。
 
 #### 9.5.3 索引与关联
 
@@ -4465,7 +4479,7 @@ password 保存本地口令哈希，外部账号可为空；authentication_mode 
 
 #### 9.5.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V002__security_foundation.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V002__security_foundation.sql)、[V126__identity_source_write_and_external_accounts.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V126__identity_source_write_and_external_accounts.sql)。
+结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V002__security_foundation.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V002__security_foundation.sql)、[V126__identity_source_write_and_external_accounts.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V126__identity_source_write_and_external_accounts.sql)、[V135__identity_main_table_extensions.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V135__identity_main_table_extensions.sql)。
 
 实现定位：[SysUserMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/infrastructure/persistence/mapper/SysUserMapper.java)、[ProcessTaskMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/task/infrastructure/persistence/mapper/ProcessTaskMapper.java)、[SysUserService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/application/SysUserService.java)。
 

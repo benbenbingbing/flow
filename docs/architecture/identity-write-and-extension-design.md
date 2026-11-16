@@ -1,6 +1,7 @@
 # 用户、组织标准写入与独立扩展
 
 状态：已实现。biz 获取数据、转换为公共模型并主动调用 `IdentityWritePort`；框架负责保存。
+主表文本扩展已在 V135 接入，用户、组织各有 ext1～ext5 五列，适合少量需要直接查询的来源字段。
 没有增加取数 Provider、定时任务或后台重试，业务自行决定调用时机和失败后的处理方式。
 
 原始 JSON 留存已实现，接入及状态规则见 [来源原始数据留存方案](identity-source-original-data-design.md)。
@@ -103,9 +104,9 @@ public IdentitySaveResult saveEmployee(ExternalEmployee employee) {
 
 | 模型 | 字段 |
 | --- | --- |
-| UserSaveModel | key、sourceVersion、base、extensions |
+| UserSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields |
 | UserBaseData | account、nickname、email、phone、avatar、organizationExternalId、departmentExternalId、enabled |
-| OrganizationSaveModel | key、sourceVersion、base、extensions |
+| OrganizationSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields |
 | OrganizationBaseData | externalCode、name、type、parentExternalId、businessLevelCode、phone、email、address、description、sortOrder、enabled |
 
 基础字段是本模型范围内的**完整快照**：可空字段传 null 会清空原值。
@@ -128,6 +129,35 @@ V129 为来源映射保存 `parent_external_id` 与精确哈希 `parent_source_k
 来源配置 `default-role-code` 时，首次创建用户会同时分配该角色，获得该角色对应的权限。用户及组织同步共用来源配置，默认角色只用于新建用户。
 外部登录仍需使用产品已有且经过授权的登录接入能力。
 产品原有本地用户继续使用 LOCAL_PASSWORD。
+
+### 3.1 主表文本扩展（V135）
+
+`sys_user` 和 `sys_organization` 各增加 `ext1`～`ext5` 五个可空文本列，每列最多 500 字符、默认 NULL。业务明确选择外部字段并转换成字符串后，通过公共 `IdentityMainFields` 提交；不从 `rawDataJson` 自动解析字段，不需要独立业务扩展表。列的用途及格式由接入业务约定，同一部署须保持一致，原始 JSON 留存能力继续独立工作。
+
+```java
+identities.saveUser(UserSaveModel.builder()
+        .key(new ExternalIdentityKey("project-directory", employee.getId()))
+        .sourceVersion(employee.getRevision())
+        .base(baseData)
+        .mainFields(IdentityMainFields.builder()
+                .ext1(employee.getEmployeeNo())  // 保留前导零，供业务按员工编号关联。
+                .ext2(employee.getEmployeeType()) // 使用稳定类别编码，供主表条件查询。
+                .ext3(employee.getCostCenterCode())
+                .build())
+        .rawDataJson(originalRecordJson)
+        .build());
+```
+
+组织使用相同 `mainFields` 模型。`ProjectIdentityImporter` 的三参数重载接受显式映射的这组值。4/5 参数保存模型构造方法和旧 Builder 调用继续可用。
+
+- `mainFields == null` 表示未提供，保留已有五列；新对象默认五列均为 NULL。
+- 携带本组时完整替换五列，组内 null 真实清空对应列，不能只填 ext1 而期望其他四列自动保留。五项均为 null 表示清空整组。
+- 原样保存字符串，不 trim、不推断数字或日期，不丢弃前导零；Oracle 兼容库按数据库规则将空字符串存为 NULL。
+- 单条、批量入口均按字符数校验五列，每项最多 500 字符，超长错误定位到 `mainFields.extN` 或批次对应路径。
+- 只有携带的 `mainFields` 参与本次业务摘要，省略时保留原摘要算法，历史调用不会因升级误报冲突。VERSIONED 的同版本同内容幂等、同版本不同内容冲突、旧版本忽略规则同时覆盖该组；重复请求须保留相同的携带方式。既有版本首次补充主表字段须提升来源版本，SERIAL 模式仍按调用顺序更新。
+- 主表字段与基础资料、独立扩展、来源映射、原文和必需审计共用事务，任意失败整次回滚；组织父级后到重算派生结构时保留主表扩展列。
+- 管理实体返回五列，普通管理请求不接受修改，由来源同步维护。业务查询可直接使用列或 `SysUser::getExt1` / `SysOrganization::getExt1` 等 Mapper 条件，不需要解析 JSON；本次不增加通用界面编辑器、列表筛选参数、索引、唯一约束或外键。索引及具体筛选由业务按实际用途添加。
+- 旧数据保持 NULL，通过下一次有效同步补齐；不从可能已过期的原文自动回填。
 
 ## 4. 继承式扩展
 

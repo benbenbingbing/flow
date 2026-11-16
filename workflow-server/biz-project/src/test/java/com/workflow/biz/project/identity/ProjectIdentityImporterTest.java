@@ -33,4 +33,19 @@ class ProjectIdentityImporterTest {
         verify(port).saveOrganization(input.capture());
         assertEquals(original, input.getValue().rawDataJson());
     }
+
+    @Test void passesExplicitMainTableFieldsForBothIdentityTypes() {
+        var port = mock(IdentityWritePort.class);
+        var importer = new ProjectIdentityImporter(port);
+        var fields = IdentityMainFields.builder().ext1("0007").ext5("华东").build();
+        importer.saveUser(new ProjectIdentityImporter.DirectoryUser("E1", 1, "alice", "张三",
+                null, null, null, null, true), "{}", fields);
+        importer.saveOrganization(new ProjectIdentityImporter.DirectoryOrganization("O1", 1, "HQ", "总部",
+                OrganizationUnitType.ORGANIZATION, null, true), "{}", fields);
+        var user = ArgumentCaptor.forClass(UserSaveModel.class);
+        var org = ArgumentCaptor.forClass(OrganizationSaveModel.class);
+        verify(port).saveUser(user.capture()); verify(port).saveOrganization(org.capture());
+        assertEquals(fields, user.getValue().mainFields());
+        assertEquals(fields, org.getValue().mainFields());
+    }
 }

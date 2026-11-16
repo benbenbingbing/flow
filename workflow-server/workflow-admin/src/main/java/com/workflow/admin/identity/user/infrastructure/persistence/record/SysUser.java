@@ -27,6 +27,26 @@ public class SysUser {
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private java.util.Map<String, com.workflow.contracts.identity.model.IdentityExtensionEdit> extensions;
 
+    /** 扩展字段1：由接入业务约定用途，来源同步维护，供主表条件查询和详情读取。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String ext1;
+
+    /** 扩展字段2：由接入业务约定用途，来源同步维护，供主表条件查询和详情读取。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String ext2;
+
+    /** 扩展字段3：由接入业务约定用途，来源同步维护，供主表条件查询和详情读取。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String ext3;
+
+    /** 扩展字段4：由接入业务约定用途，来源同步维护，供主表条件查询和详情读取。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String ext4;
+
+    /** 扩展字段5：由接入业务约定用途，来源同步维护，供主表条件查询和详情读取。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String ext5;
+
     /** 授权后的资料与版本，供通用表单回填；不接受客户端指定读取结果。 */
     @TableField(exist = false)
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)

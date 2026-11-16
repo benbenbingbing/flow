@@ -10,6 +10,7 @@
 - `com.workflow.process.task`：审批、驳回、撤回、重提、加签和知会。
 - `com.workflow.process.assignment`：办理人、候选人和多实例解析。
 - `com.workflow.process.action`：流程动作编排、执行和引擎事件适配。
+- `com.workflow.process.condition`：顺序流业务条件接口的发布编译和运行时判断。
 - `com.workflow.process.engine.infrastructure.flowable`：脚本、DMN、REST 等引擎服务任务委托。
 - `com.workflow.process.form/configuration/status/cc/sla`：流程表单、节点配置、状态同步、抄送和时限管理。
 
@@ -29,3 +30,6 @@
 - 节点表单配置 `FormConfig`、`FormFieldConfig` 及其 Mapper/响应类型归属 `process.form`，数据库表和接口 JSON 不变。
 - 知会人员解析和渠道 SPI 位于 `contracts.process.cc.spi`。渠道收到独立的 `CcNotification` 投影，不能通过修改参数回写收件箱状态。
 - 流程动作中的实体数据返回 `EntityRecordData`，调用方不再转换为实体模块的 HTTP DTO。
+
+顺序流支持选择已注册的 `SequenceFlowConditionProvider`，返回 `true` 时条件命中。
+配置复用 BPMN 扩展属性，不新增业务字段；详见[顺序流业务条件接口](../../docs/sequence-flow-condition-interface.md)。

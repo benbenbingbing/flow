@@ -53,6 +53,14 @@ public interface IdentityPersistenceMapper {
     @Update("UPDATE sys_organization SET phone = #{base.phone}, email = #{base.email}, address = #{base.address}, description = #{base.description} WHERE id = #{id}")
     int clearableOrganizationFields(@Param("id") String id, @Param("base") OrganizationBaseData base);
 
+    /** 来源显式携带本组时才调用；参数化写入五列，NULL 必须真实清空，不能走 ORM 忽略空值策略。 */
+    @Update("UPDATE sys_user SET ext1 = #{fields.ext1,jdbcType=VARCHAR}, ext2 = #{fields.ext2,jdbcType=VARCHAR}, ext3 = #{fields.ext3,jdbcType=VARCHAR}, ext4 = #{fields.ext4,jdbcType=VARCHAR}, ext5 = #{fields.ext5,jdbcType=VARCHAR} WHERE id = #{id} AND deleted = 0")
+    int updateUserMainFields(@Param("id") String id, @Param("fields") IdentityMainFields fields);
+
+    /** 来源组织与用户采用相同文本快照语义，保持字段更新与组织树、来源映射的事务一致性。 */
+    @Update("UPDATE sys_organization SET ext1 = #{fields.ext1,jdbcType=VARCHAR}, ext2 = #{fields.ext2,jdbcType=VARCHAR}, ext3 = #{fields.ext3,jdbcType=VARCHAR}, ext4 = #{fields.ext4,jdbcType=VARCHAR}, ext5 = #{fields.ext5,jdbcType=VARCHAR} WHERE id = #{id} AND deleted = 0")
+    int updateOrganizationMainFields(@Param("id") String id, @Param("fields") IdentityMainFields fields);
+
     @Insert("INSERT INTO sys_identity_source_binding (source_key, source_code, object_type, external_id, local_id, external_account, source_version, payload_hash, source_enabled, local_allowed, binding_status, created_at, updated_at) VALUES (#{v.source_key}, #{v.source_code}, #{v.object_type}, #{v.external_id}, #{v.local_id}, #{v.external_account}, #{v.source_version}, #{v.payload_hash}, #{v.source_enabled}, 1, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
     int insertBinding(@Param("v") Map<String, Object> values);
 

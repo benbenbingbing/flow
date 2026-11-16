@@ -122,7 +122,6 @@ class TaskCandidateApprovalTransactionIntegrationTest {
             assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
             jdbc.update("UPDATE approval_projection SET task_status = 'done' WHERE task_id = ?",
                     invocation.getArgument(0, String.class));
-            completionHook.afterEngineCompletion();
             return null;
         }).when(projectionService).completeTask(anyString(), eq("approve"), anyString(), isNull());
         ProcessOperationLogMapper operationLogMapper = mock(ProcessOperationLogMapper.class);
@@ -133,8 +132,18 @@ class TaskCandidateApprovalTransactionIntegrationTest {
         });
         SysUserService userService = mock(SysUserService.class);
         when(userService.getDisplayName(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        org.flowable.engine.TaskService completingTasks = spy(engine.getTaskService());
+        doAnswer(invocation -> {
+            // 路由条件执行前，本次审批记录已经在同一事务中可读。
+            assertEquals("done", jdbc.queryForObject(
+                    "SELECT task_status FROM approval_projection WHERE task_id = ?", String.class,
+                    invocation.getArgument(0, String.class)));
+            invocation.callRealMethod();
+            completionHook.afterEngineCompletion();
+            return null;
+        }).when(completingTasks).complete(anyString(), org.mockito.ArgumentMatchers.<java.util.Map<String, Object>>any());
         TaskActionService target = new TaskActionService(
-                engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(),
+                completingTasks, engine.getRuntimeService(), engine.getHistoryService(),
                 projectionService, engine.getRepositoryService(), operationLogMapper, userService,
                 mock(NodeFormSubmissionService.class),
                 mock(EntityRecordPort.class), mock(ProcessCcService.class),

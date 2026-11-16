@@ -38,6 +38,8 @@ public class ExtensionCatalogService {
     /** WRITE 接口使用独立的受控命令计划 Provider。 */
     private final ObjectProvider<UiActionCommandPlanProvider>
             actionCommandPlanProviders;
+    /** 条件接口通过 Spring Bean 注册，复用目录和选择器，不新增目录表。 */
+    private final ObjectProvider<com.workflow.contracts.process.condition.spi.SequenceFlowConditionProvider> conditionProviders;
 
     /**
      * 处理{@code manage}，并将结果传给后续步骤。
@@ -167,6 +169,33 @@ public class ExtensionCatalogService {
         uiExtensionCatalogPort.listCatalogItems().stream()
                 .map(this::uiItem)
                 .forEach(items::add);
+        java.util.Set<String> conditionCodes = new java.util.HashSet<>();
+        conditionProviders.stream().forEach(provider -> {
+            if (!StringUtils.hasText(provider.getCode()) || !StringUtils.hasText(provider.getDisplayName())
+                    || !conditionCodes.add(normalize(provider.getCode()))) {
+                throw new IllegalStateException("业务条件接口编码或名称为空，或编码重复: " + provider.getCode());
+            }
+            ExtensionCatalogItem item = new ExtensionCatalogItem();
+            item.setCapabilityType("FLOW_CONDITION");
+            item.setKey(provider.getCode().trim());
+            item.setDisplayName(provider.getDisplayName());
+            item.setDescription(provider.getDescription());
+            item.setImplementationOrigin(provider.implementationOrigin().name());
+            item.setImplementationVersion(1);
+            item.setContractVersion(1);
+            item.setSourceType("SPRING");
+            item.setSourceName(provider.getCode());
+            item.setImplementationClass(provider.getClass().getName());
+            item.setStatus("ACTIVE");
+            item.setConfigured(true);
+            item.setAvailable(true);
+            item.setEnabled(true);
+            item.setVisibilityScope("GLOBAL");
+            item.setEntityCodes(List.of());
+            item.setConfigSchema(Map.of("type", "object"));
+            item.setExtraParamSchema(Map.of("type", "object"));
+            items.add(item);
+        });
         return items;
     }
 

@@ -73,6 +73,10 @@ public class FlowableConditionEvaluator {
             String expression,
             Map<String, Object> variables) {
         String body = expression == null ? "" : expression.trim();
+        // 业务条件可能依赖本次审批提交后的记录；预览不能提前调用并假定结果已稳定。
+        if (body.startsWith("${sequenceFlowConditionEvaluator.")) {
+            throw new UnsafePreviewExpressionException("业务接口条件需在实际提交时判断");
+        }
         if ((body.startsWith("${") || body.startsWith("#{"))
                 && body.endsWith("}")) {
             body = body.substring(2, body.length() - 1);

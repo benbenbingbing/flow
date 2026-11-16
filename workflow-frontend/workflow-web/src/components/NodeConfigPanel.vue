@@ -1311,7 +1311,7 @@
       <section v-if="isSequenceFlow && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="流转条件"
-          description="设置无条件、条件表达式或默认连线"
+          description="设置无条件、条件表达式、业务接口或默认连线"
           :collapsible="false"
           primary
         >
@@ -1321,12 +1321,13 @@
               <ConfigHelpLabel
                 label="条件类型"
                 help-key="process.sequenceConditionType"
-                content="无条件：此连线在任何情况下都会执行。表达式：计算为真时通过，每个条件组可选择全部满足或任一满足，组内可继续添加子条件组。默认流：其他条件都不满足时执行，一个排他网关只能有一条默认流；建议其他分支都设置条件表达式，最后一个分支设为默认流。"
+                content="无条件：此连线在任何情况下都会执行。表达式：计算为真时通过，条件组可组合全部满足或任一满足。业务接口：选择已注册的 Java 业务接口，返回 true 时条件命中。默认流：其他条件都不满足时执行，一个网关只能有一条默认流。"
               />
             </template>
             <el-radio-group v-model="conditionForm.type" @change="onConditionTypeChange">
               <el-radio-button value="">无条件</el-radio-button>
               <el-radio-button value="expression">表达式</el-radio-button>
+              <el-radio-button value="interface" :disabled="props.element?.businessObject?.sourceRef?.$type === 'bpmn:ParallelGateway'">业务接口</el-radio-button>
               <el-radio-button value="default">默认流</el-radio-button>
             </el-radio-group>
           </el-form-item>
@@ -1341,6 +1342,30 @@
             网关类型转换后，这条连线保留了旧条件组，但缺少实际执行的条件表达式。
             请重新选择“表达式”，核对完整表达式，然后点击“应用到画布”并保存草稿。
           </el-alert>
+
+          <template v-if="conditionForm.type === 'interface'">
+            <el-form-item label="条件接口" required>
+              <ExtensionCapabilityPicker
+                v-model="conditionInterfaceForm.providerCode"
+                capability-type="FLOW_CONDITION"
+                placeholder="搜索并选择业务条件接口"
+              />
+            </el-form-item>
+            <el-form-item label="接口参数">
+              <el-input
+                v-model="conditionInterfaceForm.extraParamsText"
+                type="textarea"
+                :rows="4"
+                placeholder='JSON 对象，例如 {"nodeIds":["Task_Finance","Task_Legal"]}'
+              />
+            </el-form-item>
+            <el-alert
+              title="接口返回 true 时条件命中，返回 false 时不走此分支；接口报错会阻止本次提交。"
+              type="info"
+              :closable="false"
+              show-icon
+            />
+          </template>
           
           <!-- 表达式编辑器 -->
           <template v-if="conditionForm.type === 'expression'">
@@ -1821,6 +1846,7 @@ import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import EntityUserRelationPathSelector from "./EntityUserRelationPathSelector.vue"
 import NodeSlaEditor from "./node-config/NodeSlaEditor.vue"
 import { updateBpmnExtensionProperty } from './node-config/bpmnExtensionProperties.js'
+import { buildSequenceFlowConditionConfig, buildSequenceFlowConditionExpression } from './node-config/sequenceFlowCondition.js'
 
 import EmptyAssigneePolicyEditor from "./EmptyAssigneePolicyEditor.vue"
 import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
@@ -2175,6 +2201,7 @@ watch(subProcessSource, source => {
   }
 })
 const conditionForm = ref({ type: '', expression: '' })
+const conditionInterfaceForm = ref({ providerCode: '', extraParamsText: '{}' })
 const conditionRoot = ref(createFlowConditionGroup())
 const conditionParseWarning = ref('')
 const staleConditionConfig = ref(false)
@@ -3176,8 +3203,21 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
       // 解析条件表达式
       let expressionBody = bo.conditionExpression?.body || ''
       conditionForm.value = { 
-        type: bo.conditionExpression ? 'expression' : bo.sourceRef?.default === bo ? 'default' : '', 
+        type: extProps.sequenceFlowCondition ? 'interface' : bo.conditionExpression ? 'expression' : bo.sourceRef?.default === bo ? 'default' : '',
         expression: expressionBody 
+      }
+      conditionInterfaceForm.value = { providerCode: '', extraParamsText: '{}' }
+      if (extProps.sequenceFlowCondition) {
+        try {
+          const config = JSON.parse(extProps.sequenceFlowCondition)
+          conditionInterfaceForm.value = {
+            providerCode: config.providerCode || '',
+            extraParamsText: JSON.stringify(config.extraParams ?? {}, null, 2)
+          }
+        } catch {
+          // 保留损坏内容供用户修正，不能静默丢掉条件后保存成无条件流。
+          conditionInterfaceForm.value.extraParamsText = extProps.sequenceFlowCondition
+        }
       }
       hasCondition.value = !!bo.conditionExpression
       
@@ -3491,6 +3531,7 @@ function updateServiceImplementation() {
 }
 
 function getFullExpression() {
+  if (conditionForm.value.type === 'interface') return buildSequenceFlowConditionExpression(toRaw(props.element).businessObject.id)
   if (conditionParseWarning.value) return conditionForm.value.expression || ''
   return buildFlowConditionExpression(conditionRoot.value, getFieldType)
 }
@@ -4457,16 +4498,43 @@ function applyConfigurationSection(section) {
         break
       case 'condition':
         // 根据条件类型执行相应的保存逻辑
-        if (conditionForm.value.type === 'default') {
+        if (conditionForm.value.type === 'interface') {
+          let config
+          try {
+            config = buildSequenceFlowConditionConfig(conditionInterfaceForm.value)
+          } catch (error) {
+            ElMessage.warning(error.message)
+            return
+          }
+          const modeling = getModeling()
+          const moddle = getModdle()
+          const source = getSourceElement()
+          if (['bpmn:ParallelGateway', 'bpmn:EventBasedGateway'].includes(source?.businessObject?.$type)) {
+            ElMessage.warning('请在并行汇聚后添加条件网关，再配置业务接口')
+            return
+          }
+          if (modeling && moddle) {
+            const flow = toRaw(props.element).businessObject
+            const condition = moddle.create('bpmn:FormalExpression', { body: buildSequenceFlowConditionExpression(flow.id) })
+            if (source && toRaw(source.businessObject)?.default === flow) {
+              modeling.updateProperties(toRaw(source), { default: undefined })
+            }
+            modeling.updateProperties(toRaw(props.element), { conditionExpression: condition })
+            updateExtensionProperty('conditionGroupConfig', null)
+            updateExtensionProperty('sequenceFlowCondition', JSON.stringify(config))
+          }
+        } else if (conditionForm.value.type === 'default') {
           // 保存默认流设置
           const modeling = getModeling()
           const source = getSourceElement()
           if (modeling && source) {
             modeling.updateProperties(toRaw(props.element), { conditionExpression: undefined })
             updateExtensionProperty('conditionGroupConfig', null)
+            updateExtensionProperty('sequenceFlowCondition', null)
             modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
           }
         } else if (conditionForm.value.type === 'expression') {
+          updateExtensionProperty('sequenceFlowCondition', null)
           if (conditionParseWarning.value) {
             ElMessage.info('原条件表达式已保留；转换为条件组后才能进行可视化编辑')
           } else {
@@ -4497,6 +4565,7 @@ function applyConfigurationSection(section) {
             if (source && toRaw(source.businessObject)?.default === toRaw(props.element).businessObject) {
               modeling.updateProperties(toRaw(source), { default: undefined })
             }
+            updateExtensionProperty('sequenceFlowCondition', null)
           }
         }
         staleConditionConfig.value = false

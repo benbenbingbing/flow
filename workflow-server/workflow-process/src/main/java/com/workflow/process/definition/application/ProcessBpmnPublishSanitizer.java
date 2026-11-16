@@ -73,6 +73,9 @@ public class ProcessBpmnPublishSanitizer {
     private EntityUserPathBpmnCompiler entityUserPathBpmnCompiler;
 
     @Autowired
+    private com.workflow.process.condition.application.SequenceFlowConditionBpmnCompiler sequenceFlowConditionBpmnCompiler;
+
+    @Autowired
     private com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper calledProcessConfigs;
     @Autowired
     private com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper calledProcessEntities;
@@ -173,6 +176,20 @@ public class ProcessBpmnPublishSanitizer {
             }
         }
         result = validateNextApproverSelections(result, processConfigId);
+        // 接口条件只允许调用固定入口，配置和实现必须在部署前校验完成。
+        if (result.contains("sequenceFlowCondition")) {
+            if (sequenceFlowConditionBpmnCompiler == null) {
+                throw new IllegalArgumentException("SEQUENCE_FLOW_CONDITION_INVALID: 业务条件接口编译器不可用");
+            }
+            try {
+                Document document = parseXml(result);
+                if (sequenceFlowConditionBpmnCompiler.compile(document)) result = writeXml(document);
+            } catch (RuntimeException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new IllegalArgumentException("SEQUENCE_FLOW_CONDITION_INVALID: 业务条件接口配置无法编译", exception);
+            }
+        }
         result = installEntryDynamicResolverCollectionHandlers(result);
         result = fixScriptTasks(result);
         validateProtectedMultiInstanceVariables(result);
