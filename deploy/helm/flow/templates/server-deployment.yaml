@@ -25,7 +25,7 @@ spec:
       labels:
         {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 8 }}
       annotations:
-        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application "openApi" .Values.openApi "embed" .Values.embed) | sha256sum }}
+        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application "openApi" .Values.openApi "embed" .Values.embed "nacos" .Values.nacos) | sha256sum }}
     spec:
       serviceAccountName: {{ include "flow.fullname" . }}
       {{- with .Values.global.imagePullSecrets }}
@@ -63,6 +63,39 @@ spec:
               value: "true"
             - name: WORKFLOW_DEPLOYMENT_ROLE
               value: server
+            - name: NACOS_DISCOVERY_ENABLED
+              value: {{ .Values.nacos.enabled | quote }}
+            {{- if .Values.nacos.enabled }}
+            - name: NACOS_SERVER_ADDR
+              value: {{ .Values.nacos.serverAddr | quote }}
+            - name: NACOS_NAMESPACE
+              value: {{ .Values.nacos.namespace | quote }}
+            - name: NACOS_GROUP
+              value: {{ .Values.nacos.group | quote }}
+            - name: NACOS_CLUSTER_NAME
+              value: {{ .Values.nacos.clusterName | quote }}
+            - name: NACOS_SERVICE_NAME
+              value: {{ .Values.nacos.serviceName | quote }}
+            - name: NACOS_REGISTER_ENABLED
+              value: {{ .Values.nacos.registerEnabled | quote }}
+            # 使用每个副本自己的 Pod IP，供同一可路由网络中的消费者发现。
+            - name: NACOS_DISCOVERY_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            {{- if .Values.nacos.authEnabled }}
+            - name: NACOS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.nacos.usernameSecretKey }}
+            - name: NACOS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.nacos.passwordSecretKey }}
+            {{- end }}
+            {{- end }}
             - name: WORKFLOW_BOOTSTRAP_ENABLED
               value: "false"
             - name: WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE

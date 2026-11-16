@@ -57,3 +57,9 @@
 {{- $_ := set $openApiFileNames .fileName true }}
 {{- $_ := set $openApiSecretKeys .secretKey true }}
 {{- end }}
+{{- if and .Values.nacos.enabled (eq (trim .Values.nacos.serverAddr) "") }}
+{{- fail "nacos.serverAddr is required when Nacos discovery is enabled" }}
+{{- end }}
+{{- if and .Values.nacos.enabled .Values.networkPolicy.enabled (eq (len .Values.networkPolicy.nacosCIDRs) 0) }}
+{{- fail "networkPolicy.nacosCIDRs is required when Nacos discovery and NetworkPolicy are enabled" }}
+{{- end }}

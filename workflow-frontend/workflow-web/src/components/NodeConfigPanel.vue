@@ -1345,6 +1345,12 @@
 
           <template v-if="conditionForm.type === 'interface'">
             <el-form-item label="条件接口" required>
+              <template #label>
+                <ConfigHelpLabel
+                  label="条件接口"
+                  help-key="process.sequenceConditionProvider"
+                />
+              </template>
               <ExtensionCapabilityPicker
                 v-model="conditionInterfaceForm.providerCode"
                 capability-type="FLOW_CONDITION"
@@ -1352,6 +1358,12 @@
               />
             </el-form-item>
             <el-form-item label="接口参数">
+              <template #label>
+                <JsonConfigLabel
+                  label="接口参数"
+                  help-key="process.sequenceConditionParams"
+                />
+              </template>
               <el-input
                 v-model="conditionInterfaceForm.extraParamsText"
                 type="textarea"

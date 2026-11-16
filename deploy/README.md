@@ -96,6 +96,60 @@ containers rather than only running `docker compose restart`. Log in again after
 the change and confirm that `/api/auth/refresh` sends `flow_refresh_token` and
 returns 200 when the page reloads.
 
+## Optional Nacos service registration
+
+Nacos discovery is disabled by default. The application uses an existing Nacos
+Server; these templates do not deploy one. Compose forwards the `NACOS_*`
+variables from [`.env.example`](.env.example) to the long-running `server` only.
+After enabling it, rebuild the server image and recreate the server container.
+Use an address reachable from inside the container, and advertise an instance IP
+and port reachable by its consumers. `NACOS_DISCOVERY_PORT=-1` uses the actual
+HTTP port (8080 in Compose), not the management port or host port mapping.
+
+For Helm, add the following to the target environment's values:
+
+```yaml
+nacos:
+  enabled: true
+  serverAddr: nacos.example.internal:8848
+  namespace: your-namespace-id
+  group: DEFAULT_GROUP
+  clusterName: DEFAULT
+  serviceName: workflow-server
+  registerEnabled: true
+  authEnabled: true
+networkPolicy:
+  nacosCIDRs:
+    - 10.0.2.10/32 # Replace with the resolved Nacos server network.
+  nacosPorts: [8848, 9848]
+```
+
+With `authEnabled=true`, add `nacos-username` and `nacos-password` to
+`global.existingSecret`, or select different keys with `usernameSecretKey` and
+`passwordSecretKey`. Only the server Deployment reads them. Each server Pod
+registers its own Pod IP and HTTP port. Bootstrap, migration and schema workers
+do not register. Credentials must not be put in values files.
+
+`namespace` is the namespace ID, not its display name. An empty value selects
+public; the selected Spring Cloud Alibaba 2025.0 line requires Nacos Server 3.x
+for public, as described in the [official quick start](https://sca.aliyun.com/docs/2025.x/user-guide/nacos/quick-start/).
+Allow both the main port and client gRPC port (main port + 1000) through firewalls
+and proxies; see the [Nacos port documentation](https://nacos.io/en/docs/latest/manual/admin/deployment/deployment-overview/).
+The chart requires `networkPolicy.nacosCIDRs` when discovery and NetworkPolicy
+are enabled. Adjust `nacosPorts` for a custom Nacos main port.
+
+Service registration does not grant consumers network access to server Pods.
+The chart's default ingress policy allows the web tier only; add a policy for
+the intended consumers to reach TCP 8080, and ensure they can route to Pod IPs.
+For discovery-only use (`registerEnabled=false`), allow any required downstream
+business service egress separately. Nacos discovery does not change the web
+tier's static upstream or load remote application configuration.
+
+Check the Nacos service list in the configured namespace/group for
+`workflow-server` instances, and verify their addresses from the consumer network.
+Registration failures stop startup when registration is enabled. No live Nacos
+server is needed when discovery remains disabled.
+
 ## Release gates
 
 1. Pin server and web images by real `sha256:` digest. Mutable tags are rejected

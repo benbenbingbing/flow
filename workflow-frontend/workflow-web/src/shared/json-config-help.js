@@ -99,6 +99,25 @@ const HELP_ENTRIES = {
     result: '人员解析器可从 extraParams.level 等路径读取参数。',
     notes: ['只填写当前人员接口声明并支持的参数。']
   },
+  'process.sequenceConditionParams': {
+    title: '业务条件接口参数怎么填',
+    shape: 'object',
+    summary:
+      '填写所选 Java 条件接口需要的业务参数，平台原样传给 request.extraParams()。无额外参数时填 {}；只填参数对象本身，不要再套 providerCode 或 extraParams。',
+    example: {
+      nodeIds: ['Task_Finance', 'Task_Legal'],
+      expectedAction: 'approve'
+    },
+    result:
+      '接口通过 request.extraParams().get("nodeIds") 取得节点列表，通过 request.extraParams().get("expectedAction") 取得期望结果，再结合本实例的审批记录自行判断并返回 true 或 false。',
+    notes: [
+      '示例键名不是平台内置规则，必须由所选接口实现读取；只填写该接口支持的键，必填项和类型可在 validate(extraParams) 中校验。',
+      'nodeIds 如用于定位审批节点，应填画布“标识与备注”中的节点标识，不填节点名称；接口需自行处理会签汇总和退回重审轮次。',
+      '流程实例 ID、连线、起止节点、实体及变量上下文由平台自动传入，不必在这里重复配置。',
+      '此处不执行 ${变量名} 替换或表达式；动态值请在接口中通过 request.variables().get("变量名") 读取。',
+      '使用标准 JSON：键名和文本加双引号，布尔值写 true/false，节点列表使用数组；不支持注释和末尾逗号。'
+    ]
+  },
   'process.restHeaders': {
     title: 'REST 请求头怎么用',
     shape: 'object',

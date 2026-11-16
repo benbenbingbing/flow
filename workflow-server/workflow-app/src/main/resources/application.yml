@@ -22,6 +22,8 @@ spring:
       - classpath:config/storage.yml
       # 外部集成配置。
       - classpath:config/integration.yml
+      # 可选服务注册与发现，默认不连接注册中心。
+      - classpath:config/discovery.yml
       # 第三方嵌入配置。
       - classpath:config/embed.yml
       # 可观测性配置。

@@ -10,6 +10,9 @@
 `getCode()` 用于流程绑定，`getDisplayName()` 用于下拉显示；编码不区分大小写且必须唯一。
 注册后自动出现在扩展目录的“流程条件接口”和连线选择器中，不需要新增数据库字段或目录数据。
 这些接口由代码注册，目录只提供查看；名称、说明和实现的调整通过业务模块发布。
+接口类须在应用组件扫描范围内，业务模块部署并重启后端服务后，可按 `getCode()` 编码或
+`getDisplayName()` 名称搜索。“条件接口”旁的问号提供接口实现和注册说明；“接口参数”旁的
+问号提供 JSON 示例、代码读取方式及自动传入的上下文说明。
 
 ```java
 @Component
@@ -53,6 +56,19 @@ public class ExpenseRouteCondition implements SequenceFlowConditionProvider {
 业务参数由接口定义，不由平台推断。发布器检查接口可用性和参数，再编译为平台固定的
 条件入口；不支持在普通表达式中任意调用 Java Bean 或方法。运行时始终读取已部署版本的
 连线配置，后续草稿修改不会影响运行中的实例。
+
+界面的“接口参数”只填写上例中的参数对象本身：
+
+```json
+{"nodeIds":["Task_Finance","Task_Legal"],"expectedAction":"approve"}
+```
+
+接口可用 `request.extraParams().get("nodeIds")` 读取列表、用
+`request.extraParams().get("expectedAction")` 读取期望动作。以上键名均为业务示例，
+只有接口实现主动读取后才生效，平台不会自动汇总审批记录。节点标识从画布“标识与备注”
+取得，不使用节点名称。没有额外参数时填写 `{}`，不需要再包一层 `extraParams`。
+流程实例等上下文由平台传入；参数不执行 `${变量名}` 替换，动态变量由接口通过
+`request.variables().get("变量名")` 读取。
 
 普通审批、驳回和自定义审批完成时，先在同一事务中保存 `process_task` 的本次处理结果，
 再调用引擎推进。因此条件接口通过同一数据源、同一事务查询时可以读到最后一笔提交；

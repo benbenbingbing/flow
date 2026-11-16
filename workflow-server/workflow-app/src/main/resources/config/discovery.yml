@@ -1,0 +1,23 @@
+# 服务注册与发现只作用于 workflow-server；迁移器与 schema worker 使用独立制品。
+spring:
+  cloud:
+    nacos:
+      discovery:
+        # 本地及独立部署无需 Nacos；显式开启后由 Starter 注册并在关闭时注销实例。
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        # 填写命名空间 ID 而非显示名称；空值使用 public（需 Nacos Server 3.x）。
+        namespace: ${NACOS_NAMESPACE:}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        cluster-name: ${NACOS_CLUSTER_NAME:DEFAULT}
+        # 默认沿用应用名称，外部消费者按此服务名及相同 namespace/group 发现实例。
+        service: ${NACOS_SERVICE_NAME:${spring.application.name}}
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+        # 只消费其他服务时可关闭注册，同时保留 DiscoveryClient 的服务发现能力。
+        register-enabled: ${NACOS_REGISTER_ENABLED:true}
+        # 多网卡或跨容器网络时填写消费者可达的地址；-1 让 Starter 使用实际 Web 端口。
+        ip: ${NACOS_DISCOVERY_IP:}
+        port: ${NACOS_DISCOVERY_PORT:-1}
+        # 开启注册后连接失败应阻止启动，避免实例实际未注册却被视为可用。
+        fail-fast: true

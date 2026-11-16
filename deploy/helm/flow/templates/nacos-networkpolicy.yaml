@@ -1,0 +1,25 @@
+{{- if and .Values.networkPolicy.enabled .Values.nacos.enabled }}
+# 只允许 API Pod 访问指定注册中心，不向 bootstrap、迁移器和 schema worker 开放该出口。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flow.fullname" . }}-nacos-egress
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- range .Values.networkPolicy.nacosCIDRs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        {{- range .Values.networkPolicy.nacosPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}

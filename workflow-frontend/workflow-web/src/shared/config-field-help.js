@@ -77,6 +77,8 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     'Java 类需实现 Flowable JavaDelegate 并填写全限定类名；Spring Bean 同样实现 JavaDelegate、加 @Component，并填写 ${beanName}。外部 HTTP 使用 REST 配置。',
   'process.sequenceConditionType':
     '无条件会直接通过；表达式在计算为真时通过；默认流只在同一网关其他条件都未命中时使用，一个排他网关只能有一条默认流。',
+  'process.sequenceConditionProvider':
+    '在业务模块实现 SequenceFlowConditionProvider，并加 @Component 注册为 Spring Bean，类须位于应用的组件扫描范围内。getCode() 返回唯一稳定编码（如 expenseRoute），getDisplayName() 返回下拉显示名称（如“费用审批分支判断”），evaluate(SequenceFlowConditionRequest request) 返回 boolean。部署并重启后端服务后，按名称或编码搜索即可选到，无需另在扩展管理中创建或启用。实现中可用 request.processInstanceId() 查询本实例的审批记录，用 request.variables() 读取流程变量；只做查询和判断，true 表示条件命中，异常会阻止本次提交。',
   'process.allowManualCc':
     '开启后任务办理人可临时选择额外知会人；关闭后只能执行节点预配置的知会规则。',
   'process.slaCalendarSource':

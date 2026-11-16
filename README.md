@@ -200,6 +200,49 @@ PC 和移动端的实际 Origin 加入开发环境 CORS 白名单。两端请求
 Helm 部署从外部 Secret 的 `bootstrap-admin-password` 键读取该值。Bootstrap 只负责
 首次激活，不会覆盖已经修改过的管理员密码。
 
+### 可选 Nacos 服务注册
+
+默认 `NACOS_DISCOVERY_ENABLED=false`，独立部署无需运行 Nacos。有服务注册需求时，
+在 `.env` 中设置后重新构建、启动后端：
+
+```dotenv
+NACOS_DISCOVERY_ENABLED=true
+NACOS_SERVER_ADDR=nacos.example.internal:8848
+NACOS_NAMESPACE=your-namespace-id
+NACOS_GROUP=DEFAULT_GROUP
+NACOS_CLUSTER_NAME=DEFAULT
+NACOS_USERNAME=your-nacos-user
+NACOS_PASSWORD=your-nacos-password
+```
+
+默认服务名为 `workflow-server`，在 Web 端口就绪后注册，停机时注销。
+`NACOS_NAMESPACE` 使用命名空间 **ID**；空值使用 public。当前依赖按
+[官方版本对应关系](https://sca.aliyun.com/docs/2025.x/overview/version-explain/)
+选用 Spring Cloud / Alibaba 2025.0 版本线；public 命名空间需使用 Nacos Server 3.x，
+参见[官方接入说明](https://sca.aliyun.com/docs/2025.x/user-guide/nacos/quick-start/)。
+仅 `workflow-server` 加入服务列表，迁移器、bootstrap 和 schema worker 不注册。
+接入现有外部 Nacos，不会自动启动注册中心或加载远程业务配置。
+
+`start.sh` 会导出 `.env` 中的参数；直接运行 JAR 时需将变量导出到进程环境。
+Compose 的 `server` 已透传相同参数，启用后需重新创建容器。容器中的
+`NACOS_SERVER_ADDR` 应使用容器可达的服务地址，不能用指向容器自身的 `127.0.0.1`。
+客户端需能访问 Nacos 主端口及 gRPC 端口（默认分别为 8848、9848；gRPC 端口为
+主端口加 1000），参见[Nacos 端口说明](https://nacos.io/en/docs/latest/manual/admin/deployment/deployment-overview/)。
+
+可选参数：
+
+| 环境变量 | 默认值与用途 |
+| --- | --- |
+| `NACOS_SERVICE_NAME` | 应用名称，默认 `workflow-server`，供消费者按服务名发现实例 |
+| `NACOS_REGISTER_ENABLED` | `true`；设为 `false` 时只发现其他服务，不注册自身 |
+| `NACOS_DISCOVERY_IP` | 自动选择网卡地址；多网卡或跨容器网络时填写消费者可达的 IP |
+| `NACOS_DISCOVERY_PORT` | `-1`，使用实际 Web 端口；经过端口映射时可覆盖为消费者访问端口 |
+
+消费者须使用相同 namespace/group，并能访问登记的 IP 和端口；注册中心不会代理业务流量。
+启用后注册失败将阻止服务启动，可在日志中检查 `nacos registry`，并在 Nacos 对应
+namespace/group 下确认实例地址。关闭 `NACOS_DISCOVERY_ENABLED` 可恢复独立运行。
+Helm 参数和网络策略见[生产部署说明](deploy/README.md#optional-nacos-service-registration)。
+
 ### MinIO 文件存储
 
 应用支持独立的 `minio` 存储策略。使用 `start.sh` 启动时，在 `.env` 中配置以下变量；

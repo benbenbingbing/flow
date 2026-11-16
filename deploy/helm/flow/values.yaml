@@ -105,6 +105,20 @@ application:
   environment: production
   version: "1.0.0"
 
+# 可选外部注册中心，仅 server Pod 注册；不部署 Nacos Server。
+nacos:
+  enabled: false
+  serverAddr: ""
+  namespace: ""
+  group: DEFAULT_GROUP
+  clusterName: DEFAULT
+  serviceName: workflow-server
+  registerEnabled: true
+  # 开启鉴权后从 global.existingSecret 读取凭据，不在 values 中保存密码。
+  authEnabled: false
+  usernameSecretKey: nacos-username
+  passwordSecretKey: nacos-password
+
 observability:
   tracing:
     enabled: false
@@ -172,6 +186,9 @@ networkPolicy:
   objectStorageCIDRs:
     - 10.0.1.0/24
   outboundHttpsCIDRs: []
+  # 开启 Nacos 后填写服务端 IP/CIDR；自定义服务端主端口时同时调整 gRPC 端口（主端口 + 1000）。
+  nacosCIDRs: []
+  nacosPorts: [8848, 9848]
 
 topologySpread:
   enabled: true

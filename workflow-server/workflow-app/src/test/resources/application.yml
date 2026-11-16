@@ -7,6 +7,11 @@ server:
 
 # Spring Boot 基础设施配置，由对应自动配置或应用配置类读取。
 spring:
+  # 测试默认不连接注册中心，避免 Starter 随 Web 上下文启动而访问本机 Nacos。
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
   # 测试业务数据源，使用独立 H2 内存数据库，不读取生产数据库凭据。
   datasource:
     # H2 测试业务库地址，连接关闭后保留内存数据，并关闭 JVM 退出时的自动关闭钩子。
