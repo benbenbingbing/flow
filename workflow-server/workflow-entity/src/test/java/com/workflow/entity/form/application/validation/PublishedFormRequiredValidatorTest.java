@@ -88,8 +88,8 @@ class PublishedFormRequiredValidatorTest {
                 "documents", Map.of(
                         "合同初稿",
                         List.of(Map.of(
-                                "url",
-                                "/files/contract.pdf"))))));
+                                "fileId",
+                                "contract"))))));
         when(dataService.findById("requirement", "record-1"))
                 .thenReturn(existing);
 
@@ -133,8 +133,8 @@ class PublishedFormRequiredValidatorTest {
                 "documents", Map.of(
                         "合同终稿", List.of(),
                         "合同归档件", List.of(Map.of(
-                                "url",
-                                "/files/current-name.pdf"))))));
+                                "fileId",
+                                "current-name"))))));
         assertDoesNotThrow(() -> validator.validate(
                 form,
                 "requirement",
@@ -154,8 +154,8 @@ class PublishedFormRequiredValidatorTest {
                 "documents", Map.of(
                         "合同初稿",
                         List.of(Map.of(
-                                "url",
-                                "/files/contract.pdf"))))));
+                                "fileId",
+                                "contract"))))));
         when(dataService.findById("requirement", "record-1"))
                 .thenReturn(existing);
 
@@ -171,8 +171,8 @@ class PublishedFormRequiredValidatorTest {
                                 Map.of(
                                         "许可证",
                                         List.of(Map.of(
-                                                "url",
-                                                "/files/license.pdf"))))));
+                                                "fileId",
+                                                "license"))))));
 
         assertEquals(
                 PublishedFormRequiredValidator.ERROR_CODE,

@@ -239,12 +239,12 @@ class MySqlRuntimeTimeDatabaseTest {
             var service = new StoredFileAccessService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class), mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
                 new com.workflow.admin.security.context.UserContextCurrentActorProvider(), h.attempt, QUERY);
             h.tx.executeWithoutResult(status -> {
-                h.jdbc.execute("SET time_zone = '+09:00'"); service.markDeleted("url-a"); utcUpdated(h,"storage_file_object","a");
+                h.jdbc.execute("SET time_zone = '+09:00'"); service.markDeleted("a"); utcUpdated(h,"storage_file_object","a");
                 assertEquals(0, h.jdbc.queryForObject("SELECT deleted FROM storage_file_object WHERE id='b'", Integer.class));
                 status.setRollbackOnly();
             });
             assertEquals(0, h.jdbc.queryForObject("SELECT deleted FROM storage_file_object WHERE id='a'", Integer.class));
-            service.markDeleted("url-a");
+            service.markDeleted("a");
             assertEquals(1, h.jdbc.queryForObject("SELECT deleted FROM storage_file_object WHERE id='a'", Integer.class));
         }
     }

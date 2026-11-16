@@ -4,7 +4,7 @@
     <div class="file-label">{{ field.fieldLabel || field.fieldName }}</div>
     <section v-for="(group, index) in groups" :key="group.itemKey || index">
       <p v-if="items.length" class="file-group-name">{{ group.itemName }}<span v-if="group.required || attachmentItemRequiredState[group.itemKey || group.itemName]"> *</span></p>
-      <VanUploader :model-value="fileList(group, index)" :multiple="group.multiple !== false && maxCount(group) > 1" :accept="accept(group)" :max-count="maxCount(group)" :after-read="result => upload(result, group, index)" :before-read="file => checkFile(file, group)" @delete="(_, details) => remove(group, index, details.index)" @click-preview="item => services.openFile?.(item.url)" :preview-full-image="false" :disabled="uploading > 0" />
+      <VanUploader :model-value="fileList(group, index)" :multiple="group.multiple !== false && maxCount(group) > 1" :accept="accept(group)" :max-count="maxCount(group)" :after-read="result => upload(result, group, index)" :before-read="file => checkFile(file, group)" @delete="(_, details) => remove(group, index, details.index)" @click-preview="item => services.openFile?.(item)" :preview-full-image="false" :disabled="uploading > 0" />
     </section>
     <p v-if="error" class="file-error" role="alert">{{ error }}<VanButton v-if="failed" size="mini" @click="retry">重试上传</VanButton></p>
     <p v-if="uploading" class="file-progress" role="status">正在上传 {{ progress }}%</p>
@@ -14,8 +14,7 @@
 import { computed, ref } from 'vue'
 import { Uploader as VanUploader, Button as VanButton } from 'vant'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
-import { resolveAttachmentItems, getAttachmentItemValue, setAttachmentItemValue, isAttachmentFileTypeAllowed, normalizeAttachmentFileTypes } from '@flow/workflow-core/file-attachment'
-import { fileName } from '@flow/workflow-core/workflow/approval-display'
+import { normalizeAttachmentFiles, resolveAttachmentItems, getAttachmentItemValue, setAttachmentItemValue, isAttachmentFileTypeAllowed, normalizeAttachmentFileTypes } from '@flow/workflow-core/file-attachment'
 import MobileReadonlyField from './MobileReadonlyField.vue'
 const props = defineProps({ field: { type: Object, required: true }, modelValue: null, disabled: Boolean, services: { type: Object, required: true }, context: { type: Object, default: () => ({}) }, attachmentItemRequiredState: { type: Object, default: () => ({}) } })
 const emit = defineEmits(['update:modelValue'])
@@ -23,12 +22,12 @@ const configuration = computed(() => safeParseConfig(props.field.componentProps)
 const items = computed(() => resolveAttachmentItems(props.field))
 const groups = computed(() => items.value.length ? items.value : [{}])
 const uploading = ref(0), progress = ref(0), error = ref(''), failed = ref(null)
-const urls = value => (Array.isArray(value) ? value : value ? [value] : []).map(item => typeof item === 'string' ? item : item.url || item.fileUrl).filter(Boolean)
+const files = value => normalizeAttachmentFiles(value).map(({ groupName, ...file }) => file)
 const imageField = computed(() => String(props.field.componentType || props.field.fieldType).toLowerCase() === 'image')
 const maxCount = group => Number(group.maxCount || props.field.fileMaxCount || configuration.value.fileMaxCount || configuration.value.maxCount || (imageField.value ? 9 : 5))
 const fileTypes = group => group.fileTypes || props.field.fileTypes || props.field.fileType || configuration.value.fileTypes || configuration.value.fileType
 function groupValue(group, index) { return items.value.length ? getAttachmentItemValue(group, index, props.modelValue) : props.modelValue }
-function fileList(group, index) { return urls(groupValue(group, index)).map(url => ({ url, name: fileName(url), isImage: /\.(png|jpe?g|gif|webp)(?:[?#]|$)/i.test(url) })) }
+function fileList(group, index) { return files(groupValue(group, index)).map(file => ({ ...file, file: { name: file.name }, isImage: false })) }
 function accept(group) { return normalizeAttachmentFileTypes(fileTypes(group)).map(type => `.${type.replace(/^\./, '')}`).join(',') || (imageField.value ? 'image/*' : '*') }
 function checkFile(value, group) {
   for (const file of Array.isArray(value) ? value : [value]) {
@@ -47,7 +46,7 @@ async function upload(value, group, index) {
   if (uploading.value) return
   const entries = Array.isArray(value) ? value : [value]
   uploading.value++; error.value = ''; failed.value = null
-  const accumulated = urls(groupValue(group, index))
+  const accumulated = files(groupValue(group, index))
   try {
     if (!props.services.uploadFile) throw new Error('当前表单未提供上传能力')
     for (let itemIndex = 0; itemIndex < entries.length; itemIndex++) {
@@ -55,15 +54,14 @@ async function upload(value, group, index) {
       try {
         progress.value = 0
         const result = await props.services.uploadFile(item.file, props.field, props.context, percent => { progress.value = Number(percent) || 0 })
-        const url = typeof result === 'string' ? result : result.url || result.fileUrl
-        if (!url) throw new Error('上传响应缺少文件地址')
-        accumulated.push(url); save(group, index, accumulated)
+        if (!result?.fileId) throw new Error('上传响应缺少文件 ID')
+        accumulated.push({ fileId: result.fileId, name: result.originalName || item.file.name, size: result.size }); save(group, index, accumulated)
       } catch (cause) { failed.value = { entries: entries.slice(itemIndex), group, index }; throw cause }
     }
   } catch (cause) { error.value = cause.message || '上传失败，请重试' }
   finally { uploading.value-- }
 }
-function remove(group, index, fileIndex) { const values = urls(groupValue(group, index)); values.splice(fileIndex, 1); save(group, index, values) }
+function remove(group, index, fileIndex) { const values = files(groupValue(group, index)); values.splice(fileIndex, 1); save(group, index, values) }
 function retry() { if (failed.value) upload(failed.value.entries, failed.value.group, failed.value.index) }
 defineExpose({ validate: () => !uploading.value && !error.value })
 </script>

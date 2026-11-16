@@ -183,7 +183,7 @@ class MySqlRemainingConflictDatabaseTest {
                 } finally { UserContext.clear(); }
             }));
             assertEquals(1, results.stream().filter(StoredFileAccessService.UploadRegistration::currentObjectRegistered).count());
-            assertEquals(1, results.stream().map(value -> value.response().get("url")).distinct().count());
+            assertEquals(1, results.stream().map(value -> value.response().get("fileId")).distinct().count());
             assertEquals(6, h.jdbc.queryForObject("SELECT COUNT(*) FROM conflict_effect", Integer.class));
             UserContext.setCurrentUser("owner", "owner");
             try {

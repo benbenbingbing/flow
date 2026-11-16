@@ -67,10 +67,10 @@
             <el-tag size="small" :type="getGroupTagType(file.groupIndex)">{{ truncateGroupName(file.groupName) }}</el-tag>
           </div>
           <div class="file-col file-col-actions">
-            <el-button type="primary" link size="small" @click="previewFile(file.url)">
+            <el-button type="primary" link size="small" @click="previewFile(file)">
               <el-icon><View /></el-icon> 预览
             </el-button>
-            <el-button type="success" link size="small" @click="downloadFile(file.url)">
+            <el-button type="success" link size="small" @click="downloadFile(file)">
               <el-icon><Download /></el-icon> 下载
             </el-button>
             <el-button v-if="!disabled" :disabled="replacementUploading" type="warning" link size="small" @click="updateFile(file)">
@@ -99,7 +99,8 @@
           :on-remove="handleRemove"
           :on-error="handleError"
           :on-exceed="handleExceed"
-          list-type="picture-card"
+          :on-preview="previewFile"
+          :show-file-list="false"
         >
           <el-icon><Plus /></el-icon>
           <template #tip>
@@ -143,7 +144,7 @@
       </template>
 
       <!-- 统一的文件列表（单组/图片共用，与多组模式样式一致） -->
-      <div class="file-list all-files" v-if="!isImage && fileList.length > 0">
+      <div class="file-list all-files" v-if="fileList.length > 0">
         <div class="file-list-header">附件列表</div>
         <div v-for="(file, index) in fileList" :key="index" class="file-item">
           <div class="file-info">
@@ -151,10 +152,10 @@
             <span class="file-name">{{ file.name || file.fileName }}</span>
           </div>
           <div class="file-actions">
-            <el-button type="primary" link size="small" @click="previewFile(file.url)">
+            <el-button type="primary" link size="small" @click="previewFile(file)">
               <el-icon><View /></el-icon> 预览
             </el-button>
-            <el-button type="success" link size="small" @click="downloadFile(file.url)">
+            <el-button type="success" link size="small" @click="downloadFile(file)">
               <el-icon><Download /></el-icon> 下载
             </el-button>
             <el-button v-if="!disabled" type="danger" link size="small" @click="removeFile(index)">
@@ -172,8 +173,10 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { Plus, Upload, Document, View, Download, RefreshRight, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
+import { previewFile, downloadFile } from '@/shared/file-access'
 import {
   attachmentFileTypesToString,
+  normalizeAttachmentFiles,
   getAttachmentItemValue,
   isAttachmentItemRequired,
   isAttachmentFileTypeAllowed,
@@ -256,7 +259,7 @@ const activeAcceptTypes = computed(() => {
   return attachmentFileTypesToString(activeItem.value.fileTypes)
 })
 
-// 多组模式下，v-model 是对象 { itemName: [urls] }
+// 多组模式下，v-model 是对象 { itemName: [{ fileId, name, size }] }
 const groupModelValue = computed(() => {
   if (props.modelValue && typeof props.modelValue === 'object' && !Array.isArray(props.modelValue)) {
     return props.modelValue
@@ -271,17 +274,15 @@ const allFiles = computed(() => {
   fileItems.value.forEach((item, gIndex) => {
     const urls = getAttachmentItemValue(item, gIndex, model) || []
     const arr = Array.isArray(urls) ? urls : (urls ? [urls] : [])
-    arr.forEach((itemOrUrl, fIndex) => {
-      const isObj = itemOrUrl && typeof itemOrUrl === 'object'
-      const url = isObj ? (itemOrUrl.url || '') : itemOrUrl
-      const name = isObj ? (itemOrUrl.name || itemOrUrl.originalName || getFileNameFromUrl(url)) : getFileNameFromUrl(itemOrUrl)
+    arr.forEach((file, fIndex) => {
+      if (!file?.fileId) return
       result.push({
-        name: name,
-        url: url,
+        ...file,
+        name: file.name || file.originalName || '附件',
         groupIndex: gIndex,
         groupName: item.itemName || `附件项${gIndex + 1}`,
         fileIndex: fIndex,
-        originalFile: itemOrUrl
+        originalFile: file
       })
     })
   })
@@ -328,8 +329,8 @@ const handleSuccessActive = (response, file) => {
   if (!target) return
   if (response.code === 200) {
     const { item, groupIndex: gIndex } = target
-    const url = response.data?.url || response.data
-    const originalName = response.data?.originalName || file.name || getFileNameFromUrl(url)
+    const { fileId, originalName, size } = response.data
+    if (!fileId) { ElMessage.error('上传响应缺少文件 ID'); return }
     const current = getAttachmentItemValue(item, gIndex, groupModelValue.value) || []
     const arr = Array.isArray(current) ? [...current] : (current ? [current] : [])
     // 请求返回时数量可能已被其他上传占满，再次检查，避免并发新增突破限制。
@@ -337,7 +338,7 @@ const handleSuccessActive = (response, file) => {
       ElMessage.warning(`【${item.itemName}】最多只能上传 ${item.maxCount || 5} 个文件`)
       return
     }
-    arr.push({ url, name: originalName })
+    arr.push({ fileId, name: originalName || file.name, size })
     const newValue = setAttachmentItemValue(
       groupModelValue.value,
       item,
@@ -365,17 +366,6 @@ const removeFileByIndex = (groupIndex, fileIndex) => {
     arr
   )
   emit('update:modelValue', newValue)
-}
-
-const previewFile = (url) => {
-  window.open(url, '_blank')
-}
-
-const downloadFile = (url) => {
-  const a = document.createElement('a')
-  a.href = url
-  a.download = getFileNameFromUrl(url)
-  a.click()
 }
 
 const updateFile = (file) => {
@@ -415,8 +405,9 @@ const handleReplacementChange = async (event) => {
     const files = Array.isArray(current) ? [...current] : (current ? [current] : [])
     const index = files.indexOf(target.originalFile)
     if (index < 0) return
-    const url = response.data?.url || response.data
-    files[index] = { url, name: response.data?.originalName || file.name || getFileNameFromUrl(url) }
+    const { fileId, originalName, size } = response.data
+    if (!fileId) throw new Error('上传响应缺少文件 ID')
+    files[index] = { fileId, name: originalName || file.name, size }
     emit('update:modelValue', setAttachmentItemValue(groupModelValue.value, target.item, target.groupIndex, files))
     ElMessage.success('更新成功')
   } catch (error) {
@@ -491,40 +482,10 @@ const showTips = computed(() => {
 const fileList = ref([])
 
 const initFileList = () => {
-  const value = props.modelValue
-  if (!value) {
-    fileList.value = []
-    return
-  }
-  if (typeof value === 'string') {
-    fileList.value = [{
-      name: getFileNameFromUrl(value),
-      url: value,
-      status: 'success',
-      response: { data: { url: value } }
-    }]
-    return
-  }
-  if (Array.isArray(value)) {
-    // 已保存附件不是本次上传队列；显式标记成功，删除时不能把其他历史文件过滤掉。
-    fileList.value = value.map(item => {
-      const url = typeof item === 'object' ? (item?.url || item?.path || item?.fileUrl || '') : item
-      return {
-        name: typeof item === 'object' ? (item?.name || item?.originalName || getFileNameFromUrl(url)) : getFileNameFromUrl(url),
-        url,
-        status: 'success',
-        response: { data: { url } }
-      }
-    })
-    return
-  }
-  fileList.value = []
-}
-
-const getFileNameFromUrl = (url) => {
-  if (!url) return '未知文件'
-  const parts = url.split('/')
-  return parts[parts.length - 1] || '未知文件'
+  // 已登记文件只携带业务引用；不把文件 ID 当成浏览器可加载的图片 URL。
+  fileList.value = normalizeAttachmentFiles(props.modelValue).map(file => ({
+    ...file, status: 'success', response: { data: file }
+  }))
 }
 
 const beforeUpload = (file) => {
@@ -574,12 +535,10 @@ const updateModelValue = (uploadFiles) => {
   const files = uploadFiles
     .filter(f => f.status === 'success')
     .map(f => {
-      const response = f.response
-      if (response && response.data && response.data.url) {
-        return response.data.url
-      }
-      return f.url
+      const stored = f.response?.data || f
+      return { fileId: stored.fileId, name: stored.originalName || stored.name || f.name || '附件', size: stored.size }
     })
+    .filter(file => file.fileId)
   if (maxCount.value === 1) {
     emit('update:modelValue', files[0] || '')
   } else {

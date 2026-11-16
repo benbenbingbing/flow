@@ -129,7 +129,7 @@ class EmbedDelegatedRuntimePolicyTest {
         when(targetResolver.resolveRoot(viewSession)).thenReturn(root);
         EmbedDelegatedRuntimePolicy policy = policy(null, null);
         MockHttpServletRequest preview = get("/api/file/preview");
-        preview.setParameter("url", "embed/session-1/sample.txt");
+        preview.setParameter("fileId", "sample-file-id");
         assertEquals(root, policy.authorize(
                 preview, viewSession, null, declaration("fileRead")));
 

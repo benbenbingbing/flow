@@ -20,14 +20,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 文件上传控制器
@@ -40,6 +42,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class FileController {
 
+    // 仅让浏览器直接展示静态内容，HTML、SVG 等可执行内容及未知类型均按附件返回。
+    private static final Set<String> INLINE_CONTENT_TYPES = Set.of(
+            "application/pdf", "text/plain", "image/jpeg", "image/png",
+            "image/gif", "image/webp", "image/bmp", "image/avif");
+
     /** 文件存储策略工厂 */
     private final FileStorageFactory storageFactory;
     private final StoredFileAccessService fileAccessService;
@@ -50,7 +57,7 @@ public class FileController {
      *
      * @param file 上传的文件
      * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
-     * @return 文件信息（url、filename 等）或错误信息
+     * @return 文件信息（fileId、originalName、size）或错误信息
      */
     @PostMapping("/upload")
     @RequiresPermission("storage:file:write")
@@ -85,7 +92,7 @@ public class FileController {
      * @param fieldCode      目标文件字段编码
      * @param file           上传的文件
      * @param idempotencyKey 上传幂等键
-     * @return 文件信息（url、filename 等）或错误信息
+     * @return 文件信息（fileId、originalName、size）或错误信息
      */
     @PostMapping("/entity/{entityCode}/upload")
     @AuthenticatedApi(objectAuthorization = true)
@@ -226,7 +233,7 @@ public class FileController {
     /**
      * 删除文件
      *
-     * @param fileUrl 文件访问URL
+     * @param fileId 上传登记返回的业务文件 ID
      * @return 删除成功返回成功结果，否则返回错误信息
      */
     @PostMapping
@@ -238,13 +245,13 @@ public class FileController {
             risk = AuditRiskLevel.HIGH,
             targetType = "FILE",
             targetIdArg = 0)
-    public Result<Void> deleteFile(@RequestParam("url") String fileUrl) {
-        fileAccessService.requireDelete(fileUrl);
+    public Result<Void> deleteFile(@RequestParam("fileId") String fileId) {
+        String storageUrl = fileAccessService.requireDelete(fileId);
         try {
             FileStorageProvider strategy = storageFactory.getStrategy();
-            boolean success = strategy.delete(fileUrl);
+            boolean success = strategy.delete(storageUrl);
             if (success) {
-                fileAccessService.markDeleted(fileUrl);
+                fileAccessService.markDeleted(fileId);
                 return Result.success();
             } else {
                 return Result.error("文件不存在或删除失败");
@@ -256,26 +263,51 @@ public class FileController {
     }
 
     /**
-     * 预览/下载文件
-     * 通过当前存储策略流式读取文件，适用于本地、S3 和 MinIO 后端。
+     * 在归属鉴权后预览文件；浏览器可展示的静态类型使用 inline，其他类型退回下载。
      *
-     * @param fileUrl  文件访问URL
+     * @param fileId  上传登记返回的业务文件 ID
      * @param response HTTP 响应，用于写出文件流
      */
     @GetMapping("/preview")
     @EmbedDelegatedRuntimeApi(
             value = EmbedDelegatedRuntimeApi.Scope.FILE_RUNTIME,
             targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FILE_READ)
-    public void previewFile(@RequestParam("url") String fileUrl, HttpServletResponse response) {
-        fileAccessService.requireRead(fileUrl);
-        FileStorageProvider strategy = storageFactory.getStrategy();
-        try (StoredFile file = strategy.open(fileUrl)) {
-            response.setContentType(file.contentType());
+    public void previewFile(@RequestParam("fileId") String fileId, HttpServletResponse response) {
+        streamFile(fileId, response, false);
+    }
+
+    /**
+     * 在归属鉴权后下载文件，以原始文件名返回附件，不向浏览器暴露对象存储访问凭据。
+     *
+     * @param fileId 业务文件 ID；实际存储位置由后端解析
+     * @param response 用于写出文件流；对象不存在返回 404，存储服务不可用返回 503
+     */
+    @GetMapping("/download")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.FILE_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FILE_READ)
+    public void downloadFile(@RequestParam("fileId") String fileId, HttpServletResponse response) {
+        streamFile(fileId, response, true);
+    }
+
+    /**
+     * 两个读取入口共享权限、存储读取和异常语义；鉴权异常交由统一异常处理保持 HTTP 403。
+     * 文件以流传输，避免后端为大附件分配整份文件大小的内存。
+     */
+    private void streamFile(String fileId, HttpServletResponse response, boolean download) {
+        String storageUrl = fileAccessService.requireRead(fileId);
+        try (StoredFile file = storageFactory.getStrategy().open(storageUrl)) {
+            String contentType = file.contentType() == null
+                    ? "application/octet-stream" : file.contentType();
+            boolean inline = !download && INLINE_CONTENT_TYPES.contains(
+                    contentType.split(";", 2)[0].trim().toLowerCase(java.util.Locale.ROOT));
+            // 前端通过 Blob 预览时响应头不会随之保留，未知或可执行类型也需降为二进制类型。
+            response.setContentType(inline ? contentType : "application/octet-stream");
             response.setHeader("X-Content-Type-Options", "nosniff");
-            response.setHeader("Content-Disposition", "attachment; filename="
-                    + URLEncoder.encode(
-                            file.filename(),
-                            StandardCharsets.UTF_8));
+            response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+            response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                    (inline ? ContentDisposition.inline() : ContentDisposition.attachment())
+                            .filename(file.filename(), StandardCharsets.UTF_8).build().toString());
             if (file.contentLength() >= 0) {
                 response.setContentLengthLong(file.contentLength());
             }

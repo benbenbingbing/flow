@@ -178,7 +178,7 @@ public class EmbedDelegatedRuntimePolicy {
                 throw denied();
             }
             case FILE_READ -> {
-                if (!StringUtils.hasText(request.getParameter("url"))) {
+                if (!StringUtils.hasText(request.getParameter("fileId"))) {
                     throw denied();
                 }
                 yield root;

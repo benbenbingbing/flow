@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -59,6 +60,8 @@ public class WebAccessConfiguration {
                         .allowedHeaders(
                                 corsProperties.getAllowedHeaders()
                                         .toArray(String[]::new))
+                        // 文件客户端需读取原始文件名和 inline/attachment，跨域时必须显式暴露。
+                        .exposedHeaders(HttpHeaders.CONTENT_DISPOSITION)
                         .allowCredentials(
                                 corsProperties.isAllowCredentials())
                         .maxAge(corsProperties.getMaxAge().toSeconds());

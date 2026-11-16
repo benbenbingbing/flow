@@ -84,13 +84,13 @@ public class StoredFileAccessService {
     }
 
     /**
-     * 处理{@code register}，并将结果传给后续步骤。
+     * 登记存储对象归属并返回公开文件引用；并发幂等冲突时复用先提交的文件 ID。
      *
-     * @param stored 已存储，作为 {@code UploadRegistration} 的输入影响后续处理
-     * @param file 文件，供本方法处理{@code register}时使用
-     * @param claim 认领，作为 {@code UploadRegistration} 的输入影响后续处理
-     * @return 处理后的{@code register}结果，供调用方继续处理
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @param stored 存储策略返回的内部 url、filename，供登记与失败清理使用
+     * @param file 原始上传文件，用于保存文件名、媒体类型与大小
+     * @param claim 上传前取得的用户和幂等认领，必须属于本次上传
+     * @return 面向前端的 fileId、originalName、size，以及本次对象是否登记成功
+     * @throws IllegalStateException 存储策略缺少内部标识或文件登记失败
      */
     @Transactional
     public UploadRegistration register(
@@ -106,6 +106,7 @@ public class StoredFileAccessService {
             throw new IllegalStateException("存储后端未返回文件标识");
         }
         int inserted;
+        String fileId = UUID.randomUUID().toString().replace("-", "");
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         try {
             inserted = writeAttempt.execute(() -> fileMapper.execute(ParameterizedSql.of("""
@@ -116,7 +117,7 @@ public class StoredFileAccessService {
                       deleted, create_time, update_time
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                     """,
-                    UUID.randomUUID().toString().replace("-", ""),
+                    fileId,
                     url,
                     storageKey,
                     claim.ownerUserId(),
@@ -134,7 +135,8 @@ public class StoredFileAccessService {
             inserted = 0;
         }
         if (inserted == 1) {
-            return new UploadRegistration(stored, true);
+            // 存储策略的 url / filename 只用于登记和清理，禁止进入面向前端的响应。
+            return new UploadRegistration(uploadResponse(fileId, file.getOriginalFilename(), file.getSize()), true);
         }
         if (claim.idempotencyKey() == null) {
             throw new IllegalStateException("文件登记失败");
@@ -150,55 +152,59 @@ public class StoredFileAccessService {
     }
 
     /**
-     * 校验并获取读取；不满足约束时阻止后续处理。
+     * 校验文件归属并返回后端存储定位符，调用方只能在成功鉴权后读取对象。
      *
-     * @param storageUrl 存储URL，作为 {@code requireOwnerOrAdministrator} 的输入影响后续处理
+     * @param fileId 上传登记返回的业务文件 ID，不接受对象地址
+     * @return 仅供后端存储策略使用的定位符
+     * @throws ForbiddenException 文件不存在、已删除或当前用户无权访问
      */
     @Transactional(readOnly = true)
-    public void requireRead(String storageUrl) {
-        requireOwnerOrAdministrator(storageUrl);
+    public String requireRead(String fileId) {
+        return requireOwnerOrAdministrator(fileId);
     }
 
     /**
-     * 校验并获取删除；不满足约束时阻止后续处理。
+     * 校验删除归属并返回实际存储定位符，避免让客户端指定删除对象的位置。
      *
-     * @param storageUrl 存储URL，作为 {@code requireOwnerOrAdministrator} 的输入影响后续处理
+     * @param fileId 业务文件 ID
+     * @return 供存储策略执行删除的内部定位符
      */
     @Transactional(readOnly = true)
-    public void requireDelete(String storageUrl) {
-        requireOwnerOrAdministrator(storageUrl);
+    public String requireDelete(String fileId) {
+        return requireOwnerOrAdministrator(fileId);
     }
 
     /**
-     * 按唯一存储地址逻辑删除并记录数据库 UTC 时间；与调用方事务一起提交或回滚。
+     * 按文件主键逻辑删除并记录数据库 UTC 时间；与调用方事务一起提交或回滚。
      *
-     * @param storageUrl 存储URL，供本方法标记已删除时使用
+     * @param fileId 已通过删除归属校验的文件 ID
      */
     @Transactional
-    public void markDeleted(String storageUrl) {
+    public void markDeleted(String fileId) {
         fileMapper.execute(ParameterizedSql.of("""
                 UPDATE storage_file_object
                 SET deleted = 1,
                     update_time = %s
-                WHERE storage_url = ?
+                WHERE id = ?
                   AND deleted = 0
                 """.formatted(DatabaseDialects.runtime(queryDialect.vendor()).utcTimestampExpression()),
-                storageUrl));
+                fileId));
     }
 
     /**
-     * storage_url 唯一索引保证精确地址只返回一个所有者，保留原有删除及权限判断。
+     * 主键查找与归属校验共享同一条记录；即使猜到文件 ID 也不能绕过所有者/管理员权限。
      *
-     * @param storageUrl 存储URL，供本方法校验并获取归属方或管理员时使用
+     * @param fileId 文件主键
+     * @return 鉴权通过的文件内部存储地址
      */
-    private void requireOwnerOrAdministrator(String storageUrl) {
-        String owner = fileMapper.findOwner(storageUrl);
-        if (owner == null) {
+    private String requireOwnerOrAdministrator(String fileId) {
+        var reference = fileMapper.findReference(fileId);
+        if (reference == null) {
             throw new ForbiddenException("文件不存在或无权访问");
         }
-        if (owner.equals(currentUserId())
+        if (reference.ownerUserId().equals(currentUserId())
                 || currentUserRoleService.isAdministrator()) {
-            return;
+            return reference.storageUrl();
         }
         throw new ForbiddenException("无权访问该文件");
     }
@@ -229,18 +235,23 @@ public class StoredFileAccessService {
             String owner,
             String idempotencyKey, boolean currentRead) {
         var row = fileMapper.findUpload(ParameterizedSql.of("""
-                SELECT storage_url, storage_key, original_name,
+                SELECT id AS file_id, original_name,
                        content_length, request_hash, deleted
                 FROM storage_file_object
                 WHERE owner_user_id = ? AND idempotency_key = ?
                 """ + (currentRead ? queryDialect.readGuardClause() : ""), owner, idempotencyKey));
         if (row == null) return null;
-        Map<String, String> response = new HashMap<>();
-        response.put("url", row.storageUrl());
-        response.put("filename", row.storageKey());
-        response.put("originalName", row.originalName());
-        response.put("size", String.valueOf(row.contentLength()));
+        Map<String, String> response = uploadResponse(row.fileId(), row.originalName(), row.contentLength());
         return new StoredUpload(row.requestHash(), row.deleted(), response);
+    }
+
+    /** 首次上传和幂等重放使用相同的公开字段，后端存储地址不属于文件接口契约。 */
+    private Map<String, String> uploadResponse(String fileId, String originalName, long size) {
+        Map<String, String> response = new HashMap<>();
+        response.put("fileId", fileId);
+        response.put("originalName", originalName);
+        response.put("size", String.valueOf(size));
+        return response;
     }
 
     /**

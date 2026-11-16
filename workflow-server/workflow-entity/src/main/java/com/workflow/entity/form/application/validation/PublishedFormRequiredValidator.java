@@ -522,18 +522,15 @@ public class PublishedFormRequiredValidator {
             return false;
         }
         if (parsed instanceof String text) {
-            return StringUtils.hasText(text);
+            return false;
         }
         if (parsed instanceof Collection<?> values) {
             return values.stream().anyMatch(this::hasAttachmentValue);
         }
         if (parsed instanceof Map<?, ?> map) {
-            List<String> urlKeys = List.of("url", "path", "fileUrl");
-            if (urlKeys.stream().anyMatch(map::containsKey)) {
-                return urlKeys.stream()
-                        .filter(map::containsKey)
-                        .map(map::get)
-                        .anyMatch(this::hasAttachmentValue);
+            if (map.containsKey("fileId")) {
+                // 文件引用只接受登记 ID，旧地址不能被当作已上传附件通过必填校验。
+                return map.get("fileId") instanceof String id && id.matches("[A-Za-z0-9_-]{1,64}");
             }
             if (List.of("name", "originalName", "size", "type",
                     "uid", "status").stream().anyMatch(map::containsKey)) {
@@ -556,16 +553,13 @@ public class PublishedFormRequiredValidator {
             return false;
         }
         if (parsed instanceof String text) {
-            return StringUtils.hasText(text);
+            return false;
         }
         if (parsed instanceof Collection<?> values) {
             return values.stream().anyMatch(this::hasAttachmentFileValue);
         }
         if (parsed instanceof Map<?, ?> map) {
-            return List.of("url", "path", "fileUrl").stream()
-                    .filter(map::containsKey)
-                    .map(map::get)
-                    .anyMatch(this::hasAttachmentFileValue);
+            return map.get("fileId") instanceof String id && id.matches("[A-Za-z0-9_-]{1,64}");
         }
         return false;
     }

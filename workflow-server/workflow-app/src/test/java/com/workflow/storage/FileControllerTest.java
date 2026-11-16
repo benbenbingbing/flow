@@ -29,11 +29,32 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.ContentDisposition;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
 class FileControllerTest {
+
+    @Test
+    void deletionResolvesStorageAddressAfterAuthorizationAndMarksOnlyTheFileId() {
+        FileStorageFactory factory = mock(FileStorageFactory.class);
+        FileStorageProvider strategy = mock(FileStorageProvider.class);
+        StoredFileAccessService access = mock(StoredFileAccessService.class);
+        when(access.requireDelete("file-id")).thenReturn("s3://files/private/object.pdf");
+        when(factory.getStrategy()).thenReturn(strategy);
+        when(strategy.delete("s3://files/private/object.pdf")).thenReturn(true);
+
+        assertEquals(200, new FileController(factory, access, List.of()).deleteFile("file-id").getCode());
+
+        var ordered = inOrder(access, factory, strategy);
+        ordered.verify(access).requireDelete("file-id");
+        ordered.verify(factory).getStrategy();
+        ordered.verify(strategy).delete("s3://files/private/object.pdf");
+        ordered.verify(access).markDeleted("file-id");
+    }
 
     @Test
     void replaysIdempotentUploadWithoutWritingStorageAgain() {
@@ -46,8 +67,7 @@ class FileControllerTest {
                 "text/plain",
                 "content".getBytes(StandardCharsets.UTF_8));
         Map<String, String> response = Map.of(
-                "url", "s3://files/original.txt",
-                "filename", "original.txt",
+                "fileId", "original-file",
                 "originalName", "report.txt",
                 "size", "7");
         when(accessService.prepareUpload("upload-01", file))
@@ -80,8 +100,7 @@ class FileControllerTest {
                 "url", "s3://files/current.txt",
                 "filename", "current.txt");
         Map<String, String> winner = Map.of(
-                "url", "s3://files/winner.txt",
-                "filename", "winner.txt");
+                "fileId", "winner-file");
         StoredFileAccessService.UploadClaim claim =
                 new StoredFileAccessService.UploadClaim(
                         "user-1",
@@ -124,8 +143,9 @@ class FileControllerTest {
                 new MockHttpServletResponse();
 
         StoredFileAccessService accessService = mock(StoredFileAccessService.class);
+        when(accessService.requireRead("file-key")).thenReturn("s3://files/key");
         new FileController(factory, accessService, List.of()).previewFile(
-                "s3://files/key",
+                "file-key",
                 response);
 
         assertEquals("text/plain", response.getContentType());
@@ -133,9 +153,75 @@ class FileControllerTest {
                 "nosniff",
                 response.getHeader("X-Content-Type-Options"));
         assertEquals(7, response.getContentLengthLong());
+        assertTrue(response.getHeader("Content-Disposition").startsWith("inline;"));
+        assertEquals("no-store", response.getHeader("Cache-Control"));
         assertArrayEquals(
                 "content".getBytes(),
                 response.getContentAsByteArray());
+        var ordered = inOrder(accessService, strategy);
+        ordered.verify(accessService).requireRead("file-key");
+        ordered.verify(strategy).open("s3://files/key");
+    }
+
+    @Test
+    void downloadUsesAttachmentAndPreservesUnicodeOriginalFilename() throws Exception {
+        FileStorageFactory factory = mock(FileStorageFactory.class);
+        FileStorageProvider strategy = mock(FileStorageProvider.class);
+        StoredFileAccessService access = mock(StoredFileAccessService.class);
+        when(factory.getStrategy()).thenReturn(strategy);
+        ByteArrayInputStream input = org.mockito.Mockito.spy(new ByteArrayInputStream(new byte[] {1, 2}));
+        when(strategy.open("s3://files/key.pdf")).thenReturn(
+                new StoredFile(input, "项目 合同.pdf", "application/pdf", 2));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(access.requireRead("file-pdf")).thenReturn("s3://files/key.pdf");
+        new FileController(factory, access, List.of()).downloadFile("file-pdf", response);
+
+        ContentDisposition disposition = ContentDisposition.parse(response.getHeader("Content-Disposition"));
+        assertEquals("attachment", disposition.getType());
+        assertEquals("项目 合同.pdf", disposition.getFilename());
+        assertArrayEquals(new byte[] {1, 2}, response.getContentAsByteArray());
+        verify(input).close();
+        var ordered = inOrder(access, strategy);
+        ordered.verify(access).requireRead("file-pdf");
+        ordered.verify(strategy).open("s3://files/key.pdf");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"text/html", "image/svg+xml", "application/javascript", "application/octet-stream"})
+    void previewFallsBackToDownloadForActiveOrUnknownContent(String contentType) throws Exception {
+        FileStorageFactory factory = mock(FileStorageFactory.class);
+        FileStorageProvider strategy = mock(FileStorageProvider.class);
+        when(factory.getStrategy()).thenReturn(strategy);
+        when(strategy.open("s3://files/key")).thenReturn(new StoredFile(
+                new ByteArrayInputStream(new byte[] {1}), "file", contentType, 1));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        StoredFileAccessService access = mock(StoredFileAccessService.class);
+        when(access.requireRead("file-key")).thenReturn("s3://files/key");
+        new FileController(factory, access, List.of())
+                .previewFile("file-key", response);
+
+        assertTrue(response.getHeader("Content-Disposition").startsWith("attachment;"));
+        assertEquals("application/octet-stream", response.getContentType());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void deniedPreviewAndDownloadNeverReadObjectStorage(boolean download) {
+        FileStorageFactory factory = mock(FileStorageFactory.class);
+        StoredFileAccessService access = mock(StoredFileAccessService.class);
+        doThrow(new ForbiddenException("无权访问该文件")).when(access).requireRead("private-id");
+        FileController controller = new FileController(factory, access, List.of());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertThrows(ForbiddenException.class, () -> {
+            if (download) controller.downloadFile("private-id", response);
+            else controller.previewFile("private-id", response);
+        });
+
+        verifyNoInteractions(factory);
+        assertEquals(0, response.getContentAsByteArray().length);
     }
 
     @Test
@@ -157,6 +243,8 @@ class FileControllerTest {
         MockHttpServletResponse outage =
                 new MockHttpServletResponse();
 
+        when(accessService.requireRead("missing")).thenReturn("missing");
+        when(accessService.requireRead("outage")).thenReturn("outage");
         controller.previewFile("missing", missing);
         controller.previewFile("outage", outage);
 
@@ -177,8 +265,7 @@ class FileControllerTest {
                 "text/plain",
                 "content".getBytes(StandardCharsets.UTF_8));
         Map<String, String> replay = Map.of(
-                "url", "s3://files/original.txt",
-                "filename", "original.txt");
+                "fileId", "original-file");
         when(accessService.prepareUpload("upload-entity-01", file))
                 .thenReturn(new StoredFileAccessService.UploadClaim(
                         "user-1",

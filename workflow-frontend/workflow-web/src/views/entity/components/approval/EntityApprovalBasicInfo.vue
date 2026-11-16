@@ -31,9 +31,8 @@
                   <el-tag size="small" type="primary">{{ groupName }}</el-tag>
                   <div v-for="(url, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
                     <a
-                      :href="url"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href="#"
+                      @click.prevent="previewFile(url)"
                       class="file-link"
                     >
                       <el-icon><Document /></el-icon>
@@ -45,10 +44,9 @@
               <div v-else-if="Array.isArray(value)" class="file-list-readonly">
                 <div v-for="(url, idx) in value" :key="idx" class="file-item-readonly">
                   <a
-                    v-if="isFileUrl(url)"
-                    :href="url"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    v-if="isFileReference(url)"
+                    href="#"
+                    @click.prevent="previewFile(url)"
                     class="file-link"
                   >
                     <el-icon><Document /></el-icon>
@@ -57,11 +55,10 @@
                   <span v-else>{{ formatReadonlyValue(url) }}</span>
                 </div>
               </div>
-              <div v-else-if="isFileUrl(value)" class="file-item-readonly">
+              <div v-else-if="isFileReference(value)" class="file-item-readonly">
                 <a
-                  :href="value"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="#"
+                  @click.prevent="previewFile(value)"
                   class="file-link"
                 >
                   <el-icon><Document /></el-icon>
@@ -85,10 +82,11 @@
 import { computed, nextTick, ref } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import { previewFile } from '@/shared/file-access'
 import {
   fileName,
   formatReadonlyValue,
-  isFileUrl,
+  isFileReference,
   isGroupedFileValue,
   resolveApprovalFieldLabel
 } from '@flow/workflow-core/workflow/approval-display'

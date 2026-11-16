@@ -1,4 +1,4 @@
-import { showConfirmDialog, showSuccessToast } from 'vant'
+import { showConfirmDialog, showSuccessToast, showFailToast } from 'vant'
 import { forms, entities, files, ui, request, compositions } from './services.js'
 import { resolveEntityFileUploadContext } from '@flow/workflow-core/entity-file-upload-context'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
@@ -8,8 +8,13 @@ import { assertRelatedContentResolveContract } from '@flow/workflow-core/related
 import { normalizeRuntimeFormRelease } from '@flow/workflow-core/form-runtime/release'
 import { normalizeEntityRecordForForm } from '@flow/workflow-core/form-runtime'
 import { resolvePageParameters } from '@flow/workflow-core/page-parameters'
+import { createBrowserFileAccess } from '@flow/workflow-api/file'
+import { notifyRequestError } from '@flow/workflow-api/request'
 
 const lists = createEntityListRuntimeApi(request)
+const fileAccess = createBrowserFileAccess(files, {
+  notifyError: error => notifyRequestError(error, showFailToast, '读取附件失败')
+})
 
 /** 所有选择器参数由发布字段配置推导；不把父实体身份用于子表查询。 */
 function selectorContext(field) {
@@ -65,12 +70,7 @@ export const formServices = {
     const options = { silentError: true, onUploadProgress: event => progress?.(event.total ? Math.round(event.loaded * 100 / event.total) : 0) }
     return uploadContext ? files.uploadForEntity(file, uploadContext, options) : files.upload(file, options)
   },
-  openFile(file) {
-    const value = typeof file === 'string' ? file : file.url || file.fileUrl
-    const url = new URL(value, location.origin)
-    if (!['https:', 'http:', 'blob:'].includes(url.protocol)) throw new Error('附件地址无效')
-    window.open(url.href, '_blank', 'noopener,noreferrer')
-  },
+  openFile: fileAccess.preview,
   async fieldEvent(event, field, value, context, isCurrent) {
     const payload = buildFieldEventPayload(field, value, context, event === 'ENTITY_SELECTED' ? value : null)
     if (!payload) return

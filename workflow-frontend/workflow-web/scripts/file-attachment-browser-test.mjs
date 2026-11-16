@@ -19,9 +19,9 @@ import request from '/src/utils/request.js'
 request.defaults.adapter=async config=>({data:{code:200,data:[]},status:200,statusText:'OK',headers:{},config})
 registerFormFieldComponent('file',FileField,{origin:'PLATFORM'})
 const copy=v=>JSON.parse(JSON.stringify(v))
-const initial={attachment:{旧需求说明书:[{url:'/uploads/old.pdf',name:'old.pdf'}],设计说明书:[{url:'/uploads/design.pdf',name:'design.pdf'}]},single:[{url:'/uploads/first.pdf',name:'first.pdf'},'/uploads/second.pdf']}
-const state=reactive({data:JSON.parse(localStorage.getItem('file-attachment-test')||'null')||copy(initial),uploads:[],fail:false,delay:0,readonly:false})
-fileApi.upload=async file=>{state.uploads.push(file.name);await new Promise(r=>setTimeout(r,state.delay));if(state.fail)throw Error('模拟上传失败');return {url:'/uploads/'+file.name,originalName:file.name}}
+const initial={attachment:{旧需求说明书:[{fileId:'file-old-pdf',name:'old.pdf',size:1}],设计说明书:[{fileId:'file-design-pdf',name:'design.pdf',size:1}]},single:[{fileId:'file-first-pdf',name:'first.pdf',size:1},{fileId:'file-second-pdf',name:'second.pdf',size:1}]}
+const state=reactive({data:JSON.parse(localStorage.getItem('file-attachment-test')||'null')||copy(initial),uploads:[],uploadPrefix:'file-',fail:false,delay:0,readonly:false})
+fileApi.upload=async file=>{state.uploads.push(file.name);await new Promise(r=>setTimeout(r,state.delay));if(state.fail)throw Error('模拟上传失败');return {fileId:state.uploadPrefix+file.name.replaceAll('.','-'),originalName:file.name,size:1}}
 const items=[{itemKey:'requirements',itemName:'需求说明书',nameAliases:['旧需求说明书'],required:true,fileTypes:'.pdf',maxCount:1,maxSize:1},{itemKey:'design',itemName:'设计说明书',fileTypes:'.pdf',maxCount:2,maxSize:1}]
 const fields=[{id:'attachment',fieldCode:'attachment',fieldName:'我是文件',fieldType:'FILE',componentType:'file',fileItems:items},{id:'single',fieldCode:'single',fieldName:'单组附件',fieldType:'FILE',componentType:'file',fileMaxCount:3}]
 const nodes=[{id:'section',nodeKey:'section',nodeType:'SECTION',props:{label:'附件回归'}},...fields.map((f,i)=>({id:'node-'+f.id,parentId:'section',nodeType:'FIELD',nodeKey:f.fieldCode,bindingType:'ENTITY_FIELD',bindingRef:f.fieldCode,orderKey:i+1,props:{...f,label:f.fieldName}}))]
@@ -92,7 +92,7 @@ async function saveAndReload() {
   assert.deepEqual(await snapshot('attachmentTest.state.data'),data,'刷新必须保留保存的附件修改')
 }
 try {
-  server = await createServer({ cacheDir: path.join(fixture,'cache'), optimizeDeps: { include: ['axios'], entries: [path.join(fixture,'index.html')] }, server: { host: '127.0.0.1', port: 3400, strictPort: true } })
+  server = await createServer({ cacheDir: path.join(fixture,'cache'), optimizeDeps: { include: ['axios','async-validator'], entries: [path.join(fixture,'index.html')] }, server: { host: '127.0.0.1', port: 3400, strictPort: true } })
   await server.listen()
   browser = spawn(process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=9400',`--user-data-dir=${profile}`,'about:blank'], { stdio: 'ignore' })
   let targets
@@ -111,7 +111,7 @@ try {
   await send('Page.navigate',{url:`http://127.0.0.1:3400/${path.basename(fixture)}/index.html`})
   await waitFor("Boolean(window.attachmentTest)&&document.querySelectorAll('.file-uploader').length===2",'Form did not initialize')
   await click('删除',1)
-  assert.deepEqual(await snapshot('attachmentTest.state.data.single'),['/uploads/second.pdf'],'删除单组附件必须保留其他文件')
+  assert.deepEqual(await snapshot('attachmentTest.state.data.single'),[{fileId:'file-second-pdf',name:'second.pdf',size:1}],'删除单组附件必须保留其他文件')
   await click('删除')
   assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[],'删除必须同步到表单模型')
   assert.equal(await evaluate("Object.hasOwn(attachmentTest.state.data.attachment,'旧需求说明书')"),false,'删除必须清除历史分组别名，不能刷新后恢复')
@@ -119,11 +119,11 @@ try {
   assert.equal(await evaluate('attachmentTest.preview.value.validate()'),false,'删除必填附件后必须阻止提交')
   await saveAndReload()
   await setFile('new.pdf')
-  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{url:'/uploads/new.pdf',name:'new.pdf'}])
+  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{fileId:'file-new-pdf',name:'new.pdf',size:1}])
   await replace('replacement.pdf')
-  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{url:'/uploads/replacement.pdf',name:'replacement.pdf'}],'达到数量上限时仍可替换，不能追加文件')
+  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{fileId:'file-replacement-pdf',name:'replacement.pdf',size:1}],'达到数量上限时仍可替换，不能追加文件')
   assert.equal(await evaluate('attachmentTest.preview.value.validate()'),true)
-  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.设计说明书'),[{url:'/uploads/design.pdf',name:'design.pdf'}],'更新不能影响其他分组')
+  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.设计说明书'),[{fileId:'file-design-pdf',name:'design.pdf',size:1}],'更新不能影响其他分组')
   await saveAndReload()
 
   // 类型、大小、取消和服务端失败都不能提前删除原附件。
@@ -156,16 +156,46 @@ try {
   assert.equal(await evaluate('attachmentTest.state.data.attachment.设计说明书[1].name'),'design-new.pdf')
   await evaluate('attachmentTest.state.delay=0')
   await replace('replacement.pdf',2)
-  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.设计说明书'),[{url:'/uploads/design.pdf',name:'design.pdf'},{url:'/uploads/replacement.pdf',name:'replacement.pdf'}],'更新指定行应保留同组其他附件')
+  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.设计说明书'),[{fileId:'file-design-pdf',name:'design.pdf',size:1},{fileId:'file-replacement-pdf',name:'replacement.pdf',size:1}],'更新指定行应保留同组其他附件')
   await click('删除',0,2)
-  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.设计说明书'),[{url:'/uploads/design.pdf',name:'design.pdf'}],'删除指定行不能清空整个分组')
+  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.设计说明书'),[{fileId:'file-design-pdf',name:'design.pdf',size:1}],'删除指定行不能清空整个分组')
   await click('删除',1)
   assert.deepEqual(await snapshot('attachmentTest.state.data.single'),[],'删除最后一份单组附件必须清空模型')
   await saveAndReload()
   await evaluate('attachmentTest.state.readonly=true;attachmentTest.settle()')
   assert.equal(await evaluate("[...document.querySelectorAll('button')].some(b=>['更新','删除'].includes(b.textContent.trim()))"),false,'只读状态不能显示修改入口')
+
+  // 模拟上传返回新的业务文件 ID，保存刷新后再进入查看，复现编辑可见但查看为空的问题。
+  await evaluate("attachmentTest.state.readonly=false;attachmentTest.state.uploadPrefix='new-file-';attachmentTest.settle()")
+  await click('删除')
+  await setFile('new.pdf')
+  await setFile('new.pdf',1)
+  assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{fileId:'new-file-new-pdf',name:'new.pdf',size:1}])
+  assert.deepEqual(await snapshot('attachmentTest.state.data.single'),[{fileId:'new-file-new-pdf',name:'new.pdf',size:1}])
+  assert.equal(await evaluate("document.querySelectorAll('.file-uploader .file-name').length"),3,'编辑模式必须显示已上传的附件')
+  await saveAndReload()
+  await evaluate('attachmentTest.state.readonly=true;attachmentTest.settle()')
+  assert.deepEqual(await snapshot("[...document.querySelectorAll('.file-item-readonly .file-name')].map(node=>node.textContent.trim()).sort()"),['design.pdf','new.pdf','new.pdf'],'上传保存后，查看必须与编辑一样回显全部附件')
+
+  // 单文件、数组和分组均使用 fileId；旧地址和无效元数据不能成为可点击文件。
+  const readonlyCases = [
+    { value: {fileId:'single',name:'single.pdf'}, names:['single.pdf'] },
+    { value:[{fileId:'stored',originalName:'原始文件.pdf'},{fileId:'remote',name:'remote.pdf'}], names:['原始文件.pdf','remote.pdf'] },
+    { value:{fileId:'object',name:'单个附件.pdf',size:123}, names:['单个附件.pdf'] },
+    { value:{合同:[{fileId:'contract',name:'合同.pdf'}],资料:{fileId:'data',name:'资料.pdf'},空分组:[]}, names:['合同.pdf','资料.pdf'], groups:['合同','资料'] },
+    { value:{附件:[{fileId:'valid',name:'valid.pdf'},'javascript:alert(1)',null,{name:'未上传.pdf'}]}, names:['valid.pdf'], groups:['附件'] },
+    ...[null,'',[],{}, {空分组:[]}, {name:'未上传.pdf',status:'success'}, 's3://files/old.pdf', {url:'/uploads/old.pdf'}, 'javascript:alert(1)'].map(value=>({value,names:[]}))
+  ]
+  for (const {value,names,groups=[]} of readonlyCases) {
+    await evaluate(`attachmentTest.state.data={attachment:{},single:${JSON.stringify(value)}};attachmentTest.settle()`)
+    const selector="document.querySelectorAll('.file-field')[1]"
+    assert.deepEqual(await snapshot(`[...${selector}.querySelectorAll('.file-name')].map(node=>node.textContent.trim())`),names,`查看回显格式错误: ${JSON.stringify(value)}`)
+    assert.deepEqual(await snapshot(`[...${selector}.querySelectorAll('.el-tag')].map(node=>node.textContent.trim())`),groups,'查看应保留附件分组，单个文件对象不能被当作分组')
+    assert.equal(await evaluate(`${selector}.querySelector('.file-empty')?.textContent.trim()==='-'`),names.length===0,'空附件应显示占位符')
+    assert.deepEqual(await snapshot('attachmentTest.state.data.single'),value,'查看不能改写已保存的附件数据')
+  }
   assert.deepEqual(errors,[],'上传不能重复触发成功回调')
-  console.log('file attachment browser tests passed: delete/save/reload, replace at limit, required validation, failure/cancel, deleted target, concurrent groups, single file and readonly')
+  console.log('file attachment browser tests passed: delete/save/reload, replace at limit, required validation, failure/cancel, deleted target, concurrent groups, fileId upload/edit/view and readonly value formats')
 } catch(error) {
   if(ws?.readyState===WebSocket.OPEN){
     console.error(await evaluate('JSON.stringify({data:window.attachmentTest?.state.data,body:document.body.innerText})'))

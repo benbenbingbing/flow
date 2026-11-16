@@ -43,7 +43,7 @@ const fileItems = [
 ]
 assert.deepEqual(
   getMissingRequiredAttachmentItems(fileItems, {
-    项目章程: [{ url: '/uploads/charter.pdf' }],
+    项目章程: [{ fileId: 'charter' }],
     需求文档: []
   }).map(item => item.itemName),
   ['验收报告']
@@ -51,7 +51,7 @@ assert.deepEqual(
 assert.deepEqual(
   getMissingRequiredAttachmentItems(
     [{ itemName: '项目章程', required: true }],
-    ['/uploads/legacy.pdf']
+    [{ fileId: 'saved-file' }]
   ),
   []
 )
@@ -61,7 +61,7 @@ assert.deepEqual(
       { itemName: '', required: false },
       { itemName: '', required: true }
     ],
-    { 附件项2: [{ url: '/uploads/second.pdf' }] }
+    { 附件项2: [{ fileId: 'second' }] }
   ),
   []
 )
@@ -73,23 +73,23 @@ const renamedItem = {
   required: '0'
 }
 const legacyGroupedValue = {
-  合同: [{ url: '/uploads/contract.pdf' }],
-  其他资料: [{ url: '/uploads/other.pdf' }]
+  合同: [{ fileId: 'contract' }],
+  其他资料: [{ fileId: 'other' }]
 }
 assert.deepEqual(
   getAttachmentItemValue(renamedItem, 0, legacyGroupedValue),
-  [{ url: '/uploads/contract.pdf' }]
+  [{ fileId: 'contract' }]
 )
 assert.deepEqual(
   setAttachmentItemValue(
     legacyGroupedValue,
     renamedItem,
     0,
-    [{ url: '/uploads/final-contract.pdf' }]
+    [{ fileId: 'final-contract' }]
   ),
   {
-    合同终稿: [{ url: '/uploads/final-contract.pdf' }],
-    其他资料: [{ url: '/uploads/other.pdf' }]
+    合同终稿: [{ fileId: 'final-contract' }],
+    其他资料: [{ fileId: 'other' }]
   }
 )
 assert.equal(isAttachmentItemRequired(renamedItem), false)
@@ -136,7 +136,7 @@ assert.deepEqual(
   getMissingRequiredAttachmentItems(
     conditionalItems,
     {
-      合同: [{ url: '/uploads/contract.pdf' }],
+      合同: [{ fileId: 'contract' }],
       许可证: []
     },
     requiredState
@@ -195,7 +195,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   setAttachmentItemValue(
-    { 发布时名称: [{ url: '/uploads/old.pdf' }] },
+    { 发布时名称: [{ fileId: 'old' }] },
     resolveAttachmentItems({
       entityFileItems: [{
         itemKey: 'afi_snapshot',
@@ -210,9 +210,9 @@ assert.deepEqual(
       })
     })[0],
     0,
-    [{ url: '/uploads/new.pdf' }]
+    [{ fileId: 'new' }]
   ),
-  { 实体当前名称: [{ url: '/uploads/new.pdf' }] }
+  { 实体当前名称: [{ fileId: 'new' }] }
 )
 
 const renamedSnapshotItem = resolveAttachmentItems({
@@ -231,9 +231,9 @@ assert.deepEqual(
   getAttachmentItemValue(
     renamedSnapshotItem,
     0,
-    { 实体当前名称: [{ url: '/uploads/current.pdf' }] }
+    { 实体当前名称: [{ fileId: 'current' }] }
   ),
-  [{ url: '/uploads/current.pdf' }]
+  [{ fileId: 'current' }]
 )
 
 console.log('file attachment tests passed')

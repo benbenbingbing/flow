@@ -470,7 +470,8 @@ request.interceptors.response.use(
     if (response.config?.responseType === 'blob') {
       const contentType =
         response.headers?.['content-type'] || ''
-      if (contentType.includes('application/json')) {
+      // 真正的 JSON 附件也属于文件；只有未声明文件响应的 JSON 才按业务错误解析。
+      if (contentType.includes('json') && !response.headers?.['content-disposition']) {
         const text = await payload.text()
         try {
           return await handleApiPayload(
@@ -485,7 +486,7 @@ request.interceptors.response.use(
           throw error
         }
       }
-      return payload
+      return response.config.returnBlobResponse ? response : payload
     }
 
     return handleApiPayload(
@@ -496,6 +497,11 @@ request.interceptors.response.use(
   },
   async (error) => {
     const { response, config = {} } = error
+    // 非 2xx 文件请求的错误体同样是 Blob，先还原才能保留 403 原因和认证续期语义。
+    if (config.responseType === 'blob' && typeof response?.data?.text === 'function') {
+      try { response.data = JSON.parse(await response.data.text()) }
+      catch { /* 非 JSON 错误体沿用 HTTP 状态提示。 */ }
+    }
     error.traceId = response?.data?.traceId ?? error.traceId ?? null
     if (response?.status === 401) {
       let payload = response.data

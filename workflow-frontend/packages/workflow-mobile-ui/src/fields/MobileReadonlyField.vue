@@ -2,7 +2,7 @@
   <div class="readonly-field" :class="[{ multiline }, `label-${labelPosition}`]">
     <div class="readonly-label">{{ label }}</div>
     <div v-if="richText" class="readonly-rich" v-html="safeHtml" />
-    <div v-else-if="isFile" class="readonly-files"><template v-if="attachments.length"><button v-for="(file, index) in attachments" :key="index" @click="services.openFile?.(file.url)"><VanIcon name="description-o" /><span>{{ file.label }}</span><VanIcon name="arrow" /></button></template><span v-else>—</span></div>
+    <div v-else-if="isFile" class="readonly-files"><template v-if="attachments.length"><button v-for="(file, index) in attachments" :key="index" @click="services.openFile?.(file)"><VanIcon name="description-o" /><span>{{ file.label }}</span><VanIcon name="arrow" /></button></template><span v-else>—</span></div>
     <div v-else class="readonly-value">{{ display }}</div>
   </div>
 </template>
@@ -10,10 +10,11 @@
 import { computed } from 'vue'
 import DOMPurify from 'dompurify'
 import { Icon as VanIcon } from 'vant'
-import { formatReadonlyValue, fileName } from '@flow/workflow-core/workflow/approval-display'
+import { formatReadonlyValue } from '@flow/workflow-core/workflow/approval-display'
 import { isEntityStatusField, isProcessStatusField, resolveEntityStatusLabel, resolveProcessStatusLabel } from '@flow/workflow-core/entity-status-runtime'
 import { mobileFieldType } from './registry.js'
 import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
+import { normalizeAttachmentFiles } from '@flow/workflow-core/file-attachment'
 const props = defineProps({ field: { type: Object, required: true }, modelValue: null, options: { type: Array, default: () => [] }, context: { type: Object, default: () => ({}) }, services: { type: Object, default: () => ({}) } })
 const label = computed(() => props.field.fieldLabel || props.field.fieldName || props.field.fieldCode)
 const type = computed(() => mobileFieldType(props.field))
@@ -42,17 +43,9 @@ const labelPosition = computed(() => resolveMobileLabelPosition(props.context.fo
 // 大块内容保留原来的上下布局，避免富文本和附件被挤入狭窄的值列。
 const multiline = computed(() => richText.value || isFile.value || ['sub_form', 'sub_list'].includes(type.value) || labelPosition.value === 'top')
 const attachments = computed(() => {
-  const result = []
-  function collect(value, prefix = '') {
-    if (Array.isArray(value)) { value.forEach(item => collect(item, prefix)); return }
-    if (typeof value === 'object' && value) {
-      if (value.url || value.fileUrl) collect(value.url || value.fileUrl, value.name || prefix)
-      else Object.entries(value).forEach(([key, item]) => collect(item, key))
-      return
-    }
-    if (typeof value === 'string' && /^(https?:\/\/|\/)/i.test(value)) result.push({ url: value, label: prefix ? `${prefix} · ${fileName(value)}` : fileName(value) })
-  }
-  collect(props.modelValue); return result
+  return normalizeAttachmentFiles(props.modelValue).map(file => ({
+    ...file, label: file.groupName ? `${file.groupName} · ${file.name}` : file.name
+  }))
 })
 </script>
 <style scoped>

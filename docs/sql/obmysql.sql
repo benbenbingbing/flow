@@ -7,7 +7,7 @@
 -- 2026-11-12 同步至 V130，职务仅保留当前人员关系，移除任命批次及历史、预约和主职字段。
 -- 2026-11-12 同步至 V131，新增按来源对象覆盖保存的原始 JSON 快照表，不回填历史原文。
 -- 2026-11-12 同步至 V132，新增内置实体字段赋值动作目录；表结构及字段数保持不变。
--- 2026-11-13 同步至 V133，字典项增加 ext1～ext5 五个可选文本字段，每个最多 500 字符。
+-- 2026-11-15 同步至 V134；文件引用统一使用 fileId，空库无历史附件需转换，表结构和种子数据不变。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空数据库。
 -- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -3429,9 +3429,9 @@ CREATE TABLE `process_version_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程发布历史表';
 
 CREATE TABLE `storage_file_object` (
-  `id` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',
-  `storage_url` varchar(1024) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '存储URL。',
-  `storage_key` varchar(512) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '存储键。',
+  `id` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '业务文件ID：前端保存为fileId，预览、下载和删除均按此值鉴权定位。',
+  `storage_url` varchar(1024) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '后端存储定位符：保存本地或对象存储地址，仅供服务端读取和删除，不返回前端。',
+  `storage_key` varchar(512) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '后端对象键：供存储策略定位和清理对象，不作为前端文件标识。',
   `owner_user_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '所有者用户ID。',
   `idempotency_key` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '幂等键：标识同一业务请求的幂等键，具体唯一性范围见本表索引。',
   `request_hash` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '请求哈希：请求内容摘要，用于核验幂等重试是否携带相同内容。',

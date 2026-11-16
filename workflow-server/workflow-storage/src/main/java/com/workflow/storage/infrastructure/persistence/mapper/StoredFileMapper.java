@@ -7,9 +7,9 @@ import org.apache.ibatis.annotations.*;
 /** 存储对象归属与幂等登记。调用方只传入服务端 SQL 和绑定值，不接受客户端 SQL。 */
 @Mapper
 public interface StoredFileMapper {
-    /** 按唯一地址读取有效对象所有者；不存在时返回 null。 */
-    @Select("SELECT owner_user_id FROM storage_file_object WHERE storage_url = #{url} AND deleted = 0")
-    String findOwner(@Param("url") String url);
+    /** 仅按业务文件 ID 定位有效对象；存储地址只供鉴权后的后端读取和删除使用。 */
+    @Select("SELECT storage_url, owner_user_id FROM storage_file_object WHERE id = #{fileId} AND deleted = 0")
+    StoredFileReference findReference(@Param("fileId") String fileId);
 
     /** 按用户幂等键读取上传登记，冲突后追加方言当前读守卫。 */
     @SelectProvider(type = ParameterizedSqlProvider.class, method = "sql")
@@ -20,6 +20,8 @@ public interface StoredFileMapper {
     int execute(@Param("statement") ParameterizedSql statement);
 
     /** 列顺序固定，与查询投影一致；元信息用于幂等重放原响应。 */
-    record StoredUploadRow(String storageUrl, String storageKey, String originalName,
+    record StoredUploadRow(String fileId, String originalName,
                            long contentLength, String requestHash, boolean deleted) {}
+
+    record StoredFileReference(String storageUrl, String ownerUserId) {}
 }

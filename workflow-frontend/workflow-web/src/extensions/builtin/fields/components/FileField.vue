@@ -2,33 +2,13 @@
   <div class="file-field">
     <!-- 只读模式 -->
     <template v-if="isDisabled">
-      <template v-if="isFileLikeValue">
-        <!-- 多组模式：对象 { groupName: [urls] } -->
-        <div v-if="fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue)" class="file-display-readonly">
-          <div v-for="(urls, groupName) in fieldValue" :key="groupName" class="file-group-readonly">
-            <div v-for="(itemOrUrl, idx) in (Array.isArray(urls) ? urls : [urls])" :key="idx" class="file-item-readonly">
-              <div class="file-info">
-                <el-icon><Document /></el-icon>
-                <span class="file-name">{{ getFileName(itemOrUrl) }}</span>
-                <el-tag size="small" type="primary">{{ groupName }}</el-tag>
-              </div>
-              <div class="file-actions">
-                <el-button type="primary" link size="small" @click="previewFile(itemOrUrl)">
-                  <el-icon><View /></el-icon> 预览
-                </el-button>
-                <el-button type="success" link size="small" @click="downloadFile(itemOrUrl)">
-                  <el-icon><Download /></el-icon> 下载
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <!-- 数组模式：多文件 [urls] -->
-        <div v-else-if="Array.isArray(fieldValue)" class="file-list-readonly">
-          <div v-for="(itemOrUrl, idx) in fieldValue" :key="idx" class="file-item-readonly">
+      <div v-if="readonlyFileGroups.length" class="file-display-readonly">
+        <div v-for="group in readonlyFileGroups" :key="group.name" :class="group.name ? 'file-group-readonly' : 'file-list-readonly'">
+          <div v-for="(itemOrUrl, idx) in group.files" :key="idx" class="file-item-readonly">
             <div class="file-info">
               <el-icon><Document /></el-icon>
               <span class="file-name">{{ getFileName(itemOrUrl) }}</span>
+              <el-tag v-if="group.name" size="small" type="primary">{{ group.name }}</el-tag>
             </div>
             <div class="file-actions">
               <el-button type="primary" link size="small" @click="previewFile(itemOrUrl)">
@@ -40,22 +20,7 @@
             </div>
           </div>
         </div>
-        <!-- 单文件字符串 -->
-        <div v-else-if="typeof fieldValue === 'string' && fieldValue.startsWith('/')" class="file-item-readonly">
-          <div class="file-info">
-            <el-icon><Document /></el-icon>
-            <span class="file-name">{{ getFileName(fieldValue) }}</span>
-          </div>
-          <div class="file-actions">
-            <el-button type="primary" link size="small" @click="previewFile(fieldValue)">
-              <el-icon><View /></el-icon> 预览
-            </el-button>
-            <el-button type="success" link size="small" @click="downloadFile(fieldValue)">
-              <el-icon><Download /></el-icon> 下载
-            </el-button>
-          </div>
-        </div>
-      </template>
+      </div>
       <span v-else class="file-empty">-</span>
     </template>
 
@@ -85,6 +50,8 @@ import FileUploader from '@/components/FileUploader.vue'
 import { useFormField } from '@flow/workflow-core/vue/useFormField'
 import request from '@/utils/request'
 import { resolveEntityFileUploadContext } from '@flow/workflow-core/entity-file-upload-context'
+import { previewFile, downloadFile } from '@/shared/file-access'
+import { normalizeAttachmentFiles } from '@flow/workflow-core/file-attachment'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -188,64 +155,20 @@ const uploadContext = computed(() =>
   resolveEntityFileUploadContext(props.context, enrichedField.value)
 )
 
-// 判断字段值是否看起来像文件数据
-const isFileLikeValue = computed(() => {
-  const val = props.modelValue
-  if (val == null) return false
-  if (typeof val === 'object') {
-    if (Array.isArray(val)) {
-      return val.some(item => isFileLikeItem(item))
-    }
-    return Object.values(val).some(v => {
-      if (Array.isArray(v)) {
-        return v.some(item => isFileLikeItem(item))
-      }
-      return isFileLikeItem(v)
-    })
+// 单文件、数组和分组共用引用格式；只读投影不改写保存值。
+const readonlyFileGroups = computed(() => {
+  const groups = new Map()
+  for (const file of normalizeAttachmentFiles(fieldValue.value)) {
+    if (!groups.has(file.groupName)) groups.set(file.groupName, [])
+    groups.get(file.groupName).push(file)
   }
-  if (typeof val === 'string' && val.startsWith('/')) return true
-  return false
+  return [...groups].map(([name, files]) => ({ name, files }))
 })
 
-function isFileLikeItem(item) {
-  if (item == null) return false
-  if (typeof item === 'string') return item.startsWith('/')
-  if (typeof item === 'object') {
-    const url = item.url || item.path || item.fileUrl || ''
-    return typeof url === 'string' && url.startsWith('/')
-  }
-  return false
+function getFileName(file) {
+  return file.name || file.originalName || '附件'
 }
 
-function resolveUrl(itemOrUrl) {
-  if (!itemOrUrl) return ''
-  if (typeof itemOrUrl === 'object') return itemOrUrl.url || ''
-  return String(itemOrUrl)
-}
-
-function getFileName(itemOrUrl) {
-  if (!itemOrUrl) return '未知文件'
-  if (typeof itemOrUrl === 'object') {
-    return itemOrUrl.name || itemOrUrl.originalName || getFileName(itemOrUrl.url)
-  }
-  const parts = String(itemOrUrl).split('/')
-  return parts[parts.length - 1] || '未知文件'
-}
-
-function previewFile(itemOrUrl) {
-  const url = resolveUrl(itemOrUrl)
-  if (!url) return
-  window.open(url, '_blank')
-}
-
-function downloadFile(itemOrUrl) {
-  const url = resolveUrl(itemOrUrl)
-  if (!url) return
-  const a = document.createElement('a')
-  a.href = url
-  a.download = getFileName(itemOrUrl)
-  a.click()
-}
 </script>
 
 <style scoped>

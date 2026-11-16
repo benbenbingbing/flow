@@ -7,7 +7,7 @@
 -- 2026-11-12 同步至 V130，职务仅保留当前人员关系，移除任命批次及历史、预约和主职字段。
 -- 2026-11-12 同步至 V131，新增按来源对象覆盖保存的原始 JSON 快照表，不回填历史原文。
 -- 2026-11-12 同步至 V132，新增内置实体字段赋值动作目录；表结构及字段数保持不变。
--- 2026-11-13 同步至 V133，字典项增加 ext1～ext5 五个可选文本字段，每个最多 500 字符。
+-- 2026-11-15 同步至 V134；文件引用统一使用 fileId，空库无历史附件需转换，表结构和种子数据不变。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
 -- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -6775,9 +6775,9 @@ COMMENT ON COLUMN "PROCESS_VERSION_HISTORY"."CREATED_BY" IS '创建人。';
 COMMENT ON COLUMN "PROCESS_VERSION_HISTORY"."CREATE_TIME" IS '创建时间。';
 COMMENT ON COLUMN "PROCESS_VERSION_HISTORY"."UPDATE_TIME" IS '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。';
 COMMENT ON TABLE "STORAGE_FILE_OBJECT" IS '文件对象归属表';
-COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."ID" IS '主键ID。';
-COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."STORAGE_URL" IS '存储URL。';
-COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."STORAGE_KEY" IS '存储键。';
+COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."ID" IS '业务文件ID：前端保存为fileId，预览、下载和删除均按此值鉴权定位。';
+COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."STORAGE_URL" IS '后端存储定位符：保存本地或对象存储地址，仅供服务端读取和删除，不返回前端。';
+COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."STORAGE_KEY" IS '后端对象键：供存储策略定位和清理对象，不作为前端文件标识。';
 COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."OWNER_USER_ID" IS '所有者用户ID。';
 COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."IDEMPOTENCY_KEY" IS '幂等键：标识同一业务请求的幂等键，具体唯一性范围见本表索引。';
 COMMENT ON COLUMN "STORAGE_FILE_OBJECT"."REQUEST_HASH" IS '请求哈希：请求内容摘要，用于核验幂等重试是否携带相同内容。';

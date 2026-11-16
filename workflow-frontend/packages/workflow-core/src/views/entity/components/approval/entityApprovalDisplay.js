@@ -1,3 +1,4 @@
+import { isAttachmentFile } from '../../../../shared/file-attachment.js'
 import {
   normalizeEntityStatusOptions,
   resolveEntityStatusLabel,
@@ -20,31 +21,21 @@ export function resolveApprovalDialogTitle(name, entityData, entityStatusOptions
   return `${name || '任务审批'}${statusText ? `（${statusText}）` : ''}`
 }
 
-export function isFileUrl(value) {
-  return typeof value === 'string'
-    && /^(?:https?:\/\/|\/|blob:)/i.test(value)
+export function isFileReference(value) {
+  return isAttachmentFile(value)
 }
 
 export function isGroupedFileValue(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false
-  }
+  if (!value || typeof value !== 'object' || Array.isArray(value) || isAttachmentFile(value)) return false
   const groups = Object.values(value)
   return groups.length > 0 && groups.every(group => {
     const items = Array.isArray(group) ? group : [group]
-    return items.length > 0 && items.every(isFileUrl)
+    return items.length > 0 && items.every(isAttachmentFile)
   })
 }
 
 export function fileName(value) {
-  if (!isFileUrl(value)) return formatReadonlyValue(value)
-  const path = value.split(/[?#]/, 1)[0]
-  const name = path.split('/').filter(Boolean).pop() || value
-  try {
-    return decodeURIComponent(name)
-  } catch {
-    return name
-  }
+  return isAttachmentFile(value) ? value.name || value.originalName || '附件' : formatReadonlyValue(value)
 }
 
 export function formatReadonlyValue(value) {

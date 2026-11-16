@@ -3,7 +3,7 @@ import {
   fileName,
   formatReadonlyValue,
   hasRenderableApprovalForm,
-  isFileUrl,
+  isFileReference,
   isGroupedFileValue,
   resolveApprovalDialogTitle,
   resolveApprovalEntityCode,
@@ -28,14 +28,14 @@ assert.equal(resolveApprovalDialogTitle('数据详情', {
 }), '数据详情（运行中-CUSTOM）')
 assert.equal(resolveApprovalDialogTitle('数据详情', null), '数据详情')
 
-assert.equal(isFileUrl('/api/files/design.pdf'), true)
-assert.equal(isFileUrl('https://example.test/design.pdf'), true)
-assert.equal(isFileUrl('javascript:alert(1)'), false)
-assert.equal(isFileUrl(false), false)
+assert.equal(isFileReference({ fileId: 'design', name: '方案.pdf' }), true)
+assert.equal(isFileReference('https://example.test/design.pdf'), false)
+assert.equal(isFileReference('javascript:alert(1)'), false)
+assert.equal(isFileReference(false), false)
 
 assert.equal(isGroupedFileValue({
-  方案附件: ['/api/files/design.pdf'],
-  评审记录: '/api/files/review.docx'
+  方案附件: [{ fileId: 'design' }],
+  评审记录: { fileId: 'review' }
 }), true)
 assert.equal(isGroupedFileValue({
   access_review_required_flag: false
@@ -45,7 +45,7 @@ assert.equal(isGroupedFileValue({
 }), false)
 
 assert.equal(
-  fileName('/api/files/%E6%96%B9%E6%A1%88.pdf?download=1'),
+  fileName({ fileId: 'design', name: '方案.pdf' }),
   '方案.pdf'
 )
 assert.equal(formatReadonlyValue(true), '是')

@@ -99,9 +99,9 @@ class StoredFileAccessServiceTest {
         assertTrue(registration.currentObjectRegistered());
         assertNull(first.replay());
         assertNotNull(replay.replay());
-        assertEquals(
-                "s3://files/first.txt",
-                replay.replay().get("url"));
+        assertEquals(registration.response(), replay.replay());
+        assertEquals(java.util.Set.of("fileId", "originalName", "size"), replay.replay().keySet());
+        assertEquals("s3://files/first.txt", service.requireRead(replay.replay().get("fileId")));
     }
 
     @Test
@@ -123,9 +123,7 @@ class StoredFileAccessServiceTest {
                         concurrent);
 
         assertFalse(resolved.currentObjectRegistered());
-        assertEquals(
-                "s3://files/first.txt",
-                resolved.response().get("url"));
+        assertEquals("s3://files/first.txt", service.requireRead(resolved.response().get("fileId")));
     }
 
     @Test
@@ -161,20 +159,21 @@ class StoredFileAccessServiceTest {
             "s3://archive-files/legacy/private.txt"})
     void onlyOwnerOrAuthenticatedAdministratorCanReadAndDelete(String url) {
         MockMultipartFile file = file("content");
-        service.register(stored(url), file, service.prepareUpload("private-01", file));
-
-        service.requireRead(url);
-        service.requireDelete(url);
-        UserContext.setCurrentUser("other-user", "other");
+        var registration = service.register(stored(url), file, service.prepareUpload("private-01", file));
+        String fileId = registration.response().get("fileId");
         assertThrows(ForbiddenException.class, () -> service.requireRead(url));
-        assertThrows(ForbiddenException.class, () -> service.requireDelete(url));
+        assertEquals(url, service.requireRead(fileId));
+        service.requireDelete(fileId);
+        UserContext.setCurrentUser("other-user", "other");
+        assertThrows(ForbiddenException.class, () -> service.requireRead(fileId));
+        assertThrows(ForbiddenException.class, () -> service.requireDelete(fileId));
 
         org.mockito.Mockito.when(authorization.isAdministrator()).thenReturn(true);
-        service.requireRead(url);
-        service.requireDelete(url);
+        service.requireRead(fileId);
+        service.requireDelete(fileId);
         assertThrows(ForbiddenException.class, () -> service.requireRead("s3://files/missing.txt"));
         UserContext.clear();
-        assertThrows(ForbiddenException.class, () -> service.requireRead(url));
+        assertThrows(ForbiddenException.class, () -> service.requireRead(fileId));
     }
 
     private MockMultipartFile file(String content) {

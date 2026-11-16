@@ -225,9 +225,9 @@ FILE_STORAGE_MINIO_ACCESS_URL=
   无需配置桶子域名。MinIO 使用 S3 兼容协议，参见
   [MinIO 架构说明](https://min.io/resources/docs/CPG-MinIO-reference-architecture.pdf)和
   [AWS SDK 路径式寻址说明](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/examples-s3.html)。
-- `ACCESS_URL` 可留空，此时上传返回稳定的 `s3://bucket/key` 存储标识；浏览器通过
-  `/api/file/preview?url=...` 预览或下载，继续执行文件归属鉴权。
-  该标识不是浏览器可直接打开的 HTTP 地址。需要自定义访问前缀时，填写包含桶路径或
+- `ACCESS_URL` 可留空，此时后端保存稳定的 `s3://bucket/key` 存储定位符；上传接口仅返回
+  `fileId`、`originalName` 和 `size`。浏览器通过 `/api/file/preview?fileId=...` 或
+  `/api/file/download?fileId=...` 访问文件，继续执行文件归属鉴权。需要自定义访问前缀时，填写包含桶路径或
   对应代理路径的完整前缀；设置前缀不会自动开放桶权限。
 - 旧的 `s3` 策略仍可连接 MinIO。切换为 `minio` 时保留相同的 endpoint、bucket 和
   access-url，即可继续使用原有文件标识；同时保留 key-prefix 和 readable-buckets，
@@ -244,7 +244,7 @@ S3 和 MinIO 均支持独立配置上传目录与下载范围：
 | 额外允许下载的桶，逗号分隔 | `FILE_STORAGE_S3_READABLE_BUCKETS` | `FILE_STORAGE_MINIO_READABLE_BUCKETS` |
 
 以默认桶 `flow-files`、`KEY_PREFIX=flow/prod`、`READABLE_BUCKETS=shared-files,archive-files`
-为例，上传产生 `s3://flow-files/flow/prod/年/月/日/UUID.ext`；目录首尾的 `/` 会统一处理。
+为例，后端上传产生 `s3://flow-files/flow/prod/年/月/日/UUID.ext` 存储定位符；目录首尾的 `/` 会统一处理。
 `KEY_PREFIX` 留空时维持原有桶根行为，不需要预先创建目录。
 
 - **下载**：默认桶任意目录均可读，例如 `s3://flow-files/legacy/report.pdf`；也可使用
@@ -256,7 +256,7 @@ S3 和 MinIO 均支持独立配置上传目录与下载范围：
   的读取权限。不能通过文件地址切换到其他 endpoint，也不解析任意 HTTP 地址。
 - **自定义访问地址**：`ACCESS_URL` 仍表示默认桶根的访问地址，上传目录已经包含在完整 key 中，
   不应在 `ACCESS_URL` 中再次追加。其他桶统一使用 `s3://bucket/key`，避免桶映射歧义。
-- **文件归属**：`/api/file/preview?url=...` 继续校验文件登记与所有者/管理员权限。
+- **文件归属**：`/api/file/preview?fileId=...` 继续校验文件登记与所有者/管理员权限。
   可读桶配置不会自动登记其他系统的文件；业务端调用 `FileStorageProvider.open(...)`
   读取外部对象时也须自行完成业务授权。
 

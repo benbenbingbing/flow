@@ -1,3 +1,25 @@
+/** 文件字段只保存业务文件引用；存储地址由后端解析，不参与表单值和展示。 */
+export function isAttachmentFile(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+    && typeof value.fileId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value.fileId))
+}
+
+/** 将单文件、文件数组和附件分组展开为展示项，保留原始文件名与大小。 */
+export function normalizeAttachmentFiles(value) {
+  const result = []
+  function collect(item, groupName = '') {
+    if (Array.isArray(item)) { item.forEach(file => collect(file, groupName)); return }
+    if (isAttachmentFile(item)) {
+      result.push({ fileId: item.fileId, name: item.name || item.originalName || '附件', size: item.size, groupName })
+    } else if (item && typeof item === 'object'
+      && !['fileId', 'url', 'path', 'fileUrl', 'name', 'originalName', 'size', 'uid', 'status', 'type'].some(key => key in item)) {
+      Object.entries(item).forEach(([group, files]) => collect(files, group))
+    }
+  }
+  collect(value)
+  return result
+}
+
 function splitFileTypeValues(value) {
   const values = Array.isArray(value) ? value : [value]
   return values.flatMap(item =>
@@ -29,36 +51,11 @@ export function isAttachmentFileTypeAllowed(file, value) {
 }
 
 export function hasAttachmentValue(value) {
-  if (value === null || value === undefined) return false
-  if (Array.isArray(value)) return value.some(hasAttachmentValue)
-  if (typeof value === 'string') return value.trim() !== ''
-  if (typeof value === 'object') {
-    const fileUrlKeys = ['url', 'path', 'fileUrl']
-    const configuredUrlKeys = fileUrlKeys.filter(key =>
-      Object.prototype.hasOwnProperty.call(value, key)
-    )
-    if (configuredUrlKeys.length > 0) {
-      return configuredUrlKeys.some(key =>
-        hasAttachmentValue(value[key])
-      )
-    }
-    if (['name', 'originalName', 'size', 'type', 'uid', 'status']
-      .some(key => Object.prototype.hasOwnProperty.call(value, key))) {
-      return false
-    }
-    return Object.values(value).some(hasAttachmentValue)
-  }
-  return false
+  return normalizeAttachmentFiles(value).length > 0
 }
 
 function hasAttachmentFileValue(value) {
-  if (value === null || value === undefined) return false
-  if (Array.isArray(value)) return value.some(hasAttachmentFileValue)
-  if (typeof value === 'string') return value.trim() !== ''
-  if (typeof value !== 'object') return false
-  return ['url', 'path', 'fileUrl']
-    .filter(key => Object.prototype.hasOwnProperty.call(value, key))
-    .some(key => hasAttachmentFileValue(value[key]))
+  return isAttachmentFile(value) || (Array.isArray(value) && value.some(hasAttachmentFileValue))
 }
 
 export function normalizeAttachmentItemAliases(value) {
