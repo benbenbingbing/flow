@@ -1859,6 +1859,8 @@ import EntityUserRelationPathSelector from "./EntityUserRelationPathSelector.vue
 import NodeSlaEditor from "./node-config/NodeSlaEditor.vue"
 import { updateBpmnExtensionProperty } from './node-config/bpmnExtensionProperties.js'
 import { buildSequenceFlowConditionConfig, buildSequenceFlowConditionExpression } from './node-config/sequenceFlowCondition.js'
+import { loadProcessConditionFieldOptions } from './node-config/processConditionFields.js'
+import { getItemTreeByDictCode } from '@/api/system/dict'
 
 import EmptyAssigneePolicyEditor from "./EmptyAssigneePolicyEditor.vue"
 import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
@@ -3586,7 +3588,7 @@ function resetConditionGroups() {
   updateCondition()
 }
 
-// 加载实体字段
+/** 加载绑定实体字段及选择类代码表，等待选项后再校验流程归属，避免串入其他实体的候选。 */
 async function loadEntityFields() {
   const requestedEntityId = String(boundEntity.value?.id || '').trim()
   const requestedProcessId = String(props.processId || '').trim()
@@ -3598,14 +3600,13 @@ async function loadEntityFields() {
     const res = await request.get(
       `/entity-form/entity/${requestedEntityId}/fields`
     )
+    const fields = Array.isArray(res) ? await loadProcessConditionFieldOptions(res, getItemTreeByDictCode) : []
     // 快速切换流程或实体时，过期响应不得覆盖当前实体的候选字段。
     if (String(boundEntity.value?.id || '').trim() !== requestedEntityId
         || String(props.processId || '').trim() !== requestedProcessId) {
       return
     }
-    if (res && Array.isArray(res)) {
-      entityFields.value = res
-    }
+    entityFields.value = fields
   } catch (e) {
     if (String(boundEntity.value?.id || '').trim() !== requestedEntityId
         || String(props.processId || '').trim() !== requestedProcessId) {
