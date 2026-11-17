@@ -1,4 +1,6 @@
 -- KingbaseES V8 平台基础表空库初始化脚本。
+-- 2026-11-17 同步至 V138，新增单前置动作依赖、本次执行关联与业务输出快照。
+-- 2026-11-17 同步至 V137，允许发起前动作执行记录的流程实例 ID 为空。
 -- 2026-11-17 同步至 V136，新增组内标签、成员标签绑定及内置人员解析器目录。
 -- 2026-11-16 同步至 V135，用户、组织主表各增加 ext1～ext5 五个可空文本查询字段。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
@@ -2350,6 +2352,7 @@ CREATE TABLE "process_action" (
   "failure_strategy_code" varchar(64),
   "failure_strategy_version" varchar(32),
   "failure_strategy_config" text,
+  "predecessor_action_id" varchar(64) DEFAULT NULL,
   CONSTRAINT "pk_process_action_process_action" PRIMARY KEY ("id")
 );
 
@@ -2383,7 +2386,7 @@ CREATE TABLE "process_action_execution" (
   "handler_name" varchar(200),
   "handler_display_name" varchar(200),
   "version_id" varchar(64),
-  "process_instance_id" varchar(64) NOT NULL,
+  "process_instance_id" varchar(64),
   "process_definition_id" varchar(128),
   "execution_id" varchar(64),
   "task_id" varchar(64),
@@ -2418,6 +2421,9 @@ CREATE TABLE "process_action_execution" (
   "replay_root_id" varchar(64),
   "replay_of_id" varchar(64),
   "handler_idempotency_key" varchar(128),
+  "predecessor_execution_id" varchar(64) DEFAULT NULL,
+  "action_snapshot" text DEFAULT NULL,
+  "output_json" text DEFAULT NULL,
   CONSTRAINT "pk_process_action_execution_process_action_execution" PRIMARY KEY ("id")
 );
 
@@ -6312,7 +6318,7 @@ COMMENT ON COLUMN "process_action"."action_name" IS '动作名称。';
 COMMENT ON COLUMN "process_action"."description" IS '说明：动作描述。';
 COMMENT ON COLUMN "process_action"."interface_name" IS '接口名称（Spring Bean或类名）。';
 COMMENT ON COLUMN "process_action"."params_json" IS '参数JSON。';
-COMMENT ON COLUMN "process_action"."sort_order" IS '排序号：执行顺序。';
+COMMENT ON COLUMN "process_action"."sort_order" IS '同组事务内同步调用顺序；异步完成顺序由前置动作决定。';
 COMMENT ON COLUMN "process_action"."enabled" IS '是否启用。';
 COMMENT ON COLUMN "process_action"."status" IS '状态：DRAFT/PUBLISHED/DISABLED。';
 COMMENT ON COLUMN "process_action"."version_id" IS '所属版本ID。';
@@ -6347,7 +6353,7 @@ COMMENT ON COLUMN "process_action_execution"."action_name" IS '动作名称快�
 COMMENT ON COLUMN "process_action_execution"."handler_name" IS '处理器Bean名称快照。';
 COMMENT ON COLUMN "process_action_execution"."handler_display_name" IS '处理器中文名称快照。';
 COMMENT ON COLUMN "process_action_execution"."version_id" IS '所属流程发布版本 ID。';
-COMMENT ON COLUMN "process_action_execution"."process_instance_id" IS '流程实例 ID。';
+COMMENT ON COLUMN "process_action_execution"."process_instance_id" IS '流程实例 ID；发起前动作尚未创建实例时为空，按发布版本和实体定位。';
 COMMENT ON COLUMN "process_action_execution"."process_definition_id" IS 'Flowable 流程定义 ID。';
 COMMENT ON COLUMN "process_action_execution"."execution_id" IS 'Flowable 执行实例 ID。';
 COMMENT ON COLUMN "process_action_execution"."task_id" IS '任务 ID（任务级动作）。';
@@ -6360,7 +6366,7 @@ COMMENT ON COLUMN "process_action_execution"."payload_json" IS '触发事件序�
 COMMENT ON COLUMN "process_action_execution"."resolved_params_json" IS '表达式解析后的动作参数。';
 COMMENT ON COLUMN "process_action_execution"."result_json" IS '动作执行结果。';
 COMMENT ON COLUMN "process_action_execution"."execution_trace_json" IS '结构化执行步骤轨迹。';
-COMMENT ON COLUMN "process_action_execution"."status" IS '状态：执行状态，对应 Status。';
+COMMENT ON COLUMN "process_action_execution"."status" IS 'WAITING等待前置成功；PENDING待执行；RUNNING执行中；SUCCESS成功；FAILED待重试；DEAD终态失败。';
 COMMENT ON COLUMN "process_action_execution"."owner_id" IS '持有者ID：当前执行租约所有者。';
 COMMENT ON COLUMN "process_action_execution"."lease_token" IS '租约代次：单调递增 fencing token。';
 COMMENT ON COLUMN "process_action_execution"."lease_until" IS '租约截止时间：当前执行租约到期时间（数据库 UTC）。';
@@ -7891,3 +7897,15 @@ CREATE TRIGGER "tr_ui_extension_definition_update_time" BEFORE UPDATE ON "ui_ext
 CREATE TRIGGER "tr_work_calendar_update_time" BEFORE UPDATE ON "work_calendar" FOR EACH ROW EXECUTE FUNCTION flow_sql_touch_update_time();
 CREATE TRIGGER "tr_work_calendar_binding_update_time" BEFORE UPDATE ON "work_calendar_binding" FOR EACH ROW EXECUTE FUNCTION flow_sql_touch_update_time();
 CREATE TRIGGER "tr_workflow_schema_change_update_time" BEFORE UPDATE ON "workflow_schema_change" FOR EACH ROW EXECUTE FUNCTION flow_sql_touch_update_time();
+
+COMMENT ON COLUMN "process_action"."predecessor_action_id" IS '同组提交后前置动作ID，发布时转换为该版本ID，不随排序改变';
+
+COMMENT ON COLUMN "process_action_execution"."predecessor_execution_id" IS '本次触发的前置执行ID，仅其成功或成功重放后放行';
+
+COMMENT ON COLUMN "process_action_execution"."action_snapshot" IS '入队动作完整快照，重试沿用原配置，不向执行详情返回';
+
+COMMENT ON COLUMN "process_action_execution"."output_json" IS '成功动作未脱敏业务输出，仅供前置结果引用，不向日志返回';
+
+CREATE INDEX "idx_action_exec_predecessor" ON "process_action_execution" ("status", "predecessor_execution_id");
+
+CREATE INDEX "idx_action_exec_replay_success" ON "process_action_execution" ("replay_root_id", "status");

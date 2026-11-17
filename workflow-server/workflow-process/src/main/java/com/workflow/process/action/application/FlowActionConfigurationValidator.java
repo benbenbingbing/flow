@@ -47,11 +47,14 @@ public class FlowActionConfigurationValidator {
      * @throws RuntimeException 任一校验项不通过时抛出，描述具体原因
      */
     public void validate(FlowAction action) {
+        FlowActionDependencies.validateParams(action, objectMapper);
         FlowActionScopeType scopeType = parseScope(action.getScopeType());
         FlowActionExecutionMode executionMode = parseExecutionMode(action.getExecutionMode());
         FlowActionFailurePolicy failurePolicy = parseFailurePolicy(action.getFailurePolicy());
         FlowActionTimingOption timing = timingCatalog.find(action.getTriggerTiming())
                 .orElseThrow(() -> new RuntimeException("不支持的流程动作时机: " + action.getTriggerTiming()));
+        com.workflow.contracts.process.action.model.FlowActionTriggerTiming.validateOperationExecution(
+                action.getTriggerTiming(), executionMode.name(), failurePolicy.name());
 
         // 执行时机与作用域必须匹配，如任务级时机不能用于流程级作用域
         if (!scopeType.name().equalsIgnoreCase(timing.getScopeType())) {

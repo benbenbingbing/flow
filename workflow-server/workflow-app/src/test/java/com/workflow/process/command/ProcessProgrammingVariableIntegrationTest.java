@@ -80,6 +80,10 @@ class ProcessProgrammingVariableIntegrationTest {
     private ProcessQueryAdapter queries;
     private ProcessTaskService mirrors;
     private ProcessTaskAddSignMapper addSigns;
+    private com.workflow.process.action.application.FlowActionDispatcher businessActions;
+    private com.workflow.process.form.application.NodeFormSubmissionService submittedForms;
+    private com.workflow.process.task.application.nextapproval.NextApproverOverrideService nextApprovers;
+    private com.workflow.process.task.application.TaskActionService businessCore;
 
     @BeforeAll
     void database() throws Exception {
@@ -153,6 +157,11 @@ class ProcessProgrammingVariableIntegrationTest {
     @BeforeEach
     void setup() {
         jdbc.update("DELETE FROM process_command_receipt");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS operation_timing_form (form_value VARCHAR(32))");
+        jdbc.update("DELETE FROM operation_timing_form");
+        businessActions = mock(com.workflow.process.action.application.FlowActionDispatcher.class);
+        submittedForms = mock(com.workflow.process.form.application.NodeFormSubmissionService.class);
+        nextApprovers = mock(com.workflow.process.task.application.nextapproval.NextApproverOverrideService.class);
         actors = mock(CurrentActorPort.class);
         when(actors.current()).thenReturn(new CurrentActor("alice-id", "alice"));
         instanceAccess = mock(ProcessInstanceAccessService.class);
@@ -597,22 +606,182 @@ class ProcessProgrammingVariableIntegrationTest {
                 mock(com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper.class),
                 mock(com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper.class),
                 mock(com.workflow.contracts.identity.port.IdentityDirectoryPort.class));
-        var core = transactional(new com.workflow.process.task.application.TaskActionService(
+        var core = transactional(new com.workflow.process.task.application.TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(businessActions, engine.getRuntimeService(), engine.getHistoryService()),
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(), mirrors,
                 engine.getRepositoryService(), mock(ProcessOperationLogMapper.class),
                 mock(com.workflow.admin.identity.user.application.SysUserService.class),
-                mock(com.workflow.process.form.application.NodeFormSubmissionService.class),
+                submittedForms,
                 mock(com.workflow.contracts.entity.port.EntityRecordPort.class),
                 mock(com.workflow.process.cc.application.ProcessCcService.class),
-                mock(com.workflow.process.task.application.nextapproval.NextApproverOverrideService.class), outcome,
+                nextApprovers, outcome,
                 mock(com.workflow.process.task.application.operation.NodeOperationCapabilityService.class), identity,
                 mock(com.workflow.process.instance.application.ProcessEntityVariableService.class)));
+        businessCore = core;
         return new com.workflow.process.task.application.ProcessTaskCommandAdapter(commands, access,
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(), engine.getRepositoryService(),
                 core, mock(com.workflow.process.task.application.TaskAddSignService.class),
                 mock(LocalAddSignTaskAccessService.class), guard, mock(TaskOperationApplicationService.class), addSigns,
                 mock(NodeOperationDecisionService.class), outcome, new ObjectMapper(),
                 mock(com.workflow.entity.form.application.EntityFormActionService.class));
+    }
+
+    /** 直接检查 JDBC 表单与真实引擎状态，证明时机先后，重放不会再次触发。 */
+    @Test
+    void businessTimingsSurroundFormSaveEngineAdvanceAndIdempotentReplay() {
+        var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var task = tasks().get(0);
+        var observed = new ArrayList<String>();
+        doAnswer(call -> { jdbc.update("INSERT INTO operation_timing_form VALUES ('saved')"); return null; })
+                .when(submittedForms).applyEditableData(any(), any());
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            observed.add(event.getTriggerTiming());
+            assertEquals("ENGINE", event.getTaskKind());
+            assertEquals("SUBMIT", event.getBusinessOperation());
+            assertEquals(Map.of("amount", 12), event.getSubmittedFormData());
+            int formCount = jdbc.queryForObject("SELECT COUNT(*) FROM operation_timing_form", Integer.class);
+            switch (event.getTriggerTiming()) {
+                case "TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING" -> {
+                    assertEquals(0, formCount);
+                    assertNotNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
+                }
+                case "TASK_ADVANCING" -> {
+                    assertEquals(1, formCount);
+                    assertNotNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
+                    engine.getRuntimeService().setVariable(instanceId, "risk", "HIGH");
+                }
+                case "TASK_SUBMITTED" -> {
+                    assertEquals(1, formCount);
+                    assertNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
+                }
+                default -> fail("unexpected phase: " + event.getTriggerTiming());
+            }
+            return null;
+        }).when(businessActions).dispatch(any());
+        doAnswer(call -> {
+            assertEquals("TASK_ADVANCING", observed.get(observed.size() - 1));
+            assertEquals("HIGH", engine.getRuntimeService().getVariable(instanceId, "risk"));
+            return null;
+        }).when(nextApprovers).validateAndStage(any(), any(), any(), any(), any(), any(), anyBoolean());
+        var submission = new com.workflow.contracts.process.task.model.TaskSubmission("同意", null, Map.of("amount", 12), null, null);
+        var command = new com.workflow.contracts.process.task.model.CompleteTaskCommand(new CommandMeta("timing-approve"), task.getId(), "approve", submission);
+        assertFalse(port.complete(command).receipt().replayed());
+        assertEquals(List.of("TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), observed);
+        assertTrue(port.complete(command).receipt().replayed());
+        assertEquals(4, observed.size());
+        assertEquals(1, receiptCount());
+    }
+
+    /** 包含引擎已完成后的失败，必须回滚表单、引擎与成功回执。 */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"})
+    void failureAtAnyBusinessStageRollsBackTheWholeOperation(String failureStage) {
+        var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var task = tasks().get(0);
+        doAnswer(call -> { jdbc.update("INSERT INTO operation_timing_form VALUES ('saved')"); return null; })
+                .when(submittedForms).applyEditableData(any(), any());
+        var observed = new ArrayList<String>();
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            observed.add(event.getTriggerTiming());
+            if (failureStage.equals(event.getTriggerTiming())) throw new IllegalArgumentException("业务拒绝");
+            return null;
+        }).when(businessActions).dispatch(any());
+        assertThrows(ProcessOperationException.class, () -> port.complete(new com.workflow.contracts.process.task.model.CompleteTaskCommand(
+                new CommandMeta("failure-" + failureStage), task.getId(), "approve", null)));
+        assertEquals(failureStage, observed.get(observed.size() - 1));
+        assertNotNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
+        assertEquals(2, tasks().size());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM operation_timing_form", Integer.class));
+        assertEquals(0, receiptCount());
+    }
+
+    @Test void transferHasItsOwnStagesAndNeverPretendsToAdvanceTheTask() {
+        var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var task = tasks().get(0);
+        var observed = new ArrayList<String>();
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            observed.add(event.getTriggerTiming());
+            assertEquals("bob", event.getOperationParameters().get("transferTo"));
+            assertNotNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
+            return null;
+        }).when(businessActions).dispatch(any());
+        var command = new com.workflow.contracts.process.task.model.TransferTaskCommand(new CommandMeta("timing-transfer"), task.getId(), "bob", null);
+        port.transfer(command);
+        assertEquals(List.of("TASK_TRANSFER_VALIDATING", "TASK_TRANSFERRING", "TASK_TRANSFERRED"), observed);
+        assertEquals("bob", engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult().getAssignee());
+        assertTrue(port.transfer(command).receipt().replayed());
+        assertEquals(3, observed.size());
+    }
+
+    @Test void advancingActionChangesTheRealGatewayRouteBeforeTheEngineComputesIt() {
+        engine.getRepositoryService().createDeployment().addString("business-route.bpmn20.xml", """
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="timing-route">
+                  <process id="business_route" isExecutable="true"><startEvent id="start"/>
+                  <sequenceFlow id="toReview" sourceRef="start" targetRef="review"/>
+                  <userTask id="review" flowable:assignee="alice"/>
+                  <sequenceFlow id="toGate" sourceRef="review" targetRef="gate"/><exclusiveGateway id="gate" default="low"/>
+                  <sequenceFlow id="high" sourceRef="gate" targetRef="highReview"><conditionExpression xsi:type="tFormalExpression">${risk == 'HIGH'}</conditionExpression></sequenceFlow>
+                  <sequenceFlow id="low" sourceRef="gate" targetRef="lowReview"/>
+                  <userTask id="highReview" flowable:assignee="alice"/><userTask id="lowReview" flowable:assignee="alice"/>
+                  </process></definitions>
+                """).deploy();
+        instanceId = engine.getRuntimeService().startProcessInstanceByKey("business_route", Map.of("risk", "LOW")).getId();
+        var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var task = tasks().get(0);
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            if ("TASK_ADVANCING".equals(event.getTriggerTiming())) engine.getRuntimeService().setVariable(instanceId, "risk", "HIGH");
+            // 后处理再次改值也不能改变本次已经计算出的路由。
+            if ("TASK_SUBMITTED".equals(event.getTriggerTiming())) engine.getRuntimeService().setVariable(instanceId, "risk", "LOW");
+            return null;
+        }).when(businessActions).dispatch(any());
+        port.complete(new com.workflow.contracts.process.task.model.CompleteTaskCommand(new CommandMeta("route-approve"), task.getId(), "approve", null));
+        assertEquals(List.of("highReview"), tasks().stream().map(Task::getTaskDefinitionKey).toList());
+        assertEquals("LOW", engine.getRuntimeService().getVariable(instanceId, "risk"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_WITHDRAW_VALIDATING", "PROCESS_WITHDRAWING", "PROCESS_WITHDRAW_EXECUTED", "SUCCESS"})
+    void withdrawStagesSurroundDeletionAndAllFailuresRestoreTheInstance(String failureStage) {
+        engine.getIdentityService().setAuthenticatedUserId("alice");
+        try { instanceId = engine.getRuntimeService().startProcessInstanceByKey("programming", Map.of("risk", "LOW")).getId(); }
+        finally { engine.getIdentityService().setAuthenticatedUserId(null); }
+        taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var observed = new ArrayList<String>();
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            observed.add(event.getTriggerTiming());
+            assertEquals("原因", event.getOperationParameters().get("reason"));
+            if ("PROCESS_WITHDRAW_EXECUTED".equals(event.getTriggerTiming())) {
+                assertTrue(tasks().isEmpty());
+                jdbc.update("INSERT INTO operation_timing_form VALUES ('withdrawn')");
+            } else assertEquals(2, tasks().size());
+            if (failureStage.equals(event.getTriggerTiming())) throw new IllegalArgumentException("拒绝撤回");
+            return null;
+        }).when(businessActions).dispatch(any());
+        if ("SUCCESS".equals(failureStage)) {
+            businessCore.withdrawProcess(instanceId, "alice", "原因");
+            assertTrue(tasks().isEmpty());
+            assertEquals(List.of("PROCESS_WITHDRAW_VALIDATING", "PROCESS_WITHDRAWING", "PROCESS_WITHDRAW_EXECUTED"), observed);
+        } else {
+            assertThrows(RuntimeException.class, () -> businessCore.withdrawProcess(instanceId, "alice", "原因"));
+            assertEquals(2, tasks().size());
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM operation_timing_form", Integer.class));
+        }
+    }
+
+    @Test void deferredBackgroundCompletionUsesTheSameBusinessStages() {
+        taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var task = tasks().get(0);
+        businessCore.completeDeferredTask(task.getId(), "alice", "approve", "加签收口", null, null, Map.of());
+        var events = org.mockito.ArgumentCaptor.forClass(com.workflow.process.action.domain.FlowActionTriggerEvent.class);
+        verify(businessActions, times(4)).dispatch(events.capture());
+        assertEquals(List.of("TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"),
+                events.getAllValues().stream().map(com.workflow.process.action.domain.FlowActionTriggerEvent::getTriggerTiming).toList());
+        assertNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
     }
 
     @Test

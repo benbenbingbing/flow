@@ -235,7 +235,7 @@ public class FlowActionCustomFailureTransactionTest {
         @Transactional public void run(Runnable work) { work.run(); }
     }
 
-    private static class Fixture {
+    static class Fixture {
         final JdbcTemplate jdbc;
         final DataSourceTransactionManager transactions;
         final FlowActionExecutionMapper mapper;

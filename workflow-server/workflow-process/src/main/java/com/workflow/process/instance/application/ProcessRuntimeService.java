@@ -1,5 +1,8 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.process.action.application.FlowActionOperationDispatcher;
+import static com.workflow.contracts.process.action.model.FlowActionTriggerTiming.*;
+
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.database.port.DatabaseClockPort;
@@ -52,6 +55,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProcessRuntimeService implements ProcessRuntimePort {
+    /** 业务动作必须在实际步骤处分发，所有调用方式共用，不能只装饰 HTTP 入口。 */
+    private final FlowActionOperationDispatcher operationActions;
+
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.contracts.history.EntityHistoryWritePolicyPort historyWriteGuard;
 
@@ -127,8 +133,21 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
 
         Map<String, Object> variables = buildVariables(
                 request, deployedDefinition.getId());
-        multiInstanceCollectionListener.prepareVariables(
-                deployedDefinition.getId(), variables);
+        // 发起时已选定实际部署版本；尚无实例 ID，准备动作写入的变量随后交给引擎。
+        var operation = operationActions.process(deployedDefinition.getId(), null, "START", request.submitterId(),
+                variables, Map.of());
+        var originalVariables = com.workflow.contracts.process.model.ProcessValues.snapshot(variables);
+        operationActions.fire(operation, PROCESS_START_VALIDATING);
+        operationActions.fire(operation, PROCESS_STARTING);
+        // 无实例的准备动作也不能改写发起人、实体身份及内部控制变量。
+        var changedVariables = new java.util.HashSet<String>(operation.getVariables().keySet());
+        changedVariables.addAll(originalVariables.keySet());
+        changedVariables.removeIf(key -> originalVariables.containsKey(key)
+                && java.util.Objects.equals(originalVariables.get(key), operation.getVariables().get(key)));
+        com.workflow.process.variable.application.ProcessVariablePolicy.requireWritable(changedVariables, null);
+        variables = operation.getVariables();
+        // 准备动作可能改变业务变量，人员解析必须使用准备后的最终输入。
+        multiInstanceCollectionListener.prepareVariables(deployedDefinition.getId(), variables);
         if (StringUtils.hasText(request.submitterId())) {
             identityService.setAuthenticatedUserId(request.submitterId());
         }
@@ -153,6 +172,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                 .active()
                 .listPage(0, 1).stream().findFirst().orElse(null);
         processTaskService.syncTasksFromFlowable(processInstance.getId());
+        operation.setProcessInstanceId(processInstance.getId());
+        operationActions.fire(operation, PROCESS_START_EXECUTED);
 
         log.info("实体数据 {} 发起流程 {}，流程实例ID: {}",
                 LogValue.safe(request.entityRecordId()), LogValue.safe(processConfig.getProcessKey()),

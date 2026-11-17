@@ -52,6 +52,16 @@ public class FlowActionExecution {
     private String idempotencyKey;
     /** 触发事件序列化 JSON（执行上下文载荷） */
     private String payloadJson;
+    /** 本次触发中对应的前置执行记录；不可按动作 ID 查询其他次触发的成功结果。 */
+    private String predecessorExecutionId;
+    /** 入队时完整动作快照；后续重试不读取设计器草稿或重新发布的配置。 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.ToString.Exclude
+    private String actionSnapshot;
+    /** 未脱敏业务输出，仅供成功依赖消费；不进入执行详情响应和日志。 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @lombok.ToString.Exclude
+    private String outputJson;
     /** CUSTOM 的完整动作发布快照，重试不依赖可变草稿或最新策略。 */
     private String failureStrategySnapshot;
     /** 人工重放的下游幂等键；为空时使用本记录 idempotencyKey。 */
@@ -107,6 +117,8 @@ public class FlowActionExecution {
      * 执行状态枚举。
      */
     public enum Status {
+        /** 等待本次触发的前置动作成功；前置失败或被人工忽略均不放行。 */
+        WAITING,
         /** 待执行：已入队等待发件箱工作线程抢占 */
         PENDING,
         /** 执行中：已被抢占并开始调用处理器 */

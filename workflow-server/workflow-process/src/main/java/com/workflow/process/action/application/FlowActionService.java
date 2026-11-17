@@ -96,6 +96,7 @@ public class FlowActionService {
             captureArguments = true,
             captureResult = true)
     public FlowAction saveAction(FlowAction action) {
+        flowActionMapper.lockConfiguration(action.getProcessConfigId());
         normalizeAction(action);
         var definition = definitionService.requireSelectable(
                 action.getProcessConfigId(),
@@ -104,6 +105,7 @@ public class FlowActionService {
         action.setActionDefinitionId(definition.getId());
         action.setInterfaceName(definition.getHandlerName());
         configurationValidator.validate(action);
+        validateDependencyChange(action, false);
         action.setStatus(FlowAction.Status.DRAFT.name());
         action.setUpdatedAt(LocalDateTime.now());
         
@@ -115,6 +117,9 @@ public class FlowActionService {
             FlowAction existing = flowActionMapper.selectById(action.getId());
             if (existing == null || !FlowAction.Status.DRAFT.name().equals(existing.getStatus())) {
                 throw new RuntimeException("只能修改草稿状态的动作");
+            }
+            if (!java.util.Objects.equals(existing.getProcessConfigId(), action.getProcessConfigId())) {
+                throw new IllegalArgumentException("不能修改动作所属流程，请在目标流程新建动作");
             }
             action.setCreatedAt(existing.getCreatedAt());
             action.setCreatedBy(existing.getCreatedBy());
@@ -138,7 +143,12 @@ public class FlowActionService {
             targetIdArg = 0)
     public void deleteAction(String actionId) {
         FlowAction action = flowActionMapper.selectById(actionId);
+        if (action != null) {
+            flowActionMapper.lockConfiguration(action.getProcessConfigId());
+            action = flowActionMapper.selectById(actionId);
+        }
         if (action != null && FlowAction.Status.DRAFT.name().equals(action.getStatus())) {
+            validateDependencyChange(action, true);
             flowActionMapper.logicDeleteById(actionId);
         } else {
             throw new RuntimeException("只能删除草稿状态的动作");
@@ -154,6 +164,7 @@ public class FlowActionService {
      */
     @Transactional
     public void publishActions(String processConfigId, String versionId) {
+        flowActionMapper.lockConfiguration(processConfigId);
         // 1. 查询所有草稿动作
         List<FlowAction> draftActions = flowActionMapper.findDraftActionsByProcessConfigId(processConfigId);
         
@@ -161,6 +172,10 @@ public class FlowActionService {
             log.info("流程 {} 没有草稿动作需要发布", processConfigId);
             return;
         }
+        FlowActionDependencies.validate(draftActions);
+        // 草稿与每次发布拥有独立 ID；先分配全部发布 ID，再转换依赖，避免引用旧版本或草稿。
+        var publishedIds = new java.util.HashMap<String, String>();
+        for (var draft : draftActions) publishedIds.put(draft.getId(), com.baomidou.mybatisplus.core.toolkit.IdWorker.getIdStr());
         
         // 2. 复制每个动作到新版本，状态改为已发布
         for (FlowAction draft : draftActions) {
@@ -169,6 +184,8 @@ public class FlowActionService {
                 configurationValidator.validate(draft);
             }
             FlowAction published = new FlowAction();
+            published.setId(publishedIds.get(draft.getId()));
+            published.setPredecessorActionId(publishedIds.get(draft.getPredecessorActionId()));
             published.setProcessConfigId(draft.getProcessConfigId());
             published.setScopeType(draft.getScopeType());
             published.setElementId(draft.getElementId());
@@ -244,12 +261,28 @@ public class FlowActionService {
             targetType = "FLOW_ACTION",
             captureArguments = true)
     public void updateSortOrder(List<String> actionIds) {
+        java.util.List<FlowAction> actions = actionIds.stream().map(flowActionMapper::selectById).toList();
+        if (!actions.isEmpty() && actions.get(0) != null) {
+            flowActionMapper.lockConfiguration(actions.get(0).getProcessConfigId());
+            actions = actionIds.stream().map(flowActionMapper::selectById).toList();
+        }
+        if (actions.stream().anyMatch(action -> action == null || !"DRAFT".equals(action.getStatus()))) {
+            throw new IllegalArgumentException("只能调整草稿动作顺序");
+        }
+        FlowAction first = actions.isEmpty() ? null : actions.get(0);
+        if (first != null && actions.stream().anyMatch(action ->
+                !java.util.Objects.equals(action.getProcessConfigId(), first.getProcessConfigId())
+                || !java.util.Objects.equals(action.getScopeType(), first.getScopeType())
+                || !java.util.Objects.equals(action.getElementId(), first.getElementId())
+                || !java.util.Objects.equals(action.getTriggerTiming(), first.getTriggerTiming())
+                || !java.util.Objects.equals(action.getExecutionMode(), first.getExecutionMode()))) {
+            throw new IllegalArgumentException("只能调整同一绑定位置、时机和执行方式内的顺序");
+        }
         for (int i = 0; i < actionIds.size(); i++) {
-            FlowAction action = new FlowAction();
-            action.setId(actionIds.get(i));
-            action.setSortOrder(i);
-            action.setUpdatedAt(LocalDateTime.now());
-            flowActionMapper.updateById(action);
+            // 只更新排序列，不能让部分实体的 null 值清除前置动作或失败策略配置。
+            flowActionMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers.<FlowAction>lambdaUpdate()
+                    .eq(FlowAction::getId, actionIds.get(i)).set(FlowAction::getSortOrder, i)
+                    .set(FlowAction::getUpdatedAt, LocalDateTime.now()));
         }
     }
     
@@ -268,6 +301,10 @@ public class FlowActionService {
             targetIdArg = 0)
     public void toggleEnabled(String actionId) {
         FlowAction action = flowActionMapper.selectById(actionId);
+        if (action != null) {
+            flowActionMapper.lockConfiguration(action.getProcessConfigId());
+            action = flowActionMapper.selectById(actionId);
+        }
         if (action == null) {
             throw new RuntimeException("动作不存在");
         }
@@ -278,6 +315,7 @@ public class FlowActionService {
         }
         
         action.setEnabled(!action.getEnabled());
+        validateDependencyChange(action, false);
         action.setUpdatedAt(LocalDateTime.now());
         flowActionMapper.updateById(action);
     }
@@ -318,6 +356,7 @@ public class FlowActionService {
         action.setDescription(request.getDescription());
         action.setInterfaceName(request.getInterfaceName());
         action.setParamsJson(request.getParamsJson());
+        action.setPredecessorActionId(request.getPredecessorActionId());
         action.setSortOrder(request.getSortOrder());
         action.setEnabled(request.getEnabled());
         return action;
@@ -329,6 +368,7 @@ public class FlowActionService {
      * @param action 动作标识，决定后续动作采用的处理分支
      */
     private void normalizeAction(FlowAction action) {
+        if (!org.springframework.util.StringUtils.hasText(action.getPredecessorActionId())) action.setPredecessorActionId(null);
         String scopeType = normalizeScope(action.getScopeType());
         action.setScopeType(scopeType);
         if (FlowActionScopeType.PROCESS.name().equals(scopeType)) {
@@ -349,6 +389,9 @@ public class FlowActionService {
             action.setFailurePolicy("CUSTOM");
             action.setExecutionMode(action.getExecutionMode().toUpperCase(java.util.Locale.ROOT));
         }
+        action.setExecutionMode(action.getExecutionMode().trim().toUpperCase(java.util.Locale.ROOT));
+        action.setFailurePolicy(action.getFailurePolicy().trim().toUpperCase(java.util.Locale.ROOT));
+        action.setTriggerTiming(action.getTriggerTiming().trim().toUpperCase(java.util.Locale.ROOT));
         if (action.getSortOrder() == null) {
             action.setSortOrder(0);
         }
@@ -356,6 +399,14 @@ public class FlowActionService {
             action.setEnabled(true);
         }
         action.setDeleted(0);
+    }
+
+    /** 同时检查引用此动作的其他草稿，禁止通过改时机、禁用或删除破坏已有依赖。 */
+    private void validateDependencyChange(FlowAction candidate, boolean deleting) {
+        var actions = new java.util.ArrayList<>(findDraftActions(candidate.getProcessConfigId()));
+        actions.removeIf(item -> java.util.Objects.equals(item.getId(), candidate.getId()));
+        if (!deleting) actions.add(candidate);
+        FlowActionDependencies.validate(actions);
     }
 
     /**

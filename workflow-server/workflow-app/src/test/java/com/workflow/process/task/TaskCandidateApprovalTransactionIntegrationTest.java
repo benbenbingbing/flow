@@ -142,7 +142,7 @@ class TaskCandidateApprovalTransactionIntegrationTest {
             completionHook.afterEngineCompletion();
             return null;
         }).when(completingTasks).complete(anyString(), org.mockito.ArgumentMatchers.<java.util.Map<String, Object>>any());
-        TaskActionService target = new TaskActionService(
+        TaskActionService target = new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), engine.getRuntimeService(), engine.getHistoryService()),
                 completingTasks, engine.getRuntimeService(), engine.getHistoryService(),
                 projectionService, engine.getRepositoryService(), operationLogMapper, userService,
                 mock(NodeFormSubmissionService.class),

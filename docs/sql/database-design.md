@@ -2509,7 +2509,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 
 把受控动作绑定到整个流程、节点或连线，并指定触发时机、执行方式和参数。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 21 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 25 个。
 
 #### 5.11.2 字段设计
 
@@ -2528,7 +2528,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 | `description` | 说明 | `varchar(500)` | 是 | `NULL` | 动作描述。 | 现存 |
 | `interface_name` | 接口名称 | `varchar(200)` | 否 | 无 | 接口名称（Spring Bean或类名）。 | 现存 |
 | `params_json` | 参数JSON | `text` | 是 | `NULL`（隐式） | 参数JSON。 | 现存 |
-| `sort_order` | 排序号 | `int` | 是 | `'0'` | 执行顺序。 | 现存 |
+| `sort_order` | 排序号 | `int` | 是 | `'0'` | 同组事务内按排序同步调用，提交后仅展示，完成先后由前置动作决定。 | 现存 |
 | `enabled` | 是否启用 | `tinyint(1)` | 是 | `'1'` | 是否启用。 | 现存 |
 | `status` | 状态 | `varchar(20)` | 是 | `'DRAFT'` | 状态：DRAFT/PUBLISHED/DISABLED。 | 现存 |
 | `version_id` | 所属版本ID | `varchar(64)` | 是 | `NULL` | 所属版本ID。 | 现存 |
@@ -2536,6 +2536,10 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 | `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 | `created_by` | 创建人 | `varchar(64)` | 是 | `NULL` | 创建人。 | 现存 |
 | `deleted` | 逻辑删除标记 | `int` | 是 | `'0'` | 是否删除 0-未删除 1-已删除。 | 现存 |
+| `predecessor_action_id` | 前置动作ID | `varchar(64)` | 是 | `NULL` | 同组提交后动作成功依赖，发布时转换为发布版本 ID，排序不改变依赖。 | 现存 |
+| `failure_strategy_code` | 失败策略编码 | `varchar(64)` | 是 | `NULL` | 用于选择失败处置实现。 | 现存 |
+| `failure_strategy_version` | 失败策略版本 | `varchar(32)` | 是 | `NULL` | 发布固定策略实现版本。 | 现存 |
+| `failure_strategy_config` | 失败策略配置 | `text` | 是 | `NULL` | 发布固定失败策略参数。 | 现存 |
 
 #### 5.11.3 索引与关联
 
@@ -2564,6 +2568,8 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V078__remove_legacy_process_action_fields.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V078__remove_legacy_process_action_fields.sql)。
 
 实现定位：[FlowActionMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/action/infrastructure/persistence/mapper/FlowActionMapper.java)、[FlowActionPublishValidator.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/action/application/FlowActionPublishValidator.java)、[FlowActionService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/action/application/FlowActionService.java)。
+
+V138：`predecessor_action_id` 逻辑关联本表 `id`，限制同流程、绑定、时机及 AFTER_COMMIT；保存、发布均拒绝自依赖、循环及失效前置。删除、禁用或修改被依赖动作须先解除后继引用。旧配置默认 NULL，保持独立执行。参数以 `{ "$predecessor": "contractNo" }` 引用前置输出字段，不执行表达式。
 
 ### 5.12 process_action_definition 流程动作处理器目录表
 
@@ -3176,9 +3182,9 @@ V105 新增摘要字段与索引，并扩展候选显示名称；详见 [V105](.
 
 #### 6.9.1 业务说明
 
-记录动作触发、请求载荷、执行状态、重试及结果，承接可靠执行任务。
+记录动作触发、请求载荷、执行状态、重试及结果，承接可靠执行任务。V137 起允许发起前记录的 process_instance_id 为空，禁止伪造实例 ID。业务操作、任务种类、加签源任务、本次提交表单及操作参数保存在 payload_json；前置时机强制事务内执行且失败回滚。后处理的 AFTER_EXECUTE 表示业务步骤完成，并非整个外层事务即将提交；AFTER_COMMIT 使用同事务 Outbox。既有索引及记录保留，不新增表或字段。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 33 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 44 个。
 
 #### 6.9.2 字段设计
 
@@ -3190,7 +3196,7 @@ V105 新增摘要字段与索引，并扩展候选显示名称；详见 [V105](.
 | `handler_name` | 处理器Bean名称快照 | `varchar(200)` | 是 | `NULL` | 处理器Bean名称快照。 | 现存 |
 | `handler_display_name` | 处理器中文名称快照 | `varchar(200)` | 是 | `NULL` | 处理器中文名称快照。 | 现存 |
 | `version_id` | 所属流程发布版本 ID | `varchar(64)` | 是 | `NULL` | 所属流程发布版本 ID。 | 现存 |
-| `process_instance_id` | 流程实例 ID | `varchar(64)` | 否 | 无 | 流程实例 ID。 | 现存 |
+| `process_instance_id` | 流程实例 ID | `varchar(64)` | 是 | `NULL` | 发起前尚未创建实例时为空；通过 version_id、process_definition_id、entity_code 及 payload_json 中的 entityDataId 定位。 | 现存 |
 | `process_definition_id` | Flowable 流程定义 ID | `varchar(128)` | 是 | `NULL` | Flowable 流程定义 ID。 | 现存 |
 | `execution_id` | Flowable 执行实例 ID | `varchar(64)` | 是 | `NULL` | Flowable 执行实例 ID。 | 现存 |
 | `task_id` | 任务 ID | `varchar(64)` | 是 | `NULL` | 任务 ID（任务级动作）。 | 现存 |
@@ -3217,6 +3223,17 @@ V105 新增摘要字段与索引，并扩展候选显示名称；详见 [V105](.
 | `duration_ms` | 执行耗时毫秒 | `bigint` | 是 | `NULL` | 执行耗时毫秒。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间。 | 现存 |
+| `predecessor_execution_id` | 前置执行ID | `varchar(64)` | 是 | `NULL` | 只关联本次触发的前置执行，成功或成功重放后才允许领取。 | 现存 |
+| `action_snapshot` | 动作快照 | `longtext` | 是 | `NULL` | 入队时固定完整配置，重试不读取可变草稿，不向日志返回。 | 现存 |
+| `output_json` | 业务输出 | `longtext` | 是 | `NULL` | SUCCESS 与原始 JSON 输出同次落库，供后继引用，日志仅显示脱敏副本。 | 现存 |
+| `failure_strategy_snapshot` | 自定义策略快照 | `mediumtext` | 是 | `NULL` | 固定自定义动作及失败策略配置。 | 现存 |
+| `attempt_no` | 尝试序号 | `int` | 否 | `0` | 首次为1，按额外重试预算限制后续尝试。 | 现存 |
+| `attempt_lease_token` | 尝试令牌 | `bigint` | 是 | `NULL` | 将执行尝试绑定当前租约代次。 | 现存 |
+| `termination_reason` | 终止原因 | `varchar(64)` | 是 | `NULL` | 保留终态失败或策略处理的原因。 | 现存 |
+| `resolution_status` | 处置状态 | `varchar(20)` | 是 | `NULL` | NONE/OPEN/RESOLVED/REPLAYING，人工处理不代表执行成功。 | 现存 |
+| `replay_root_id` | 重放根执行ID | `varchar(64)` | 是 | `NULL` | 串行化同一执行的人工重放，并供后继查找成功重放。 | 现存 |
+| `replay_of_id` | 重放来源ID | `varchar(64)` | 是 | `NULL` | 记录本次重放来源，保留原始失败事实。 | 现存 |
+| `handler_idempotency_key` | 下游幂等键 | `varchar(128)` | 是 | `NULL` | 跨自动重试和人工重放复用下游幂等身份。 | 现存 |
 
 #### 6.9.3 索引与关联
 
@@ -3243,6 +3260,8 @@ owner_id、lease_token、lease_until 构成跨实例领取租约；重试需要�
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V005__flow_action_execution_leases.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V005__flow_action_execution_leases.sql)。
 
 实现定位：[FlowActionExecutionMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/action/infrastructure/persistence/mapper/FlowActionExecutionMapper.java)、[FlowActionExecution.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/action/infrastructure/persistence/record/FlowActionExecution.java)、[FlowActionExecutionService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/action/application/FlowActionExecutionService.java)。
+
+V138：新增 `idx_action_exec_predecessor(status, predecessor_execution_id)` 和 `idx_action_exec_replay_success(replay_root_id, status)`。每次触发整批原子创建记录，前置执行 ID 在首次 INSERT 时固定，后继为 WAITING。轮询仅在读到已提交的前置 SUCCESS 后 CAS 转为 PENDING，随后沿用租约抢占。SUCCESS 与 output_json 同一 fencing 条件更新提交，过期执行者不能放行后继。前置终态失败或人工确认不放行，成功重放可放行并提供输出。只重试失败动作，不重跑已成功前置。缺失字段明确失败，不回退其他触发或运行态变量。大对象类型为 LONGTEXT / TEXT / CLOB；不新增物理外键，允许版本和审计独立留存。
 
 ### 6.10 process_status_sync_event 流程实体状态同步事件表
 

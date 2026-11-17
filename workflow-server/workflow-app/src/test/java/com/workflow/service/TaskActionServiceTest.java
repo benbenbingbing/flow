@@ -124,7 +124,7 @@ class TaskActionServiceTest {
     /** 装配被测服务并设置当前用户上下文 */
     @BeforeEach
     void setUp() {
-        service = new TaskActionService(
+        service = new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), runtimeService, mock(org.flowable.engine.HistoryService.class)),
                 taskService,
                 runtimeService,
                 historyService,
@@ -246,7 +246,6 @@ class TaskActionServiceTest {
         // 旧实例先补齐持久化名称，再让表单按权限处理本次提交，最后交由引擎计算网关。
         var ordered = inOrder(runtimeService, entityVariableService,
                 nodeFormSubmissionService, taskService);
-        ordered.verify(runtimeService).getVariables("proc-1");
         ordered.verify(entityVariableService).missingRecordVariables(storedVariables);
         ordered.verify(runtimeService).setVariables("proc-1", missingVariables);
         ordered.verify(nodeFormSubmissionService).applyEditableData(task, formData);

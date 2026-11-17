@@ -121,7 +121,7 @@ class TaskAssignmentAccessFlowableIntegrationTest {
         engine.getRuntimeService().addEventListener(assignmentListener);
 
         processTaskService = mock(ProcessTaskService.class);
-        taskActionService = new TaskActionService(
+        taskActionService = new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), engine.getRuntimeService(), engine.getHistoryService()),
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(),
                 processTaskService, engine.getRepositoryService(),
                 mock(ProcessOperationLogMapper.class), mock(SysUserService.class),

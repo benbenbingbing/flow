@@ -1,5 +1,8 @@
 package com.workflow.process.task.application;
 
+import com.workflow.process.action.application.FlowActionOperationDispatcher;
+import static com.workflow.contracts.process.action.model.FlowActionTriggerTiming.*;
+
 import com.workflow.process.status.application.ProcessEndReason;
 
 import com.workflow.core.logging.LogValue;
@@ -54,6 +57,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class TaskActionService {
+    /** 业务动作必须在实际步骤处分发，所有调用方式共用，不能只装饰 HTTP 入口。 */
+    private final FlowActionOperationDispatcher operationActions;
+
 
     private final TaskService taskService;
     private final RuntimeService runtimeService;
@@ -309,6 +315,18 @@ public class TaskActionService {
         String processInstanceId = task.getProcessInstanceId();
         String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
         String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
+        String normalizedAction = multiInstanceOutcomeService.normalizeAction(action);
+        boolean transfer = "transfer".equals(normalizedAction);
+        var operationParameters = new java.util.LinkedHashMap<String, Object>();
+        operationParameters.put("comment", comment);
+        operationParameters.put("action", normalizedAction);
+        operationParameters.put("transferTo", transferTo);
+        var operation = operationActions.task(task, taskId, transfer ? "TRANSFER" : "SUBMIT", userId,
+                formData, operationParameters);
+        operation.setApprovalAction(normalizedAction);
+        // 校验先于自动认领、表单保存及引擎写入；转办不触发审批推进阶段。
+        operationActions.fire(operation, transfer ? TASK_TRANSFER_VALIDATING : TASK_SUBMIT_VALIDATING);
+        if (transfer) operationActions.fire(operation, TASK_TRANSFERRING);
         if (checkAccess) {
             String currentIdentity = currentTaskIdentity();
             if (!StringUtils.hasText(assignee)) {
@@ -320,7 +338,6 @@ public class TaskActionService {
             taskService.setAssignee(taskId, userId);
         }
 
-        String normalizedAction = multiInstanceOutcomeService.normalizeAction(action);
         if (!"transfer".equals(normalizedAction)) {
             // 存量实例可能从未初始化 name；只补缺失变量，并在本次审批事务中写入。
             // 后续节点表单仍按原权限规则处理可编辑值，不能用客户端只读字段补齐。
@@ -344,11 +361,14 @@ public class TaskActionService {
                             formData);
         }
 
+        if (!transfer) operationActions.fire(operation, TASK_FORM_SAVING);
         nodeFormSubmissionService.applyEditableData(task, formData);
 
         // 检查是否是多实例任务（会签/或签），以已部署 BPMN 为准
         boolean isMultiInstance = multiInstanceOutcomeService.isMultiInstance(task);
 
+        // 影响路由/候选人的变量必须先写入，再重验下一审批人，不能在重验后改写其依据。
+        if (!transfer) operationActions.fire(operation, TASK_ADVANCING);
         if ("transfer".equals(normalizedAction)) {
             if (nextApproverSelections != null
                     && !nextApproverSelections.isEmpty()) {
@@ -471,6 +491,7 @@ public class TaskActionService {
                     processInstanceId,
                     taskId);
         }
+        operationActions.fire(operation, transfer ? TASK_TRANSFERRED : TASK_SUBMITTED);
     }
 
     /**
@@ -863,11 +884,21 @@ public class TaskActionService {
                 com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
                         .ofReason(reason));
 
+        var parameters = new java.util.LinkedHashMap<String, Object>();
+        parameters.put("reason", reason);
+        var operation = operationActions.process(processInstance.getProcessDefinitionId(), processInstanceId,
+                "WITHDRAW", userId, null, parameters);
+        operation.setEndReason(reason);
+
         try {
             String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
             String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
             if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
                 entityRecordPort.requireProcessEndStatus(entityCode, "WITHDRAWN");
+            }
+            operationActions.fire(operation, PROCESS_WITHDRAW_VALIDATING);
+            operationActions.fire(operation, PROCESS_WITHDRAWING);
+            if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
                 entityRecordPort.recordActivity(
                         entityCode,
                         entityDataId,
@@ -891,6 +922,7 @@ public class TaskActionService {
 
             // 清理本地待办
             processTaskService.deleteTasksByProcessInstance(processInstanceId);
+            operationActions.fire(operation, PROCESS_WITHDRAW_EXECUTED);
 
             log.info("流程实例 {} 已被用户 {} 撤回，原因: {}",
                     LogValue.safe(processInstanceId), LogValue.safe(userId), LogValue.safe(reason));

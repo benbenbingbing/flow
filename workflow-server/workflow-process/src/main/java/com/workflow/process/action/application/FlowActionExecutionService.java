@@ -79,6 +79,23 @@ public class FlowActionExecutionService {
     }
 
     /**
+     * 同一次触发的异步动作原子入队。先固定执行 ID，再绑定前置执行，列表位置不影响依赖。
+     * 主事务回滚时本批记录一并回滚；没有外层事务时本方法仍保证整批提交。
+     */
+    @Transactional
+    public void enqueueActions(List<FlowAction> actions, FlowActionTriggerEvent event) {
+        FlowActionDependencies.validate(actions);
+        var ids = new LinkedHashMap<String, String>();
+        for (var action : actions) ids.put(action.getId(), com.baomidou.mybatisplus.core.toolkit.IdWorker.getIdStr());
+        for (var action : actions) {
+            String predecessor = ids.get(action.getPredecessorActionId());
+            createRecord(action, event, java.util.UUID.randomUUID().toString(), predecessor == null
+                    ? FlowActionExecution.Status.PENDING : FlowActionExecution.Status.WAITING,
+                    ids.get(action.getId()), predecessor);
+        }
+    }
+
+    /**
      * 在独立新事务内创建执行记录，用于事务内动作的审计写入。
      *
      * @param action         动作配置
@@ -110,8 +127,19 @@ public class FlowActionExecutionService {
             FlowActionTriggerEvent event,
             String idempotencyKey,
             FlowActionExecution.Status status) {
+        return createRecord(action, event, idempotencyKey, status, null, null);
+    }
+
+    /** 前置关联与初始状态在首次 INSERT 中写入，不产生可被提前领取的临时 PENDING。 */
+    private FlowActionExecution createRecord(FlowAction action, FlowActionTriggerEvent event,
+            String idempotencyKey, FlowActionExecution.Status status, String id, String predecessorId) {
         enrichOperationContext(event, idempotencyKey);
         FlowActionExecution execution = new FlowActionExecution();
+        execution.setId(id);
+        execution.setPredecessorExecutionId(predecessorId);
+        if ("AFTER_COMMIT".equals(action.getExecutionMode())) {
+            execution.setActionSnapshot(writeRequiredJson(action));
+        }
         execution.setActionId(action.getId());
         execution.setActionName(action.getActionName());
         execution.setHandlerName(action.getInterfaceName());
@@ -148,13 +176,15 @@ public class FlowActionExecutionService {
         }
         appendTrace(
                 execution,
-                status == FlowActionExecution.Status.PENDING ? "QUEUED" : "EXECUTION_CREATED",
-                status == FlowActionExecution.Status.PENDING
+                status != FlowActionExecution.Status.RUNNING ? "QUEUED" : "EXECUTION_CREATED",
+                status != FlowActionExecution.Status.RUNNING
                         ? "主事务内已写入提交后执行队列"
                         : "事务内动作执行记录已创建",
                 Map.of(
                         "executionMode", valueOrEmpty(action.getExecutionMode()),
                         "failurePolicy", valueOrEmpty(action.getFailurePolicy())));
+        if (predecessorId != null) appendTrace(execution, "WAITING_DEPENDENCY", "等待本次触发的前置动作成功",
+                Map.of("predecessorExecutionId", predecessorId));
         if (FlowActionFailureStrategyCatalog.custom(action) && "IN_TRANSACTION".equals(action.getExecutionMode())) {
             appendTrace(execution, "TRANSACTION_PENDING", "主事务尚未结束，最终结局待确认", Map.of("outcome", "UNKNOWN"));
         }
@@ -314,6 +344,10 @@ public class FlowActionExecutionService {
             captureContext(execution, context);
         }
         execution.setStatus(FlowActionExecution.Status.SUCCESS.name());
+        // 业务输出与 SUCCESS 同次条件更新提交；审计中的脱敏结果不能用于后续业务参数。
+        if (context != null && execution.getActionSnapshot() != null) {
+            execution.setOutputJson(writeRequiredJson(context.getExecutionResult()));
+        }
         execution.setFinishedAt(LocalDateTime.now());
         execution.setUpdatedAt(LocalDateTime.now());
         execution.setErrorMessage(null);
@@ -326,9 +360,7 @@ public class FlowActionExecutionService {
                 Map.of("durationMs", execution.getDurationMs()));
         if (hasLease(execution)) {
             if (executionMapper.markLeasedSuccess(execution) == 0) {
-                if (execution.getFailureStrategySnapshot() != null) throw new IllegalStateException("自定义动作成功结果被过期租约拒绝");
-                log.warn("流程动作完成结果被 fencing 拒绝: id={}, owner={}, token={}",
-                        execution.getId(), execution.getOwnerId(), execution.getLeaseToken());
+                throw new IllegalStateException("流程动作成功结果被过期租约拒绝");
             }
         } else {
             executionMapper.updateById(execution);
@@ -420,6 +452,14 @@ public class FlowActionExecutionService {
 
     /** 读取创建执行记录时固定的完整动作；自定义快照损坏时不可退回当前动作配置。 */
     public FlowAction executionAction(FlowActionExecution execution, FlowAction legacy) {
+        if (execution.getActionSnapshot() != null && execution.getFailureStrategySnapshot() == null) {
+            try {
+                var action = objectMapper.readValue(execution.getActionSnapshot(), FlowAction.class);
+                if (!java.util.Objects.equals(action.getId(), execution.getActionId())
+                        || !"AFTER_COMMIT".equals(action.getExecutionMode())) throw new IllegalArgumentException("动作快照不匹配");
+                return action;
+            } catch (Exception error) { throw new IllegalStateException("流程动作执行快照不可用", error); }
+        }
         if (execution.getFailureStrategySnapshot() == null) {
             if (FlowActionFailureStrategyCatalog.custom(legacy)) throw new IllegalStateException("自定义策略执行记录缺少发布快照");
             return legacy;
@@ -502,6 +542,8 @@ public class FlowActionExecutionService {
         FlowActionExecution replay = createRecord(action, readEvent(original), java.util.UUID.randomUUID().toString(),
                 FlowActionExecution.Status.PENDING);
         replay.setFailureStrategySnapshot(original.getFailureStrategySnapshot());
+        replay.setActionSnapshot(original.getActionSnapshot());
+        replay.setPredecessorExecutionId(original.getPredecessorExecutionId());
         replay.setReplayRootId(root);
         replay.setReplayOfId(original.getId());
         replay.setHandlerIdempotencyKey(handlerIdempotencyKey(original));
@@ -539,13 +581,38 @@ public class FlowActionExecutionService {
     }
 
     /**
-     * 查询当前可执行的就绪记录（PENDING 或已到重试时间的 FAILED）。
+     * 放行已满足成功依赖的 WAITING，再查询 PENDING 或已到重试时间的 FAILED。
      *
      * @param limit 最多返回条数
      * @return 就绪执行记录列表
      */
     public List<FlowActionExecution> findReady(int limit) {
+        // 成功是不可逆终态。先读到已提交的成功事实，再以 CAS 放行 WAITING，无需持有业务锁。
+        // 查询也接受原执行的成功人工重放；人工“确认已处理”仍保留失败，不能满足成功依赖。
+        for (String id : executionMapper.findSatisfiedDependencies(new com.workflow.core.database.mybatis.OffsetPage<>(0, limit))) {
+            executionMapper.releaseDependency(id);
+        }
         return executionMapper.findReady(limit);
+    }
+
+    /** 只读取本次前置执行或其成功重放的业务结果；缺失字段明确失败，不能回退到流程变量。 */
+    public Object predecessorResult(FlowActionExecution execution, String path) {
+        if (execution == null || execution.getPredecessorExecutionId() == null || !FlowActionDependencies.validPath(path)) {
+            throw new IllegalArgumentException("前置动作结果引用无效");
+        }
+        var successes = executionMapper.findSuccessfulDependency(execution.getPredecessorExecutionId());
+        if (successes.isEmpty()) throw new IllegalStateException("前置动作尚未成功");
+        try {
+            JsonNode value = objectMapper.readTree(successes.get(0).getOutputJson());
+            for (String part : path.split("\\.")) {
+                value = value != null && value.isArray() && part.matches("[0-9]+")
+                        ? value.path(Integer.parseInt(part)) : value == null ? null : value.path(part);
+            }
+            if (value == null || value.isMissingNode()) throw new IllegalArgumentException("前置动作输出缺少字段: " + path);
+            return objectMapper.convertValue(value, Object.class);
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("前置动作业务输出不可用", error);
+        }
     }
 
     /**
@@ -670,7 +737,7 @@ public class FlowActionExecutionService {
                 && !FlowActionExecution.Status.FAILED.name().equals(execution.getStatus())) {
             throw new RuntimeException("只有失败或死信动作可以重试");
         }
-        var originalAction = flowActionMapper.selectById(execution.getActionId());
+        var originalAction = executionAction(execution, flowActionMapper.selectById(execution.getActionId()));
         if (originalAction == null || !"AFTER_COMMIT".equalsIgnoreCase(originalAction.getExecutionMode())
                 || !failureStrategies.retryable(originalAction)) {
             throw new IllegalArgumentException("手工重试仅支持可安全重放的提交后动作，事务内动作请重新办理原操作");
@@ -728,6 +795,14 @@ public class FlowActionExecutionService {
         FlowActionExecutionDetail detail = objectMapper.convertValue(
                 execution,
                 FlowActionExecutionDetail.class);
+        if (execution.getPredecessorExecutionId() != null) {
+            var predecessor = executionMapper.selectById(execution.getPredecessorExecutionId());
+            if (predecessor != null) {
+                detail.setPredecessorActionName(predecessor.getActionName());
+                detail.setPredecessorStatus(executionMapper.findSuccessfulDependency(predecessor.getId()).isEmpty()
+                        ? predecessor.getStatus() : "SUCCESS");
+            } else detail.setPredecessorStatus("MISSING");
+        }
         if (!StringUtils.hasText(detail.getActionName())
                 || !StringUtils.hasText(detail.getHandlerName())) {
             FlowAction action = flowActionMapper.selectById(execution.getActionId());
@@ -845,6 +920,12 @@ public class FlowActionExecutionService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 调度快照及业务输出必须可靠序列化，失败时禁止记录成功或丢弃契约数据。 */
+    private String writeRequiredJson(Object value) {
+        try { return objectMapper.writeValueAsString(value); }
+        catch (Exception error) { throw new IllegalArgumentException("流程动作业务快照无法序列化", error); }
     }
 
     /**

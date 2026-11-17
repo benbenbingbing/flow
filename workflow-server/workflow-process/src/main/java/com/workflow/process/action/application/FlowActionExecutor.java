@@ -71,6 +71,21 @@ public class FlowActionExecutor {
              ProcessInvocationScope processScope = openProcessScope(action, event, idempotencyKey)) {
             FlowActionContext context = buildContext(
                     action, event, idempotencyKey);
+            // 参数先按触发快照解析，再覆盖明确声明的前置结果引用；不隐式读取运行态变量。
+            if (StringUtils.hasText(action.getParamsJson())) {
+                try {
+                    var params = objectMapper.readTree(action.getParamsJson());
+                    var fields = params.fields();
+                    while (fields.hasNext()) {
+                        var entry = fields.next();
+                        if (entry.getValue().isObject() && entry.getValue().has(FlowActionDependencies.RESULT_REFERENCE)) {
+                            FlowActionDependencies.validateParams(action, objectMapper);
+                            context.getExtraParams().put(entry.getKey(), executionService.predecessorResult(
+                                    execution, entry.getValue().path(FlowActionDependencies.RESULT_REFERENCE).asText()));
+                        }
+                    }
+                } catch (java.io.IOException error) { throw new IllegalArgumentException("流程动作参数配置非法", error); }
+            }
             if (execution != null) {
                 executionService.markHandlerStarted(execution, context);
             }
@@ -178,6 +193,13 @@ public class FlowActionExecutor {
             FlowActionTriggerEvent event,
             String idempotencyKey) {
         FlowActionContext ctx = new FlowActionContext();
+        com.workflow.contracts.process.action.model.FlowActionTriggerTiming.validateOperationExecution(
+                event.getTriggerTiming(), action.getExecutionMode(), action.getFailurePolicy());
+        ctx.setBusinessOperation(event.getBusinessOperation());
+        ctx.setTaskKind(event.getTaskKind());
+        ctx.setSourceTaskId(event.getSourceTaskId());
+        ctx.setSubmittedFormData(com.workflow.contracts.process.model.ProcessValues.snapshot(event.getSubmittedFormData()));
+        ctx.setOperationParameters(com.workflow.contracts.process.model.ProcessValues.snapshot(event.getOperationParameters()));
         ctx.setRuntimeAccess(flowActionHelper);
         ctx.setActionId(action.getId());
         ctx.setActionName(action.getActionName());

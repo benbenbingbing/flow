@@ -37,6 +37,7 @@ public class FlowActionPublishValidator {
         if (actions == null || actions.isEmpty()) {
             return;
         }
+        FlowActionDependencies.validate(actions);
         for (FlowAction action : actions) {
             if (!Boolean.TRUE.equals(action.getEnabled())) {
                 continue;

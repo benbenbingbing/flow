@@ -24,6 +24,16 @@ import java.util.List;
  */
 @Data
 public class FlowActionContext {
+    /** 当前业务操作，供同一处理器区分审批、转办、加签及实例操作。 */
+    private String businessOperation;
+    /** ENGINE / LOCAL_ADD_SIGN；子任务必须通过 sourceTaskId 定位源任务。 */
+    private String taskKind;
+    /** 本地加签源任务 ID，不能把它当作当前正在办理的子任务 ID。 */
+    private String sourceTaskId;
+    /** 本次提交表单的只读快照；修改实体仍须经过平台授权的写入端口。 */
+    private Map<String, Object> submittedFormData = Map.of();
+    /** 转办目标、加签类型/人员、意见等只读操作输入。 */
+    private Map<String, Object> operationParameters = Map.of();
 
     /**
      * 当前 process_action 记录 ID
@@ -114,7 +124,8 @@ public class FlowActionContext {
     private Map<String, Object> extraParams;
 
     /**
-     * Handler 可选写入的业务执行结果，最终展示在超级管理员执行日志中。
+     * Handler 可选写入的业务执行结果。提交后成功时保存原始结构供依赖动作按字段消费，
+     * 管理员执行日志仅展示脱敏副本；返回成功前必须确认业务操作已实际完成。
      */
     private Object executionResult;
 
@@ -162,12 +173,13 @@ public class FlowActionContext {
     }
 
     /**
-     * 获取流程变量快照；快照为空时回退到运行时查询。
+     * 获取触发时的流程变量快照；仅未提供快照时回退到运行时查询。
+     * 空快照也是有效的触发状态，不能用后续运行态变量替换。
      *
      * @return 流程变量 map
      */
     public Map<String, Object> getVariables() {
-        if (variablesSnapshot != null && !variablesSnapshot.isEmpty()) {
+        if (variablesSnapshot != null) {
             return variablesSnapshot;
         }
         return runtimeAccess == null ? Map.of() : runtimeAccess.getVariables(processInstanceId);
@@ -191,6 +203,7 @@ public class FlowActionContext {
         if (variablesSnapshot != null && variablesSnapshot.containsKey(name)) {
             return variablesSnapshot.get(name);
         }
+        if (processInstanceId == null) return null;
         return runtimeAccess == null ? null : runtimeAccess.getVariable(processInstanceId, name);
     }
 
@@ -201,6 +214,11 @@ public class FlowActionContext {
      * @param value 变量值
      */
     public void setProcessVariable(String name, Object value) {
+        requireVariableWriteAllowed();
+        if ("PROCESS_STARTING".equals(triggerTiming) && processInstanceId == null) {
+            mutableVariablesSnapshot().put(name, value);
+            return;
+        }
         if (runtimeAccess == null) {
             throw new IllegalStateException("流程动作运行时访问器未初始化");
         }
@@ -214,6 +232,11 @@ public class FlowActionContext {
      * @param variables 待写入变量
      */
     public void setProcessVariables(Map<String, Object> variables) {
+        requireVariableWriteAllowed();
+        if ("PROCESS_STARTING".equals(triggerTiming) && processInstanceId == null) {
+            mutableVariablesSnapshot().putAll(variables == null ? Map.of() : variables);
+            return;
+        }
         if (runtimeAccess == null) {
             throw new IllegalStateException("流程动作运行时访问器未初始化");
         }
@@ -236,6 +259,16 @@ public class FlowActionContext {
                     new LinkedHashMap<>(variablesSnapshot);
         }
         return variablesSnapshot;
+    }
+
+    /** 校验阶段只读；发起准备阶段允许写入尚未创建实例的启动变量。 */
+    private void requireVariableWriteAllowed() {
+        // 只约束平台声明的校验阶段，扩展自定义时机不能因名称后缀被意外改变行为。
+        for (FlowActionTriggerTiming timing : FlowActionTriggerTiming.values()) {
+            if (timing.name().equalsIgnoreCase(triggerTiming) && "VALIDATE".equals(timing.getOperationPhase())) {
+                throw new IllegalStateException("业务校验阶段不能写入流程变量");
+            }
+        }
     }
 
     /**

@@ -85,10 +85,14 @@ public class FlowActionExecutionProcessor {
         try {
             FlowAction action = flowActionMapper.selectById(execution.getActionId());
             try {
-                if (execution.getFailureStrategySnapshot() != null || FlowActionFailureStrategyCatalog.custom(action)) {
+                if (execution.getActionSnapshot() != null || execution.getFailureStrategySnapshot() != null || FlowActionFailureStrategyCatalog.custom(action)) {
                     action = executionService.executionAction(execution, action);
                 }
             } catch (RuntimeException snapshotError) {
+                if (execution.getFailureStrategySnapshot() == null) {
+                    executionService.markFinalFailure(execution, snapshotError);
+                    return;
+                }
                 executionService.persistCustomFailure(execution, snapshotError,
                         new FlowActionFailureCoordinator.Outcome(null,
                                 com.workflow.contracts.process.action.model.FailureDecision.of(

@@ -29,6 +29,9 @@
               <el-descriptions-item label="任务 ID">{{ row.taskId || '-' }}</el-descriptions-item>
               <el-descriptions-item label="执行 ID">{{ row.executionId || '-' }}</el-descriptions-item>
               <el-descriptions-item label="幂等键">{{ row.idempotencyKey || '-' }}</el-descriptions-item>
+              <el-descriptions-item v-if="row.predecessorExecutionId" label="前置动作">
+                {{ row.predecessorActionName || row.predecessorExecutionId }} · {{ statusLabel(row.predecessorStatus) }}
+              </el-descriptions-item>
               <el-descriptions-item label="开始时间">{{ formatTime(row.startedAt) }}</el-descriptions-item>
               <el-descriptions-item label="结束时间">{{ formatTime(row.finishedAt) }}</el-descriptions-item>
               <el-descriptions-item label="执行耗时">{{ formatDuration(row.durationMs) }}</el-descriptions-item>
@@ -206,6 +209,8 @@ function scopeLabel(value) {
 function statusLabel(value) {
   const labels = {
     PENDING: '待执行',
+    WAITING: '等待前置成功',
+    MISSING: '前置记录缺失',
     RUNNING: '执行中',
     SUCCESS: '成功',
     FAILED: '等待重试',

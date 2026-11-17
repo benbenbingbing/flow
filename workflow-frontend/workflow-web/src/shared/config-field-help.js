@@ -86,7 +86,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'process.actionTriggerTiming':
     '决定动作在哪个流程生命周期事件执行；可用时机会随当前作用域变化。新增自定义时机需实现 FlowActionTriggerProvider 并注册为 Spring Bean。',
   'process.actionExecutionMode':
-    '事务内执行失败时可回滚当前流程操作；提交后执行不阻塞主事务，适合通知和外部接口，但必须依赖幂等与重试。',
+    '事务内同组动作按排序同步调用；提交后动作允许并行，需先后执行请设置前置动作，并使用幂等与重试。“办理执行后”仍可能在事务内，不等同于事务已提交。',
   'process.actionFailurePolicy':
     '事务内可选择回滚或记录后继续；提交后可选择自动重试或记录后忽略。也可选择已注册的自定义策略，在动作抛出异常后决定处理方式。可用策略会随执行方式变化。',
   'process.actionFailureStrategy':

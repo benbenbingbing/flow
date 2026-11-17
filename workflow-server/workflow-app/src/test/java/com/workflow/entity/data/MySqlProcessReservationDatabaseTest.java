@@ -121,7 +121,7 @@ class MySqlProcessReservationDatabaseTest {
             when(runtime.createProcessInstanceQuery()).thenReturn(running); when(running.singleResult()).thenReturn(mock(ProcessInstance.class));
             var tasks = mock(org.flowable.engine.TaskService.class); var taskQuery = mock(TaskQuery.class, RETURNS_SELF);
             when(tasks.createTaskQuery()).thenReturn(taskQuery); when(taskQuery.listPage(0, 1)).thenReturn(List.of());
-            service = transactional(new ProcessRuntimeService(config, repository, runtime, mock(IdentityService.class), tasks,
+            service = transactional(new ProcessRuntimeService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), runtime, mock(org.flowable.engine.HistoryService.class)), config, repository, runtime, mock(IdentityService.class), tasks,
                     mock(ProcessTaskService.class), mock(MultiInstanceCollectionListener.class), h.mapper(EntityProcessLinkMapper.class),
                     new JdbcLockedRow(h.jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)), new JdbcDatabaseClock(h.jdbc, DatabaseVendor.MYSQL), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class)), h);
         }

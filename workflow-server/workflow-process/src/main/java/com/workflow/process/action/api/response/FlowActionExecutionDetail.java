@@ -48,6 +48,10 @@ public class FlowActionExecutionDetail {
     private String idempotencyKey;
     /** 执行状态 */
     private String status;
+    /** 本次前置执行及其状态，用于显示等待和失败阻塞原因，不包含原始业务输出。 */
+    private String predecessorExecutionId;
+    private String predecessorActionName;
+    private String predecessorStatus;
     /** 首次执行为 1，自定义策略用它限制额外重试预算。 */
     private Integer attemptNo;
     /** 最终处理原因；继续、忽略和人工处理仍保留失败事实。 */

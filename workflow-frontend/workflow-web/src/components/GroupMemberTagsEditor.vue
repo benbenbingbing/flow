@@ -11,8 +11,10 @@
       <div class="tag-list">
         <span v-for="tag in tags" :key="tag.id" class="tag-item">
           <el-tag>{{ tag.tagName }}</el-tag>
-          <el-button link size="small" :disabled="creatingTag" @click="editTag(tag)">改名</el-button>
-          <el-button link size="small" type="danger" :disabled="creatingTag" @click="removeTag(tag)">删除</el-button>
+          <span class="tag-actions">
+            <el-button link size="small" :disabled="creatingTag" @click="editTag(tag)">改名</el-button>
+            <el-button link size="small" type="danger" :disabled="creatingTag" @click="removeTag(tag)">删除</el-button>
+          </span>
         </span>
         <span v-if="!tags.length" class="help">暂无标签，按需新增即可。</span>
       </div>
@@ -121,8 +123,12 @@ defineExpose({ ready: computed(() => !loading.value && !loadError.value && !crea
 </script>
 <style scoped>
 .member-tags-editor { margin-top:18px; }
-.tag-toolbar, .tag-list, .tag-item { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.tag-toolbar, .tag-list, .tag-item, .tag-actions { display:flex; align-items:center; gap:8px; }
+.tag-toolbar, .tag-list { flex-wrap:wrap; }
 .tag-toolbar { margin:12px 0; }
-.tag-list { margin-bottom:12px; }
+.tag-list { margin-bottom:12px; column-gap:12px; }
+.tag-item + .tag-item { border-left:1px solid var(--el-border-color); padding-left:12px; }
+.tag-actions { gap:4px; }
+.tag-actions :deep(.el-button + .el-button) { margin-left:0; }
 .help { color:var(--el-text-color-secondary); font-size:12px; margin-top:8px; }
 </style>

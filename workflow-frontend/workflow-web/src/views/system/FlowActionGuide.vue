@@ -85,7 +85,7 @@
       </section>
 
       <section id="timings" class="doc-section">
-        <div class="section-title">三、十个标准触发时机详解</div>
+        <div class="section-title">三、标准触发时机详解</div>
         <div class="section-content">
           <p class="section-intro">
             “界面名称”是业务语义，“时机编码”用于处理器能力声明和执行日志。展开每一行可查看准确触发点、上下文与风险。
@@ -151,7 +151,7 @@
               show-icon
             />
             <el-alert
-              title="提交后动作先写入 PENDING 执行记录，主事务提交后再异步执行；外部系统必须使用 idempotencyKey 去重。"
+              title="提交后独立动作写入 PENDING；有前置动作时先等待其成功。主事务提交后异步执行，外部系统必须使用 idempotencyKey 去重。"
               type="success"
               :closable="false"
               show-icon
@@ -164,7 +164,7 @@
         <div class="section-title">五、动作参数字段类型</div>
         <div class="section-content">
           <p class="section-intro">
-            参数配置最终保存为 <code>paramsJson</code>。平台在动作触发时解析流程变量引用，再通过 <code>ctx.getExtraParams()</code> 传给处理器。
+            参数配置最终保存为 <code>paramsJson</code>。流程变量读取触发快照；“前置动作结果”读取本次前置执行成功保存的输出，再通过 <code>ctx.getExtraParams()</code> 传给处理器。
           </p>
           <el-table :data="paramTypeList" border>
             <el-table-column prop="label" label="界面类型" width="130" />
@@ -191,7 +191,7 @@
   "retryLevel": 3,
   "urgent": true,
   "starter": "${startUserId}",
-  "doubleAmount": "${#amount * 2}"
+  "contractNo": { "$predecessor": "contractNo" }
 }</code></pre>
           </el-card>
         </div>
@@ -300,7 +300,7 @@ public class SendNotificationHandler implements FlowActionProvider {
               <code>TASK_CREATED</code>，并使用 <code>AFTER_COMMIT + RETRY</code>。
             </el-collapse-item>
             <el-collapse-item title="NODE_COMPLETED 和 TASK_COMPLETING 有什么区别？">
-              <code>TASK_COMPLETING</code> 只适用于用户任务，能获取审批动作、审批人和触发任务；
+              <code>TASK_COMPLETING</code> 是引擎 TASK_COMPLETED 的兼容映射，表单已经保存。审批前校验使用 TASK_SUBMIT_VALIDATING，表单保存前使用 TASK_FORM_SAVING，路由准备使用 TASK_ADVANCING；
               <code>NODE_COMPLETED</code> 适用于所有节点，主要用于节点结束后的变量计算和路由准备。
             </el-collapse-item>
             <el-collapse-item title="结束类动作为什么不能依赖 currentTask？">
@@ -348,7 +348,7 @@ const scopeList = [
     position: '设计器“全局动作”',
     scopeType: 'PROCESS',
     elements: '整个流程实例',
-    timings: 'PROCESS_STARTED / PROCESS_COMPLETED / PROCESS_WITHDRAWN / PROCESS_TERMINATED',
+    timings: '发起 / 撤回 / 终止的校验、执行前和执行后，以及原有流程生命周期事件',
     description: '每个流程实例绑定一次，不依赖具体节点或连线。'
   },
   {
@@ -362,7 +362,7 @@ const scopeList = [
     position: '用户任务“流程动作”',
     scopeType: 'NODE',
     elements: 'UserTask 用户任务',
-    timings: 'NODE_ENTERED / NODE_COMPLETED / TASK_CREATED / TASK_ASSIGNED / TASK_COMPLETING',
+    timings: '审批 / 转办 / 加签 / 加签子任务的业务阶段，以及原有节点和任务生命周期事件',
     description: '同时具备节点生命周期和人工任务生命周期。'
   },
   {
@@ -444,7 +444,7 @@ const fieldList = [
     field: 'paramsJson',
     type: 'Map<String, Object> / JSON',
     required: '否',
-    meaning: '传递给 Handler 的业务参数集合，支持静态值、流程变量和表达式。',
+    meaning: '传递给 Handler 的业务参数集合，支持静态值、流程变量和前置动作结果。',
     notes: '运行时解析后通过 ctx.getExtraParams() 获取；类型化 Handler 会自动映射为参数类。'
   },
   {
@@ -458,7 +458,7 @@ const fieldList = [
   {
     label: '参数类型',
     field: '界面类型标记',
-    type: 'Enum<string | number | boolean | variable | expression>',
+    type: 'Enum<string | number | boolean | variable | predecessor>',
     required: '每行必填',
     meaning: '控制参数值写入 JSON 的类型及运行时解析方式。',
     notes: '详细规则见“动作参数字段类型”。'
@@ -476,12 +476,13 @@ const fieldList = [
     field: 'sortOrder',
     type: 'Integer',
     required: '平台维护',
-    meaning: '同一元素、同一时机存在多个动作时按升序执行。',
-    notes: '事务内前序动作失败并回滚后，后续动作不会执行。'
+    meaning: '同组事务内动作按升序同步调用；提交后动作的排序仅影响展示。',
+    notes: '提交后需先后执行时设置前置动作；前置失败、忽略或人工确认均不视为成功。'
   }
 ]
 
 const storageFieldList = [
+  { field: 'predecessorActionId', type: 'String / null', meaning: '同组提交后前置动作；前置成功后才执行。', notes: '禁止循环依赖；发布时转换为该版本动作 ID。' },
   { field: 'processConfigId', type: 'String', meaning: '所属流程配置 ID。', notes: '发布时复制到对应版本，确保版本隔离。' },
   { field: 'scopeType', type: 'Enum<PROCESS | NODE | SEQUENCE_FLOW>', meaning: '动作绑定作用域。', notes: '由全局、节点或连线配置入口自动带入。' },
   { field: 'elementId', type: 'String / null', meaning: '绑定的 BPMN 节点或顺序流 ID。', notes: 'PROCESS 作用域为空；NODE 和 SEQUENCE_FLOW 必填。' },
@@ -490,7 +491,7 @@ const storageFieldList = [
   { field: 'status', type: 'String', meaning: 'DRAFT 或 PUBLISHED。', notes: '设计器编辑草稿，运行时只执行已发布动作。' }
 ]
 
-const timingDetailList = [
+const engineTimingDetailList = [
   {
     code: 'PROCESS_STARTED',
     label: '流程启动时',
@@ -589,14 +590,14 @@ const timingDetailList = [
   },
   {
     code: 'TASK_COMPLETING',
-    label: '任务提交、流程流转前',
+    label: '引擎任务完成事件（兼容时机）',
     scope: '用户任务',
     elementType: 'UserTask',
     mode: 'IN_TRANSACTION',
     policy: 'ROLLBACK',
     phase: '用户提交完成命令并产生 TASK_COMPLETED 事件时，提交变量已合并，流程继续流转仍在同一事务中。',
     context: '触发任务、审批动作、审批人、审批意见相关变量、实体数据和完整流程变量快照。',
-    use: '审批前后置校验、核心业务写入、必须与任务完成原子提交的操作。',
+    use: '兼容已有引擎完成事件扩展。新增前置校验使用 TASK_SUBMIT_VALIDATING，保存前使用 TASK_FORM_SAVING，推进前使用 TASK_ADVANCING。',
     caution: '失败会回滚任务完成和流程流转；外部 HTTP、短信和邮件不应放在此时机同步执行。'
   },
   {
@@ -612,6 +613,20 @@ const timingDetailList = [
     caution: '排他网关只触发命中的分支；并行、循环和回退场景可能多次经过同一连线。'
   }
 ]
+
+// 业务操作的准确阶段由后端目录维护，新增时机自动进入指南，避免与运行时契约漂移。
+const timingDetailList = computed(() => [
+  ...runtimeTimingOptions.value.filter(option => option.operationPhase).map(option => ({
+    code: option.value, label: option.label, scope: option.scopeType === 'PROCESS' ? '当前流程全局动作' : '用户任务节点',
+    elementType: option.userTaskOnly ? 'UserTask' : 'Process',
+    mode: option.defaultExecutionMode, policy: option.defaultFailurePolicy,
+    phase: option.description, context: option.availableContext,
+    use: option.operationPhase === 'VALIDATE' ? '追加业务准入检查；异常拒绝本次操作。' : '在明确的业务步骤执行扩展。',
+    caution: option.blocking ? '只允许事务内执行且失败回滚；校验阶段的提交表单及变量快照只读。'
+      : '事务内后处理仍可能回滚；选择 AFTER_COMMIT 后通过 Outbox 通知。不是整个外层事务的 beforeCommit。'
+  })),
+  ...engineTimingDetailList
+])
 
 const executionPolicyList = [
   {
@@ -679,15 +694,15 @@ const paramTypeList = [
     input: 'startUserId',
     runtimeType: '变量的实际类型',
     behavior: '界面自动保存为 ${startUserId}；运行时优先按完整变量名读取。',
-    notes: '变量不存在会继续按表达式解析并可能失败，关键变量应在 Handler 中校验空值。'
+    notes: '仅支持完整变量名引用，不执行表达式；关键变量应在 Handler 中校验空值。'
   },
   {
-    label: '表达式',
-    value: 'expression',
-    input: '#amount * 2',
-    runtimeType: 'SpEL 计算结果类型',
-    behavior: '界面自动包裹为 ${#amount * 2}，运行时使用当前流程变量作为 SpEL 变量计算。',
-    notes: '仅允许受信任管理员配置；复杂逻辑和用户输入应放入受控 Handler。'
+    label: '前置动作结果',
+    value: 'predecessor',
+    input: 'contractNo / contract.id',
+    runtimeType: '输出字段的原始 JSON 类型',
+    behavior: '选择前置动作后填写结果字段路径，保存为 {"$predecessor":"contractNo"}。',
+    notes: '仅同组提交后动作可引用；缺少输出字段会明确失败，重试复用已成功的前置输出。'
   }
 ]
 
@@ -726,7 +741,7 @@ const contextList = [
 
 const sceneGuideList = [
   { scene: '流程启动初始化', timing: 'PROCESS_STARTED', mode: 'IN_TRANSACTION + ROLLBACK', reason: '初始化失败时流程不应成功启动。' },
-  { scene: '审批前业务校验', timing: 'TASK_COMPLETING', mode: 'IN_TRANSACTION + ROLLBACK', reason: '校验、任务完成和流程流转保持原子性。' },
+  { scene: '审批前业务校验', timing: 'TASK_SUBMIT_VALIDATING', mode: 'IN_TRANSACTION + ROLLBACK', reason: '校验、任务完成和流程流转保持原子性。' },
   { scene: '计算后续分支变量', timing: 'NODE_COMPLETED', mode: 'IN_TRANSACTION + ROLLBACK', reason: '变量可参与后续网关或连线条件计算。' },
   { scene: '通知下一办理人', timing: 'TASK_CREATED', mode: 'AFTER_COMMIT + RETRY', reason: '此时已获得真实任务 ID 和最终目标任务。' },
   { scene: '转办或认领通知', timing: 'TASK_ASSIGNED', mode: 'AFTER_COMMIT + RETRY', reason: '每次办理人变化都能获得最新人员。' },

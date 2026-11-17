@@ -54,7 +54,9 @@ public class FlowActionSaveRequest {
 
     /** 参数 JSON */
     private String paramsJson;
-    /** 执行顺序（越小越先执行） */
+    /** 同绑定、同时机的提交后前置动作；null 表示独立执行。 */
+    private String predecessorActionId;
+    /** 事务内同步调用顺序；异步完成顺序由前置动作决定。 */
     private Integer sortOrder;
     /** 是否启用 */
     private Boolean enabled;

@@ -15,6 +15,10 @@ import java.util.List;
  */
 @Mapper
 public interface FlowActionMapper extends BaseMapper<FlowAction> {
+
+    /** 草稿依赖属于流程聚合；短事务锁避免两个编辑并发保存形成循环或删除正在被引用的动作。 */
+    @org.apache.ibatis.annotations.Select("SELECT id FROM process_definition_config WHERE id = #{id} FOR UPDATE")
+    String lockConfiguration(String id);
     
     /**
      * 查询流程配置下所有草稿状态的动作（排除已删除）
@@ -30,7 +34,7 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
                 .orderByAsc(FlowAction::getScopeType)
                 .orderByAsc(FlowAction::getElementId)
                 .orderByAsc(FlowAction::getTriggerTiming)
-                .orderByAsc(FlowAction::getSortOrder));
+                .orderByAsc(FlowAction::getSortOrder, FlowAction::getId));
     }
 
     /**
@@ -66,7 +70,7 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
                 .orderByAsc(FlowAction::getScopeType)
                 .orderByAsc(FlowAction::getElementId)
                 .orderByAsc(FlowAction::getTriggerTiming)
-                .orderByAsc(FlowAction::getSortOrder));
+                .orderByAsc(FlowAction::getSortOrder, FlowAction::getId));
     }
 
     /**
@@ -87,7 +91,7 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
                 .eq(FlowAction::getStatus, "PUBLISHED")
                 // 已删除动作不能被发布版本重新执行。
                 .eq(FlowAction::getDeleted, 0)
-                .orderByAsc(FlowAction::getSortOrder));
+                .orderByAsc(FlowAction::getSortOrder, FlowAction::getId));
     }
 
     /**

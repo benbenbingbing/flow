@@ -30,4 +30,19 @@ public class FlowActionTimingOption {
     private String availableContext;
     /** 是否为扩展自定义时机 */
     private Boolean custom;
+
+    /** 前置业务阶段只能同步执行且失败回滚，设计器据此限制选项。 */
+    public boolean isBlocking() {
+        return standardTiming() != null && standardTiming().isBlockingOperationTiming();
+    }
+
+    /** 业务步骤边界；引擎事件和自定义时机不声明平台业务阶段。 */
+    public String getOperationPhase() {
+        return standardTiming() == null ? null : standardTiming().getOperationPhase();
+    }
+
+    private FlowActionTriggerTiming standardTiming() {
+        try { return FlowActionTriggerTiming.valueOf(value); }
+        catch (IllegalArgumentException | NullPointerException ignored) { return null; }
+    }
 }

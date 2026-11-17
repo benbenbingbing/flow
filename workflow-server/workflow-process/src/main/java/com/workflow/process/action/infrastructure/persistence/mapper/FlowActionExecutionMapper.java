@@ -72,6 +72,29 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
         return findReadyRows(new OffsetPage<>(0, limit));
     }
 
+    /** 只选择本次前置执行（或它的成功重放）已提交成功的等待记录，不按动作配置跨触发匹配。 */
+    @Select("""
+            SELECT e.id FROM process_action_execution e
+             WHERE e.status = 'WAITING'
+               AND EXISTS (SELECT 1 FROM process_action_execution p
+                            WHERE (p.id = e.predecessor_execution_id OR p.replay_root_id = e.predecessor_execution_id)
+                              AND p.status = 'SUCCESS')
+             ORDER BY e.create_time, e.id
+            """)
+    List<String> findSatisfiedDependencies(@Param("page") IPage<String> page);
+
+    /** 仅在读到不可逆 SUCCESS 后调用；多个 Pod 重复发现时只有一次 WAITING→PENDING 生效。 */
+    @Update("UPDATE process_action_execution SET status = 'PENDING' WHERE id = #{id} AND status = 'WAITING'")
+    int releaseDependency(String id);
+
+    /** 成功重放保留原失败事实，但其输出可满足原执行的后继依赖。 */
+    @Select("""
+            SELECT * FROM process_action_execution
+             WHERE (id = #{id} OR replay_root_id = #{id}) AND status = 'SUCCESS'
+             ORDER BY create_time, id
+            """)
+    List<FlowActionExecution> findSuccessfulDependency(String id);
+
     /**
      * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
      *
@@ -196,6 +219,7 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
             <script>
             UPDATE process_action_execution
              SET status = 'SUCCESS',
+                 output_json = #{outputJson},
                  finished_at = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)},
                  result_json = #{resultJson},
                  execution_trace_json = #{executionTraceJson},

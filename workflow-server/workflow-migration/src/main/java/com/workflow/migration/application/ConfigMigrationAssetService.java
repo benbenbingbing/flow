@@ -2286,7 +2286,21 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         snapshot.put("nodeForms", nodeFormSnapshots);
         snapshot.put("nodeApprovals", portableList(nodeApprovalMapper.selectByProcessConfigId(config.getId())));
         List<FlowAction> actions = flowActionMapper.findPublishedActionsByVersionId(history.getId());
-        snapshot.put("flowActions", portableList(actions));
+        // 包内使用局部稳定键，导入时重建 ID；不能把源库发布动作 ID 带到目标库继续引用。
+        var actionKeys = new LinkedHashMap<String, String>();
+        for (int index = 0; index < actions.size(); index++) actionKeys.put(actions.get(index).getId(), "action_" + index);
+        var portableActions = new ArrayList<Map<String, Object>>();
+        for (var action : actions) {
+            var portable = portableMap(action);
+            portable.remove("predecessorActionId");
+            portable.put("actionKey", actionKeys.get(action.getId()));
+            if (action.getPredecessorActionId() != null) {
+                if (!actionKeys.containsKey(action.getPredecessorActionId())) throw new IllegalArgumentException("流程动作前置引用不在发布版本内");
+                portable.put("predecessorActionKey", actionKeys.get(action.getPredecessorActionId()));
+            }
+            portableActions.add(portable);
+        }
+        snapshot.put("flowActions", portableActions);
         snapshot.put("statusMappings", portableList(statusMappingMapper.findByProcessConfigId(config.getId())));
         for (String formRef : new LinkedHashSet<>(portableForms.values())) {
             if (StringUtils.hasText(formRef)) {

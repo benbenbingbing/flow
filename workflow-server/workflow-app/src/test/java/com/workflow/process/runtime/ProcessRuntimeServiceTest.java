@@ -44,6 +44,58 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProcessRuntimeServiceTest {
+        @Test void startStagesSurroundEngineStartAndTaskSynchronization() {
+                var fixture = new Fixture();
+                var service = fixture.service();
+                var stages = new java.util.ArrayList<String>();
+                org.mockito.Mockito.doAnswer(call -> {
+                        com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+                        stages.add(event.getTriggerTiming());
+                        if ("PROCESS_STARTING".equals(event.getTriggerTiming())) event.getVariables().put("risk", "HIGH");
+                        if (!"PROCESS_START_EXECUTED".equals(event.getTriggerTiming())) org.junit.jupiter.api.Assertions.assertNull(event.getProcessInstanceId());
+                        else assertEquals("pi-1", event.getProcessInstanceId());
+                        return null;
+                }).when(fixture.businessActions).dispatch(any());
+                service.start(new ProcessStartRequest("process-config-1", "expense", "data-1", "EXP-1", "admin", "管理员", "PENDING", Map.of(), Map.of()));
+                assertEquals(java.util.List.of("PROCESS_START_VALIDATING", "PROCESS_STARTING", "PROCESS_START_EXECUTED"), stages);
+                var values = ArgumentCaptor.forClass(Map.class);
+                verify(fixture.runtimeService).startProcessInstanceById(eq("definition-v3"), eq("data-1"), values.capture());
+                assertEquals("HIGH", values.getValue().get("risk"));
+                var order = org.mockito.Mockito.inOrder(fixture.businessActions, fixture.runtimeService, fixture.processTaskService);
+                order.verify(fixture.businessActions).dispatch(org.mockito.ArgumentMatchers.argThat(event -> "PROCESS_START_VALIDATING".equals(event.getTriggerTiming())));
+                order.verify(fixture.businessActions).dispatch(org.mockito.ArgumentMatchers.argThat(event -> "PROCESS_STARTING".equals(event.getTriggerTiming())));
+                order.verify(fixture.runtimeService).startProcessInstanceById(anyString(), anyString(), anyMap());
+                order.verify(fixture.processTaskService).syncTasksFromFlowable("pi-1");
+                order.verify(fixture.businessActions).dispatch(org.mockito.ArgumentMatchers.argThat(event -> "PROCESS_START_EXECUTED".equals(event.getTriggerTiming())));
+        }
+
+        @org.junit.jupiter.params.ParameterizedTest
+        @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_START_VALIDATING", "PROCESS_STARTING"})
+        void startRejectionStopsBeforeEngineCreation(String stage) {
+                var fixture = new Fixture();
+                org.mockito.Mockito.doAnswer(call -> {
+                        com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+                        if (stage.equals(event.getTriggerTiming())) throw new IllegalArgumentException("业务禁止发起");
+                        return null;
+                }).when(fixture.businessActions).dispatch(any());
+                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> fixture.service().start(new ProcessStartRequest(
+                        "process-config-1", "expense", "data-1", "EXP-1", "admin", "管理员", "PENDING", Map.of(), Map.of())));
+                verify(fixture.runtimeService, org.mockito.Mockito.never()).startProcessInstanceById(anyString(), anyString(), anyMap());
+                verify(fixture.processTaskService, org.mockito.Mockito.never()).syncTasksFromFlowable(anyString());
+        }
+
+        @Test void startPreparationCannotChangeReservedIdentityVariables() {
+                var fixture = new Fixture();
+                org.mockito.Mockito.doAnswer(call -> {
+                        com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+                        if ("PROCESS_STARTING".equals(event.getTriggerTiming())) event.getVariables().put("initiator", "other-user");
+                        return null;
+                }).when(fixture.businessActions).dispatch(any());
+                org.junit.jupiter.api.Assertions.assertThrows(com.workflow.contracts.process.error.ProcessOperationException.class, () -> fixture.service().start(new ProcessStartRequest(
+                        "process-config-1", "expense", "data-1", "EXP-1", "admin", "管理员", "PENDING", Map.of(), Map.of())));
+                verify(fixture.runtimeService, org.mockito.Mockito.never()).startProcessInstanceById(anyString(), anyString(), anyMap());
+        }
+
         @Test
         void historicalReadonlyGuardRunsBeforeAnyEngineStart() {
                 Fixture fixture = new Fixture();
@@ -182,6 +234,7 @@ class ProcessRuntimeServiceTest {
                                 ProcessDefinitionConfigMapper.class);
                 final RepositoryService repositoryService = mock(RepositoryService.class);
                 final RuntimeService runtimeService = mock(RuntimeService.class);
+                final com.workflow.process.action.application.FlowActionDispatcher businessActions = mock(com.workflow.process.action.application.FlowActionDispatcher.class);
                 final IdentityService identityService = mock(IdentityService.class);
                 final org.flowable.engine.TaskService taskService = mock(org.flowable.engine.TaskService.class);
                 final EntityProcessLinkMapper entityProcessLinkMapper = mock(EntityProcessLinkMapper.class);
@@ -245,7 +298,7 @@ class ProcessRuntimeServiceTest {
                 }
 
                 ProcessRuntimeService service() {
-                        return new ProcessRuntimeService(
+                        return new ProcessRuntimeService(new com.workflow.process.action.application.FlowActionOperationDispatcher(businessActions, runtimeService, mock(org.flowable.engine.HistoryService.class)),
                                         processDefinitionConfigMapper,
                                         repositoryService,
                                         runtimeService,

@@ -13,6 +13,16 @@ import java.util.Map;
  */
 @Data
 public class FlowActionTriggerEvent {
+    /** 业务操作编码；与引擎生命周期事件区分，避免把子任务办理当作源任务流转。 */
+    private String businessOperation;
+    /** ENGINE / LOCAL_ADD_SIGN；本地子任务没有 Flowable Task。 */
+    private String taskKind;
+    /** 本地加签所属源任务 ID；普通任务为空。 */
+    private String sourceTaskId;
+    /** 本次提交的独立表单快照，只供业务校验，不授予额外字段写权限。 */
+    private Map<String, Object> submittedFormData = Map.of();
+    /** 转办目标、加签人员/类型、意见等操作输入，随异步执行持久化。 */
+    private Map<String, Object> operationParameters = Map.of();
     /** 跨模块业务操作 ID；异步执行时从持久化 payload 恢复 */
     private String operationId;
     /** 请求/消息链路 Trace ID，不与 operationId 混用 */

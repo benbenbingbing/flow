@@ -88,9 +88,13 @@ public class FlowAction {
      * 参数JSON（用于传递给接口的参数）
      */
     private String paramsJson;
+
+    /** 同组提交后动作的成功依赖；发布时转换为该发布版本的动作 ID，不随列表排序改变。 */
+    @TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
+    private String predecessorActionId;
     
     /**
-     * 执行顺序（越小越先执行）
+     * 同时机事务内动作的同步调用顺序；提交后动作仅用于展示，不保证完成顺序。
      */
     private Integer sortOrder;
     

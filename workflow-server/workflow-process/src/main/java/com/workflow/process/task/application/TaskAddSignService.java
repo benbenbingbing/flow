@@ -1,5 +1,8 @@
 package com.workflow.process.task.application;
 
+import com.workflow.process.action.application.FlowActionOperationDispatcher;
+import static com.workflow.contracts.process.action.model.FlowActionTriggerTiming.*;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,6 +53,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class TaskAddSignService {
+    /** 业务动作必须在实际步骤处分发，所有调用方式共用，不能只装饰 HTTP 入口。 */
+    private final FlowActionOperationDispatcher operationActions;
+
     /** 支持的加签类型 */
     private static final List<String> TYPES = List.of("PARALLEL", "BEFORE", "AFTER");
 
@@ -154,6 +160,14 @@ public class TaskAddSignService {
             throw new IllegalArgumentException("没有可用的加签人员");
         }
 
+        var parameters = new LinkedHashMap<String, Object>();
+        parameters.put("type", type);
+        parameters.put("userIds", resolution.users().stream().map(SysUser::getUsername).toList());
+        parameters.put("comment", request.getComment());
+        var operation = operationActions.task(sourceTask, taskId, "ADD_SIGN", operator, Map.of(), parameters);
+        operationActions.fire(operation, TASK_ADD_SIGN_VALIDATING);
+        operationActions.fire(operation, TASK_ADD_SIGNING);
+
         ProcessTaskAddSign addSign = new ProcessTaskAddSign();
         addSign.setProcessInstanceId(sourceTask.getProcessInstanceId());
         addSign.setSourceTaskId(taskId);
@@ -194,6 +208,7 @@ public class TaskAddSignService {
                         "type", type,
                         "users", resolution.users().stream().map(SysUser::getUsername).toList(),
                         "generatedTaskIds", generatedTaskIds));
+        operationActions.fire(operation, TASK_ADD_SIGNED);
 
         return Map.of(
                 "addSignId", addSign.getId(),
@@ -314,16 +329,27 @@ public class TaskAddSignService {
             throw new IllegalStateException("前加签尚未全部完成，原任务暂不能提交");
         }
 
+        var parameters = new LinkedHashMap<String, Object>();
+        parameters.put("type", type);
+        parameters.put("action", normalizedAction);
+        parameters.put("comment", comment);
+        var operation = operationActions.task(sourceTask, taskId, "ADD_SIGN_SOURCE_SUBMIT", userId, formData, parameters);
+        operation.setApprovalAction(normalizedAction);
+        operationActions.fire(operation, ADD_SIGN_SOURCE_VALIDATING);
+        operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTING);
+
         saveSourceSubmission(addSign, normalizedAction, comment, actionLabel, formData);
         markSourceWaiting(taskId, normalizedAction, comment, actionLabel);
 
         if ("reject".equals(normalizedAction)) {
             finishRemainingChildren(addSign.getId(), "源任务已驳回");
             finalizeSource(addSign);
+            operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTED);
             return true;
         }
         if ("AFTER".equals(type)) {
             activateHeldChildren(addSign.getId());
+            operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTED);
             return true;
         }
         if (addSignUserMapper.countPending(addSign.getId()) == 0) {
@@ -332,6 +358,7 @@ public class TaskAddSignService {
             addSign.setStatus("ACTIVE");
             addSignMapper.updateById(addSign);
         }
+        operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTED);
         return true;
     }
 
@@ -373,6 +400,17 @@ public class TaskAddSignService {
             throw new IllegalArgumentException("加签任务仅支持通过或驳回");
         }
 
+        Task source = requireSourceTask(addSign.getSourceTaskId());
+        var parameters = new LinkedHashMap<String, Object>();
+        parameters.put("type", addSign.getOperationType());
+        parameters.put("comment", comment);
+        parameters.put("action", normalizedAction);
+        var operation = operationActions.task(source, taskId, "ADD_SIGN_COMPLETE", currentUsername(), Map.of(), parameters);
+        operation.setTaskAssignee(userTask.getUserId());
+        operation.setApprovalAction(normalizedAction);
+        operationActions.fire(operation, ADD_SIGN_TASK_VALIDATING);
+        operationActions.fire(operation, ADD_SIGN_TASK_COMPLETING);
+
         completeLocalChild(taskId, normalizedAction, comment);
         addSignUserMapper.completeByGeneratedTaskId(taskId);
         writeOperationLog(
@@ -386,15 +424,18 @@ public class TaskAddSignService {
             saveRejectedSource(addSign, comment);
             finishRemainingChildren(addSign.getId(), "其他加签人已驳回");
             finalizeSource(addSign);
+            operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
             return;
         }
         if (addSignUserMapper.countPending(addSign.getId()) > 0) {
+            operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
             return;
         }
         if ("BEFORE".equals(addSign.getOperationType())) {
             addSign.setStatus("COMPLETED");
             addSign.setCompleteTime(LocalDateTime.now());
             addSignMapper.updateById(addSign);
+            operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
             return;
         }
         if (Boolean.TRUE.equals(addSign.getSourceCompleted())) {
@@ -403,6 +444,7 @@ public class TaskAddSignService {
             addSign.setStatus("WAITING_SOURCE");
             addSignMapper.updateById(addSign);
         }
+        operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
     }
 
     /**

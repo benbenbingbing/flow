@@ -183,7 +183,7 @@ class ProcessTerminationServiceTest {
 
         /** 组装并返回被测服务实例 */
         ProcessTerminationService service() {
-            return new ProcessTerminationService(
+            return new ProcessTerminationService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), runtimeService, mock(org.flowable.engine.HistoryService.class)),
                     runtimeService, historyService, operationLogMapper, processTaskService,
                     identityDirectoryPort, entityRecordPort, nodeOperationCapabilityService);
         }

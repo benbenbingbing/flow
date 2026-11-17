@@ -132,7 +132,7 @@ class MySqlTaskTransferTransactionDatabaseTest {
                 h.jdbc.update("INSERT INTO task_transfer_probe VALUES (?,'bob','todo')", failTodo ? "source" : "new");
                 return new ProcessTask();
             });
-            actions = h.transactional(new TaskActionService(tasks, runtime, mock(HistoryService.class), processTasks,
+            actions = h.transactional(new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), runtime, mock(org.flowable.engine.HistoryService.class)), tasks, runtime, mock(HistoryService.class), processTasks,
                     mock(RepositoryService.class), h.mapper(ProcessOperationLogMapper.class), mock(SysUserService.class),
                     mock(NodeFormSubmissionService.class), mock(EntityRecordPort.class), mock(ProcessCcService.class),
                     mock(NextApproverOverrideService.class), outcomes, mock(NodeOperationCapabilityService.class),

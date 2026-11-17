@@ -1,4 +1,6 @@
 -- OceanBase 4.x MySQL 模式平台基础表空库初始化脚本。
+-- 2026-11-17 同步至 V138，新增单前置动作依赖、本次执行关联与业务输出快照。
+-- 2026-11-17 同步至 V137，允许发起前动作执行记录的流程实例 ID 为空。
 -- 2026-11-17 同步至 V136，新增组内标签、成员标签绑定及内置人员解析器目录。
 -- 2026-11-16 同步至 V135，用户、组织主表各增加 ext1～ext5 五个可空文本查询字段。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
@@ -2761,7 +2763,7 @@ CREATE TABLE `process_action` (
   `description` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '说明：动作描述。',
   `interface_name` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '接口名称（Spring Bean或类名）。',
   `params_json` text COLLATE utf8mb4_unicode_ci COMMENT '参数JSON。',
-  `sort_order` int DEFAULT '0' COMMENT '排序号：执行顺序。',
+  `sort_order` int DEFAULT '0' COMMENT '同组事务内同步调用顺序；异步完成顺序由前置动作决定。',
   `enabled` tinyint(1) DEFAULT '1' COMMENT '是否启用。',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'DRAFT' COMMENT '状态：DRAFT/PUBLISHED/DISABLED。',
   `version_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '所属版本ID。',
@@ -2772,6 +2774,7 @@ CREATE TABLE `process_action` (
   `failure_strategy_code` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失败策略编码，动作执行失败时用于选择对应处置逻辑',
   `failure_strategy_version` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失败策略版本，保证发布配置绑定稳定的策略实现',
   `failure_strategy_config` text COLLATE utf8mb4_unicode_ci COMMENT '失败策略参数文档，供重试、终止或人工处置逻辑解析',
+  `predecessor_action_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '同组提交后前置动作ID，发布时转换为该版本ID，不随排序改变',
   PRIMARY KEY (`id`),
   KEY `idx_process_config` (`process_config_id`),
   KEY `idx_version` (`version_id`),
@@ -2816,7 +2819,7 @@ CREATE TABLE `process_action_execution` (
   `handler_name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '处理器Bean名称快照。',
   `handler_display_name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '处理器中文名称快照。',
   `version_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '所属流程发布版本 ID。',
-  `process_instance_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '流程实例 ID。',
+  `process_instance_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '流程实例 ID；发起前动作尚未创建实例时为空，按发布版本和实体定位。',
   `process_definition_id` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Flowable 流程定义 ID。',
   `execution_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Flowable 执行实例 ID。',
   `task_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '任务 ID（任务级动作）。',
@@ -2829,7 +2832,7 @@ CREATE TABLE `process_action_execution` (
   `resolved_params_json` text COLLATE utf8mb4_unicode_ci COMMENT '表达式解析后的动作参数。',
   `result_json` text COLLATE utf8mb4_unicode_ci COMMENT '动作执行结果。',
   `execution_trace_json` mediumtext COLLATE utf8mb4_unicode_ci COMMENT '结构化执行步骤轨迹。',
-  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '状态：执行状态，对应 Status。',
+  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'WAITING等待前置成功；PENDING待执行；RUNNING执行中；SUCCESS成功；FAILED待重试；DEAD终态失败。',
   `owner_id` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '持有者ID：当前执行租约所有者。',
   `lease_token` bigint NOT NULL DEFAULT '0' COMMENT '租约代次：单调递增 fencing token。',
   `lease_until` datetime(6) DEFAULT NULL COMMENT '租约截止时间：当前执行租约到期时间（数据库 UTC）。',
@@ -2851,13 +2854,18 @@ CREATE TABLE `process_action_execution` (
   `replay_root_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '重放链根执行ID，用于聚合同一原始动作的后续执行',
   `replay_of_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '被重放的执行ID，用于追踪当前执行的来源',
   `handler_idempotency_key` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '处理器幂等键，跨重试和重放避免重复副作用',
+  `predecessor_execution_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '本次触发的前置执行ID，仅其成功或成功重放后放行',
+  `action_snapshot` longtext COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '入队动作完整快照，重试沿用原配置，不向执行详情返回',
+  `output_json` longtext COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '成功动作未脱敏业务输出，仅供前置结果引用，不向日志返回',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_process_action_execution_idempotency` (`idempotency_key`),
   KEY `idx_process_action_execution_ready` (`status`,`next_retry_time`,`create_time`),
   KEY `idx_process_action_execution_process` (`process_instance_id`,`create_time`),
   KEY `idx_process_action_execution_action` (`action_id`,`create_time`),
   KEY `idx_process_action_execution_entity` (`entity_code`,`process_instance_id`,`create_time`),
-  KEY `idx_process_action_execution_lease` (`status`,`lease_until`)
+  KEY `idx_process_action_execution_lease` (`status`,`lease_until`),
+  KEY `idx_action_exec_predecessor` (`status`, `predecessor_execution_id`),
+  KEY `idx_action_exec_replay_success` (`replay_root_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程动作执行与重试表';
 
 CREATE TABLE `process_assignee_incident` (

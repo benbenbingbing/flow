@@ -4,6 +4,63 @@
 
 本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132、V133 的 MySQL 增量脚本及执行限制见下文。
 
+## 2026-11-17 同步 V138 流程动作成功依赖
+
+已同时检查 SQL 和 Java 迁移，现有最高版本为 V137，本次新增唯一的 [`V138__flow_action_dependencies.java`](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V138__flow_action_dependencies.java)。七份空库脚本同步到最终 **202 张表、2,817 个字段**，相对 V137 新增四个可空字段和两个索引；不改变系统种子或退役对象清理结果。V137 已有的发起前 `process_instance_id` 可空语义继续保留。
+
+| 表 | 新增字段或索引 | 用途 |
+| --- | --- | --- |
+| `process_action` | `predecessor_action_id`，64字符，可空、默认 NULL | 同一绑定位置、时机和 AFTER_COMMIT 方式下的成功依赖；发布时转换为该版本的动作 ID。 |
+| `process_action_execution` | `predecessor_execution_id`，64字符，可空、默认 NULL | 关联本次触发中的前置执行，防止跨触发消费其他执行结果。 |
+| 同上 | `action_snapshot`、`output_json`，大文本，可空、默认 NULL | 固定入队配置及成功业务输出；原始输出不向执行日志返回。 |
+| 同上 | `idx_action_exec_predecessor(status, predecessor_execution_id)` | 查找等待前置成功的记录。 |
+| 同上 | `idx_action_exec_replay_success(replay_root_id, status)` | 原始失败的成功人工重放也可满足后继依赖；人工确认失败已处理不视为成功。 |
+
+MySQL / OB MySQL 使用 VARCHAR(64)、LONGTEXT，PG / 人大金仓使用 VARCHAR(64)、TEXT，Oracle / 达梦 / OB Oracle 使用 VARCHAR2(64 CHAR)、CLOB。均保留可空性、默认值、用途注释、已有主键和约束；不新增物理外键。Java 迁移按方言增加字段，并通过元数据支持中断后继续执行；旧记录依赖字段默认 NULL，保持独立执行，不回填原始输出。
+
+同次触发整批原子入队，有依赖的记录初始为 WAITING；前置成功状态与业务输出通过同次租约条件更新提交。轮询读到已提交的成功事实后才以 CAS 转为 PENDING，再进入线程池。失败重试保留前置成功及输出，不因排序或重新发布而改变依赖。参数通过 `{ "$predecessor": "contractNo" }` 明确引用输出字段，不执行表达式。业务阶段顺序由平台保证；排序只保证同组事务内同步调用顺序。
+
+验证记录：
+
+- 真实 MyBatis / H2 / Spring 事务测试覆盖整批回滚、未提交成功隔离、重复触发隔离、过期租约拒绝、并发领取唯一成功、仅重试失败后继、发布快照、原始输出与脱敏日志分离，以及成功人工重放放行后继。
+- H2 上验证 V138 的 Flyway migrate / validate / 再次 migrate、迁移直接重入、旧记录保留和大文本输出；按七种 vendor 生成的 DDL 分别在 H2 MySQL / PG / Oracle 兼容模式验证可空性和64字符长度。
+- 七份最终脚本核对202张表、2,817个字段清单一致，并检查本次四列的方言类型、长度、默认值、可空性、用途注释和两个索引。受影响表分别为25列和44列，设计文档已补齐此前 Java 迁移增加的字段。
+- 前端配置往返及真实 Chrome / Vue 组件验证分组、循环候选过滤、前置结果参数保存和重开回显、组内排序不改依赖；生产构建通过。
+- 未连接或修改业务数据库；MySQL、PG、Oracle、达梦、人大金仓及两种 OceanBase 均未进行实机升级或全量导入，H2 兼容模式和静态检查不替代实机验证。
+
+验证命令（后端在 `workflow-server`，前端在 `workflow-frontend/workflow-web`）：
+
+```sh
+mvn -o -pl workflow-app,workflow-db-migrator -am -Dtest=FlowActionDependenciesTest,FlowActionDependencyExecutionTest,FlowActionDependenciesMigrationTest,FlowActionBeforeStartMigrationTest,FlowActionExecutionServiceTest,FlowActionExecutionProcessorTest,FlowActionEventDispatcherTest,FlowActionCustomFailureTransactionTest,FlowActionFailurePublicationTest,EntityFieldAssignmentPublishTest,FlowActionOperationPolicyTest,FlowActionOperationExecutionTransactionTest,ConfigMigrationFlowActionImportSupportTest -Dsurefire.failIfNoSpecifiedTests=false test
+node src/shared/__tests__/flow-action-dependencies.spec.js
+node scripts/flow-action-dependencies-browser-test.mjs
+npm run build
+```
+
+迁移文件清单：本次新增 **V138__flow_action_dependencies.java**；已有 **V137__flow_action_before_start_execution.java** 保持原有工作区内容。修改、删除、重命名主分支已有迁移均为 **无**，未改 V001，未使用 repair，未建立基线。
+
+## 2026-11-17 同步 V137 发起前动作执行审计
+
+新增 [`V137__flow_action_before_start_execution.java`](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V137__flow_action_before_start_execution.java)，仅将 `process_action_execution.process_instance_id` 从非空改为可空，保留64字符长度、已有值、主键、索引及其他约束，不新增字段、表或系统种子。发起前动作尚无引擎实例，执行日志保存真实 NULL，通过发布版本、流程定义、实体编码及载荷中的实体数据 ID 定位；不使用伪造实例 ID。受影响字段和业务规则已同步到 [执行日志表设计](database-design.md#69-process_action_execution-流程动作执行日志表)。
+
+创建迁移前已同时扫描 SQL 和 Java 迁移，原最高版本为 V136。V137 完成后的结构仍为 **202 张表、2,813 个字段**；同工作区随后新增的 V138 增加四个字段，七份最终空库脚本当前为 **202 张表、2,817 个字段**，继续保留 V137 的可空语义。MySQL / OB MySQL、PG / 人大金仓保持 VARCHAR(64)，Oracle / 达梦 / OB Oracle 保持 VARCHAR2(64)，用途注释均说明发起前为空；默认值仍为空值，已有索引及退役对象清理结果保持不变。
+
+验证范围：
+
+- 本轮所选后端259项测试通过，0失败、0错误、0跳过；其中 V137 迁移测试4项。前端时机策略正反例2项通过，管理端及 Embed 生产构建通过，详细阶段用例见 [流程动作时机扩展](../flow-action-timing-extension.md)。
+- H2 MySQL 模式执行实际 V137 Java 迁移，覆盖升级前 NULL 插入被拒绝、升级后 NULL 可插入、旧记录及索引保留、64字符长度、Flyway migrate / validate / 再次 migrate，以及迁移直接重入。
+- H2 PostgreSQL / Oracle 兼容模式执行对应 DDL；逐一核对七种 vendor 生成语句和七份最终脚本的列类型、长度、可空性、用途注释，并核对全部表名及字段清单一致。
+- 真实 Flowable / Spring / MyBatis / H2 测试覆盖无实例的发起前动作审计、前置拒绝、实际业务阶段顺序、表单及引擎回滚、外层回滚不留通知、提交后可领取及失败重试时保留原快照和幂等键；配置保存及运行时均拒绝把前置动作改为异步或忽略失败。
+- 未连接或修改业务数据库；MySQL、PostgreSQL、Oracle、达梦、人大金仓及两种 OceanBase 均未进行实机迁移或全量导入。H2 兼容模式及七方言静态核对不替代实机验证。
+
+验证命令（仓库根目录）：
+
+```sh
+mvn -o -f workflow-server/pom.xml -pl workflow-app -am clean test '-Dtest=FlowAction*Test,TaskActionServiceTest,TaskAddSignServiceTest,ProcessRuntimeServiceTest,ProcessTerminationServiceTest,ProcessProgrammingVariableIntegrationTest,TaskCandidateApprovalTransactionIntegrationTest,TaskAssignmentAccessFlowableIntegrationTest' -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+本任务迁移清单：新增 **V137__flow_action_before_start_execution.java**；修改、删除、重命名主分支已有 SQL / Java 迁移均为 **无**。同工作区 V138 为后续独立变更，予以保留。未修改 V001，未使用 repair，未创建基线。
+
 ## 2026-11-17 同步 V136 流程用户组成员标签
 
 已同时检查 `src/main/resources/db/migration` 的 SQL 迁移和 `src/main/java/db/migration` 的 Java 迁移，原最高版本 V135，本次新增唯一的 [`V136__group_member_tags.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V136__group_member_tags.sql)。七份空库脚本均为 **202 张表、2,813 个字段**，比 V135 增加两张表、六个字段及一条内置人员解析器目录种子。其他表结构和原有系统种子保持不变。

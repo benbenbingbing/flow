@@ -2664,16 +2664,31 @@ public class ConfigMigrationImportApplyService {
             for (FlowAction draft : flowActionMapper.findDraftActionsByProcessConfigId(process.getId())) {
                 flowActionMapper.logicDeleteById(draft.getId());
             }
+            var importedActions = new ArrayList<FlowAction>();
+            var localKeys = new java.util.HashSet<String>();
             for (Map<String, Object> value : mapList(snapshot.get("flowActions"))) {
+                var normalized = new LinkedHashMap<>(normalizeFlowActionBinding(value));
+                String key = normalized.remove("actionKey") instanceof String sourceKey ? sourceKey : null;
+                String predecessorKey = normalized.remove("predecessorActionKey") instanceof String sourceKey ? sourceKey : null;
+                if (key != null && !localKeys.add(key)) throw new IllegalArgumentException("流程动作包内编码重复");
                 FlowAction action = convert(
-                        normalizeFlowActionBinding(value),
+                        normalized,
                         FlowAction.class);
-                action.setId(null);
+                action.setId(key);
+                action.setPredecessorActionId(predecessorKey);
                 action.setVersionId(null);
                 action.setProcessConfigId(process.getId());
 
                 action.setDeleted(0);
+                importedActions.add(action);
+            }
+            var newIds = new LinkedHashMap<String, String>();
+            for (var action : com.workflow.process.action.application.FlowActionDependencies.dependencyOrder(importedActions)) {
+                String sourceKey = action.getId();
+                action.setId(null);
+                action.setPredecessorActionId(newIds.get(action.getPredecessorActionId()));
                 flowActionService.saveAction(action);
+                if (sourceKey != null) newIds.put(sourceKey, action.getId());
             }
         }
         if (snapshot.containsKey("statusMappings")) {

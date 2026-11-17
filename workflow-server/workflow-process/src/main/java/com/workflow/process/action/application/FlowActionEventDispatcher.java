@@ -59,17 +59,37 @@ public class FlowActionEventDispatcher implements FlowActionDispatcher {
                 event.getScopeType(),
                 event.getElementId(),
                 event.getTriggerTiming());
+        // 在调用任何处理器之前检查整批配置，避免错误前置配置被当作提交后通知。
+        boolean businessTiming = timingCatalog.find(event.getTriggerTiming())
+                .map(option -> option.getOperationPhase()).isPresent();
+        for (FlowAction action : actions) {
+            if (!Boolean.TRUE.equals(action.getEnabled())) continue;
+            String mode = normalizeExecutionMode(action);
+            com.workflow.contracts.process.action.model.FlowActionTriggerTiming.validateOperationExecution(
+                    event.getTriggerTiming(), mode, normalizeFailurePolicy(action, mode));
+            if (businessTiming && !org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+                throw new IllegalStateException("业务操作动作必须在业务事务中触发");
+            }
+        }
         for (FlowAction action : actions) {
             // 仅处理启用状态的动作，未启用的直接跳过
             if (!Boolean.TRUE.equals(action.getEnabled())) {
                 continue;
             }
-            dispatchAction(action, event);
+            if (!"AFTER_COMMIT".equalsIgnoreCase(action.getExecutionMode())) dispatchAction(action, event);
         }
+        // 同步阶段结束后整批入队；依赖关联由服务按本次触发生成，不依赖列表提交顺序。
+        var asynchronous = actions.stream().filter(action -> Boolean.TRUE.equals(action.getEnabled()))
+                .filter(action -> "AFTER_COMMIT".equalsIgnoreCase(action.getExecutionMode())).toList();
+        for (var action : asynchronous) {
+            com.workflow.contracts.process.action.model.FlowActionTriggerTiming.validateOperationExecution(
+                    event.getTriggerTiming(), normalizeExecutionMode(action), normalizeFailurePolicy(action, normalizeExecutionMode(action)));
+        }
+        if (!asynchronous.isEmpty()) executionService.enqueueActions(asynchronous, event);
     }
 
     /**
-     * 分发单个动作：根据执行方式决定是入队提交后执行还是事务内立即执行。
+     * 同步执行单个事务内动作；提交后动作由 dispatch 在同步阶段结束后整批入队。
      *
      * @param action 已发布动作配置
      * @param event  触发事件
@@ -77,17 +97,10 @@ public class FlowActionEventDispatcher implements FlowActionDispatcher {
     private void dispatchAction(FlowAction action, FlowActionTriggerEvent event) {
         String executionMode = normalizeExecutionMode(action);
         String failurePolicy = normalizeFailurePolicy(action, executionMode);
+        // 运行时再次防守，历史导入或直接写库也不能将前置检查排入提交后队列。
+        com.workflow.contracts.process.action.model.FlowActionTriggerTiming.validateOperationExecution(
+                event.getTriggerTiming(), executionMode, failurePolicy);
         String idempotencyKey = UUID.randomUUID().toString();
-        // 提交后执行：仅写入 PENDING 执行记录，由发件箱工作线程异步处理
-        if (FlowActionExecutionMode.AFTER_COMMIT.name().equals(executionMode)) {
-            executionService.create(
-                    action,
-                    event,
-                    idempotencyKey,
-                    FlowActionExecution.Status.PENDING);
-            return;
-        }
-
         if (FlowActionFailureStrategyCatalog.custom(action)
                 && !org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("事务内自定义策略必须在业务事务中执行");

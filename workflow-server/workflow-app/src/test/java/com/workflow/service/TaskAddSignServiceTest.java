@@ -33,6 +33,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -47,6 +48,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class TaskAddSignServiceTest {
     @Mock TaskService taskService;
+    @Mock com.workflow.process.action.application.FlowActionDispatcher businessActions;
     @Mock TaskQuery taskQuery;
     @Mock Task task;
     @Mock ProcessTaskMapper processTaskMapper;
@@ -64,7 +66,7 @@ class TaskAddSignServiceTest {
     /** 装配被测服务并预置源任务、加签记录与用户的 Mock 返回值 */
     @BeforeEach
     void setUp() {
-        service = new TaskAddSignService(
+        service = new TaskAddSignService(new com.workflow.process.action.application.FlowActionOperationDispatcher(businessActions, mock(org.flowable.engine.RuntimeService.class), mock(org.flowable.engine.HistoryService.class)),
                 taskService,
                 processTaskMapper,
                 addSignMapper,
@@ -99,6 +101,123 @@ class TaskAddSignServiceTest {
     @AfterEach
     void tearDown() {
         UserContext.clear();
+    }
+
+    @Test void addSignStagesRunBeforePersistenceAndAfterAllChildrenAreCreated() {
+        service.addSign("source-task", request("PARALLEL"));
+        var events = ArgumentCaptor.forClass(com.workflow.process.action.domain.FlowActionTriggerEvent.class);
+        var order = inOrder(businessActions, addSignMapper, processTaskMapper, operationLogMapper);
+        order.verify(businessActions).dispatch(argThat(event -> "TASK_ADD_SIGN_VALIDATING".equals(event.getTriggerTiming())));
+        order.verify(businessActions).dispatch(argThat(event -> "TASK_ADD_SIGNING".equals(event.getTriggerTiming())));
+        order.verify(addSignMapper).insert(any(ProcessTaskAddSign.class));
+        order.verify(processTaskMapper).insert(any(ProcessTask.class));
+        order.verify(operationLogMapper).insert(any(ProcessOperationLog.class));
+        order.verify(businessActions).dispatch(argThat(event -> "TASK_ADD_SIGNED".equals(event.getTriggerTiming())));
+        verify(businessActions, times(3)).dispatch(events.capture());
+        assertEquals(List.of("TASK_ADD_SIGN_VALIDATING", "TASK_ADD_SIGNING", "TASK_ADD_SIGNED"),
+                events.getAllValues().stream().map(com.workflow.process.action.domain.FlowActionTriggerEvent::getTriggerTiming).toList());
+        assertEquals(List.of("reviewer"), events.getValue().getOperationParameters().get("userIds"));
+        assertEquals("PARALLEL", events.getValue().getOperationParameters().get("type"));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_ADD_SIGN_VALIDATING", "TASK_ADD_SIGNING"})
+    void rejectingAddSignStopsBeforeCreatingRecordsOrChildren(String stage) {
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            if (stage.equals(event.getTriggerTiming())) throw new IllegalArgumentException("业务不允许加签");
+            return null;
+        }).when(businessActions).dispatch(any());
+        assertThrows(IllegalArgumentException.class, () -> service.addSign("source-task", request("BEFORE")));
+        verify(addSignMapper, never()).insert(any(ProcessTaskAddSign.class));
+        verify(processTaskMapper, never()).insert(any(ProcessTask.class));
+        verifyNoInteractions(operationLogMapper);
+    }
+
+    /** 覆盖通过、驳回、继续等待和最后子任务收口的全部返回分支。 */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"BEFORE,false,0,approve", "PARALLEL,true,0,approve", "AFTER,true,0,approve",
+            "AFTER,false,0,approve", "PARALLEL,true,1,approve", "PARALLEL,true,0,reject"})
+    void localChildHasDedicatedStagesAndNeverFakesAnEngineCompletion(String type, boolean sourceCompleted, long pending, String action) {
+        prepareTimingChild(type, sourceCompleted, pending);
+        service.completeAddSignTask("child-task", action, "子任务意见");
+        var events = ArgumentCaptor.forClass(com.workflow.process.action.domain.FlowActionTriggerEvent.class);
+        verify(businessActions, times(3)).dispatch(events.capture());
+        assertEquals(List.of("ADD_SIGN_TASK_VALIDATING", "ADD_SIGN_TASK_COMPLETING", "ADD_SIGN_TASK_COMPLETED"),
+                events.getAllValues().stream().map(com.workflow.process.action.domain.FlowActionTriggerEvent::getTriggerTiming).toList());
+        for (var event : events.getAllValues()) {
+            assertEquals("LOCAL_ADD_SIGN", event.getTaskKind()); assertEquals("child-task", event.getTaskId());
+            assertEquals("source-task", event.getSourceTaskId()); assertEquals("approve-node", event.getElementId());
+            assertEquals(action, event.getApprovalAction());
+        }
+        verify(taskService, never()).complete(anyString(), anyMap());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_TASK_VALIDATING", "ADD_SIGN_TASK_COMPLETING"})
+    void localChildRejectionLeavesChildAndSourceUntouched(String stage) {
+        prepareTimingChild("BEFORE", false, 0);
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            if (stage.equals(event.getTriggerTiming())) throw new IllegalArgumentException("禁止办理子任务");
+            return null;
+        }).when(businessActions).dispatch(any());
+        assertThrows(IllegalArgumentException.class, () -> service.completeAddSignTask("child-task", "approve", "意见"));
+        verify(processTaskMapper, never()).completeTask(any(), any(), any(), any(), anyLong());
+        verify(addSignUserMapper, never()).completeByGeneratedTaskId(anyString());
+        verifyNoInteractions(taskActionService, operationLogMapper);
+    }
+
+    @Test void invalidChildActionDoesNotInvokeBusinessExtensions() {
+        prepareTimingChild("BEFORE", false, 0);
+        assertThrows(IllegalArgumentException.class, () -> service.completeAddSignTask("child-task", "transfer", "意见"));
+        verifyNoInteractions(businessActions);
+        verify(processTaskMapper, never()).completeTask(any(), any(), any(), any(), anyLong());
+    }
+
+    private void prepareTimingChild(String type, boolean sourceCompleted, long pending) {
+        var child = new ProcessTaskAddSignUser(); child.setAddSignId("add-sign-1");
+        child.setUserId("admin"); child.setStatus("TODO"); child.setGeneratedTaskId("child-task");
+        var mirror = sourceMirror(); mirror.setTaskId("child-task"); mirror.setStatus(ProcessTask.STATUS_TODO);
+        when(addSignUserMapper.findByGeneratedTaskId("child-task")).thenReturn(child);
+        when(addSignUserMapper.findByGeneratedTaskIdForUpdate("child-task")).thenReturn(child);
+        when(addSignMapper.selectByIdForUpdate("add-sign-1")).thenReturn(addSign(type, sourceCompleted));
+        lenient().when(processTaskMapper.selectByTaskId("child-task")).thenReturn(mirror);
+        lenient().when(addSignUserMapper.countPending("add-sign-1")).thenReturn(pending);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"AFTER,1,approve", "PARALLEL,1,approve", "PARALLEL,0,approve", "AFTER,1,reject"})
+    void sourceStagingUsesDedicatedTimingsAroundPersistence(String type, long pending, String action) {
+        when(addSignMapper.findOpenBySourceTaskIdForUpdate("source-task")).thenReturn(addSign(type, false));
+        lenient().when(addSignUserMapper.countPending("add-sign-1")).thenReturn(pending);
+        lenient().when(addSignUserMapper.selectList(any())).thenReturn(List.of());
+        assertTrue(service.handleSourceCompletion("source-task", "admin", action, "意见", "办理", Map.of("amount", 12)));
+        var order = inOrder(businessActions, addSignMapper, processTaskMapper);
+        order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_VALIDATING".equals(event.getTriggerTiming())));
+        order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_SUBMITTING".equals(event.getTriggerTiming())));
+        order.verify(addSignMapper).updateById(any(ProcessTaskAddSign.class));
+        order.verify(processTaskMapper).updateById(any(ProcessTask.class));
+        order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_SUBMITTED".equals(event.getTriggerTiming())
+                && "ENGINE".equals(event.getTaskKind()) && event.getSubmittedFormData().equals(Map.of("amount", 12))));
+        verify(businessActions, times(3)).dispatch(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_SOURCE_VALIDATING", "ADD_SIGN_SOURCE_SUBMITTING"})
+    void sourceStagingRejectionPreventsSavingSubmissionAndActivatingChildren(String stage) {
+        when(addSignMapper.findOpenBySourceTaskIdForUpdate("source-task")).thenReturn(addSign("AFTER", false));
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            if (stage.equals(event.getTriggerTiming())) throw new IllegalArgumentException("暂不允许源任务提交");
+            return null;
+        }).when(businessActions).dispatch(any());
+        assertThrows(IllegalArgumentException.class, () -> service.handleSourceCompletion(
+                "source-task", "admin", "approve", "意见", "通过", Map.of("amount", 12)));
+        verify(addSignMapper, never()).updateById(any(ProcessTaskAddSign.class));
+        verify(processTaskMapper, never()).updateById(any(ProcessTask.class));
+        verify(addSignUserMapper, never()).activateHeld(anyString());
+        verifyNoInteractions(taskActionService, operationLogMapper);
     }
 
     /** 测试前加签创建可见子任务：验证插入的子任务状态为 TODO、节点类型为 ADD_SIGN */

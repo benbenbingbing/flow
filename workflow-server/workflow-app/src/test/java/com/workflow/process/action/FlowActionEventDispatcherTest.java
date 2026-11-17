@@ -107,7 +107,7 @@ class FlowActionEventDispatcherTest {
     /**
      * 事务提交后动作应仅入队待执行审计记录，不立即调用执行器。
      *
-     * <p>场景：动作执行模式为 AFTER_COMMIT，断言 create 以 PENDING 状态被调用，
+     * <p>场景：动作执行模式为 AFTER_COMMIT，断言整批原子入队，
      * 且 executor 未被交互。</p>
      */
     @Test
@@ -119,7 +119,7 @@ class FlowActionEventDispatcherTest {
 
         dispatcher.dispatch(event);
 
-        verify(executionService).create(eq(action), eq(event), anyString(), eq(FlowActionExecution.Status.PENDING));
+        verify(executionService).enqueueActions(eq(List.of(action)), eq(event));
         verifyNoInteractions(executor);
     }
 

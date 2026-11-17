@@ -1,5 +1,8 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.process.action.application.FlowActionOperationDispatcher;
+import static com.workflow.contracts.process.action.model.FlowActionTriggerTiming.*;
+
 import com.workflow.process.status.application.ProcessEndReason;
 
 import com.workflow.core.logging.LogValue;
@@ -36,6 +39,9 @@ import java.time.LocalDateTime;
 @Service
 @RequiredArgsConstructor
 public class ProcessTerminationService {
+    /** 业务动作必须在实际步骤处分发，所有调用方式共用，不能只装饰 HTTP 入口。 */
+    private final FlowActionOperationDispatcher operationActions;
+
 
     private final RuntimeService runtimeService;
     private final HistoryService historyService;
@@ -108,6 +114,14 @@ public class ProcessTerminationService {
             entityRecordPort.requireProcessEndStatus(entityCode, "TERMINATED");
         }
 
+        var parameters = new java.util.LinkedHashMap<String, Object>();
+        parameters.put("reason", reason);
+        var operation = operationActions.process(processInstance.getProcessDefinitionId(), processInstanceId,
+                "TERMINATE", userId, null, parameters);
+        operation.setEndReason(reason);
+        operationActions.fire(operation, PROCESS_TERMINATE_VALIDATING);
+        operationActions.fire(operation, PROCESS_TERMINATING);
+
         try {
             String deleteReason = reason != null && !reason.isEmpty()
                     ? reason
@@ -128,6 +142,7 @@ public class ProcessTerminationService {
                         processInstanceId,
                         null);
             }
+            operationActions.fire(operation, PROCESS_TERMINATE_EXECUTED);
             log.info(
                     "流程终止成功: processInstanceId={}, userId={}, reason={}",
                     processInstanceId, userId, deleteReason);

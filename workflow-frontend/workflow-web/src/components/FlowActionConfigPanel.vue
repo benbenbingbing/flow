@@ -21,8 +21,13 @@
     </div>
 
     <div class="actions-list" v-loading="loading">
+      <section v-for="group in actionGroups" :key="group.key" class="action-group">
+        <div class="action-group-heading">
+          <strong>{{ timingLabel(group.timing) }} · {{ executionModeLabel(group.mode) }}</strong>
+          <span>{{ group.mode === 'IN_TRANSACTION' ? '组内按排序同步调用' : '独立动作允许并行；需先后执行请设置前置动作' }}</span>
+        </div>
       <div
-        v-for="(action, index) in sortedActions"
+        v-for="(action, index) in group.actions"
         :key="action.id"
         class="action-item"
         :class="{ disabled: !action.enabled }"
@@ -34,7 +39,7 @@
             aria-label="上移动作"
             title="上移动作"
             :disabled="index === 0"
-            @click="moveAction(index, -1)"
+            @click="moveAction(group, index, -1)"
           >
             <el-icon><ArrowUp /></el-icon>
           </el-button>
@@ -44,8 +49,8 @@
             size="small"
             aria-label="下移动作"
             title="下移动作"
-            :disabled="index === sortedActions.length - 1"
-            @click="moveAction(index, 1)"
+            :disabled="index === group.actions.length - 1"
+            @click="moveAction(group, index, 1)"
           >
             <el-icon><ArrowDown /></el-icon>
           </el-button>
@@ -64,6 +69,9 @@
               {{ executionModeLabel(action.executionMode) }}
             </el-tag>
             <span>{{ handlerLabel(action) }}</span>
+            <el-tag v-if="action.predecessorActionId" size="small" type="warning">
+              {{ predecessorName(action) }} 成功 → {{ action.actionName }}
+            </el-tag>
           </div>
         </div>
 
@@ -76,6 +84,7 @@
         </div>
       </div>
 
+      </section>
       <el-empty v-if="!loading && sortedActions.length === 0" description="暂无流程动作" />
     </div>
 
@@ -166,6 +175,15 @@
                 提交后执行
               </el-radio-button>
             </el-radio-group>
+          </el-form-item>
+
+          <el-form-item v-if="editingAction.executionMode === 'AFTER_COMMIT' || editingAction.predecessorActionId" label="前置动作">
+            <el-select v-model="editingAction.predecessorActionId" clearable placeholder="无，独立执行" style="width: 100%">
+              <el-option v-if="editingAction.predecessorActionId && !availablePredecessors.some(item => item.id === editingAction.predecessorActionId)"
+                :value="editingAction.predecessorActionId" :label="`${predecessorName(editingAction)}（当前不适用，请清除）`" disabled />
+              <el-option v-for="item in availablePredecessors" :key="item.id" :value="item.id" :label="item.actionName" />
+            </el-select>
+            <div class="action-dependency-help">只选择同组提交后动作；前置成功后才执行，前置失败时等待。</div>
           </el-form-item>
 
           <el-form-item label="处理器" required>
@@ -306,7 +324,7 @@
                     />
                   </el-select>
                 </el-col>
-                <el-col :span="8"><el-input v-model="param.value" placeholder="参数值" /></el-col>
+                <el-col :span="8"><el-input v-model="param.value" :placeholder="param.type === 'predecessor' ? '结果字段，如 contractNo' : '参数值'" /></el-col>
                 <el-col :span="3">
                   <el-button
                     type="danger"
@@ -354,7 +372,10 @@ import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import EntityFieldAssignmentEditor from '@/components/EntityFieldAssignmentEditor.vue'
 import { ENTITY_FIELD_ASSIGNMENT_HANDLER } from '@/shared/entity-field-assignment'
+import { timingAllowsMode, timingAllowsFailurePolicy, timingDefaults } from '@/shared/flow-action-timing-policy'
 import { failurePolicyOptions as buildFailurePolicyOptions, strategyFormSchema, strategyDefaults, strategyProblem, parseStrategyConfig } from '@/shared/flow-action-failure-strategy'
+
+import { groupFlowActions, predecessorOptions, dependencyProblem, parseActionParams, serializeActionParams } from '@/shared/flow-action-dependencies'
 
 const props = defineProps({
   processId: { type: String, required: true },
@@ -408,11 +429,12 @@ const actionParamTypeOptions = [
   { label: '静态文本', value: 'string' },
   { label: '数字', value: 'number' },
   { label: '布尔', value: 'boolean' },
-  { label: '流程变量', value: 'variable' }
+  { label: '流程变量', value: 'variable' },
+  { label: '前置动作结果', value: 'predecessor' }
 ]
 
 const templates = [
-  { value: 'approval-validation', label: '审批前校验', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_COMPLETING', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '审批前业务校验' },
+  { value: 'approval-validation', label: '审批前校验', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_SUBMIT_VALIDATING', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '审批前业务校验' },
   { value: 'next-assignee-notice', label: '通知下一办理人', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_CREATED', executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', actionName: '发送待办通知' },
   { value: 'approval-result-sync', label: '审批结果同步', scopeType: 'SEQUENCE_FLOW', triggerTiming: 'TRANSITION_TAKEN', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '同步审批结果' },
   { value: 'process-complete-notice', label: '流程完成通知', scopeType: 'PROCESS', triggerTiming: 'PROCESS_COMPLETED', executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', actionName: '发送流程完成通知' },
@@ -431,6 +453,14 @@ const sectionSubtitle = computed(() => {
 })
 
 const sortedActions = computed(() => [...actions.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)))
+const actionGroups = computed(() => groupFlowActions(actions.value, timingOptions.value))
+const availablePredecessors = computed(() => predecessorOptions(actions.value, {
+  ...editingAction.value, processConfigId: props.processId, scopeType: props.scopeType,
+  elementId: props.scopeType === 'PROCESS' ? null : props.elementId
+}))
+function predecessorName(action) {
+  return actions.value.find(item => item.id === action.predecessorActionId)?.actionName || '前置动作已失效'
+}
 const currentTimingOption = computed(() => timingOptions.value.find(item => item.value === editingAction.value.triggerTiming))
 const currentHandler = computed(() => handlers.value.find(item =>
   item.definitionId === editingAction.value.actionDefinitionId
@@ -470,7 +500,8 @@ const availableTemplates = computed(() => templates.filter(template => {
 }))
 
 const failurePolicyOptions = computed(() => buildFailurePolicyOptions(editingAction.value.executionMode)
-  .filter(option => !isFieldAssignment.value || option.value === 'ROLLBACK'))
+  .filter(option => (!isFieldAssignment.value || option.value === 'ROLLBACK')
+    && timingAllowsFailurePolicy(currentTimingOption.value, option.value)))
 
 const riskWarnings = computed(() => {
   const warnings = []
@@ -607,8 +638,7 @@ function applyTemplate(value) {
 function onTimingChange(value) {
   const timing = timingOptions.value.find(item => item.value === value)
   if (!timing) return
-  editingAction.value.executionMode = timing.defaultExecutionMode
-  if (editingAction.value.failurePolicy !== 'CUSTOM') editingAction.value.failurePolicy = timing.defaultFailurePolicy
+  Object.assign(editingAction.value, timingDefaults(timing, editingAction.value.failurePolicy))
 }
 
 function onExecutionModeChange(value) {
@@ -684,6 +714,7 @@ function rememberHandler(handler) {
 }
 
 function handlerSupportsMode(mode) {
+  if (!timingAllowsMode(currentTimingOption.value, mode)) return false
   const supported = currentHandler.value?.supportedExecutionModes
   return !Array.isArray(supported) && !(supported instanceof Set)
     ? true
@@ -703,6 +734,11 @@ async function saveAction() {
     ElMessage.warning('请选择自定义策略')
     return
   }
+  const problem = dependencyProblem(actions.value, {
+    ...editingAction.value, processConfigId: props.processId, scopeType: props.scopeType,
+    elementId: props.scopeType === 'PROCESS' ? null : props.elementId
+  })
+  if (problem) { ElMessage.warning(problem); return }
   saving.value = true
   try {
     // 保存请求显式遵循当前契约，避免把查询响应中的只读或历史字段重新透传给后端。
@@ -721,6 +757,7 @@ async function saveAction() {
       description: editingAction.value.description,
       interfaceName: editingAction.value.interfaceName,
       paramsJson: buildParamsJson(),
+      predecessorActionId: editingAction.value.predecessorActionId || null,
       enabled: editingAction.value.enabled,
       retryConfig: editingAction.value.executionMode === 'AFTER_COMMIT'
         ? JSON.stringify({ maxRetries: retryForm.value.maxRetries, ...(editingAction.value.failurePolicy === 'CUSTOM' ? { semanticsVersion: 2 } : {}) })
@@ -769,10 +806,10 @@ async function toggleActionEnabled(action) {
   emit('changed', actions.value)
 }
 
-async function moveAction(index, direction) {
+async function moveAction(group, index, direction) {
   const targetIndex = index + direction
-  if (targetIndex < 0 || targetIndex >= sortedActions.value.length) return
-  const list = [...sortedActions.value]
+  if (targetIndex < 0 || targetIndex >= group.actions.length) return
+  const list = [...group.actions]
   ;[list[index], list[targetIndex]] = [list[targetIndex], list[index]]
   await processActionApi.updateSortOrder(list.map(item => item.id))
   hasDraftChanges.value = true
@@ -789,17 +826,7 @@ function parseRetryConfig(value) {
 }
 
 function parseParamsJson(value) {
-  if (!value) return []
-  try {
-    return Object.entries(JSON.parse(value)).map(([name, rawValue]) => {
-      let type = typeof rawValue
-      if (type === 'string' && rawValue.startsWith('${') && rawValue.endsWith('}')) type = 'variable'
-      if (!['number', 'boolean', 'variable'].includes(type)) type = 'string'
-      return { name, type, value: String(rawValue) }
-    })
-  } catch {
-    return []
-  }
+  try { return parseActionParams(value) } catch { return [] }
 }
 
 function buildParamsJson() {
@@ -807,16 +834,7 @@ function buildParamsJson() {
     if (!fieldAssignmentEditor.value) throw new Error('字段赋值配置尚未就绪，请稍后保存。')
     return fieldAssignmentEditor.value.paramsJson()
   }
-  const params = {}
-  actionParamList.value.forEach(param => {
-    if (!param.name) return
-    if (param.type === 'number') params[param.name] = Number(param.value)
-    else if (param.type === 'boolean') params[param.name] = param.value === true || param.value === 'true'
-    else if (param.type === 'variable' || param.type === 'expression') {
-      params[param.name] = String(param.value).startsWith('${') ? param.value : `\${${param.value}}`
-    } else params[param.name] = param.value
-  })
-  return JSON.stringify(params)
+  return serializeActionParams(actionParamList.value, editingAction.value.predecessorActionId)
 }
 
 function addActionParam() {
@@ -865,6 +883,10 @@ function openExtensionManagement() {
 </script>
 
 <style scoped>
+.action-group { margin-bottom: 16px; }
+.action-group-heading { display: flex; flex-direction: column; gap: 4px; margin: 12px 0 8px; }
+.action-group-heading span, .action-dependency-help { color: var(--el-text-color-secondary); font-size: 12px; }
+
 .flow-action-config {
   min-height: 160px;
 }
