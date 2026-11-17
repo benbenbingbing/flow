@@ -119,7 +119,6 @@ public class ProcessTerminationService {
         var operation = operationActions.process(processInstance.getProcessDefinitionId(), processInstanceId,
                 "TERMINATE", userId, null, parameters);
         operation.setEndReason(reason);
-        operationActions.fire(operation, PROCESS_TERMINATE_VALIDATING);
         operationActions.fire(operation, PROCESS_TERMINATING);
 
         try {

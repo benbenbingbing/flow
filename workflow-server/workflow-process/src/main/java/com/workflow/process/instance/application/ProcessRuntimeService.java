@@ -137,7 +137,6 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         var operation = operationActions.process(deployedDefinition.getId(), null, "START", request.submitterId(),
                 variables, Map.of());
         var originalVariables = com.workflow.contracts.process.model.ProcessValues.snapshot(variables);
-        operationActions.fire(operation, PROCESS_START_VALIDATING);
         operationActions.fire(operation, PROCESS_STARTING);
         // 无实例的准备动作也不能改写发起人、实体身份及内部控制变量。
         var changedVariables = new java.util.HashSet<String>(operation.getVariables().keySet());

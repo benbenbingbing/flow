@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { timingAllowsMode, timingAllowsFailurePolicy, timingDefaults } from '../flow-action-timing-policy.js'
 
-test('前置校验和执行前处理禁止提交后执行及非回滚策略', () => {
+test('操作前时机禁止提交后执行及非回滚策略', () => {
   const timing = { blocking: true, defaultExecutionMode: 'IN_TRANSACTION', defaultFailurePolicy: 'ROLLBACK' }
   assert.equal(timingAllowsMode(timing, 'IN_TRANSACTION'), true)
   assert.equal(timingAllowsMode(timing, 'AFTER_COMMIT'), false)

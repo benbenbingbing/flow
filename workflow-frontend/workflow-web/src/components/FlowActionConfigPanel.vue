@@ -434,7 +434,7 @@ const actionParamTypeOptions = [
 ]
 
 const templates = [
-  { value: 'approval-validation', label: '审批前校验', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_SUBMIT_VALIDATING', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '审批前业务校验' },
+  { value: 'approval-validation', label: '审批前校验', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_FORM_SAVING', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '审批前业务校验' },
   { value: 'next-assignee-notice', label: '通知下一办理人', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_CREATED', executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', actionName: '发送待办通知' },
   { value: 'approval-result-sync', label: '审批结果同步', scopeType: 'SEQUENCE_FLOW', triggerTiming: 'TRANSITION_TAKEN', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '同步审批结果' },
   { value: 'process-complete-notice', label: '流程完成通知', scopeType: 'PROCESS', triggerTiming: 'PROCESS_COMPLETED', executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', actionName: '发送流程完成通知' },

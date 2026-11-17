@@ -87,9 +87,6 @@ public class FlowActionOperationDispatcher {
         if (operation.getProcessInstanceId() != null) {
             event.setVariables(new LinkedHashMap<>(operation.getVariables()));
         }
-        if ("VALIDATE".equals(timing.getOperationPhase())) {
-            event.setVariables(ProcessValues.snapshot(event.getVariables()));
-        }
         event.setEntityCode(string(event.getVariables().get("entityCode")));
         event.setEntityDataId(string(event.getVariables().get("entityDataId")));
         dispatcher.dispatch(event);

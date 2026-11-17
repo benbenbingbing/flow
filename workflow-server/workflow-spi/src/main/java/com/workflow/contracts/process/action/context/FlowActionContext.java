@@ -214,7 +214,6 @@ public class FlowActionContext {
      * @param value 变量值
      */
     public void setProcessVariable(String name, Object value) {
-        requireVariableWriteAllowed();
         if ("PROCESS_STARTING".equals(triggerTiming) && processInstanceId == null) {
             mutableVariablesSnapshot().put(name, value);
             return;
@@ -232,7 +231,6 @@ public class FlowActionContext {
      * @param variables 待写入变量
      */
     public void setProcessVariables(Map<String, Object> variables) {
-        requireVariableWriteAllowed();
         if ("PROCESS_STARTING".equals(triggerTiming) && processInstanceId == null) {
             mutableVariablesSnapshot().putAll(variables == null ? Map.of() : variables);
             return;
@@ -259,16 +257,6 @@ public class FlowActionContext {
                     new LinkedHashMap<>(variablesSnapshot);
         }
         return variablesSnapshot;
-    }
-
-    /** 校验阶段只读；发起准备阶段允许写入尚未创建实例的启动变量。 */
-    private void requireVariableWriteAllowed() {
-        // 只约束平台声明的校验阶段，扩展自定义时机不能因名称后缀被意外改变行为。
-        for (FlowActionTriggerTiming timing : FlowActionTriggerTiming.values()) {
-            if (timing.name().equalsIgnoreCase(triggerTiming) && "VALIDATE".equals(timing.getOperationPhase())) {
-                throw new IllegalStateException("业务校验阶段不能写入流程变量");
-            }
-        }
     }
 
     /**

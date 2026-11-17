@@ -4,7 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
+import com.workflow.process.action.infrastructure.persistence.record.FlowActionVersionCount;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Result;
+import org.apache.ibatis.annotations.Results;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -72,6 +77,30 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
                 .orderByAsc(FlowAction::getTriggerTiming)
                 .orderByAsc(FlowAction::getSortOrder, FlowAction::getId));
     }
+
+    /**
+     * 按发布版本聚合动作数量，过滤条件与版本动作明细一致，禁用动作仍属于版本配置。
+     *
+     * @param versionIds 非空的发布版本 ID 列表，由调用方跳过空列表
+     * @return 有动作的版本及其数量；无动作的版本不产生聚合行
+     */
+    @Select("""
+            <script>
+            SELECT version_id, COUNT(*) AS action_count
+            FROM process_action
+            WHERE status = 'PUBLISHED' AND deleted = 0
+              AND version_id IN
+              <foreach collection="versionIds" item="versionId" open="(" separator="," close=")">
+                #{versionId}
+              </foreach>
+            GROUP BY version_id
+            </script>
+            """)
+    @Results({
+            @Result(column = "version_id", property = "versionId"),
+            @Result(column = "action_count", property = "actionCount")
+    })
+    List<FlowActionVersionCount> countPublishedActionsByVersionIds(@Param("versionIds") List<String> versionIds);
 
     /**
      * 按版本、作用域、元素与触发时机查询已发布动作。

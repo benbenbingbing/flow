@@ -107,21 +107,20 @@ class TaskAddSignServiceTest {
         service.addSign("source-task", request("PARALLEL"));
         var events = ArgumentCaptor.forClass(com.workflow.process.action.domain.FlowActionTriggerEvent.class);
         var order = inOrder(businessActions, addSignMapper, processTaskMapper, operationLogMapper);
-        order.verify(businessActions).dispatch(argThat(event -> "TASK_ADD_SIGN_VALIDATING".equals(event.getTriggerTiming())));
         order.verify(businessActions).dispatch(argThat(event -> "TASK_ADD_SIGNING".equals(event.getTriggerTiming())));
         order.verify(addSignMapper).insert(any(ProcessTaskAddSign.class));
         order.verify(processTaskMapper).insert(any(ProcessTask.class));
         order.verify(operationLogMapper).insert(any(ProcessOperationLog.class));
         order.verify(businessActions).dispatch(argThat(event -> "TASK_ADD_SIGNED".equals(event.getTriggerTiming())));
-        verify(businessActions, times(3)).dispatch(events.capture());
-        assertEquals(List.of("TASK_ADD_SIGN_VALIDATING", "TASK_ADD_SIGNING", "TASK_ADD_SIGNED"),
+        verify(businessActions, times(2)).dispatch(events.capture());
+        assertEquals(List.of("TASK_ADD_SIGNING", "TASK_ADD_SIGNED"),
                 events.getAllValues().stream().map(com.workflow.process.action.domain.FlowActionTriggerEvent::getTriggerTiming).toList());
         assertEquals(List.of("reviewer"), events.getValue().getOperationParameters().get("userIds"));
         assertEquals("PARALLEL", events.getValue().getOperationParameters().get("type"));
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_ADD_SIGN_VALIDATING", "TASK_ADD_SIGNING"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_ADD_SIGNING"})
     void rejectingAddSignStopsBeforeCreatingRecordsOrChildren(String stage) {
         doAnswer(call -> {
             com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
@@ -142,8 +141,8 @@ class TaskAddSignServiceTest {
         prepareTimingChild(type, sourceCompleted, pending);
         service.completeAddSignTask("child-task", action, "子任务意见");
         var events = ArgumentCaptor.forClass(com.workflow.process.action.domain.FlowActionTriggerEvent.class);
-        verify(businessActions, times(3)).dispatch(events.capture());
-        assertEquals(List.of("ADD_SIGN_TASK_VALIDATING", "ADD_SIGN_TASK_COMPLETING", "ADD_SIGN_TASK_COMPLETED"),
+        verify(businessActions, times(2)).dispatch(events.capture());
+        assertEquals(List.of("ADD_SIGN_TASK_COMPLETING", "ADD_SIGN_TASK_COMPLETED"),
                 events.getAllValues().stream().map(com.workflow.process.action.domain.FlowActionTriggerEvent::getTriggerTiming).toList());
         for (var event : events.getAllValues()) {
             assertEquals("LOCAL_ADD_SIGN", event.getTaskKind()); assertEquals("child-task", event.getTaskId());
@@ -154,7 +153,7 @@ class TaskAddSignServiceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_TASK_VALIDATING", "ADD_SIGN_TASK_COMPLETING"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_TASK_COMPLETING"})
     void localChildRejectionLeavesChildAndSourceUntouched(String stage) {
         prepareTimingChild("BEFORE", false, 0);
         doAnswer(call -> {
@@ -194,17 +193,16 @@ class TaskAddSignServiceTest {
         lenient().when(addSignUserMapper.selectList(any())).thenReturn(List.of());
         assertTrue(service.handleSourceCompletion("source-task", "admin", action, "意见", "办理", Map.of("amount", 12)));
         var order = inOrder(businessActions, addSignMapper, processTaskMapper);
-        order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_VALIDATING".equals(event.getTriggerTiming())));
         order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_SUBMITTING".equals(event.getTriggerTiming())));
         order.verify(addSignMapper).updateById(any(ProcessTaskAddSign.class));
         order.verify(processTaskMapper).updateById(any(ProcessTask.class));
         order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_SUBMITTED".equals(event.getTriggerTiming())
                 && "ENGINE".equals(event.getTaskKind()) && event.getSubmittedFormData().equals(Map.of("amount", 12))));
-        verify(businessActions, times(3)).dispatch(any());
+        verify(businessActions, times(2)).dispatch(any());
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_SOURCE_VALIDATING", "ADD_SIGN_SOURCE_SUBMITTING"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_SOURCE_SUBMITTING"})
     void sourceStagingRejectionPreventsSavingSubmissionAndActivatingChildren(String stage) {
         when(addSignMapper.findOpenBySourceTaskIdForUpdate("source-task")).thenReturn(addSign("AFTER", false));
         doAnswer(call -> {
@@ -473,6 +471,7 @@ class TaskAddSignServiceTest {
         verify(addSignMapper, never()).insert(any(ProcessTaskAddSign.class));
         verify(addSignUserMapper, never()).insert(any(ProcessTaskAddSignUser.class));
         verify(operationLogMapper, never()).insert(any(ProcessOperationLog.class));
+        verifyNoInteractions(businessActions);
     }
 
     /** 构造指定加签类型的加签请求 */

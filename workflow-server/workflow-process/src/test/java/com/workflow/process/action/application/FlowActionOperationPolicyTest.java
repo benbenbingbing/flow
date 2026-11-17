@@ -18,7 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-/** 保存/发布时的作用域、同步阻断规则与上下文写入限制，覆盖每一个标准时机。 */
+/** 保存/发布时的作用域、同步阻断规则与真实业务边界，覆盖每一个标准时机。 */
 class FlowActionOperationPolicyTest {
     @ParameterizedTest
     @EnumSource(FlowActionTriggerTiming.class)
@@ -53,7 +53,7 @@ class FlowActionOperationPolicyTest {
                 new ObjectMapper(), mock(FlowActionFailureStrategyCatalog.class));
         var action = new FlowAction();
         action.setProcessConfigId("p"); action.setScopeType("NODE"); action.setElementId("review");
-        action.setTriggerTiming("TASK_SUBMIT_VALIDATING"); action.setInterfaceName("handler");
+        action.setTriggerTiming("TASK_FORM_SAVING"); action.setInterfaceName("handler");
         action.setExecutionMode("IN_TRANSACTION"); action.setFailurePolicy("ROLLBACK");
         assertDoesNotThrow(() -> validator.validate(action));
         for (String policy : List.of("CONTINUE", "CUSTOM")) {
@@ -66,27 +66,28 @@ class FlowActionOperationPolicyTest {
         assertThrows(RuntimeException.class, () -> validator.validate(action));
     }
 
-    @Test void validationRejectsWritesButStartPreparationHasAnExplicitVariableContainer() {
+    @Test void beforeStartAllowsHandlersToValidateAndPrepareTheSameVariableContainer() {
         var context = new FlowActionContext();
-        context.setTriggerTiming("PROCESS_START_VALIDATING");
+        context.setTriggerTiming("PROCESS_STARTING");
         context.setVariablesSnapshot(Map.of());
         assertEquals(Map.of(), context.getVariables());
         assertNull(context.getVariable("missing"));
-        assertThrows(IllegalStateException.class, () -> context.setProcessVariable("risk", "HIGH"));
-        assertThrows(IllegalStateException.class, () -> context.setProcessVariables(Map.of("risk", "HIGH")));
         var startup = new java.util.LinkedHashMap<String, Object>();
-        context.setVariablesSnapshot(startup); context.setTriggerTiming("PROCESS_STARTING");
+        context.setVariablesSnapshot(startup);
         context.setProcessVariable("risk", "HIGH");
         context.setProcessVariables(Map.of("amount", 12));
         assertEquals(Map.of("risk", "HIGH", "amount", 12), startup);
     }
 
-    @Test void customTimingSuffixDoesNotChangeItsVariableWriteContract() {
-        var runtime = mock(com.workflow.contracts.process.action.port.FlowActionRuntimePort.class);
-        var context = new FlowActionContext();
-        context.setTriggerTiming("CUSTOM_VALIDATING");
-        context.setProcessInstanceId("instance"); context.setRuntimeAccess(runtime);
-        context.setProcessVariable("risk", "HIGH");
-        verify(runtime).setVariable("instance", "risk", "HIGH");
+    @Test void catalogContainsOnlyRealBusinessBoundaries() {
+        var options = new FlowActionTimingCatalog(List.of()).list(null, null);
+        assertEquals(27, options.size());
+        assertEquals(17, options.stream().filter(option -> option.getOperationPhase() != null).count());
+        assertTrue(options.stream().noneMatch(option -> "VALIDATE".equals(option.getOperationPhase())
+                || option.getValue().endsWith("_VALIDATING")
+                || option.getLabel().contains("执行前处理") || option.getLabel().contains("前业务校验")));
+        assertEquals(List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), options.stream()
+                .map(FlowActionTimingOption::getValue)
+                .filter(code -> List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED").contains(code)).toList());
     }
 }

@@ -324,9 +324,8 @@ public class TaskActionService {
         var operation = operationActions.task(task, taskId, transfer ? "TRANSFER" : "SUBMIT", userId,
                 formData, operationParameters);
         operation.setApprovalAction(normalizedAction);
-        // 校验先于自动认领、表单保存及引擎写入；转办不触发审批推进阶段。
-        operationActions.fire(operation, transfer ? TASK_TRANSFER_VALIDATING : TASK_SUBMIT_VALIDATING);
-        if (transfer) operationActions.fire(operation, TASK_TRANSFERRING);
+        // 同一前置边界内的动作按配置顺序执行；校验或处理由处理器决定，均先于认领和表单写入。
+        operationActions.fire(operation, transfer ? TASK_TRANSFERRING : TASK_FORM_SAVING);
         if (checkAccess) {
             String currentIdentity = currentTaskIdentity();
             if (!StringUtils.hasText(assignee)) {
@@ -361,7 +360,6 @@ public class TaskActionService {
                             formData);
         }
 
-        if (!transfer) operationActions.fire(operation, TASK_FORM_SAVING);
         nodeFormSubmissionService.applyEditableData(task, formData);
 
         // 检查是否是多实例任务（会签/或签），以已部署 BPMN 为准
@@ -896,7 +894,6 @@ public class TaskActionService {
             if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
                 entityRecordPort.requireProcessEndStatus(entityCode, "WITHDRAWN");
             }
-            operationActions.fire(operation, PROCESS_WITHDRAW_VALIDATING);
             operationActions.fire(operation, PROCESS_WITHDRAWING);
             if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
                 entityRecordPort.recordActivity(

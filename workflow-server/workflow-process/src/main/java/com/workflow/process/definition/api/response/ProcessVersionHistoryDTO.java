@@ -41,6 +41,11 @@ public class ProcessVersionHistoryDTO {
     private String versionDescription;
 
     /**
+     * 该发布版本未删除的动作数量（含禁用动作），用于版本历史展示，与版本动作明细保持一致。
+     */
+    private long actionCount;
+
+    /**
      * 该版本对应的 BPMN XML 内容
      */
     private String bpmnXml;

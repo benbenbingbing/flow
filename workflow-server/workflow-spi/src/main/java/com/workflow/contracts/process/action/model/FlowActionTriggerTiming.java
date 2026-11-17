@@ -10,13 +10,8 @@ import java.util.Set;
  * 以及可用的上下文信息，供前端选项展示与配置校验使用。</p>
  */
 public enum FlowActionTriggerTiming {
-    PROCESS_START_VALIDATING(
-            "发起前业务校验", "流程实例创建前判断是否允许发起",
-            EnumSet.of(FlowActionScopeType.PROCESS), false,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "流程定义及发布版本、实体标识、发起人、启动变量；发起前实例及任务 ID 为空", "VALIDATE"),
     PROCESS_STARTING(
-            "发起执行前处理", "发起校验通过后、调用引擎启动前",
+            "发起前", "平台检查通过后、准备启动变量及调用引擎前",
             EnumSet.of(FlowActionScopeType.PROCESS), false,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "流程定义及发布版本、实体标识、发起人、启动变量；发起前实例及任务 ID 为空", "BEFORE_EXECUTE"),
@@ -25,13 +20,8 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.PROCESS), false,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "流程实例、实体标识、发起人、最终流程变量快照", "AFTER_EXECUTE"),
-    PROCESS_WITHDRAW_VALIDATING(
-            "撤回前业务校验", "权限与撤回开关校验通过后、撤回副作用前",
-            EnumSet.of(FlowActionScopeType.PROCESS), false,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "流程实例、实体标识、操作人、结束原因；结束后读取最终历史根变量快照", "VALIDATE"),
     PROCESS_WITHDRAWING(
-            "撤回执行前处理", "撤回校验通过后、记录活动及删除实例前",
+            "撤回前", "权限与状态检查通过后、记录活动及删除实例前",
             EnumSet.of(FlowActionScopeType.PROCESS), false,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "流程实例、实体标识、操作人、结束原因；结束后读取最终历史根变量快照", "BEFORE_EXECUTE"),
@@ -40,13 +30,8 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.PROCESS), false,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "流程实例、实体标识、操作人、结束原因；结束后读取最终历史根变量快照", "AFTER_EXECUTE"),
-    PROCESS_TERMINATE_VALIDATING(
-            "终止前业务校验", "权限与终止开关校验通过后、终止副作用前",
-            EnumSet.of(FlowActionScopeType.PROCESS), false,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "流程实例、实体标识、操作人、结束原因；结束后读取最终历史根变量快照", "VALIDATE"),
     PROCESS_TERMINATING(
-            "终止执行前处理", "终止校验通过后、删除实例前",
+            "终止前", "权限与状态检查通过后、删除实例前",
             EnumSet.of(FlowActionScopeType.PROCESS), false,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "流程实例、实体标识、操作人、结束原因；结束后读取最终历史根变量快照", "BEFORE_EXECUTE"),
@@ -55,13 +40,8 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.PROCESS), false,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "流程实例、实体标识、操作人、结束原因；结束后读取最终历史根变量快照", "AFTER_EXECUTE"),
-    TASK_SUBMIT_VALIDATING(
-            "审批办理前业务校验", "原任务实际办理前校验；加签暂存不代表原任务办理",
-            EnumSet.of(FlowActionScopeType.NODE), true,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "原引擎任务、审批动作、操作人、本次提交表单只读快照、意见和流程变量", "VALIDATE"),
     TASK_FORM_SAVING(
-            "审批表单保存前", "授权通过后、节点表单补丁写入前",
+            "审批表单保存前", "权限与操作检查通过后、自动认领及节点表单写入前",
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "原引擎任务、审批动作、操作人、本次提交表单只读快照、意见和流程变量", "BEFORE_FORM_SAVE"),
@@ -75,13 +55,8 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "触发任务标识、最终流程变量、提交表单和操作参数；触发任务可能已结束", "AFTER_EXECUTE"),
-    TASK_TRANSFER_VALIDATING(
-            "转办前业务校验", "节点开关及任务权限通过后、转办副作用前",
-            EnumSet.of(FlowActionScopeType.NODE), true,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "原任务、转办目标、提交表单快照、意见和流程变量", "VALIDATE"),
     TASK_TRANSFERRING(
-            "转办执行前处理", "转办校验通过后、表单保存与办理人变更前",
+            "转办前", "权限与操作检查通过后、自动认领、表单保存及办理人变更前",
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "原任务、转办目标、提交表单快照、意见和流程变量", "BEFORE_EXECUTE"),
@@ -90,13 +65,8 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "原任务、转办目标、提交表单快照、意见和流程变量", "AFTER_EXECUTE"),
-    TASK_ADD_SIGN_VALIDATING(
-            "加签前业务校验", "加签权限、类型和人员校验通过后、创建记录前",
-            EnumSet.of(FlowActionScopeType.NODE), true,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "源任务、加签类型、解析后的有效人员、意见和流程变量", "VALIDATE"),
     TASK_ADD_SIGNING(
-            "加签执行前处理", "加签业务校验通过后、创建加签记录和本地子任务前",
+            "加签前", "权限、类型及人员检查通过后、创建加签记录和本地子任务前",
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "源任务、加签类型、解析后的有效人员、意见和流程变量", "BEFORE_EXECUTE"),
@@ -105,13 +75,8 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "源任务、加签类型、解析后的有效人员、意见和流程变量", "AFTER_EXECUTE"),
-    ADD_SIGN_SOURCE_VALIDATING(
-            "加签源任务暂存前校验", "仅加签源任务提交暂存时触发，实际流转时执行普通审批动作",
-            EnumSet.of(FlowActionScopeType.NODE), true,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "源任务、加签类型、本次审批输入及表单快照", "VALIDATE"),
     ADD_SIGN_SOURCE_SUBMITTING(
-            "加签源任务暂存前处理", "业务校验通过后、保存源任务审批输入前",
+            "加签源任务暂存前", "权限与状态检查通过后、保存源任务审批输入前",
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "源任务、加签类型、本次审批输入及表单快照", "BEFORE_EXECUTE"),
@@ -120,13 +85,8 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "源任务、加签类型、本次审批输入及表单快照", "AFTER_EXECUTE"),
-    ADD_SIGN_TASK_VALIDATING(
-            "加签子任务办理前校验", "仅本地加签子任务触发，不套用普通审批动作",
-            EnumSet.of(FlowActionScopeType.NODE), true,
-            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
-            "本地子任务 ID、源任务 ID、源节点、子任务办理人、审批动作、加签类型", "VALIDATE"),
     ADD_SIGN_TASK_COMPLETING(
-            "加签子任务执行前处理", "子任务权限与动作校验通过后、更新本地任务前",
+            "加签子任务办理前", "子任务权限与动作检查通过后、更新本地任务前",
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "本地子任务 ID、源任务 ID、源节点、子任务办理人、审批动作、加签类型", "BEFORE_EXECUTE"),
@@ -136,32 +96,32 @@ public enum FlowActionTriggerTiming {
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "本地子任务 ID、源任务 ID、源节点、子任务办理人、审批动作、加签类型", "AFTER_EXECUTE"),
     PROCESS_STARTED(
-            "流程启动时",
-            "初始化变量、创建业务关联",
+            "引擎流程启动时",
+            "引擎启动事件；平台流程关联及待办同步尚未全部完成",
             EnumSet.of(FlowActionScopeType.PROCESS),
             false,
             FlowActionExecutionMode.IN_TRANSACTION,
             FlowActionFailurePolicy.ROLLBACK,
             "流程变量、实体数据"),
     PROCESS_COMPLETED(
-            "流程正常完成后",
-            "归档、完成通知、外部同步",
+            "引擎流程正常结束时",
+            "引擎正常结束事件；当前办理的本地同步可能尚未完成",
             EnumSet.of(FlowActionScopeType.PROCESS),
             false,
             FlowActionExecutionMode.AFTER_COMMIT,
             FlowActionFailurePolicy.RETRY,
             "历史变量、实体数据；当前任务为空"),
     PROCESS_WITHDRAWN(
-            "流程撤回后",
-            "撤回通知、资源释放",
+            "引擎实例撤回时",
+            "引擎删除事件；撤回日志及本地待办清理尚未全部完成",
             EnumSet.of(FlowActionScopeType.PROCESS),
             false,
             FlowActionExecutionMode.AFTER_COMMIT,
             FlowActionFailurePolicy.RETRY,
             "历史变量、撤回原因、实体数据"),
     PROCESS_TERMINATED(
-            "流程终止后",
-            "终止通知、异常清理",
+            "引擎实例终止时",
+            "引擎终止事件；终止日志及本地待办清理尚未全部完成",
             EnumSet.of(FlowActionScopeType.PROCESS),
             false,
             FlowActionExecutionMode.AFTER_COMMIT,
@@ -201,7 +161,7 @@ public enum FlowActionTriggerTiming {
             "任务 ID、办理人、流程变量"),
     TASK_COMPLETING(
             "引擎任务完成事件（兼容时机）",
-            "由 TASK_COMPLETED 映射；表单已保存，新校验请使用审批办理前业务校验",
+            "由 TASK_COMPLETED 映射；表单已保存，新增前置逻辑请使用审批表单保存前",
             EnumSet.of(FlowActionScopeType.NODE),
             true,
             FlowActionExecutionMode.IN_TRANSACTION,

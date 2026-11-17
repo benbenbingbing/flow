@@ -1,12 +1,23 @@
 package com.workflow.process.definition.application.port;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * 流程动作设计期端口。
  *
- * <p>该端口仅用于流程定义发布编排与流程动作子域之间的解耦，不是跨模块共享契约。
- * 定义流程配置在设计/发布阶段对流程动作的校验、BPMN 改写、发布与清理能力。</p>
+ * <p>该端口仅用于流程定义版本管理与流程动作子域之间的解耦，不是跨模块共享契约。
+ * 定义流程配置在设计/发布阶段对流程动作的校验、BPMN 改写、发布、统计与清理能力。</p>
  */
 public interface FlowActionDesignPort {
+
+    /**
+     * 批量统计发布版本的动作数量，与版本动作明细采用相同的状态及逻辑删除过滤条件。
+     *
+     * @param versionIds 发布版本 ID 列表；空列表不查询
+     * @return 版本 ID 到动作数量的映射，无动作的版本可省略，由调用方按零展示
+     */
+    Map<String, Long> countPublishedActionsByVersionIds(List<String> versionIds);
 
     /**
      * 发布前校验流程配置对应的动作定义。

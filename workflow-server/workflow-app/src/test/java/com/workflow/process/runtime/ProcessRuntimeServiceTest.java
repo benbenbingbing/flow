@@ -57,12 +57,11 @@ class ProcessRuntimeServiceTest {
                         return null;
                 }).when(fixture.businessActions).dispatch(any());
                 service.start(new ProcessStartRequest("process-config-1", "expense", "data-1", "EXP-1", "admin", "管理员", "PENDING", Map.of(), Map.of()));
-                assertEquals(java.util.List.of("PROCESS_START_VALIDATING", "PROCESS_STARTING", "PROCESS_START_EXECUTED"), stages);
+                assertEquals(java.util.List.of("PROCESS_STARTING", "PROCESS_START_EXECUTED"), stages);
                 var values = ArgumentCaptor.forClass(Map.class);
                 verify(fixture.runtimeService).startProcessInstanceById(eq("definition-v3"), eq("data-1"), values.capture());
                 assertEquals("HIGH", values.getValue().get("risk"));
                 var order = org.mockito.Mockito.inOrder(fixture.businessActions, fixture.runtimeService, fixture.processTaskService);
-                order.verify(fixture.businessActions).dispatch(org.mockito.ArgumentMatchers.argThat(event -> "PROCESS_START_VALIDATING".equals(event.getTriggerTiming())));
                 order.verify(fixture.businessActions).dispatch(org.mockito.ArgumentMatchers.argThat(event -> "PROCESS_STARTING".equals(event.getTriggerTiming())));
                 order.verify(fixture.runtimeService).startProcessInstanceById(anyString(), anyString(), anyMap());
                 order.verify(fixture.processTaskService).syncTasksFromFlowable("pi-1");
@@ -70,7 +69,7 @@ class ProcessRuntimeServiceTest {
         }
 
         @org.junit.jupiter.params.ParameterizedTest
-        @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_START_VALIDATING", "PROCESS_STARTING"})
+        @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_STARTING"})
         void startRejectionStopsBeforeEngineCreation(String stage) {
                 var fixture = new Fixture();
                 org.mockito.Mockito.doAnswer(call -> {

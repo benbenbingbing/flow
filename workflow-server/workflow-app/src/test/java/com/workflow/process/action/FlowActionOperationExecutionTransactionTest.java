@@ -128,29 +128,30 @@ public class FlowActionOperationExecutionTransactionTest {
 
     @Test void beforeStartExecutesWithoutAnInstanceAndPreparationFeedsTheRealEngine() {
         var seen = new ArrayList<String>();
-        action(PROCESS_START_VALIDATING, "IN_TRANSACTION", ctx -> {
+        action(PROCESS_STARTING, "IN_TRANSACTION", ctx -> {
             assertNull(ctx.getProcessInstanceId()); assertEquals("data-1", ctx.getEntityDataId());
-            assertThrows(IllegalStateException.class, () -> ctx.setProcessVariable("risk", "LOW"));
+            ctx.setProcessVariable("risk", "LOW");
             seen.add(ctx.getTriggerTiming());
         });
         action(PROCESS_STARTING, "IN_TRANSACTION", ctx -> {
-            assertNull(ctx.getProcessInstanceId()); ctx.setProcessVariable("risk", "HIGH"); seen.add(ctx.getTriggerTiming());
+            assertNull(ctx.getProcessInstanceId()); assertEquals("LOW", ctx.getVariable("risk"));
+            ctx.setProcessVariable("risk", "HIGH"); seen.add(ctx.getTriggerTiming());
         });
         transaction.executeWithoutResult(status -> {
             var event = operations.process(definitionId, null, "START", "alice", Map.of("entityCode", "expense", "entityDataId", "data-1"), Map.of());
-            operations.fire(event, PROCESS_START_VALIDATING);
             operations.fire(event, PROCESS_STARTING);
             String id = engine.getRuntimeService().startProcessInstanceById(definitionId, event.getVariables()).getId();
             assertEquals("HIGH", engine.getRuntimeService().getVariable(id, "risk"));
         });
-        assertEquals(List.of("PROCESS_START_VALIDATING", "PROCESS_STARTING"), seen);
+        assertEquals(List.of("PROCESS_STARTING", "PROCESS_STARTING"), seen);
         assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM process_action_execution WHERE process_instance_id IS NULL AND status='SUCCESS'", Integer.class));
     }
 
     @Test void rejectingPreconditionPreventsEngineCreationAndBusinessWrite() {
-        action(PROCESS_START_VALIDATING, "IN_TRANSACTION", ctx -> { throw new IllegalArgumentException("业务禁止发起"); });
+        action(PROCESS_STARTING, "IN_TRANSACTION", ctx -> { throw new IllegalArgumentException("业务禁止发起"); });
+        action(PROCESS_STARTING, "IN_TRANSACTION", ctx -> fail("前一个处理器拒绝后不能继续执行后续动作"));
         assertThrows(IllegalArgumentException.class, () -> transaction.executeWithoutResult(status -> {
-            operations.fire(operations.process(definitionId, null, "START", "alice", Map.of(), Map.of()), PROCESS_START_VALIDATING);
+            operations.fire(operations.process(definitionId, null, "START", "alice", Map.of(), Map.of()), PROCESS_STARTING);
             jdbc.update("INSERT INTO business_change VALUES ('unexpected')");
             engine.getRuntimeService().startProcessInstanceById(definitionId);
         }));
@@ -210,34 +211,34 @@ public class FlowActionOperationExecutionTransactionTest {
     }
 
     @Test void businessActionsCannotRunOutsideTheCommandTransaction() {
-        action(TASK_SUBMIT_VALIDATING, "IN_TRANSACTION", ctx -> fail("缺少业务事务时不能调用处理器"));
+        action(TASK_FORM_SAVING, "IN_TRANSACTION", ctx -> fail("缺少业务事务时不能调用处理器"));
         String id = engine.getRuntimeService().startProcessInstanceById(definitionId).getId();
         var task = engine.getTaskService().createTaskQuery().processInstanceId(id).singleResult();
         assertThrows(IllegalStateException.class, () -> operations.fire(
-                operations.task(task, task.getId(), "SUBMIT", "alice", Map.of(), Map.of()), TASK_SUBMIT_VALIDATING));
+                operations.task(task, task.getId(), "SUBMIT", "alice", Map.of(), Map.of()), TASK_FORM_SAVING));
         assertEquals(0, count("process_action_execution"));
         assertNotNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
     }
 
     @Test void runtimeRejectsIllegallyImportedPreconditionBeforeQueueingOrInvoking() {
-        action(TASK_SUBMIT_VALIDATING, "AFTER_COMMIT", ctx -> fail("不能调用处理器"));
+        action(TASK_FORM_SAVING, "AFTER_COMMIT", ctx -> fail("不能调用处理器"));
         String id = engine.getRuntimeService().startProcessInstanceById(definitionId).getId();
         var task = engine.getTaskService().createTaskQuery().processInstanceId(id).singleResult();
         assertThrows(IllegalArgumentException.class, () -> transaction.executeWithoutResult(status ->
-                operations.fire(operations.task(task, task.getId(), "SUBMIT", "alice", Map.of(), Map.of()), TASK_SUBMIT_VALIDATING)));
+                operations.fire(operations.task(task, task.getId(), "SUBMIT", "alice", Map.of(), Map.of()), TASK_FORM_SAVING)));
         assertEquals(0, count("process_action_execution"));
         assertNotNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_TERMINATE_VALIDATING", "PROCESS_TERMINATING", "PROCESS_TERMINATE_EXECUTED", "SUCCESS"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_TERMINATING", "PROCESS_TERMINATE_EXECUTED", "SUCCESS"})
     void terminateStagesSurroundRealDeletionAndLateFailureRollsBack(String failureStage) {
         engine.getIdentityService().setAuthenticatedUserId("alice");
         String instanceId;
         try { instanceId = engine.getRuntimeService().startProcessInstanceById(definitionId).getId(); }
         finally { engine.getIdentityService().setAuthenticatedUserId(null); }
         var seen = new ArrayList<String>();
-        for (var timing : List.of(PROCESS_TERMINATE_VALIDATING, PROCESS_TERMINATING, PROCESS_TERMINATE_EXECUTED)) {
+        for (var timing : List.of(PROCESS_TERMINATING, PROCESS_TERMINATE_EXECUTED)) {
             action(timing, "IN_TRANSACTION", ctx -> {
                 seen.add(ctx.getTriggerTiming());
                 assertEquals("终止原因", ctx.getOperationParameters().get("reason"));
@@ -255,7 +256,7 @@ public class FlowActionOperationExecutionTransactionTest {
                 mock(com.workflow.contracts.identity.port.IdentityDirectoryPort.class),
                 mock(com.workflow.contracts.entity.port.EntityRecordPort.class),
                 mock(com.workflow.process.task.application.operation.NodeOperationCapabilityService.class)));
-        if (failureStage.endsWith("VALIDATING") || failureStage.equals("PROCESS_TERMINATING")) {
+        if (failureStage.equals("PROCESS_TERMINATING")) {
             assertThrows(IllegalArgumentException.class, () -> service.terminateProcess(instanceId, "alice", "终止原因"));
         } else {
             assertEquals(failureStage.equals("SUCCESS") ? 200 : 500,
@@ -269,7 +270,7 @@ public class FlowActionOperationExecutionTransactionTest {
 
     /** 本地子任务实际 JDBC 副作用与 Spring 事务共用，晚期处理器失败也必须撤销该写入。 */
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_TASK_VALIDATING", "ADD_SIGN_TASK_COMPLETING", "ADD_SIGN_TASK_COMPLETED", "SUCCESS"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_TASK_COMPLETING", "ADD_SIGN_TASK_COMPLETED", "SUCCESS"})
     void localAddSignStagesUseDedicatedContextAndRollbackTogether(String failureStage) {
         String instanceId = engine.getRuntimeService().startProcessInstanceById(definitionId).getId();
         var sourceTask = engine.getTaskService().createTaskQuery().processInstanceId(instanceId).singleResult();
@@ -290,7 +291,7 @@ public class FlowActionOperationExecutionTransactionTest {
         when(users.findByGeneratedTaskId("child")).thenReturn(child);
         when(users.findByGeneratedTaskIdForUpdate("child")).thenReturn(child);
         var seen = new ArrayList<String>();
-        for (var timing : List.of(ADD_SIGN_TASK_VALIDATING, ADD_SIGN_TASK_COMPLETING, ADD_SIGN_TASK_COMPLETED)) {
+        for (var timing : List.of(ADD_SIGN_TASK_COMPLETING, ADD_SIGN_TASK_COMPLETED)) {
             action(timing, "IN_TRANSACTION", ctx -> {
                 seen.add(ctx.getTriggerTiming());
                 assertEquals("child", ctx.getTaskId()); assertEquals("LOCAL_ADD_SIGN", ctx.getTaskKind());
@@ -317,9 +318,10 @@ public class FlowActionOperationExecutionTransactionTest {
     }
 
     private void action(FlowActionTriggerTiming timing, String mode, Consumer<FlowActionContext> handler) {
-        String id = timing.name();
+        // 同一时机允许多个动作，配置 ID 必须独立，才能验证统一排序和异常短路。
+        String id = timing.name() + "-" + actions.size();
         var action = new FlowAction(); action.setId(id); action.setActionName(id); action.setInterfaceName(id);
-        action.setTriggerTiming(id); action.setScopeType(timing.getScopeTypes().iterator().next().name());
+        action.setTriggerTiming(timing.name()); action.setScopeType(timing.getScopeTypes().iterator().next().name());
         action.setExecutionMode(mode); action.setFailurePolicy(mode.equals("AFTER_COMMIT") ? "RETRY" : "ROLLBACK");
         action.setSortOrder(actions.size()); action.setEnabled(true); action.setRetryConfig("{\"maxRetries\":3}");
         actions.put(id, action);

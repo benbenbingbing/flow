@@ -77,6 +77,7 @@ class TaskCandidateApprovalTransactionIntegrationTest {
     private ProcessEngine engine;
     private TaskActionService taskActionService;
     private TaskIdentityAccessService taskIdentityAccessService;
+    private com.workflow.process.action.application.FlowActionDispatcher businessActions;
     private String processInstanceId;
     private String taskId;
     private CompletionHook completionHook = () -> { };
@@ -142,7 +143,8 @@ class TaskCandidateApprovalTransactionIntegrationTest {
             completionHook.afterEngineCompletion();
             return null;
         }).when(completingTasks).complete(anyString(), org.mockito.ArgumentMatchers.<java.util.Map<String, Object>>any());
-        TaskActionService target = new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), engine.getRuntimeService(), engine.getHistoryService()),
+        businessActions = mock(com.workflow.process.action.application.FlowActionDispatcher.class);
+        TaskActionService target = new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(businessActions, engine.getRuntimeService(), engine.getHistoryService()),
                 completingTasks, engine.getRuntimeService(), engine.getHistoryService(),
                 projectionService, engine.getRepositoryService(), operationLogMapper, userService,
                 mock(NodeFormSubmissionService.class),
@@ -196,6 +198,34 @@ class TaskCandidateApprovalTransactionIntegrationTest {
         assertEquals(before, snapshotOnIndependentConnection());
         assertEquals(new DatabaseSnapshot(true, null, null, "todo", 0), before);
         assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+    }
+
+    /** 合并后的表单保存前边界必须早于自动认领，既验证时点也验证拒绝时没有副作用。 */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void formSavingActionsRunExactlyOnceBeforeCandidateClaim(boolean reject) throws SQLException {
+        var stages = new java.util.ArrayList<String>();
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            stages.add(event.getTriggerTiming());
+            if ("TASK_FORM_SAVING".equals(event.getTriggerTiming())) {
+                assertNull(engine.getTaskService().createTaskQuery().taskId(taskId).singleResult().getAssignee());
+                assertEquals(new DatabaseSnapshot(true, null, null, "todo", 0), snapshotOnIndependentConnection());
+                if (reject) throw new IllegalArgumentException("业务规则拒绝本次办理");
+            } else if ("TASK_ADVANCING".equals(event.getTriggerTiming())) {
+                assertEquals("alice", engine.getTaskService().createTaskQuery().taskId(taskId).singleResult().getAssignee());
+            }
+            return null;
+        }).when(businessActions).dispatch(any());
+        if (reject) {
+            assertThrows(IllegalArgumentException.class, this::approveAsCurrentUser);
+            assertEquals(List.of("TASK_FORM_SAVING"), stages);
+            assertEquals(new DatabaseSnapshot(true, null, null, "todo", 0), snapshotOnIndependentConnection());
+        } else {
+            approveAsCurrentUser();
+            assertEquals(List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), stages);
+            assertEquals(new DatabaseSnapshot(false, null, "alice", "done", 1), snapshotOnIndependentConnection());
+        }
     }
 
     @Test

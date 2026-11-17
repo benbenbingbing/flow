@@ -6,6 +6,7 @@ import com.workflow.process.form.infrastructure.persistence.mapper.FormFieldConf
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.definition.application.ProcessDefinitionService;
+import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
@@ -30,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,6 +51,9 @@ public class ProcessDefinitionServiceTest {
 
     @Mock
     private ProcessVersionHistoryMapper versionHistoryMapper;
+
+    @Mock
+    private FlowActionDesignPort flowActionDesignPort;
 
     @Mock
     private NodeConfigMapper nodeMapper;
@@ -445,27 +450,51 @@ public class ProcessDefinitionServiceTest {
     }
 
     /**
-     * 测试按流程 ID 查询版本历史：验证返回的版本数量与版本号正确。
+     * 版本历史一次批量读取动作数量，当前版本、历史版本和无动作版本分别展示各自数量。
      */
     @Test
-    void testFindVersionsByProcessId() {
+    void testFindVersionsByProcessId() throws Exception {
         ProcessVersionHistory version = new ProcessVersionHistory();
         version.setId("v1");
         version.setProcessConfigId("1");
         version.setProcessKey("leave_process");
         version.setVersion(1);
 
-        when(versionHistoryMapper.findByProcessConfigId("1")).thenReturn(Arrays.asList(version));
+        ProcessVersionHistory previous = new ProcessVersionHistory();
+        previous.setId("v2");
+        previous.setVersion(2);
+        ProcessVersionHistory current = new ProcessVersionHistory();
+        current.setId("v3");
+        current.setVersion(3);
+        when(versionHistoryMapper.findByProcessConfigId("1")).thenReturn(List.of(current, previous, version));
+        when(flowActionDesignPort.countPublishedActionsByVersionIds(List.of("v3", "v2", "v1")))
+                .thenReturn(Map.of("v3", 4L, "v2", 2L));
 
         List<ProcessVersionHistoryDTO> result = processService.findVersionsByProcessId("1");
 
         assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(1, result.get(0).getVersion());
+        assertEquals(List.of(3, 2, 1), result.stream().map(ProcessVersionHistoryDTO::getVersion).toList());
+        assertEquals(List.of(4L, 2L, 0L), result.stream().map(ProcessVersionHistoryDTO::getActionCount).toList());
+        // 同时验证响应序列化包含前端读取的 actionCount，防止仅内部计算却未对外返回。
+        var json = new ObjectMapper().valueToTree(result);
+        assertEquals(4L, json.get(0).get("actionCount").asLong());
+        assertEquals(0L, json.get(2).get("actionCount").asLong());
+        verify(flowActionDesignPort).countPublishedActionsByVersionIds(List.of("v3", "v2", "v1"));
+        verifyNoMoreInteractions(flowActionDesignPort);
+    }
+
+    /** 尚未发布的流程没有版本历史，无需继续读取动作统计。 */
+    @Test
+    void testFindVersionsWithoutPublishedHistory() {
+        when(versionHistoryMapper.findByProcessConfigId("1")).thenReturn(List.of());
+
+        assertTrue(processService.findVersionsByProcessId("1").isEmpty());
+
+        verifyNoInteractions(flowActionDesignPort);
     }
 
     /**
-     * 测试按版本 ID 查询版本历史：验证返回 DTO 的 id 正确。
+     * 版本详情与版本历史列表采用同一动作数量，避免两个接口的展示不一致。
      */
     @Test
     void testFindVersionById() {
@@ -475,11 +504,14 @@ public class ProcessDefinitionServiceTest {
         version.setVersion(1);
 
         when(versionHistoryMapper.selectById("v1")).thenReturn(version);
+        when(flowActionDesignPort.countPublishedActionsByVersionIds(List.of("v1")))
+                .thenReturn(Map.of("v1", 3L));
 
         ProcessVersionHistoryDTO result = processService.findVersionById("v1");
 
         assertNotNull(result);
         assertEquals("v1", result.getId());
+        assertEquals(3L, result.getActionCount());
     }
 
     /**

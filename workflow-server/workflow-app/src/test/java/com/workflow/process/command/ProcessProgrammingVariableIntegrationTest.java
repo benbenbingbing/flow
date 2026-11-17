@@ -641,7 +641,7 @@ class ProcessProgrammingVariableIntegrationTest {
             assertEquals(Map.of("amount", 12), event.getSubmittedFormData());
             int formCount = jdbc.queryForObject("SELECT COUNT(*) FROM operation_timing_form", Integer.class);
             switch (event.getTriggerTiming()) {
-                case "TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING" -> {
+                case "TASK_FORM_SAVING" -> {
                     assertEquals(0, formCount);
                     assertNotNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
                 }
@@ -666,15 +666,15 @@ class ProcessProgrammingVariableIntegrationTest {
         var submission = new com.workflow.contracts.process.task.model.TaskSubmission("同意", null, Map.of("amount", 12), null, null);
         var command = new com.workflow.contracts.process.task.model.CompleteTaskCommand(new CommandMeta("timing-approve"), task.getId(), "approve", submission);
         assertFalse(port.complete(command).receipt().replayed());
-        assertEquals(List.of("TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), observed);
+        assertEquals(List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), observed);
         assertTrue(port.complete(command).receipt().replayed());
-        assertEquals(4, observed.size());
+        assertEquals(3, observed.size());
         assertEquals(1, receiptCount());
     }
 
     /** 包含引擎已完成后的失败，必须回滚表单、引擎与成功回执。 */
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"})
     void failureAtAnyBusinessStageRollsBackTheWholeOperation(String failureStage) {
         var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
         var task = tasks().get(0);
@@ -709,10 +709,10 @@ class ProcessProgrammingVariableIntegrationTest {
         }).when(businessActions).dispatch(any());
         var command = new com.workflow.contracts.process.task.model.TransferTaskCommand(new CommandMeta("timing-transfer"), task.getId(), "bob", null);
         port.transfer(command);
-        assertEquals(List.of("TASK_TRANSFER_VALIDATING", "TASK_TRANSFERRING", "TASK_TRANSFERRED"), observed);
+        assertEquals(List.of("TASK_TRANSFERRING", "TASK_TRANSFERRED"), observed);
         assertEquals("bob", engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult().getAssignee());
         assertTrue(port.transfer(command).receipt().replayed());
-        assertEquals(3, observed.size());
+        assertEquals(2, observed.size());
     }
 
     @Test void advancingActionChangesTheRealGatewayRouteBeforeTheEngineComputesIt() {
@@ -744,7 +744,7 @@ class ProcessProgrammingVariableIntegrationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_WITHDRAW_VALIDATING", "PROCESS_WITHDRAWING", "PROCESS_WITHDRAW_EXECUTED", "SUCCESS"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"PROCESS_WITHDRAWING", "PROCESS_WITHDRAW_EXECUTED", "SUCCESS"})
     void withdrawStagesSurroundDeletionAndAllFailuresRestoreTheInstance(String failureStage) {
         engine.getIdentityService().setAuthenticatedUserId("alice");
         try { instanceId = engine.getRuntimeService().startProcessInstanceByKey("programming", Map.of("risk", "LOW")).getId(); }
@@ -765,7 +765,7 @@ class ProcessProgrammingVariableIntegrationTest {
         if ("SUCCESS".equals(failureStage)) {
             businessCore.withdrawProcess(instanceId, "alice", "原因");
             assertTrue(tasks().isEmpty());
-            assertEquals(List.of("PROCESS_WITHDRAW_VALIDATING", "PROCESS_WITHDRAWING", "PROCESS_WITHDRAW_EXECUTED"), observed);
+            assertEquals(List.of("PROCESS_WITHDRAWING", "PROCESS_WITHDRAW_EXECUTED"), observed);
         } else {
             assertThrows(RuntimeException.class, () -> businessCore.withdrawProcess(instanceId, "alice", "原因"));
             assertEquals(2, tasks().size());
@@ -778,8 +778,8 @@ class ProcessProgrammingVariableIntegrationTest {
         var task = tasks().get(0);
         businessCore.completeDeferredTask(task.getId(), "alice", "approve", "加签收口", null, null, Map.of());
         var events = org.mockito.ArgumentCaptor.forClass(com.workflow.process.action.domain.FlowActionTriggerEvent.class);
-        verify(businessActions, times(4)).dispatch(events.capture());
-        assertEquals(List.of("TASK_SUBMIT_VALIDATING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"),
+        verify(businessActions, times(3)).dispatch(events.capture());
+        assertEquals(List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"),
                 events.getAllValues().stream().map(com.workflow.process.action.domain.FlowActionTriggerEvent::getTriggerTiming).toList());
         assertNull(engine.getTaskService().createTaskQuery().taskId(task.getId()).singleResult());
     }

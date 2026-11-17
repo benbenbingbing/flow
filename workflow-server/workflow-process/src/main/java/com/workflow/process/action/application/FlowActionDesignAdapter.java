@@ -1,17 +1,23 @@
 package com.workflow.process.action.application;
 
 import com.workflow.process.action.infrastructure.flowable.ProcessFlowActionBpmnInjector;
+import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
+import com.workflow.process.action.infrastructure.persistence.record.FlowActionVersionCount;
 
 import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.process.action.application.FlowActionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * 流程动作设计端口适配器。
  *
- * <p>实现 {@link FlowActionDesignPort} 端口，将流程发布流程的校验、BPMN 清理与动作发布动作
- * 委派给内部组件，实现发布流程与动作模块的解耦。</p>
+ * <p>实现 {@link FlowActionDesignPort} 端口，将流程版本管理的校验、BPMN 清理、动作发布与统计
+ * 委派给内部组件，实现流程定义与动作模块的解耦。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -20,6 +26,23 @@ public class FlowActionDesignAdapter implements FlowActionDesignPort {
     private final FlowActionPublishValidator publishValidator;
     private final ProcessFlowActionBpmnInjector bpmnInjector;
     private final FlowActionService flowActionService;
+    private final FlowActionMapper flowActionMapper;
+
+    /**
+     * 一次聚合查询返回所有目标版本的动作数量，避免版本历史列表逐行查询动作。
+     *
+     * @param versionIds 发布版本 ID 列表
+     * @return 各版本未删除的已发布动作数量；不按 enabled 过滤，以匹配明细列表
+     */
+    @Override
+    public Map<String, Long> countPublishedActionsByVersionIds(List<String> versionIds) {
+        if (versionIds.isEmpty()) {
+            return Map.of();
+        }
+        return flowActionMapper.countPublishedActionsByVersionIds(versionIds).stream()
+                .collect(Collectors.toMap(FlowActionVersionCount::getVersionId,
+                        FlowActionVersionCount::getActionCount));
+    }
 
     /**
      * 发布前校验流程配置下所有启用的草稿动作。

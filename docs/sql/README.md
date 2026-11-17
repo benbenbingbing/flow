@@ -4,6 +4,29 @@
 
 本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132、V133 的 MySQL 增量脚本及执行限制见下文。
 
+## 2026-11-17 同步 V139 合并业务操作前时机
+
+已同时检查 SQL 和 Java 迁移，原最高版本为 V138；本次新增唯一的 [`V139__merge_flow_action_before_timings.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V139__merge_flow_action_before_timings.sql)。迁移仅更新 `process_action.trigger_timing` 的八种旧配置值，不涉及 DDL、索引、约束或种子。七份空库脚本均同步版本说明，仍为 **202 张表、2,817 个字段**；空库没有 `process_action` 绑定种子需要转换，所有结构、字段语义、已有种子及退役对象清理结果保持不变。
+
+| 旧时机 | 合并后的时机 |
+| --- | --- |
+| `PROCESS_START_VALIDATING` | `PROCESS_STARTING`（发起前） |
+| `PROCESS_WITHDRAW_VALIDATING` | `PROCESS_WITHDRAWING`（撤回前） |
+| `PROCESS_TERMINATE_VALIDATING` | `PROCESS_TERMINATING`（终止前） |
+| `TASK_SUBMIT_VALIDATING` | `TASK_FORM_SAVING`（审批表单保存前） |
+| `TASK_TRANSFER_VALIDATING` | `TASK_TRANSFERRING`（转办前） |
+| `TASK_ADD_SIGN_VALIDATING` | `TASK_ADD_SIGNING`（加签前） |
+| `ADD_SIGN_SOURCE_VALIDATING` | `ADD_SIGN_SOURCE_SUBMITTING`（加签源任务暂存前） |
+| `ADD_SIGN_TASK_VALIDATING` | `ADD_SIGN_TASK_COMPLETING`（加签子任务办理前） |
+
+覆盖草稿、已发布、禁用及已删除配置，保留动作 ID、发布版本、排序和依赖。执行审计及历史载荷不改写；旧环境导出的配置包应在升级后的环境重新导出。运行时不保留旧枚举、别名或双重分发。先停止旧版本写入，执行 V139，再启用新版本；多个动作按合并后的组内排序执行，异常阻断并回滚。业务规则见 [流程动作时机说明](../flow-action-timing-extension.md) 和 [绑定表设计](database-design.md#511-process_action-流程动作绑定表)。
+
+验证：H2 MySQL、PostgreSQL、Oracle 兼容模式执行实际 V139 SQL，逐项检查八种转换、草稿和发布配置、禁用/已删除记录、原有规范值、引擎时机、自定义时机、NULL 值及审计原文；Flyway migrate / validate / 再次 migrate 正常。七份脚本全量表名、字段名一致，并检查新增版本说明以外全部 DDL 和种子逐字保持原状。后端时序及事务、前端配置约束和生产构建的结果见时机说明中的验证记录。
+
+本轮所选后端252项测试全部通过（含 V139 的3项），0失败、0错误、0跳过；前端时机约束2项通过，管理端和 Embed 生产构建通过。复现命令见上述时机说明。
+
+未连接或修改业务数据库，七种数据库未执行实机迁移或全量导入；H2 兼容模式和静态核对不替代实机验证。迁移清单：本任务新增 **V139__merge_flow_action_before_timings.sql**；已有 SQL / Java 迁移的修改、删除、重命名均为 **无**。未改 V001，未使用 repair，未建立基线。
+
 ## 2026-11-17 同步 V138 流程动作成功依赖
 
 已同时检查 SQL 和 Java 迁移，现有最高版本为 V137，本次新增唯一的 [`V138__flow_action_dependencies.java`](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V138__flow_action_dependencies.java)。七份空库脚本同步到最终 **202 张表、2,817 个字段**，相对 V137 新增四个可空字段和两个索引；不改变系统种子或退役对象清理结果。V137 已有的发起前 `process_instance_id` 可空语义继续保留。

@@ -165,7 +165,6 @@ public class TaskAddSignService {
         parameters.put("userIds", resolution.users().stream().map(SysUser::getUsername).toList());
         parameters.put("comment", request.getComment());
         var operation = operationActions.task(sourceTask, taskId, "ADD_SIGN", operator, Map.of(), parameters);
-        operationActions.fire(operation, TASK_ADD_SIGN_VALIDATING);
         operationActions.fire(operation, TASK_ADD_SIGNING);
 
         ProcessTaskAddSign addSign = new ProcessTaskAddSign();
@@ -335,7 +334,6 @@ public class TaskAddSignService {
         parameters.put("comment", comment);
         var operation = operationActions.task(sourceTask, taskId, "ADD_SIGN_SOURCE_SUBMIT", userId, formData, parameters);
         operation.setApprovalAction(normalizedAction);
-        operationActions.fire(operation, ADD_SIGN_SOURCE_VALIDATING);
         operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTING);
 
         saveSourceSubmission(addSign, normalizedAction, comment, actionLabel, formData);
@@ -408,7 +406,6 @@ public class TaskAddSignService {
         var operation = operationActions.task(source, taskId, "ADD_SIGN_COMPLETE", currentUsername(), Map.of(), parameters);
         operation.setTaskAssignee(userTask.getUserId());
         operation.setApprovalAction(normalizedAction);
-        operationActions.fire(operation, ADD_SIGN_TASK_VALIDATING);
         operationActions.fire(operation, ADD_SIGN_TASK_COMPLETING);
 
         completeLocalChild(taskId, normalizedAction, comment);

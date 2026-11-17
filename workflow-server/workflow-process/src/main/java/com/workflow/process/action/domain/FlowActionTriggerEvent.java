@@ -19,7 +19,7 @@ public class FlowActionTriggerEvent {
     private String taskKind;
     /** 本地加签所属源任务 ID；普通任务为空。 */
     private String sourceTaskId;
-    /** 本次提交的独立表单快照，只供业务校验，不授予额外字段写权限。 */
+    /** 本次提交的独立表单快照，供处理器读取操作输入，不授予额外字段写权限。 */
     private Map<String, Object> submittedFormData = Map.of();
     /** 转办目标、加签人员/类型、意见等操作输入，随异步执行持久化。 */
     private Map<String, Object> operationParameters = Map.of();

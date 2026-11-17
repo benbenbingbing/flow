@@ -36,6 +36,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
 
 import java.util.List;
+import java.util.Map;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.stream.Collectors;
@@ -207,7 +208,7 @@ public class ProcessDefinitionService {
     }
     
     /**
-     * 查询流程的所有历史版本
+     * 查询流程的所有历史版本，并批量附带各发布版本的动作数量。
      *
      * @param processId 流程ID，后续用于查询{@code versions}流程ID时定位或关联目标
      * @return 流程版本历史集合，供调用方遍历或展示
@@ -215,8 +216,13 @@ public class ProcessDefinitionService {
     @Transactional(readOnly = true)
     public List<ProcessVersionHistoryDTO> findVersionsByProcessId(String processId) {
         List<ProcessVersionHistory> versions = versionHistoryMapper.findByProcessConfigId(processId);
+        if (versions.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Long> actionCounts = flowActionDesignPort.countPublishedActionsByVersionIds(
+                versions.stream().map(ProcessVersionHistory::getId).collect(Collectors.toList()));
         return versions.stream()
-                .map(this::convertVersionToDTO)
+                .map(version -> convertVersionToDTO(version, actionCounts.getOrDefault(version.getId(), 0L)))
                 .collect(Collectors.toList());
     }
     
@@ -232,7 +238,8 @@ public class ProcessDefinitionService {
         if (version == null) {
             throw new RuntimeException("Version not found: " + versionId);
         }
-        return convertVersionToDTO(version);
+        Map<String, Long> actionCounts = flowActionDesignPort.countPublishedActionsByVersionIds(List.of(versionId));
+        return convertVersionToDTO(version, actionCounts.getOrDefault(versionId, 0L));
     }
     
     /**
@@ -701,12 +708,13 @@ public class ProcessDefinitionService {
     }
     
     /**
-     * 将版本历史实体转换为DTO
+     * 将版本历史实体与发布动作数量转换为 DTO，供版本列表和详情使用。
      *
-     * @param version 版本，作为 {@code dto.setId} 的输入影响后续处理
-     * @return 转换后的版本截止DTO结果，供调用方继续处理
+     * @param version 发布版本历史记录
+     * @param actionCount 该版本未删除的已发布动作数量，无动作时为零
+     * @return 包含版本快照及动作数量的 DTO
      */
-    private ProcessVersionHistoryDTO convertVersionToDTO(ProcessVersionHistory version) {
+    private ProcessVersionHistoryDTO convertVersionToDTO(ProcessVersionHistory version, long actionCount) {
         ProcessVersionHistoryDTO dto = new ProcessVersionHistoryDTO();
         dto.setId(version.getId());
         dto.setProcessConfigId(version.getProcessConfigId());
@@ -714,6 +722,7 @@ public class ProcessDefinitionService {
         dto.setProcessName(version.getProcessName());
         dto.setVersion(version.getVersion());
         dto.setVersionDescription(version.getVersionDescription());
+        dto.setActionCount(actionCount);
         dto.setBpmnXml(version.getBpmnXml());
         dto.setPublishedAt(version.getPublishedAt());
         dto.setPublishedBy(version.getPublishedBy());

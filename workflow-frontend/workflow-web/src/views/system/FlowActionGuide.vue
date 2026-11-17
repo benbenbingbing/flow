@@ -300,7 +300,7 @@ public class SendNotificationHandler implements FlowActionProvider {
               <code>TASK_CREATED</code>，并使用 <code>AFTER_COMMIT + RETRY</code>。
             </el-collapse-item>
             <el-collapse-item title="NODE_COMPLETED 和 TASK_COMPLETING 有什么区别？">
-              <code>TASK_COMPLETING</code> 是引擎 TASK_COMPLETED 的兼容映射，表单已经保存。审批前校验使用 TASK_SUBMIT_VALIDATING，表单保存前使用 TASK_FORM_SAVING，路由准备使用 TASK_ADVANCING；
+              <code>TASK_COMPLETING</code> 是引擎 TASK_COMPLETED 的兼容映射，表单已经保存。审批前校验或处理使用 TASK_FORM_SAVING，路由准备使用 TASK_ADVANCING；
               <code>NODE_COMPLETED</code> 适用于所有节点，主要用于节点结束后的变量计算和路由准备。
             </el-collapse-item>
             <el-collapse-item title="结束类动作为什么不能依赖 currentTask？">
@@ -494,7 +494,7 @@ const storageFieldList = [
 const engineTimingDetailList = [
   {
     code: 'PROCESS_STARTED',
-    label: '流程启动时',
+    label: '引擎流程启动时',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'IN_TRANSACTION',
@@ -506,7 +506,7 @@ const engineTimingDetailList = [
   },
   {
     code: 'PROCESS_COMPLETED',
-    label: '流程正常完成后',
+    label: '引擎流程正常结束时',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'AFTER_COMMIT',
@@ -518,7 +518,7 @@ const engineTimingDetailList = [
   },
   {
     code: 'PROCESS_WITHDRAWN',
-    label: '流程撤回后',
+    label: '引擎实例撤回时',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'AFTER_COMMIT',
@@ -530,7 +530,7 @@ const engineTimingDetailList = [
   },
   {
     code: 'PROCESS_TERMINATED',
-    label: '流程终止后',
+    label: '引擎实例终止时',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'AFTER_COMMIT',
@@ -597,7 +597,7 @@ const engineTimingDetailList = [
     policy: 'ROLLBACK',
     phase: '用户提交完成命令并产生 TASK_COMPLETED 事件时，提交变量已合并，流程继续流转仍在同一事务中。',
     context: '触发任务、审批动作、审批人、审批意见相关变量、实体数据和完整流程变量快照。',
-    use: '兼容已有引擎完成事件扩展。新增前置校验使用 TASK_SUBMIT_VALIDATING，保存前使用 TASK_FORM_SAVING，推进前使用 TASK_ADVANCING。',
+    use: '兼容已有引擎完成事件扩展。新增表单保存前逻辑使用 TASK_FORM_SAVING，推进前使用 TASK_ADVANCING。',
     caution: '失败会回滚任务完成和流程流转；外部 HTTP、短信和邮件不应放在此时机同步执行。'
   },
   {
@@ -621,8 +621,8 @@ const timingDetailList = computed(() => [
     elementType: option.userTaskOnly ? 'UserTask' : 'Process',
     mode: option.defaultExecutionMode, policy: option.defaultFailurePolicy,
     phase: option.description, context: option.availableContext,
-    use: option.operationPhase === 'VALIDATE' ? '追加业务准入检查；异常拒绝本次操作。' : '在明确的业务步骤执行扩展。',
-    caution: option.blocking ? '只允许事务内执行且失败回滚；校验阶段的提交表单及变量快照只读。'
+    use: option.blocking ? '按配置顺序执行校验或处理；异常阻止本次操作。' : '业务步骤完成后处理或通知。',
+    caution: option.blocking ? '只允许事务内执行且失败回滚；处理器按顺序校验或处理，提交表单快照只读。'
       : '事务内后处理仍可能回滚；选择 AFTER_COMMIT 后通过 Outbox 通知。不是整个外层事务的 beforeCommit。'
   })),
   ...engineTimingDetailList
@@ -741,7 +741,7 @@ const contextList = [
 
 const sceneGuideList = [
   { scene: '流程启动初始化', timing: 'PROCESS_STARTED', mode: 'IN_TRANSACTION + ROLLBACK', reason: '初始化失败时流程不应成功启动。' },
-  { scene: '审批前业务校验', timing: 'TASK_SUBMIT_VALIDATING', mode: 'IN_TRANSACTION + ROLLBACK', reason: '校验、任务完成和流程流转保持原子性。' },
+  { scene: '审批前业务校验', timing: 'TASK_FORM_SAVING', mode: 'IN_TRANSACTION + ROLLBACK', reason: '校验、任务完成和流程流转保持原子性。' },
   { scene: '计算后续分支变量', timing: 'NODE_COMPLETED', mode: 'IN_TRANSACTION + ROLLBACK', reason: '变量可参与后续网关或连线条件计算。' },
   { scene: '通知下一办理人', timing: 'TASK_CREATED', mode: 'AFTER_COMMIT + RETRY', reason: '此时已获得真实任务 ID 和最终目标任务。' },
   { scene: '转办或认领通知', timing: 'TASK_ASSIGNED', mode: 'AFTER_COMMIT + RETRY', reason: '每次办理人变化都能获得最新人员。' },
