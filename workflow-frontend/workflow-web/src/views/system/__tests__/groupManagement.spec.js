@@ -326,6 +326,6 @@ test('用户组写操作与 system:user:manage 权限保持一致并在 handler 
   }
   assert.match(
     source,
-    /const handleSaveUsers = async \(\) => \{\s*if \(!canManage\.value \|\| !currentGroupId\.value\) return/
+    /const handleSaveUsers = async \(\) => \{\s*if \(!canManage\.value \|\| !currentGroupId\.value \|\| !memberTagsRef\.value\?\.ready\) return/
   )
 })

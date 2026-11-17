@@ -315,7 +315,7 @@ class SysGroupServiceTest {
                 List.of(" user-1 ", "user-2", "user-1"));
 
         InOrder order = inOrder(userGroupMapper);
-        order.verify(userGroupMapper).deleteByGroupId("group-1");
+        order.verify(userGroupMapper).selectList(any());
         ArgumentCaptor<SysUserGroup> captor =
                 ArgumentCaptor.forClass(SysUserGroup.class);
         order.verify(userGroupMapper, times(2)).insert(captor.capture());
@@ -331,7 +331,7 @@ class SysGroupServiceTest {
 
         service.saveGroupUsers("group-1", List.of());
 
-        verify(userGroupMapper).deleteByGroupId("group-1");
+        verify(userGroupMapper).selectList(any());
         verify(userGroupMapper, never()).insert(any(SysUserGroup.class));
 
         assertThrows(

@@ -1,3 +1,4 @@
+import { restoreGroupTagAssignment } from '../group-member-tags.js'
 import { createNextApproverSelectionConfig } from '@flow/workflow-core/next-approver'
 
 export const LEGACY_MULTI_INSTANCE_COLLECTION = '${_wfMultiInstanceUsers_}'
@@ -720,7 +721,7 @@ export function normalizeDesignerAssigneeConfig(
   multiInstanceConfig,
   isMultiInstance
 ) {
-  const config = normalizeNodeReferenceAssigneeConfig(assigneeConfig)
+  const config = normalizeNodeReferenceAssigneeConfig(restoreGroupTagAssignment(assigneeConfig))
   const loopConfig = configObject(multiInstanceConfig)
   const version = Number(config.assignmentConfigVersion || 0)
   const hasLegacyAssignment = Boolean(isMultiInstance)

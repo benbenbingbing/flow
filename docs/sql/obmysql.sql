@@ -1,4 +1,5 @@
 -- OceanBase 4.x MySQL 模式平台基础表空库初始化脚本。
+-- 2026-11-17 同步至 V136，新增组内标签、成员标签绑定及内置人员解析器目录。
 -- 2026-11-16 同步至 V135，用户、组织主表各增加 ext1～ext5 五个可空文本查询字段。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
@@ -11,7 +12,7 @@
 -- 2026-11-15 同步至 V134；文件引用统一使用 fileId，空库无历史附件需转换，表结构和种子数据不变。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空数据库。
--- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 202 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- OceanBase MySQL 模式不支持 RANDOM_BYTES；导入前请在同一会话设置 @INIT_SIGNING_KEY 为新生成的 64 位十六进制随机串（例如 openssl rand -hex 32 的输出）。
 -- 操作顺序：生成随机密钥，在导入使用的 SQL 会话执行 SET @INIT_SIGNING_KEY = '生成的64位十六进制随机串';，再执行本文件；详细示例见 README.md。
@@ -4281,6 +4282,32 @@ CREATE TABLE `workflow_schema_change` (
 
 -- 系统元数据、菜单权限与禁用的超级管理员。
 -- 全局表单发布锁必须在空库预置，后续发布事务才能获取同一行锁。
+-- 组内成员标签；流程引用稳定标签 ID，空标签条件保留全组语义。
+CREATE TABLE `sys_group_tag` (
+    `id` VARCHAR(64) NOT NULL COMMENT '标签ID：供流程配置稳定引用，改名不改变审批条件。',
+    `group_id` VARCHAR(64) NOT NULL COMMENT '所属用户组：标签只在该组内有效。',
+    `tag_name` VARCHAR(50) NOT NULL COMMENT '标签名称：供组内成员管理和审批范围选择展示。',
+    `create_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '创建时间：用于标签目录的稳定排序。',
+    PRIMARY KEY (`id`),
+    CONSTRAINT uk_group_tag_name UNIQUE (`group_id`, `tag_name`),
+    CONSTRAINT fk_group_tag_group FOREIGN KEY (`group_id`) REFERENCES `sys_group`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='组内成员标签目录';
+CREATE TABLE `sys_user_group_tag` (
+    `user_group_id` VARCHAR(64) NOT NULL COMMENT '组成员关系ID：离组时清理绑定，普通成员保存保留标签。',
+    `tag_id` VARCHAR(64) NOT NULL COMMENT '标签ID：同一组内多标签按或匹配，组间合并去重。',
+    PRIMARY KEY (`user_group_id`, `tag_id`),
+    CONSTRAINT fk_member_tag_member FOREIGN KEY (`user_group_id`) REFERENCES `sys_user_group`(`id`),
+    CONSTRAINT fk_member_tag_tag FOREIGN KEY (`tag_id`) REFERENCES `sys_group_tag`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='组成员标签绑定';
+CREATE INDEX idx_member_tag_lookup ON `sys_user_group_tag`(`tag_id`, `user_group_id`);
+
+INSERT INTO process_person_resolver_definition
+(id, resolver_code, display_name, description, bean_name, implementation_version, contract_version,
+ supported_usages_document, extra_param_schema_document, dynamic_extra_params, enabled, revision, create_time, update_time, deleted)
+VALUES ('person_resolver_group_tags_001', 'groupMembersByTag', '用户组成员标签',
+ '按组内标签筛选成员；空标签表示全组，多标签按或匹配。', 'groupMembersByTagPersonResolver', 1, 1,
+ '["ASSIGNEE","CANDIDATE","MULTI_INSTANCE"]', '{}', 0, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0);
+
 INSERT INTO `entity_form_publication_lock` (`lock_id`) VALUES (1);
 -- 身份来源写入通过此固定行取得目录事务锁。
 INSERT INTO `sys_identity_write_lock` (`lock_key`) VALUES ('directory');

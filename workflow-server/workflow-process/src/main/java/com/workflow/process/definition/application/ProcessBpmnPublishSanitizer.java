@@ -384,7 +384,8 @@ public class ProcessBpmnPublishSanitizer {
             boolean multiInstanceSource) {
         String resolverCode = configuredPersonResolverCode(
                 config, multiInstanceSource);
-        return com.workflow.process.assignment.domain.RelativeOrgPositionConfig.RESOLVER_CODE
+        return "groupMembersByTag".equals(resolverCode)
+                || com.workflow.process.assignment.domain.RelativeOrgPositionConfig.RESOLVER_CODE
                 .equals(resolverCode)
                 || com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig.RESOLVER_CODE
                 .equals(resolverCode);
@@ -1426,7 +1427,8 @@ public class ProcessBpmnPublishSanitizer {
                         .findFirst()
                         .orElse(null);
         if (validator == null) {
-            if (com.workflow.process.assignment.domain.RelativeOrgPositionConfig.RESOLVER_CODE
+            if ("groupMembersByTag".equals(resolverCode)
+                    || com.workflow.process.assignment.domain.RelativeOrgPositionConfig.RESOLVER_CODE
                     .equals(resolverCode)
                     || com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig.RESOLVER_CODE
                     .equals(resolverCode)) {

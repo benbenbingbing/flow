@@ -1,4 +1,5 @@
 -- OceanBase 4.x Oracle 模式 平台基础表空库初始化脚本。
+-- 2026-11-17 同步至 V136，新增组内标签、成员标签绑定及内置人员解析器目录。
 -- 2026-11-16 同步至 V135，用户、组织主表各增加 ext1～ext5 五个可空文本查询字段。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
@@ -11,7 +12,7 @@
 -- 2026-11-15 同步至 V134；文件引用统一使用 fileId，空库无历史附件需转换，表结构和种子数据不变。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
--- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 202 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 导入前须将本文件中的 INIT_SIGNING_KEY_64_HEX_PLACEHOLDER 替换为新生成的 64 位十六进制随机密钥（例如 openssl rand -hex 32）。
 
@@ -7284,6 +7285,40 @@ COMMENT ON COLUMN "WORKFLOW_SCHEMA_CHANGE"."COMPLETED_TIME" IS '完成时间。'
 
 -- 系统元数据、菜单权限与禁用的超级管理员。
 -- 表单发布使用固定门闩行进行并发依赖校验，空库初始化时必须建立。
+-- V136 组内成员标签及绑定。
+CREATE TABLE "SYS_GROUP_TAG" (
+  "ID" VARCHAR2(64 CHAR) NOT NULL,
+  "GROUP_ID" VARCHAR2(64 CHAR) NOT NULL,
+  "TAG_NAME" VARCHAR2(50 CHAR) NOT NULL,
+  "CREATE_TIME" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  PRIMARY KEY ("ID"),
+  CONSTRAINT uk_group_tag_name UNIQUE ("GROUP_ID", "TAG_NAME"),
+  CONSTRAINT fk_group_tag_group FOREIGN KEY ("GROUP_ID") REFERENCES "SYS_GROUP"("ID")
+);
+CREATE TABLE "SYS_USER_GROUP_TAG" (
+  "USER_GROUP_ID" VARCHAR2(64 CHAR) NOT NULL,
+  "TAG_ID" VARCHAR2(64 CHAR) NOT NULL,
+  PRIMARY KEY ("USER_GROUP_ID", "TAG_ID"),
+  CONSTRAINT fk_member_tag_member FOREIGN KEY ("USER_GROUP_ID") REFERENCES "SYS_USER_GROUP"("ID"),
+  CONSTRAINT fk_member_tag_tag FOREIGN KEY ("TAG_ID") REFERENCES "SYS_GROUP_TAG"("ID")
+);
+CREATE INDEX idx_member_tag_lookup ON "SYS_USER_GROUP_TAG"("TAG_ID", "USER_GROUP_ID");
+COMMENT ON TABLE "SYS_GROUP_TAG" IS '组内成员标签目录';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."ID" IS '标签ID：供流程配置稳定引用，改名不改变审批条件。';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."GROUP_ID" IS '所属用户组：标签只在该组内有效。';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."TAG_NAME" IS '标签名称：供组内成员管理和审批范围选择展示。';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."CREATE_TIME" IS '创建时间：用于标签目录的稳定排序。';
+COMMENT ON TABLE "SYS_USER_GROUP_TAG" IS '组成员标签绑定';
+COMMENT ON COLUMN "SYS_USER_GROUP_TAG"."USER_GROUP_ID" IS '组成员关系ID：离组时清理绑定，普通成员保存保留标签。';
+COMMENT ON COLUMN "SYS_USER_GROUP_TAG"."TAG_ID" IS '标签ID：同一组内多标签按或匹配，组间合并去重。';
+
+INSERT INTO "PROCESS_PERSON_RESOLVER_DEFINITION"
+("ID", "RESOLVER_CODE", "DISPLAY_NAME", "DESCRIPTION", "BEAN_NAME", "IMPLEMENTATION_VERSION", "CONTRACT_VERSION",
+ "SUPPORTED_USAGES_DOCUMENT", "EXTRA_PARAM_SCHEMA_DOCUMENT", "DYNAMIC_EXTRA_PARAMS", "ENABLED", "REVISION", "CREATE_TIME", "UPDATE_TIME", "DELETED")
+VALUES ('person_resolver_group_tags_001', 'groupMembersByTag', '用户组成员标签',
+ '按组内标签筛选成员；空标签表示全组，多标签按或匹配。', 'groupMembersByTagPersonResolver', 1, 1,
+ '["ASSIGNEE","CANDIDATE","MULTI_INSTANCE"]', '{}', 0, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0);
+
 INSERT INTO "ENTITY_FORM_PUBLICATION_LOCK" ("LOCK_ID") VALUES (1);
 -- 身份来源写入通过此固定行取得目录事务锁。
 INSERT INTO "SYS_IDENTITY_WRITE_LOCK" ("LOCK_KEY") VALUES ('directory');

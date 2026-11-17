@@ -280,6 +280,7 @@ public class NextApproverCandidateService {
      */
     private boolean isEntryTimeDynamicResolver(String resolverCode) {
         return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
+                || "groupMembersByTag".equals(resolverCode)
                 || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
                 resolverCode);
     }

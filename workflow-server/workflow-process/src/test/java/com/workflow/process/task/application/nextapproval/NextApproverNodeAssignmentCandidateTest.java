@@ -574,6 +574,25 @@ class NextApproverNodeAssignmentCandidateTest {
                         resolution, target));
     }
 
+    @Test
+    void groupTagPreviewOptionsAndSubmitRecheckIgnoreStaleMultiInstanceCollection() {
+        Fixture fixture = fixture("alice", "bob");
+        UserTask task = new UserTask(); task.setId("tag-review");
+        var loop = new MultiInstanceLoopCharacteristics(); loop.setInputDataItem("${reviewers}"); task.setLoopCharacteristics(loop);
+        NextApprovalTarget target = target(task, "MULTI_INSTANCE", Map.of(
+                "assignmentConfigVersion", 2, "assigneeType", "interface", "resolverCode", "groupMembersByTag",
+                "extraParams", Map.of("groups", List.of(Map.of("groupCode", "TECH", "tagIds", List.of("backend"))))));
+        NextApprovalResolution resolution = resolution(target, Map.of("reviewers", List.of("bob")));
+        when(fixture.routeService().resolve(eq("task-1"), any())).thenReturn(resolution);
+        when(fixture.resolverRuntimeService().resolveUsernames(eq("groupMembersByTag"), any())).thenReturn(List.of("alice"));
+        assertEquals(List.of("alice"), usernames(fixture.service().defaultAssignees(resolution, target)));
+        assertEquals(List.of("alice"), usernames(fixture.service().options("task-1", optionsRequest(target)).getRecords()));
+        // 目录在预览后改变，提交必须重查当前标签范围，不能相信先前名单或启动集合。
+        when(fixture.resolverRuntimeService().resolveUsernames(eq("groupMembersByTag"), any())).thenReturn(List.of("bob"));
+        assertEquals(List.of("bob"), fixture.service().resolveAllowed(resolution, target, PersonResolveUsage.CANDIDATE)
+                .stream().map(SysUser::getUsername).toList());
+    }
+
     private void assertResolverUsage(
             PersonResolverRuntimeService resolverRuntimeService,
             String resolverCode,

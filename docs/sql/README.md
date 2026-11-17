@@ -4,6 +4,46 @@
 
 本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132、V133 的 MySQL 增量脚本及执行限制见下文。
 
+## 2026-11-17 同步 V136 流程用户组成员标签
+
+已同时检查 `src/main/resources/db/migration` 的 SQL 迁移和 `src/main/java/db/migration` 的 Java 迁移，原最高版本 V135，本次新增唯一的 [`V136__group_member_tags.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V136__group_member_tags.sql)。七份空库脚本均为 **202 张表、2,813 个字段**，比 V135 增加两张表、六个字段及一条内置人员解析器目录种子。其他表结构和原有系统种子保持不变。
+
+| 表 | 字段 | 约束、索引与用途 |
+| --- | --- | --- |
+| `sys_group_tag` | `id`、`group_id`、`tag_name`、`create_time` | 主键 id；组内名称唯一；group_id 外键关联 sys_group。名称50字符，ID64字符；时间非空、默认 CURRENT_TIMESTAMP。流程引用标签 ID，改名不会改变条件。 |
+| `sys_user_group_tag` | `user_group_id`、`tag_id` | 两列均为64字符、非空，组合主键；分别外键关联成员关系与标签。反向索引 idx_member_tag_lookup(tag_id, user_group_id) 支持筛选和清理。 |
+
+MySQL / OB MySQL、PostgreSQL / 人大金仓的文本类型使用 VARCHAR(n)，Oracle / 达梦 / OB Oracle 使用 VARCHAR2(n CHAR)，均保留长度、非空、默认值、主外键、唯一约束、索引和用途注释的等价语义。Flyway SQL 沿用现有 MySQL 兼容迁移方式；其他数据库的存量升级语法须按目标方言调整。七份脚本是空库最终结构，不用于覆盖存量结构。
+
+内置 `groupMembersByTag` 注册并启用到 `process_person_resolver_definition`，支持 ASSIGNEE / CANDIDATE / MULTI_INSTANCE。目录种子与实现使用同一稳定编码，不依赖用户手工注册。
+
+使用方式：在“流程用户组 → 分配成员”维护组内标签和成员绑定，可批量设置；成员与绑定一起保存，旧成员接口省略标签时保留未离组人员的绑定。流程设计器逐组选择成员标签，留空为该组全部有效成员，多标签按或匹配，多组取并集、去重。失效或跨组标签必须拒绝，不能退回全组。标签只影响审批选人，不改变角色或数据权限。已生成任务保留候选名单；会签在节点进入时读取当前目录、当轮保持稳定。详细字段与关联见 [数据库设计 9.9](database-design.md#99-sys_user_group-用户用户组关联表)。
+
+本次验证：
+
+- 后端所选 **76 项测试通过**：成员与标签真实 MyBatis/H2 查询、事务回滚、非法/跨组标签、改名保持引用、旧接口保留绑定、离组清理、禁用过滤、标签删除后拒绝条件；发布净化、下一审批人预览/候选/提交重验、旧会签集合隔离及已有用户组回归。
+- 真实 Flowable 引擎验证普通审批仅写入筛选后的候选用户、没有整组候选权限；会签在节点进入时读取最新标签结果，忽略启动时旧集合，生成对应人员任务。
+- H2 MySQL 模式执行实际 V136 SQL，验证唯一键、外键和解析器种子，Flyway migrate / validate / 重复 migrate 正常。迁移后原有成员关系保留。
+- 七份脚本全量核对 202 个表名和 2,813 个字段名一致；V136 新增对象的类型、长度、非空、默认值、用途注释、主外键、唯一键和反向索引等价。原有列和种子均保留，仅增加一条解析器目录种子。
+- 前端配置往返回显、失效标签保留、清空恢复全组、旧配置和下一审批人契约测试通过；真实 Chrome/Vue 组件验证标签筛选及预览、目录失效保留条件、成员名单不变时原子保存标签、加载失败禁止保存。管理端及 Embed 生产构建通过。
+- SQL / Java 迁移最高版本 V136，无重复版本；Git 差异确认历史迁移没有修改、删除或重命名。未修改 V001，未使用 repair，未创建基线。
+- 未连接或修改业务数据库；MySQL、PostgreSQL、Oracle、达梦、人大金仓和两种 OceanBase 均未进行实机迁移或全量导入。七方言静态核对及 H2 测试不替代实机验证。
+
+验证命令：
+
+```sh
+# workflow-server 目录；clean 防止 IDE 留下的增量编译产物影响测试。
+mvn -o -pl workflow-app,workflow-db-migrator -am -Dtest=SysGroupTagIntegrationTest,SysGroupServiceTest,SysGroupControllerTest,SysGroupMapperSqlContractTest,SysUserGroupMapperSqlContractTest,GroupMembersByTagPersonResolverTest,NextApproverNodeAssignmentCandidateTest,NextApproverCandidateScopeSecurityTest,GroupMemberTagsMigrationTest,GroupMemberTagsFlowableIntegrationTest,RelativeOrgPositionCollectionHandlerTest,RelativePositionPublishSanitizerTest,EntityUserReferenceFieldPublishSanitizerTest,NextApproverOverrideServiceTest -Dsurefire.failIfNoSpecifiedTests=false clean test
+# workflow-frontend/workflow-web 目录
+npm run test:group
+node src/shared/__tests__/assignment-config-v2.spec.js
+node src/shared/__tests__/next-approver.spec.js
+npm run test:group-tags:browser
+npm run build
+```
+
+迁移文件清单：新增 **V136__group_member_tags.sql**；修改、删除、重命名已有 SQL / Java 迁移均为 **无**。
+
 ## 2026-11-16 同步 V135 用户、组织主表文本扩展
 
 已同时检查 SQL 和 Java 迁移，原最高版本为 V134，本次新增唯一的 V135：[`V135__identity_main_table_extensions.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V135__identity_main_table_extensions.sql)。七份空库脚本均为 **200 张表、2,807 个字段**，相对 V134 仅增加用户、组织主表的 10 个字段，不改变其他表、索引、约束或系统种子数据。

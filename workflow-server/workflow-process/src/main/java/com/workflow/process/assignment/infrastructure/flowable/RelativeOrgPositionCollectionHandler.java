@@ -41,7 +41,7 @@ import java.util.Map;
  * Flowable 读取多实例 collection 时动态解析节点进入期人员来源。
  *
  * <p>仅由发布器写入的平台受控 delegateExpression 调用。该时点在引擎创建
- * 多实例执行之前；相对职务与实体用户关系字段都在这里读取最新权威状态。
+ * 多实例执行之前；相对职务、实体用户关系字段与用户组标签都在这里读取最新权威状态。
  * 返回空人员时直接抛出结构化失败，保证不会以 0 实例静默通过审批。
  * Bean 名保留历史名称，以兼容既有已部署 BPMN。</p>
  */
@@ -396,6 +396,7 @@ public class RelativeOrgPositionCollectionHandler
      */
     private String supportedDynamicResolver(String resolverCode) {
         return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
+                || "groupMembersByTag".equals(resolverCode)
                 || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
                 resolverCode)
                 ? resolverCode : "";
@@ -451,6 +452,9 @@ public class RelativeOrgPositionCollectionHandler
      */
     private PersonResolutionException noAvailableUsers(
             String resolverCode) {
+        if ("groupMembersByTag".equals(resolverCode)) {
+            return new PersonResolutionException("GROUP_TAG_SCOPE_EMPTY", "用户组标签未匹配到有效的会签参与人");
+        }
         if (EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
                 resolverCode)) {
             return new PersonResolutionException(

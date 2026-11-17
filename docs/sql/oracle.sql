@@ -1,4 +1,5 @@
 -- Oracle Database 19c 平台基础表空库初始化脚本。
+-- 2026-11-17 同步至 V136，新增组内标签、成员标签绑定及内置人员解析器目录。
 -- 2026-11-16 同步至 V135，用户、组织主表各增加 ext1～ext5 五个可空文本查询字段。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
@@ -11,7 +12,7 @@
 -- 2026-11-15 同步至 V134；文件引用统一使用 fileId，空库无历史附件需转换，表结构和种子数据不变。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
--- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 202 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 每次导入随机生成独立的配置迁移签名密钥；本文件是独立初始化脚本，不属于 Flyway 迁移。
 
@@ -7282,6 +7283,40 @@ COMMENT ON COLUMN "WORKFLOW_SCHEMA_CHANGE"."COMPLETED_TIME" IS '完成时间。'
 -- 系统元数据、菜单权限与禁用的超级管理员。
 -- 当前发布门闩及人员交接菜单；空库仅为内置超级管理员授权。
 -- 历史数据导入仅保留管理入口及执行权限，档案读取复用实体查看权限（V125）。
+-- V136 组内成员标签及绑定。
+CREATE TABLE "SYS_GROUP_TAG" (
+  "ID" VARCHAR2(64 CHAR) NOT NULL,
+  "GROUP_ID" VARCHAR2(64 CHAR) NOT NULL,
+  "TAG_NAME" VARCHAR2(50 CHAR) NOT NULL,
+  "CREATE_TIME" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  PRIMARY KEY ("ID"),
+  CONSTRAINT uk_group_tag_name UNIQUE ("GROUP_ID", "TAG_NAME"),
+  CONSTRAINT fk_group_tag_group FOREIGN KEY ("GROUP_ID") REFERENCES "SYS_GROUP"("ID")
+);
+CREATE TABLE "SYS_USER_GROUP_TAG" (
+  "USER_GROUP_ID" VARCHAR2(64 CHAR) NOT NULL,
+  "TAG_ID" VARCHAR2(64 CHAR) NOT NULL,
+  PRIMARY KEY ("USER_GROUP_ID", "TAG_ID"),
+  CONSTRAINT fk_member_tag_member FOREIGN KEY ("USER_GROUP_ID") REFERENCES "SYS_USER_GROUP"("ID"),
+  CONSTRAINT fk_member_tag_tag FOREIGN KEY ("TAG_ID") REFERENCES "SYS_GROUP_TAG"("ID")
+);
+CREATE INDEX idx_member_tag_lookup ON "SYS_USER_GROUP_TAG"("TAG_ID", "USER_GROUP_ID");
+COMMENT ON TABLE "SYS_GROUP_TAG" IS '组内成员标签目录';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."ID" IS '标签ID：供流程配置稳定引用，改名不改变审批条件。';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."GROUP_ID" IS '所属用户组：标签只在该组内有效。';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."TAG_NAME" IS '标签名称：供组内成员管理和审批范围选择展示。';
+COMMENT ON COLUMN "SYS_GROUP_TAG"."CREATE_TIME" IS '创建时间：用于标签目录的稳定排序。';
+COMMENT ON TABLE "SYS_USER_GROUP_TAG" IS '组成员标签绑定';
+COMMENT ON COLUMN "SYS_USER_GROUP_TAG"."USER_GROUP_ID" IS '组成员关系ID：离组时清理绑定，普通成员保存保留标签。';
+COMMENT ON COLUMN "SYS_USER_GROUP_TAG"."TAG_ID" IS '标签ID：同一组内多标签按或匹配，组间合并去重。';
+
+INSERT INTO "PROCESS_PERSON_RESOLVER_DEFINITION"
+("ID", "RESOLVER_CODE", "DISPLAY_NAME", "DESCRIPTION", "BEAN_NAME", "IMPLEMENTATION_VERSION", "CONTRACT_VERSION",
+ "SUPPORTED_USAGES_DOCUMENT", "EXTRA_PARAM_SCHEMA_DOCUMENT", "DYNAMIC_EXTRA_PARAMS", "ENABLED", "REVISION", "CREATE_TIME", "UPDATE_TIME", "DELETED")
+VALUES ('person_resolver_group_tags_001', 'groupMembersByTag', '用户组成员标签',
+ '按组内标签筛选成员；空标签表示全组，多标签按或匹配。', 'groupMembersByTagPersonResolver', 1, 1,
+ '["ASSIGNEE","CANDIDATE","MULTI_INSTANCE"]', '{}', 0, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0);
+
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "PATH", "COMPONENT", "ICON", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('history_import_menu', '400', '历史数据导入', 'C', '/system/history-import', 'system/HistoryImport', 'Upload', 17, '0', '0', 'history-import:read', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('history_import_execute', 'history_import_menu', '执行历史导入', 'F', 1, '0', '0', 'history-import:execute', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "IS_FRAME", "IS_CACHE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME") VALUES ('task_handover_menu_001','400','人员交接','C','Switch',36,'/system/task-handover','system/TaskHandoverManagement','system:task-handover:view','0','0','0','0','0','1','查询任意状态人员的待办并执行管理员交接',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);

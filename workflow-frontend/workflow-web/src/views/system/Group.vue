@@ -146,8 +146,9 @@
     <!-- 分配成员对话框 -->
     <el-dialog
       v-model="userDialogVisible"
-      title="分配组成员"
-      width="600px"
+      title="分配组成员与标签"
+      width="780px"
+      style="max-width: calc(100vw - 24px)"
       :close-on-click-modal="false"
     >
       <UserSelector
@@ -156,11 +157,14 @@
         value-key="id"
         placeholder="请选择组成员"
         title="选择组成员"
+        @selected="value => selectedMemberUsers = value"
       />
+      <GroupMemberTagsEditor v-if="userDialogVisible" ref="memberTagsRef" :group-id="currentGroupId"
+        :member-ids="selectedUserIds" :selected-users="selectedMemberUsers" />
       
       <template #footer>
         <el-button @click="userDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSaveUsers" :loading="userSubmitLoading">
+        <el-button type="primary" @click="handleSaveUsers" :loading="userSubmitLoading" :disabled="!memberTagsRef?.ready">
           保存成员（{{ selectedUserIds.length }}）
         </el-button>
       </template>
@@ -172,9 +176,11 @@
 import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getGroupList, createGroup, updateGroup, deleteGroup, updateGroupStatus, saveGroupUsers } from '@/api/system/group'
+import { getGroupList, createGroup, updateGroup, deleteGroup, updateGroupStatus } from '@/api/system/group'
 import PageState from '@/components/PageState.vue'
 import UserSelector from '@/components/UserSelector.vue'
+import GroupMemberTagsEditor from '@/components/GroupMemberTagsEditor.vue'
+import { saveGroupMembersWithTags } from '@/api/system/groupTags'
 import { useUserStore } from '@/stores/user'
 import {
   normalizeGroupMemberIds,
@@ -183,6 +189,8 @@ import {
   submitGroupForm
 } from '@/shared/group-management'
 
+const memberTagsRef = ref()
+const selectedMemberUsers = ref<any[]>([])
 const userStore = useUserStore()
 const canManage = computed(() => userStore.isSuperAdmin
   || userStore.permissions.includes('*')
@@ -359,13 +367,14 @@ const handleAssignUsers = (row: any) => {
   if (!canManage.value) return
   currentGroupId.value = String(row.id ?? '').trim()
   if (!currentGroupId.value) return
+  selectedMemberUsers.value = []
   selectedUserIds.value = normalizeGroupMemberIds(row.userIds)
   userDialogVisible.value = true
 }
 
 // 保存组成员
 const handleSaveUsers = async () => {
-  if (!canManage.value || !currentGroupId.value) return
+  if (!canManage.value || !currentGroupId.value || !memberTagsRef.value?.ready) return
 
   const group = groupList.value.find(
     item => String(item.id ?? '').trim() === currentGroupId.value
@@ -381,16 +390,14 @@ const handleSaveUsers = async () => {
   })
   selectedUserIds.value = change.userIds
   if (!change.shouldSave) {
-    if (change.reason === 'unchanged') {
-      ElMessage.info('成员未发生变化')
-      userDialogVisible.value = false
-    }
-    return
+    if (change.reason !== 'unchanged') return
   }
 
   userSubmitLoading.value = true
   try {
-    await saveGroupUsers(currentGroupId.value, change.userIds)
+    await saveGroupMembersWithTags(currentGroupId.value, {
+      userIds: change.userIds, memberTags: memberTagsRef.value.getAssignments()
+    })
     ElMessage.success('成员分配成功')
     userDialogVisible.value = false
     await fetchGroupList()

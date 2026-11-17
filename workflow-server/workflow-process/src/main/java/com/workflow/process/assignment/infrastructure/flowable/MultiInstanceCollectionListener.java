@@ -692,6 +692,7 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 .effectiveResolver(config, multiInstanceSource)
                 .resolverCode();
         return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
+                || "groupMembersByTag".equals(resolverCode)
                 || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
                 resolverCode);
     }

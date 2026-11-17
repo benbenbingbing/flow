@@ -16,6 +16,10 @@ import java.util.List;
  */
 @Mapper
 public interface SysGroupMapper extends BaseMapper<SysGroup> {
+    /** 成员及标签写入共用组行锁，防止标签保存和成员移除交错产生孤儿绑定。 */
+    @Select("SELECT id FROM sys_group WHERE id = #{groupId} AND deleted = 0 FOR UPDATE")
+    String lockMembers(@Param("groupId") String groupId);
+
 
     /**
      * 分批读取候选组展示信息；调用方须传入非空且最多 200 个编码。

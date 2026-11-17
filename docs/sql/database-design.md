@@ -4660,6 +4660,25 @@ password 保存本地口令哈希，外部账号可为空；authentication_mode 
 
 实现定位：[SysUserGroupMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/group/infrastructure/persistence/mapper/SysUserGroupMapper.java)、[ProcessTaskMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/task/infrastructure/persistence/mapper/ProcessTaskMapper.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
 
+#### V136 组内成员标签
+
+新增 `sys_group_tag`（4列）和 `sys_user_group_tag`（2列），不改变已有成员表字段。
+
+| 表 | 字段 | 类型及约束 | 业务用途 |
+| --- | --- | --- | --- |
+| sys_group_tag | id | VARCHAR(64)，主键、非空 | 流程配置稳定引用，改名不改变审批条件。 |
+| sys_group_tag | group_id | VARCHAR(64)，非空，外键 sys_group.id | 标签仅在该用户组内使用。 |
+| sys_group_tag | tag_name | VARCHAR(50)，非空 | 组内展示名称，与 group_id 组合唯一。 |
+| sys_group_tag | create_time | TIMESTAMP，非空，默认 CURRENT_TIMESTAMP | 稳定排序，不用于审批权限判断。 |
+| sys_user_group_tag | user_group_id | VARCHAR(64)，非空，外键 sys_user_group.id | 标签挂在成员关系上，离组清理，重新加入不恢复。 |
+| sys_user_group_tag | tag_id | VARCHAR(64)，非空，外键 sys_group_tag.id | 与 user_group_id 组合主键，禁止重复绑定。 |
+
+Oracle / 达梦 / OB Oracle 的文本列使用等长 VARCHAR2(n CHAR)。反向索引 `idx_member_tag_lookup(tag_id, user_group_id)` 支持标签清理及筛选；成员及标签写入共用用户组行锁，校验标签和成员属于同一组。无新增业务种子成员，内置解析器 `groupMembersByTag` 注册到受控目录。
+
+审批规则：每组标签为空表示全组有效成员，多个标签按或匹配；多组取并集并去重。禁用或删除的用户、用户组不参与。流程保存标签 ID，改名不影响引用；删除标签清理绑定，既有流程条件仍保留 ID，发布或运行报告失效，绝不默认为全组。标签只参与审批选人，不扩展角色及数据权限。
+
+普通任务由解析器写入具体候选用户并清除整组候选关系；会签在节点进入时解析、当轮稳定。下一审批人预览和提交重验使用相同解析器；成员/标签变动不自动改派已生成任务。成员及标签分配支持同一事务保存，旧成员接口省略标签时保留未离组成员的标签。
+
 ### 9.10 sys_menu 菜单与功能权限表
 
 #### 9.10.1 业务说明

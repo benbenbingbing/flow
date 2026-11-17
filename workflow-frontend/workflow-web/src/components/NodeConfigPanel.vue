@@ -279,6 +279,13 @@
                 </template>
               </el-select-v2>
             </el-form-item>
+            <el-form-item v-if="assigneeForm.candidateGroupIds.length" label="成员标签">
+              <template #label>
+                <ConfigHelpLabel label="成员标签" content="不选标签表示全部成员；多个标签匹配任意一个。" />
+              </template>
+              <GroupTagFilterEditor v-model="assigneeForm.groupTags" :group-codes="assigneeForm.candidateGroupIds"
+                :group-options="groupOptions" @update:model-value="markAssignmentConfigDirty" />
+            </el-form-item>
           </template>
           
           <!-- 角色选择 -->
@@ -1904,6 +1911,8 @@ import {
   validateEmptyAssigneeStrategy,
   validateNodeReferenceChain
 } from '@/shared/process-config'
+import GroupTagFilterEditor from '@/components/GroupTagFilterEditor.vue'
+import { hasGroupTagFilter, projectGroupTagAssignment, GROUP_TAG_RESOLVER_CODE } from '@/shared/group-member-tags'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
@@ -2091,6 +2100,7 @@ const assigneeForm = ref({
   legacyMultiInstanceConfig: null,
   legacyMultiInstanceMixed: false,
   assignmentConfigDirty: false,
+  groupTags: {},
   entityUserReference: normalizeEntityUserReferenceConfig(),
   relativePosition: createRelativePositionForm(),
   nextApproverSelection: createNextApproverSelectionConfig()
@@ -2991,7 +3001,8 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
         candidateUsers: candidateUsers, 
         candidateGroups: candidateGroups, 
         candidateUserIds: getUserIdsFromUsernames(candidateUsers),
-        candidateGroupIds: getGroupIdsFromCodes(candidateGroups),
+        candidateGroupIds: assigneeConfig.groupTags ? candidateGroups.split(',').filter(Boolean) : getGroupIdsFromCodes(candidateGroups),
+        groupTags: assigneeConfig.groupTags || {},
         candidateRoleIds: getRoleIdsFromCodes(candidateGroups),
         // 从扩展属性恢复 assigneeValue（兜底：当 BPMN 属性被多实例覆盖时）
         assigneeValue: assigneeConfig.assigneeValue || '',
@@ -4082,6 +4093,8 @@ function updateMultiInstanceAssigneeUsers() {
 }
 
 function updateCandidateGroups() {
+  assigneeForm.value.groupTags = Object.fromEntries(Object.entries(assigneeForm.value.groupTags || {})
+    .filter(([code]) => assigneeForm.value.candidateGroupIds.includes(code)))
   // candidateGroupIds 里存的是 groupCode（el-select-v2 的 value）
   const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
   assigneeForm.value.candidateGroups = selectedGroups.map(g => g.code).join(',')
@@ -4106,6 +4119,7 @@ function markAssignmentConfigDirty() {
  * 让发布校验、普通任务和多实例都经过同一人员解析器边界。
  */
 function projectedAssigneeFormForPersistence() {
+  if (assigneeForm.value.assigneeType === 'group') return projectGroupTagAssignment(assigneeForm.value)
   if (assigneeForm.value.assigneeType === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
     const resolverConfig = buildEntityUserReferenceResolverConfig({
       ...assigneeForm.value.entityUserReference,
@@ -4144,7 +4158,8 @@ function updateAssigneeInterface() {
   const extraParams = projected.assigneeType === 'interface'
     && [
       RELATIVE_ORG_POSITION_RESOLVER_CODE,
-      ENTITY_USER_REFERENCE_RESOLVER_CODE
+      ENTITY_USER_REFERENCE_RESOLVER_CODE,
+      GROUP_TAG_RESOLVER_CODE
     ].includes(projected.resolverCode)
     ? projected.extraParams
     : parseJsonObject(projected.extraParamsText, '办理人接口 extraParams')
@@ -4357,11 +4372,11 @@ function applyConfigurationSection(section) {
         }
 
         if (assigneeForm.value.isMultiInstance) {
-          if ([
+          if (([
             'interface',
             ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
             RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
-          ].includes(type) && !preservingLegacy) {
+          ].includes(type) || hasGroupTagFilter(assigneeForm.value)) && !preservingLegacy) {
             updateAssigneeInterface()
           } else if (!preservingLegacy) {
             updateExtensionProperty('assigneeInterface', null)
@@ -4378,6 +4393,12 @@ function applyConfigurationSection(section) {
           updates.assignee = assigneeForm.value.assignee || null
           updates.candidateUsers = assigneeForm.value.candidateUsers || null
           updates.candidateGroups = null
+        } else if (type === 'group' && hasGroupTagFilter(assigneeForm.value)) {
+          // 有标签时只允许解析出的候选用户，不能残留整组候选权限。
+          updates.assignee = null
+          updates.candidateUsers = null
+          updates.candidateGroups = null
+          updateAssigneeInterface()
         } else if (type === 'group' || type === 'role') {
           updates.assignee = null
           updates.candidateUsers = null
@@ -4405,7 +4426,7 @@ function applyConfigurationSection(section) {
           'interface',
           ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
           RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
-        ].includes(type)) {
+        ].includes(type) && !hasGroupTagFilter(assigneeForm.value)) {
           updateExtensionProperty('assigneeInterface', null)
         }
         updateAssigneeConfig()

@@ -209,8 +209,10 @@ public class SysGroupService {
         String groupId = requiredText(id, "用户组ID", 64);
         SysGroup group = requireGroup(groupId);
         
-        // 删除用户关联
+        // 成员标签必须先于成员关系及标签目录删除；共用组锁避免与标签编辑交错。
+        groupMapper.lockMembers(groupId);
         userGroupMapper.deleteByGroupId(groupId);
+        userGroupMapper.deleteGroupTags(groupId);
         
         // 逻辑删除组
         if (groupMapper.deleteById(groupId) != 1) {
@@ -249,7 +251,7 @@ public class SysGroupService {
     }
     
     /**
-     * 保存组用户关联（先删除原有关联，再批量插入新关联）
+     * 保存组用户关联（增量增删，保留未移除成员的关系 ID 和标签）
      *
      * @param groupId  组ID
      * @param userIds 用户ID列表；空数组表示清空成员，null 属于非法请求
@@ -405,15 +407,29 @@ public class SysGroupService {
     }
 
     /**
-     * 在所有校验完成后原子替换成员关系；调用方事务负责失败回滚。
+     * 在组锁下增量维护成员；保留未移除成员关系，使标签不会因普通成员保存而丢失。
      *
      * @param groupId 分组ID，后续用于处理替换分组用户集合时定位或关联目标
      * @param userIds 用户ID 集合，供本方法处理替换分组用户集合时使用
      */
     private void replaceGroupUsers(String groupId, List<String> userIds) {
-        userGroupMapper.deleteByGroupId(groupId);
+        groupMapper.lockMembers(groupId);
+        List<SysUserGroup> existing = userGroupMapper.selectList(
+                new LambdaQueryWrapper<SysUserGroup>().eq(SysUserGroup::getGroupId, groupId));
+        Set<String> retained = new HashSet<>();
+        Set<String> requested = new HashSet<>(userIds);
+        for (SysUserGroup member : existing) {
+            if (requested.contains(member.getUserId())) {
+                retained.add(member.getUserId());
+            } else {
+                // 离组即清理标签；以后重新加入不会继承上次审批身份。
+                userGroupMapper.clearMemberTags(member.getId());
+                userGroupMapper.deleteById(member.getId());
+            }
+        }
         LocalDateTime now = LocalDateTime.now();
         for (String userId : userIds) {
+            if (retained.contains(userId)) continue;
             SysUserGroup userGroup = new SysUserGroup();
             userGroup.setGroupId(groupId);
             userGroup.setUserId(userId);

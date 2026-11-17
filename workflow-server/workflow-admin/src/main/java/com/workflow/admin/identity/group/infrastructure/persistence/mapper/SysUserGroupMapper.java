@@ -14,6 +14,18 @@ import java.util.List;
  */
 @Mapper
 public interface SysUserGroupMapper extends BaseMapper<SysUserGroup> {
+    @org.apache.ibatis.annotations.Delete("DELETE FROM sys_user_group_tag WHERE user_group_id IN (SELECT id FROM sys_user_group WHERE group_id = #{groupId})")
+    void clearGroupMemberTags(@Param("groupId") String groupId);
+
+    @org.apache.ibatis.annotations.Delete("DELETE FROM sys_user_group_tag WHERE user_group_id IN (SELECT id FROM sys_user_group WHERE user_id = #{userId})")
+    void clearUserMemberTags(@Param("userId") String userId);
+
+    @org.apache.ibatis.annotations.Delete("DELETE FROM sys_user_group_tag WHERE user_group_id = #{memberId}")
+    void clearMemberTags(@Param("memberId") String memberId);
+
+    @org.apache.ibatis.annotations.Delete("DELETE FROM sys_group_tag WHERE group_id = #{groupId}")
+    void deleteGroupTags(@Param("groupId") String groupId);
+
     
     /**
      * 查询用户当前有效的组ID列表。
@@ -47,6 +59,7 @@ public interface SysUserGroupMapper extends BaseMapper<SysUserGroup> {
      */
     default void deleteByUserId(String userId) {
         // 关联表没有逻辑删除字段，BaseMapper 保留物理删除关联关系的行为。
+        clearUserMemberTags(userId);
         delete(Wrappers.<SysUserGroup>lambdaQuery().eq(SysUserGroup::getUserId, userId));
     }
     
@@ -57,6 +70,7 @@ public interface SysUserGroupMapper extends BaseMapper<SysUserGroup> {
      */
     default void deleteByGroupId(String groupId) {
         // 关联表没有逻辑删除字段，BaseMapper 保留物理删除关联关系的行为。
+        clearGroupMemberTags(groupId);
         delete(Wrappers.<SysUserGroup>lambdaQuery().eq(SysUserGroup::getGroupId, groupId));
     }
 }
