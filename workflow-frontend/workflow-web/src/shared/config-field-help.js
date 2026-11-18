@@ -15,6 +15,11 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '只写判断当前用户是否命中的条件，不要写完整语句。不能引用主表别名 biz。可用 #{userId}、#{username}、#{deptId}、#{orgId}。',
   'entity.permissionFilterSql':
     '选择「自定义 SQL」后只写 WHERE 条件。主表别名统一为 biz，例如 biz.create_by = #{userId}。运行时会替换成实体物理表。',
+  'entity.optionsInterface': [
+    '1. 后端实现 UiDataSourceProvider，加 @Component 注册并部署。execute(...) 在 FIELD_OPTIONS 调用时返回选项数组，例如 [{"value":"WH-01","label":"一号仓库"}]。',
+    '2. 在「定制开发 → 扩展管理」新增扩展接口。实现类型选「已注册 Provider」，选择 getCode() 对应的 Provider，实现入口填代码约定的编码（如 WAREHOUSE_OPTIONS）。业务上下文选「表单（FORM）」，数据影响选「只读查询（READ）」，作用范围包含当前实体，输出 Schema 填 {"type":"array"}，状态设为启用。',
+    '3. 回到实体属性选择接口，保存并发布实体。使用该字段的表单发布后自动继承。业务数据保存时校验编码格式，不调用接口核验编码。'
+  ].join('\n'),
   'entityList.fixedFilters':
     '选择字段、比较方式和条件值；多条条件必须同时满足。固定条件保存并发布后与数据权限共同生效，用户筛选不能放宽它。留空仅表示不附加固定条件，不授予数据权限。',
   'entityList.dataScopeMode':

@@ -8,7 +8,7 @@
       placement="top"
       :show-after="200"
       :hide-after="50"
-      :popper-style="{ maxWidth: '360px', lineHeight: '1.6' }"
+      :popper-style="{ maxWidth: '360px', lineHeight: '1.6', whiteSpace: 'pre-line' }"
     >
       <button
         type="button"

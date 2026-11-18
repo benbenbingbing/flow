@@ -181,7 +181,7 @@
             </el-tag>
           </div>
         </div>
-        <el-form v-if="selectedField" :model="selectedField" label-width="90px" size="small">
+        <el-form v-if="selectedField" :model="selectedField" label-width="108px" size="small">
           <SettingsSection
             title="常用属性"
             description="字段识别、类型和常用录入约束"
@@ -316,7 +316,7 @@
                 <template #label>
                   <ConfigHelpLabel
                     label="选项接口"
-                    content="表单继承此接口。保存时只校验外部编码格式，无需调用接口确认编码是否存在。"
+                    help-key="entity.optionsInterface"
                   />
                 </template>
                 <el-select
@@ -325,6 +325,7 @@
                   :loading="optionsInterfacesLoading"
                   filterable
                   placeholder="选择 FORM 只读接口"
+                  no-data-text="暂无可用接口，请查看「选项接口」旁的问号了解配置步骤"
                   style="width: 100%"
                 >
                   <el-option v-for="item in optionsInterfaces" :key="item.extensionId"

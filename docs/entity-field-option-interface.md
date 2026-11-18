@@ -1,8 +1,74 @@
 # 实体选择字段的外部选项接口
 
-1. 在扩展管理注册 `FORM` 上下文、`READ` 类型、支持 `FIELD_OPTIONS` 的 Provider 接口，作用域覆盖目标实体。接口输出 Schema 根类型为数组，返回 `[{"value":"WH-01","label":"一号仓库"}]`。候选可以依赖当前表单数据，Provider 从 `input.formData` 读取业务参数，不使用业务参数替代认证身份。
-2. 在实体设计的选择字段中选择「只读接口」，保存并发布实体。未发布字段可切换来源；**任何已发布字段**均不能切换来源或换绑接口。旧字段继续按原代码表保存和校验，不迁移业务数据。
-3. 在表单添加该实体字段并发布，组件使用下拉、单选或多选。标准表单继承实体选项接口，不能另绑其他 `FIELD_OPTIONS`。设计预览要求先保存表单节点。
+## 1. 实现并部署 Provider
+
+在后端业务模块的 Spring 扫描包下实现 `com.workflow.contracts.entity.ui.spi.UiDataSourceProvider`，加 `@Component` 注册为 Spring Bean。`getCode()` 的返回值用于在扩展管理中选择 Provider，`execute(...)` 返回由 `value`（保存编码）和 `label`（显示名称）组成的数组。没有候选项时返回空列表。
+
+```java
+import com.workflow.contracts.entity.list.model.DataScopePlan;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
+import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+
+@Component
+public class WarehouseOptionsProvider implements UiDataSourceProvider {
+    @Override
+    public String getCode() {
+        return "WAREHOUSE_OPTIONS_PROVIDER";
+    }
+
+    @Override
+    public String getDisplayName() {
+        return "仓库选项";
+    }
+
+    @Override
+    public Object execute(UiInvocationContext context, DataScopePlan dataScopePlan,
+                          Map<String, Object> configuration, Map<String, Object> input) {
+        return List.of(Map.of("value", "WH-01", "label", "一号仓库"));
+    }
+}
+```
+
+接入真实业务时可在 `execute(...)` 中调用外部只读服务并转换返回结果。通过 `input.get("formData")` 读取当前表单业务参数，认证身份和数据范围分别使用 `context` 和 `dataScopePlan`。
+
+## 2. 新增扩展接口
+
+部署后打开「定制开发 → 扩展管理 → 新增扩展接口」，填写接口名称和编码，并按下表配置。
+
+| 配置项 | 示例 |
+| --- | --- |
+| 实现类型 | 已注册 Provider |
+| Provider | 仓库选项（`WAREHOUSE_OPTIONS_PROVIDER`） |
+| 实现入口 | `WAREHOUSE_OPTIONS`。同一 Provider 有多个入口时，代码通过 `context.common().providerOperationCode()` 识别 |
+| 数据影响 | 只读查询（`READ`） |
+| 业务上下文 | 表单（`FORM`） |
+| 作用范围 | 选择实体，加入需要绑定选项接口的实体。也可选择全部实体 |
+| 状态 | 启用 |
+
+展开「实现配置与输入输出契约」，在「输出 Schema」中填写数组契约，再保存扩展接口。
+
+```json
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "value": { "type": "string" },
+      "label": { "type": "string" }
+    },
+    "required": ["value", "label"]
+  }
+}
+```
+
+## 3. 绑定到实体字段
+
+1. 在实体设计中将未发布的单选或多选字段的「选项来源」设为「只读接口」，选择已启用的扩展接口，再保存并发布实体。已发布字段的来源和绑定会锁定，需要切换时请新增字段。
+2. 在表单中使用该实体字段及下拉、单选或多选组件，发布后表单会自动继承接口。设计预览前先保存表单节点。
 
 ## 保存和回显
 
