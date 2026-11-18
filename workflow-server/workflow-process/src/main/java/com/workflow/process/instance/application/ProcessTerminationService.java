@@ -141,7 +141,7 @@ public class ProcessTerminationService {
                         processInstanceId,
                         null);
             }
-            operationActions.fire(operation, PROCESS_TERMINATE_EXECUTED);
+            // 结束动作由引擎事件登记，在事务提交前统一触发，确保本次日志及待办清理全部完成。
             log.info(
                     "流程终止成功: processInstanceId={}, userId={}, reason={}",
                     processInstanceId, userId, deleteReason);

@@ -138,9 +138,29 @@ class SequenceFlowConditionFlowableTest {
         return sanitizer.sanitize(xml, "condition_test");
     }
 
+    @Test
+    void externalSelectionRoutesFromStoredCodesWithoutCallingTheProvider() {
+        var evaluator = new SequenceFlowConditionEvaluator(List.of(provider), json);
+        ProcessEngine engine = engine(evaluator);
+        String expression = "${(_wfSelectionCondition.matches(execution, 'tags', 'selectionAll', 'A1,B2') && true) || false}";
+        String source = xml("exclusiveGateway", "testDecision", "{}").replaceFirst(
+                "(?s)<bpmn:extensionElements>.*?</bpmn:extensionElements>",
+                java.util.regex.Matcher.quoteReplacement("<bpmn:conditionExpression><![CDATA[" + expression + "]]></bpmn:conditionExpression>"));
+        deploy(engine, sanitize(source, evaluator));
+        for (var tags : List.of(List.of("A10", "B2"), List.of("A1", "B2"), List.<String>of())) {
+            boolean expected = tags.contains("A1");
+            var instance = engine.getRuntimeService().startProcessInstanceByKey("condition_test", Map.of("tags", tags));
+            assertNotNull(task(engine, instance.getId(), expected ? "accepted" : "fallback"));
+            assertEquals(expected, new FlowableConditionEvaluator(engine).evaluate(expression, Map.of("tags", tags)));
+        }
+        assertNull(request.get());
+    }
+
     private ProcessEngine engine(SequenceFlowConditionEvaluator evaluator) {
         var configuration = (ProcessEngineConfigurationImpl) ProcessEngineConfiguration.createStandaloneInMemProcessEngineConfiguration();
-        configuration.setExpressionManager(new ProcessExpressionManager(new HashMap<>(Map.of("sequenceFlowConditionEvaluator", evaluator))));
+        configuration.setExpressionManager(new ProcessExpressionManager(new HashMap<>(Map.of(
+                "sequenceFlowConditionEvaluator", evaluator, "_wfSelectionCondition",
+                new com.workflow.process.condition.application.WorkflowSelectionCondition()))));
         configuration.setJdbcUrl("jdbc:h2:mem:sequence_condition_" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
         configuration.setDatabaseSchemaUpdate(ProcessEngineConfiguration.DB_SCHEMA_UPDATE_TRUE);
         configuration.setAsyncExecutorActivate(false);

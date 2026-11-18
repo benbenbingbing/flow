@@ -1,4 +1,9 @@
 -- Oracle Database 19c 平台基础表空库初始化脚本。
+-- 2026-11-18 同步至 V144，引擎流程启动动作统一归入发起后；空库无动作绑定数据需转换，结构及种子不变。
+-- 2026-11-18 同步 V143，实体字段增加只读选项接口绑定，历史代码表和种子不变。
+-- 2026-11-18 同步至 V142，引擎任务完成时机归入节点离开前；空库无动作绑定数据需转换，结构及种子不变。
+-- 2026-11-18 同步至 V141，普通审批与加签办理统一前后时机；空库无动作绑定数据需转换，结构及种子不变。
+-- 2026-11-17 同步至 V140，合并撤回和终止后置时机；空库无动作绑定数据需转换，结构及种子不变。
 -- 2026-11-17 同步至 V139，合并业务操作前校验/处理时机；空库无动作绑定数据需转换，结构及种子保持不变。
 -- 2026-11-17 同步至 V138，新增单前置动作依赖、本次执行关联与业务输出快照。
 -- 2026-11-17 同步至 V137，允许发起前动作执行记录的流程实例 ID 为空。
@@ -1596,6 +1601,7 @@ CREATE TABLE "ENTITY_FIELD" (
   "REF_LIST_KEY" varchar2(100),
   "FIELD_ID" varchar2(100),
   "DICT_TYPE" varchar2(100),
+  "OPTIONS_INTERFACE_ID" varchar2(64 CHAR),
   "VALUE_STORAGE" varchar2(20) DEFAULT 'SCALAR',
   "DELETED" number(3) DEFAULT '0',
   CONSTRAINT "PK_ENTITY_FIELD_ENTITY_FIELD" PRIMARY KEY ("ID")
@@ -5707,6 +5713,7 @@ COMMENT ON COLUMN "ENTITY_FIELD"."REF_FIELD_CODE" IS '关联字段编码。';
 COMMENT ON COLUMN "ENTITY_FIELD"."REF_LIST_KEY" IS '子列表或实体引用默认使用的已发布列表编码。';
 COMMENT ON COLUMN "ENTITY_FIELD"."FIELD_ID" IS '旧字段编码（兼容保留）；旧字段编码；迁移注释明确为兼容保留，不是该行主键。';
 COMMENT ON COLUMN "ENTITY_FIELD"."DICT_TYPE" IS '绑定的系统代码表编码。';
+COMMENT ON COLUMN "ENTITY_FIELD"."OPTIONS_INTERFACE_ID" IS '已注册的只读选项接口ID；与代码表互斥，供表单加载外部候选';
 COMMENT ON COLUMN "ENTITY_FIELD"."VALUE_STORAGE" IS '值存储方式：字段值存储：SCALAR/MULTI_TABLE。';
 COMMENT ON COLUMN "ENTITY_FIELD"."DELETED" IS '逻辑删除标记：是否删除。';
 COMMENT ON TABLE "ENTITY_FIELD_FILE_ITEM" IS '实体字段附件项表';

@@ -2591,14 +2591,14 @@ async function ensureProcess(forms, entity) {
     {
       scopeType: 'PROCESS',
       elementId: null,
-      triggerTiming: 'PROCESS_STARTED',
+      triggerTiming: 'PROCESS_START_EXECUTED',
       executionMode: 'IN_TRANSACTION',
       failurePolicy: 'ROLLBACK',
       actionName: '流程启动写回',
       interfaceName:
         'projectExtensionAcceptanceFlowActionHandler',
       params: {
-        stage: 'PROCESS_STARTED',
+        stage: 'PROCESS_START_EXECUTED',
         visibleMessage:
           '项目扩展验收流程已启动',
         writeBack: true
@@ -2623,7 +2623,7 @@ async function ensureProcess(forms, entity) {
     {
       scopeType: 'NODE',
       elementId: 'Task_Technical_Review',
-      triggerTiming: 'TASK_COMPLETING',
+      triggerTiming: 'NODE_COMPLETED',
       executionMode: 'IN_TRANSACTION',
       failurePolicy: 'ROLLBACK',
       actionName: '技术节点完成写回',

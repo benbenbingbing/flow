@@ -72,7 +72,7 @@ public class EntityMultiValueRuntimeService {
     }
 
     /**
-     * 校验单值字典字段的取值是否为有效字典项，无效时抛出异常。
+     * 校验单值字典项和接口型选择字段的本地存储契约。多值字典在关联写入时解析代码项。
      *
      * @param definition 实体定义
      * @param data       实体数据
@@ -84,6 +84,16 @@ public class EntityMultiValueRuntimeService {
             return;
         }
         for (EntityField field : fieldMapper.findByEntityId(definition.getId())) {
+            if (StringUtils.hasText(field.getOptionsInterfaceId())) {
+                String code = field.getFieldCode();
+                // 同时提交驼峰键与物理列别名时，任一值都可能进入写入映射。
+                com.workflow.entity.definition.application.EntitySelectionOptionPolicy.validateExternalValue(field, data.get(code));
+                String alias = toSnakeCase(code);
+                if (!alias.equals(code)) {
+                    com.workflow.entity.definition.application.EntitySelectionOptionPolicy.validateExternalValue(field, data.get(alias));
+                }
+                continue;
+            }
             if (!StringUtils.hasText(field.getDictType())
                     || field.getFieldType() == EntityField.FieldType.MULTI_SELECT
                     || field.getFieldType() == EntityField.FieldType.CHECKBOX) {

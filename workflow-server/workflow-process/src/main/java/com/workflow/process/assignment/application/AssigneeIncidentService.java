@@ -25,6 +25,8 @@ import com.workflow.process.assignment.infrastructure.persistence.mapper.Assigne
 import com.workflow.core.database.mybatis.ParameterizedSql;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -52,6 +54,7 @@ public class AssigneeIncidentService {
     // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
     private final DatabaseQueryDialect queryDialect;
     private final JdbcWriteAttempt writeAttempt;
+    private final PlatformTransactionManager transactionManager;
 
     /**
      * 按状态分页查询事件及管理字段，不再截断为前 500 条。
@@ -189,18 +192,28 @@ public class AssigneeIncidentService {
             return detail(incidentId);
         }
         try {
-            Map<String, Object> result = switch (action) {
-                case "RETRY_RESOLVER" -> retryResolver(incident);
-                case "ASSIGN_USER" -> assignUser(incident, request.getUserId());
-                case "FALLBACK_GROUP" -> assignGroup(incident, request.getGroupCode());
-                case "TERMINATE_INSTANCE" -> terminate(incident, request.getReason());
-                default -> throw new IllegalArgumentException("不支持的处置动作：" + action);
+            Runnable execute = () -> {
+                Map<String, Object> result = switch (action) {
+                    case "RETRY_RESOLVER" -> retryResolver(incident);
+                    case "ASSIGN_USER" -> assignUser(incident, request.getUserId());
+                    case "FALLBACK_GROUP" -> assignGroup(incident, request.getGroupCode());
+                    case "TERMINATE_INSTANCE" -> terminate(incident, request.getReason());
+                    default -> throw new IllegalArgumentException("不支持的处置动作：" + action);
+                };
+                incidentMapper.execute(ParameterizedSql.of("""
+                        UPDATE process_assignee_incident_action
+                        SET status = 'SUCCESS', result_json = ?, finished_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        """, writeJson(result), actionId));
             };
-            incidentMapper.execute(ParameterizedSql.of("""
-                    UPDATE process_assignee_incident_action
-                    SET status = 'SUCCESS', result_json = ?, finished_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """, writeJson(result), actionId));
+            if ("TERMINATE_INSTANCE".equals(action)) {
+                // 管理员恢复通道也必须让引擎删除、事件收口和成功日志共享事务。
+                // 不能只依赖 Flowable 自己的事务，否则结束动作会先于下方事件状态写入执行。
+                new TransactionTemplate(transactionManager)
+                        .executeWithoutResult(status -> execute.run());
+            } else {
+                execute.run();
+            }
         } catch (RuntimeException error) {
             incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident_action

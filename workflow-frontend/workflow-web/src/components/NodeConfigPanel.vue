@@ -1405,6 +1405,7 @@
               <FlowConditionGroupEditor
                 :group="conditionRoot"
                 :entity-fields="entityFields"
+                enable-selection-routing
                 :approval-options="sourceNodeApprovalOptions"
                 :include-approval-property="sourceNodeApprovalOptions.length > 0"
                 @change="updateCondition"
@@ -1938,6 +1939,7 @@ import {
 import {
   buildFlowConditionExpression,
   createFlowConditionGroup,
+  hasSelectionRoutingCondition,
   parseFlowConditionConfig,
   parseFlowConditionExpression,
   serializeFlowConditionConfig
@@ -4568,6 +4570,13 @@ function applyConfigurationSection(section) {
             modeling.updateProperties(toRaw(source), { default: toRaw(props.element).businessObject })
           }
         } else if (conditionForm.value.type === 'expression') {
+          if (!conditionParseWarning.value && hasSelectionRoutingCondition(conditionRoot.value)) {
+            const expression = getFullExpression()
+            if (!expression || expression.length > 1002) {
+              ElMessage.warning('请补齐条件组并输入有效的外部编码；条件过长时请缩短编码列表')
+              return
+            }
+          }
           updateExtensionProperty('sequenceFlowCondition', null)
           if (conditionParseWarning.value) {
             ElMessage.info('原条件表达式已保留；转换为条件组后才能进行可视化编辑')

@@ -434,7 +434,7 @@ const actionParamTypeOptions = [
 ]
 
 const templates = [
-  { value: 'approval-validation', label: '审批前校验', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_FORM_SAVING', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '审批前业务校验' },
+  { value: 'approval-validation', label: '审批前校验', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_SUBMITTING', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '审批前业务校验' },
   { value: 'next-assignee-notice', label: '通知下一办理人', scopeType: 'NODE', bpmnType: 'UserTask', triggerTiming: 'TASK_CREATED', executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', actionName: '发送待办通知' },
   { value: 'approval-result-sync', label: '审批结果同步', scopeType: 'SEQUENCE_FLOW', triggerTiming: 'TRANSITION_TAKEN', executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK', actionName: '同步审批结果' },
   { value: 'process-complete-notice', label: '流程完成通知', scopeType: 'PROCESS', triggerTiming: 'PROCESS_COMPLETED', executionMode: 'AFTER_COMMIT', failurePolicy: 'RETRY', actionName: '发送流程完成通知' },
@@ -510,7 +510,7 @@ const riskWarnings = computed(() => {
     warnings.push('外部接口或通知处理器放在事务内执行，网络波动可能阻塞审批。')
   }
   if (editingAction.value.triggerTiming === 'NODE_COMPLETED') {
-    warnings.push('该时机发生在路由计算前，处理器修改流程变量可能改变后续分支。')
+    warnings.push('该时机在当前执行实例完成后、路由计算前；会签不代表全员完成。修改变量可能改变后续分支，候选人变量应在审批流转前准备以接受重验。')
   }
   if (['PROCESS_COMPLETED', 'PROCESS_WITHDRAWN', 'PROCESS_TERMINATED'].includes(editingAction.value.triggerTiming)) {
     warnings.push('流程结束类动作中当前任务为空，请使用历史变量或实体数据。')

@@ -116,7 +116,7 @@ class MySqlServiceQueryDatabaseTest {
             for (String status : List.of("UNKNOWN", "RETRY_SCHEDULED", "MANUAL_REQUIRED", "RESOLVED", "TERMINATED"))
                 f.jdbc.update("INSERT INTO " + table + " (id,status,update_time) VALUES (?,?,'2026-01-01')", status, status);
             var service = new AssigneeIncidentService(com.workflow.support.BusinessMapperTestSupport.mapper(f.isolatedDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), new ObjectMapper(),
-                    mock(TaskService.class), mock(RuntimeService.class), mock(AssigneeResolutionService.class), QUERY, new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+                    mock(TaskService.class), mock(RuntimeService.class), mock(AssigneeResolutionService.class), QUERY, new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)), new org.springframework.jdbc.datasource.DataSourceTransactionManager(f.isolatedDataSource()));
             var all = service.list(null, 1, 100);
             assertEquals(507, all.getTotal());
             assertEquals(100, all.getRecords().size());

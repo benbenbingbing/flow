@@ -52,7 +52,7 @@ class AssigneeIncidentIdempotencyTest {
         var runtimeService = mock(RuntimeService.class);
         var resolutionService = mock(AssigneeResolutionService.class);
         var service = new AssigneeIncidentService(mapper, new ObjectMapper(), taskService, runtimeService,
-                resolutionService, DatabaseQueryDialects.forDatabaseId("MYSQL"), attempt());
+                resolutionService, DatabaseQueryDialects.forDatabaseId("MYSQL"), attempt(), mock(org.springframework.transaction.PlatformTransactionManager.class));
         var request = new AssigneeIncidentHandleRequest();
         request.setRequestId("AUTO:incident-1:1"); request.setAction("RETRY_RESOLVER");
         assertEquals("incident-1", service.handle("incident-1", request).get("id"));

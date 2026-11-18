@@ -81,13 +81,38 @@ class FlowActionOperationPolicyTest {
 
     @Test void catalogContainsOnlyRealBusinessBoundaries() {
         var options = new FlowActionTimingCatalog(List.of()).list(null, null);
-        assertEquals(27, options.size());
-        assertEquals(17, options.stream().filter(option -> option.getOperationPhase() != null).count());
+        assertEquals(20, options.size());
+        assertEquals(15, options.stream().filter(option -> option.getOperationPhase() != null).count());
         assertTrue(options.stream().noneMatch(option -> "VALIDATE".equals(option.getOperationPhase())
                 || option.getValue().endsWith("_VALIDATING")
                 || option.getLabel().contains("执行前处理") || option.getLabel().contains("前业务校验")));
-        assertEquals(List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), options.stream()
+        assertEquals(List.of("TASK_SUBMITTING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), options.stream()
                 .map(FlowActionTimingOption::getValue)
-                .filter(code -> List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED").contains(code)).toList());
+                .filter(code -> List.of("TASK_SUBMITTING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED").contains(code)).toList());
+    }
+
+    @Test void dropdownOrderFollowsEachOperationAndFiltersOtherNodeTypes() {
+        var catalog = new FlowActionTimingCatalog(List.of());
+        assertEquals(List.of("PROCESS_STARTING", "PROCESS_START_EXECUTED", "PROCESS_COMPLETED",
+                "PROCESS_WITHDRAWING", "PROCESS_WITHDRAWN", "PROCESS_TERMINATING", "PROCESS_TERMINATED"),
+                catalog.list("PROCESS", "bpmn:Process").stream().map(FlowActionTimingOption::getValue).toList());
+        assertEquals(List.of("NODE_ENTERED", "TASK_ASSIGNED", "TASK_CREATED", "TASK_SUBMITTING", "TASK_FORM_SAVING", "TASK_ADVANCING",
+                "NODE_COMPLETED", "TASK_SUBMITTED", "TASK_TRANSFERRING", "TASK_TRANSFERRED",
+                "TASK_ADD_SIGNING", "TASK_ADD_SIGNED"),
+                catalog.list("NODE", "bpmn:UserTask").stream().map(FlowActionTimingOption::getValue).toList());
+        assertEquals(List.of("NODE_ENTERED", "NODE_COMPLETED"), catalog.list("NODE", "bpmn:ServiceTask")
+                .stream().map(FlowActionTimingOption::getValue).toList());
+        assertEquals(List.of("TRANSITION_TAKEN"), catalog.list("SEQUENCE_FLOW", "bpmn:SequenceFlow")
+                .stream().map(FlowActionTimingOption::getValue).toList());
+        for (String retired : List.of("ADD_SIGN_SOURCE_SUBMITTING", "ADD_SIGN_SOURCE_SUBMITTED",
+                "ADD_SIGN_TASK_COMPLETING", "ADD_SIGN_TASK_COMPLETED")) assertTrue(catalog.find(retired).isEmpty());
+        assertTrue(catalog.find("PROCESS_WITHDRAW_EXECUTED").isEmpty());
+        assertTrue(catalog.find("PROCESS_TERMINATE_EXECUTED").isEmpty());
+        assertTrue(catalog.find("TASK_COMPLETING").isEmpty());
+        assertTrue(catalog.find("PROCESS_STARTED").isEmpty());
+        assertEquals("发起后", catalog.find("PROCESS_START_EXECUTED").orElseThrow().getLabel());
+        assertEquals("流程正常结束后", catalog.find("PROCESS_COMPLETED").orElseThrow().getLabel());
+        assertEquals("审批流转前（表单保存后）", catalog.find("TASK_ADVANCING").orElseThrow().getLabel());
+        assertEquals("节点离开前", catalog.find("NODE_COMPLETED").orElseThrow().getLabel());
     }
 }

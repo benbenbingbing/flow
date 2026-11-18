@@ -96,8 +96,12 @@ public class EntityField {
     /**
      * 绑定的系统代码表编码。
      */
-    @TableField("dict_type")
+    @TableField(value = "dict_type", updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
     private String dictType;
+
+    /** 接口型选择字段的候选来源；发布后固定，历史记录仍用原业务编码解释。 */
+    @TableField(value = "options_interface_id", updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
+    private String optionsInterfaceId;
 
     /** 多值字段的值存储方式（如 id/code/label 等） */
     @TableField("value_storage")

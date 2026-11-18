@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Executes project-system relationship and removal dependency gates in the start transaction.
+ * 在发起后检查项目系统关系和移除依赖；失败回滚本次发起，首节点已执行。
  */
 @Component("validateProjectSystemChangeHandler")
 public class ValidateProjectSystemChangeHandler implements FlowActionProvider {
@@ -33,7 +33,7 @@ public class ValidateProjectSystemChangeHandler implements FlowActionProvider {
      */
     @Override
     public Set<String> supportedTriggerTimings() {
-        return Set.of("PROCESS_STARTED");
+        return Set.of("PROCESS_START_EXECUTED");
     }
 
     /**

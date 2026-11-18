@@ -332,9 +332,10 @@ public class TaskAddSignService {
         parameters.put("type", type);
         parameters.put("action", normalizedAction);
         parameters.put("comment", comment);
-        var operation = operationActions.task(sourceTask, taskId, "ADD_SIGN_SOURCE_SUBMIT", userId, formData, parameters);
+        var operation = operationActions.task(sourceTask, taskId, "SUBMIT", userId, formData, parameters);
         operation.setApprovalAction(normalizedAction);
-        operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTING);
+        // 加签源任务和本地子任务均属于本次审批提交，通过任务上下文区分，不另设执行时机。
+        operationActions.fire(operation, TASK_SUBMITTING);
 
         saveSourceSubmission(addSign, normalizedAction, comment, actionLabel, formData);
         markSourceWaiting(taskId, normalizedAction, comment, actionLabel);
@@ -342,12 +343,12 @@ public class TaskAddSignService {
         if ("reject".equals(normalizedAction)) {
             finishRemainingChildren(addSign.getId(), "源任务已驳回");
             finalizeSource(addSign);
-            operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTED);
+            operationActions.fire(operation, TASK_SUBMITTED);
             return true;
         }
         if ("AFTER".equals(type)) {
             activateHeldChildren(addSign.getId());
-            operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTED);
+            operationActions.fire(operation, TASK_SUBMITTED);
             return true;
         }
         if (addSignUserMapper.countPending(addSign.getId()) == 0) {
@@ -356,7 +357,7 @@ public class TaskAddSignService {
             addSign.setStatus("ACTIVE");
             addSignMapper.updateById(addSign);
         }
-        operationActions.fire(operation, ADD_SIGN_SOURCE_SUBMITTED);
+        operationActions.fire(operation, TASK_SUBMITTED);
         return true;
     }
 
@@ -403,10 +404,11 @@ public class TaskAddSignService {
         parameters.put("type", addSign.getOperationType());
         parameters.put("comment", comment);
         parameters.put("action", normalizedAction);
-        var operation = operationActions.task(source, taskId, "ADD_SIGN_COMPLETE", currentUsername(), Map.of(), parameters);
+        var operation = operationActions.task(source, taskId, "SUBMIT", currentUsername(), Map.of(), parameters);
         operation.setTaskAssignee(userTask.getUserId());
         operation.setApprovalAction(normalizedAction);
-        operationActions.fire(operation, ADD_SIGN_TASK_COMPLETING);
+        // 加签源任务和本地子任务均属于本次审批提交，通过任务上下文区分，不另设执行时机。
+        operationActions.fire(operation, TASK_SUBMITTING);
 
         completeLocalChild(taskId, normalizedAction, comment);
         addSignUserMapper.completeByGeneratedTaskId(taskId);
@@ -421,18 +423,18 @@ public class TaskAddSignService {
             saveRejectedSource(addSign, comment);
             finishRemainingChildren(addSign.getId(), "其他加签人已驳回");
             finalizeSource(addSign);
-            operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
+            operationActions.fire(operation, TASK_SUBMITTED);
             return;
         }
         if (addSignUserMapper.countPending(addSign.getId()) > 0) {
-            operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
+            operationActions.fire(operation, TASK_SUBMITTED);
             return;
         }
         if ("BEFORE".equals(addSign.getOperationType())) {
             addSign.setStatus("COMPLETED");
             addSign.setCompleteTime(LocalDateTime.now());
             addSignMapper.updateById(addSign);
-            operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
+            operationActions.fire(operation, TASK_SUBMITTED);
             return;
         }
         if (Boolean.TRUE.equals(addSign.getSourceCompleted())) {
@@ -441,7 +443,7 @@ public class TaskAddSignService {
             addSign.setStatus("WAITING_SOURCE");
             addSignMapper.updateById(addSign);
         }
-        operationActions.fire(operation, ADD_SIGN_TASK_COMPLETED);
+        operationActions.fire(operation, TASK_SUBMITTED);
     }
 
     /**
@@ -496,7 +498,7 @@ public class TaskAddSignService {
     }
 
     /**
-     * 加签全部完成或驳回后，延迟提交原任务（执行暂存的提交动作与表单数据）
+     * 加签全部完成或驳回后，执行原任务已暂存的输入；后台收口不再次触发审批办理前后。
      *
      * @param addSign 添加签名，作为 {@code addSignMapper.updateById} 的输入影响后续处理
      */

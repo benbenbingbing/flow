@@ -144,10 +144,13 @@ class TaskCandidateApprovalTransactionIntegrationTest {
             return null;
         }).when(completingTasks).complete(anyString(), org.mockito.ArgumentMatchers.<java.util.Map<String, Object>>any());
         businessActions = mock(com.workflow.process.action.application.FlowActionDispatcher.class);
+        var formSubmission = mock(NodeFormSubmissionService.class);
+        doAnswer(call -> { Runnable callback = call.getArgument(2); if (callback != null) callback.run(); return null; })
+                .when(formSubmission).applyEditableData(any(), any(), any());
         TaskActionService target = new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(businessActions, engine.getRuntimeService(), engine.getHistoryService()),
                 completingTasks, engine.getRuntimeService(), engine.getHistoryService(),
                 projectionService, engine.getRepositoryService(), operationLogMapper, userService,
-                mock(NodeFormSubmissionService.class),
+                formSubmission,
                 mock(EntityRecordPort.class), mock(ProcessCcService.class),
                 mock(NextApproverOverrideService.class),
                 new MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(),
@@ -200,15 +203,15 @@ class TaskCandidateApprovalTransactionIntegrationTest {
         assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
     }
 
-    /** 合并后的表单保存前边界必须早于自动认领，既验证时点也验证拒绝时没有副作用。 */
+    /** 统一审批办理前必须早于自动认领，既验证时点也验证拒绝时没有副作用。 */
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
-    void formSavingActionsRunExactlyOnceBeforeCandidateClaim(boolean reject) throws SQLException {
+    void approvalActionsRunExactlyOnceBeforeCandidateClaim(boolean reject) throws SQLException {
         var stages = new java.util.ArrayList<String>();
         doAnswer(call -> {
             com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
             stages.add(event.getTriggerTiming());
-            if ("TASK_FORM_SAVING".equals(event.getTriggerTiming())) {
+            if ("TASK_SUBMITTING".equals(event.getTriggerTiming())) {
                 assertNull(engine.getTaskService().createTaskQuery().taskId(taskId).singleResult().getAssignee());
                 assertEquals(new DatabaseSnapshot(true, null, null, "todo", 0), snapshotOnIndependentConnection());
                 if (reject) throw new IllegalArgumentException("业务规则拒绝本次办理");
@@ -219,11 +222,11 @@ class TaskCandidateApprovalTransactionIntegrationTest {
         }).when(businessActions).dispatch(any());
         if (reject) {
             assertThrows(IllegalArgumentException.class, this::approveAsCurrentUser);
-            assertEquals(List.of("TASK_FORM_SAVING"), stages);
+            assertEquals(List.of("TASK_SUBMITTING"), stages);
             assertEquals(new DatabaseSnapshot(true, null, null, "todo", 0), snapshotOnIndependentConnection());
         } else {
             approveAsCurrentUser();
-            assertEquals(List.of("TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), stages);
+            assertEquals(List.of("TASK_SUBMITTING", "TASK_FORM_SAVING", "TASK_ADVANCING", "TASK_SUBMITTED"), stages);
             assertEquals(new DatabaseSnapshot(false, null, "alice", "done", 1), snapshotOnIndependentConnection());
         }
     }
@@ -243,6 +246,43 @@ class TaskCandidateApprovalTransactionIntegrationTest {
         assertEquals(new DatabaseSnapshot(false, null, "alice", "done", 1), snapshotOnIndependentConnection());
         assertCompletedOnceBy("alice");
         assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+    }
+
+    /** 真正的审批服务验证两种边界不可合并：结果在流转前尚未产生，在节点离开前已可读。 */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_ADVANCING", "NODE_COMPLETED", "TASK_SUBMITTED", "SUCCESS"})
+    void approvalAdvanceAndNodeExitHaveDifferentOutcomeAndRollbackBoundaries(String rejectAt) throws SQLException {
+        var operations = new com.workflow.process.action.application.FlowActionOperationDispatcher(
+                businessActions, engine.getRuntimeService(), engine.getHistoryService());
+        engine.getRuntimeService().addEventListener(new com.workflow.process.action.infrastructure.flowable.FlowActionEngineEventListener(
+                businessActions, engine.getRuntimeService(), mock(com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter.class), operations));
+        var stages = new java.util.ArrayList<String>();
+        var expected = List.of("TASK_SUBMITTING", "TASK_FORM_SAVING", "TASK_ADVANCING", "NODE_COMPLETED", "TASK_SUBMITTED");
+        doAnswer(call -> {
+            com.workflow.process.action.domain.FlowActionTriggerEvent event = call.getArgument(0);
+            if (!"review".equals(event.getElementId()) || !expected.contains(event.getTriggerTiming())) return null;
+            stages.add(event.getTriggerTiming());
+            if ("TASK_ADVANCING".equals(event.getTriggerTiming())) {
+                assertNull(event.getVariables().get("approved"));
+                assertEquals("todo", jdbc.queryForObject("SELECT task_status FROM approval_projection WHERE task_id=?", String.class, taskId));
+            } else if ("NODE_COMPLETED".equals(event.getTriggerTiming())) {
+                assertEquals("approve", event.getVariables().get("approved"));
+                assertEquals(taskId, event.getTaskId()); assertEquals("alice", event.getTaskAssignee());
+                assertEquals("done", jdbc.queryForObject("SELECT task_status FROM approval_projection WHERE task_id=?", String.class, taskId));
+            }
+            if (rejectAt.equals(event.getTriggerTiming())) throw new IllegalArgumentException("边界拒绝 " + rejectAt);
+            return null;
+        }).when(businessActions).dispatch(any());
+        if (rejectAt.equals("SUCCESS")) {
+            approveAsCurrentUser();
+            assertEquals(expected, stages);
+            assertEquals(new DatabaseSnapshot(false, null, "alice", "done", 1), snapshotOnIndependentConnection());
+        } else {
+            assertThrows(IllegalArgumentException.class, this::approveAsCurrentUser);
+            assertEquals(expected.subList(0, expected.indexOf(rejectAt) + 1), stages);
+            assertEquals(new DatabaseSnapshot(true, null, null, "todo", 0), snapshotOnIndependentConnection());
+            assertNull(engine.getRuntimeService().getVariable(processInstanceId, "approved"));
+        }
     }
 
     @Test

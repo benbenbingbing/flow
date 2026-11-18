@@ -39,6 +39,14 @@ class BpmnExecutableContentValidatorTest {
     }
 
     @Test
+    void allowsOnlyTheFixedSelectionMatcherInDataExpressions() {
+        assertTrue(safe("${approved == 'approve' && _wfSelectionCondition.matches(execution, 'tags', 'selectionAny', 'A1,B2')}"));
+        assertFalse(safe("${_wfSelectionCondition.matches(execution, 'tags', 'selectionAny', dynamicCodes)}"));
+        assertFalse(safe("${_wfSelectionCondition.matches(execution, 'tags', 'selectionAny', 'A1,B2') || unrelated.invoke()}"));
+        assertFalse(safe("${_wfSelectionCondition.other(execution, 'tags', 'selectionAny', 'A1,B2')}"));
+    }
+
+    @Test
     void deployedSafetyUsesTheSameHardenedGrammar() {
         BpmnModel safeModel = modelWithSkip(
                 "safe-review", "${amount >= 100}");

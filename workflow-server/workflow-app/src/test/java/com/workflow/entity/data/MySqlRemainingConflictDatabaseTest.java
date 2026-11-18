@@ -148,7 +148,7 @@ class MySqlRemainingConflictDatabaseTest {
                     .when(engine).deleteProcessInstance(eq("instance"), anyString());
             var service = new AssigneeIncidentService(barrierMapper(h, "FROM process_assignee_incident WHERE id", 6), h.json,
                     mock(TaskService.class), engine, mock(AssigneeResolutionService.class),
-                    DatabaseQueryDialects.forDatabaseId("MYSQL"), h.attempt);
+                    DatabaseQueryDialects.forDatabaseId("MYSQL"), h.attempt, h.tx.getTransactionManager());
             concurrent(6, index -> h.tx.execute(status -> {
                 var request = new AssigneeIncidentHandleRequest(); request.setRequestId("same-action");
                 request.setAction("TERMINATE_INSTANCE"); request.setReason("test");

@@ -40,7 +40,10 @@ public final class EntityTableDefinitionFactory {
             case DATE -> SchemaType.of(SchemaType.Kind.DATE);
             case DATETIME -> SchemaType.of(SchemaType.Kind.TIMESTAMP);
             case BOOLEAN -> SchemaType.of(SchemaType.Kind.BOOLEAN);
-            case MULTI_SELECT, CHECKBOX -> SchemaType.string(500);
+            case MULTI_SELECT, CHECKBOX -> SchemaType.string(
+                    com.workflow.entity.definition.application.EntitySelectionOptionPolicy.isExternalMultiple(field)
+                            ? com.workflow.entity.definition.application.EntitySelectionOptionPolicy.EXTERNAL_MULTI_STORAGE_LENGTH
+                            : 500);
             case MULTI_REFERENCE -> SchemaType.of(SchemaType.Kind.LARGE_TEXT);
             default -> SchemaType.string(255);
         };

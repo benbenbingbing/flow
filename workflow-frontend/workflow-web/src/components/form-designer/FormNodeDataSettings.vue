@@ -88,6 +88,9 @@
         </el-tag>
       </template>
 
+      <div v-if="inheritsFieldOptions" class="form-tip" role="note">
+        此字段从实体继承只读选项接口；如已有表单字段选项绑定，请清除后发布。
+      </div>
       <div v-if="isCascader" class="form-tip" role="note">
         {{ cascaderUsesInterface
           ? '级联选择通过“字段选项”绑定数据接口。加载方式在“基础与布局 → 级联选择配置”设置。'
@@ -140,6 +143,7 @@
         </template>
         <el-select
           v-model="selectedField.interfaceExtensionId"
+          :disabled="inheritsFieldOptions && selectedField.dataSourceUsage === 'FIELD_OPTIONS'"
           clearable
           filterable
           placeholder="不绑定"
@@ -463,6 +467,12 @@ const {
 const canEditSelectedDataSourceUsage = computed(() =>
   availableNodeDataSourceUsages.value.some(usage => usage.value === selectedField.value?.dataSourceUsage)
 )
+
+const inheritsFieldOptions = computed(() => {
+  const field = selectedField.value
+  return field && entityFields.value.some(item => item.optionsInterfaceId
+    && ((field.fieldId && String(item.id) === String(field.fieldId)) || item.fieldCode === field.fieldCode))
+})
 
 const isCascader = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'cascader')
 const isDataPicker = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'data_picker')

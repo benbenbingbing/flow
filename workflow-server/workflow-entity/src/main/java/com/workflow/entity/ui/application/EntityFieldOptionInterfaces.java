@@ -1,0 +1,82 @@
+package com.workflow.entity.ui.application;
+
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.BeanUtils;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** 实体绑定是唯一事实来源；把选项绑定投影到表单快照以沿用已有的发布授权和执行。 */
+@Component
+@RequiredArgsConstructor
+public class EntityFieldOptionInterfaces {
+    private static final String OPTIONS = "FIELD_OPTIONS";
+
+    private final EntityFieldMapper fields;
+    private final UiExtensionDefinitionMapper interfaces;
+    private final JsonDocumentCodec codec;
+
+    /** 保存、发布只校验接口的定义与权限范围，不实际取数。 */
+    public void requireAvailable(String entityId, String interfaceId) {
+        if (!StringUtils.hasText(interfaceId)) return;
+        var definition = interfaces.selectById(interfaceId);
+        if (definition == null || !"INTERFACE".equals(definition.getExtensionType())
+                || !"ACTIVE".equals(definition.getStatus())
+                || !"READ".equals(definition.getInterfaceKind())
+                || !"FORM".equals(definition.getInterfaceContextType())
+                || !"REGISTERED_PROVIDER".equals(definition.getSourceType())
+                || !definition.matchesScope(entityId, "ENTITY", entityId)
+                || !StringUtils.hasText(definition.getOutputSchemaDocument())
+                || !"array".equalsIgnoreCase(String.valueOf(codec.readObject(
+                        definition.getOutputSchemaDocument(), "选项接口输出 Schema").get("type")))) {
+            throw new IllegalArgumentException("选项接口必须是覆盖该实体的已启用 FORM 只读 Provider，且输出为数组");
+        }
+    }
+
+    /** 投影不修改草稿节点，历史已发布表单也不被当前配置改写。 */
+    public List<EntityFormNode> inherit(String entityId, List<EntityFormNode> nodes) {
+        if (nodes == null || nodes.isEmpty() || !StringUtils.hasText(entityId)) return nodes;
+        List<EntityField> configured = fields.findByEntityId(entityId).stream()
+                .filter(field -> StringUtils.hasText(field.getOptionsInterfaceId())).toList();
+        if (configured.isEmpty()) return nodes;
+        return nodes.stream().map(node -> inherit(node, configured)).toList();
+    }
+
+    private EntityFormNode inherit(EntityFormNode source, List<EntityField> fields) {
+        if (!"FIELD".equals(source.getNodeType()) || !"ENTITY_FIELD".equals(source.getBindingType())
+                || !StringUtils.hasText(source.getBindingRef())) return source;
+        EntityField field = fields.stream()
+                .filter(item -> Objects.equals(item.getId(), source.getBindingRef())
+                        || Objects.equals(item.getFieldCode(), source.getBindingRef()))
+                .findFirst().orElse(null);
+        if (field == null) return source;
+        Map<String, Object> bindings = StringUtils.hasText(source.getDataSourceBindingsDocument())
+                ? new LinkedHashMap<>(codec.readObject(source.getDataSourceBindingsDocument(), "表单节点数据源"))
+                : new LinkedHashMap<>();
+        Map<String, Object> inherited = Map.of("extensionId", field.getOptionsInterfaceId());
+        if (bindings.containsKey(OPTIONS) && !inherited.equals(bindings.get(OPTIONS))) {
+            throw new IllegalArgumentException("字段「" + field.getFieldName() + "」继承实体选项接口，请删除表单上的字段选项绑定");
+        }
+        Map<String, Object> props = StringUtils.hasText(source.getPropsDocument())
+                ? codec.readObject(source.getPropsDocument(), "表单节点属性") : Map.of();
+        String component = String.valueOf(props.getOrDefault("componentType", ""));
+        if (!component.isBlank() && !List.of("select", "select_multiple", "multi_select", "radio", "checkbox")
+                .contains(component.toLowerCase(java.util.Locale.ROOT))) {
+            throw new IllegalArgumentException("字段「" + field.getFieldName() + "」必须使用单选或多选组件以继承实体选项接口");
+        }
+        bindings.put(OPTIONS, inherited);
+        EntityFormNode node = new EntityFormNode();
+        BeanUtils.copyProperties(source, node);
+        node.setDataSourceBindingsDocument(codec.write(bindings, "继承实体选项接口"));
+        return node;
+    }
+}

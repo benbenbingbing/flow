@@ -206,7 +206,7 @@ class MySqlRuntimeTimeDatabaseTest {
             var query = mock(TaskQuery.class); when(tasks.createTaskQuery()).thenReturn(query); when(query.taskId("task")).thenReturn(query); when(query.singleResult()).thenReturn(task);
             when(runtime.getVariables(anyString())).thenReturn(Map.of());
             when(resolver.resolveConfigured(anyString(), any())).thenReturn(AssigneeResolutionResult.empty("EMPTY", "No candidate", "resolver"));
-            var service = new AssigneeIncidentService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), h.json, tasks, runtime, resolver, QUERY, h.attempt);
+            var service = new AssigneeIncidentService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), h.json, tasks, runtime, resolver, QUERY, h.attempt, new org.springframework.jdbc.datasource.DataSourceTransactionManager(h.jdbc.getDataSource()));
             h.tx.executeWithoutResult(status -> {
                 h.jdbc.execute("SET time_zone = '+09:00'");
                 for (String id : List.of("task", "multi", "old")) {

@@ -108,6 +108,8 @@ import java.util.UUID;
 @Slf4j
 @RequiredArgsConstructor
 public class UiConfigReleaseService {
+    @Autowired
+    private EntityFieldOptionInterfaces fieldOptionInterfaces;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.EntityExcelConfigurationService> excelConfigurations;
 
@@ -3404,6 +3406,9 @@ public class UiConfigReleaseService {
             List<EntityFormNode> normalizedNodes =
                     new com.workflow.entity.form.application.EntityFormFieldProjection(codec)
                             .materialize(form.getId(), form.getFields(), form.getNodes());
+            if (fieldOptionInterfaces != null) {
+                normalizedNodes = fieldOptionInterfaces.inherit(form.getEntityId(), normalizedNodes);
+            }
             List<EntityFormNode> publishedNodes = pinRuntimeReferences
                     ? pinSubListReleases(normalizedNodes) : normalizedNodes;
             Map<String, Object> snapshot = new LinkedHashMap<>();

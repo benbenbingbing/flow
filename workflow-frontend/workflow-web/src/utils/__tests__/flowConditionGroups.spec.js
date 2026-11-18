@@ -14,6 +14,27 @@ import {
 
 const fieldType = field => field === 'amount' ? 'number' : 'string'
 
+assert.equal(buildFlowConditionExpression(createFlowConditionGroup('AND', [
+  { type: 'CONDITION', property: 'amount', operator: '>=', value: '100' },
+  { type: 'CONDITION', property: 'tags', operator: 'selectionAny', value: 'A 1' }
+]), fieldType), '')
+
+for (const [operator, codes, selected, expected] of [
+  ['selectionEquals', '001', '001', true],
+  ['selectionEquals', '001', '1', false],
+  ['selectionAny', 'A1,B2', ['A10'], false],
+  ['selectionAny', 'A1,B2', ['B2'], true],
+  ['selectionAll', 'A1,B2', ['A1'], false],
+  ['selectionAll', 'A1,B2', ['B2', 'A1'], true],
+  ['selectionAll', 'A1,B2', 'A1,B2', false]
+]) {
+  const rule = createFlowConditionGroup('AND', [{ type: 'CONDITION', property: 'tags', operator, value: codes }])
+  const expression = buildFlowConditionExpression(rule)
+  assert.ok(expression.includes('_wfSelectionCondition.matches'))
+  assert.deepEqual(parseFlowConditionExpression(expression), rule)
+  assert.equal(evaluateFlowConditionExpression(expression, { tags: selected }), expected)
+}
+
 const grouped = createFlowConditionGroup('AND', [
   {
     type: 'GROUP',

@@ -437,6 +437,10 @@ async function loadRuntimeDataSources(fields: any[]) {
   if (!isCurrent()) return
   const optionEntries = await Promise.all(
     (fields || []).map(async field => {
+      // 标准表单的实体接口选项由字段控件加载，避免宿主与字段同时查询同一候选。
+      if (!showCustomForm.value && props.entityFields.some(item =>
+        item.optionsInterfaceId && (item.fieldCode === field.fieldCode || item.id === field.fieldId)
+      )) return [field.fieldCode, []]
       // 级联由组件按父路径读取，通用预加载缺少协议参数且会造成重复接口请求。
       if (String(field.componentType || field.fieldType || '').toLowerCase() === 'cascader') return [field.fieldCode, []]
       try {

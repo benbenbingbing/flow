@@ -53,9 +53,16 @@ public class FlowableConditionEvaluator {
     public boolean evaluate(
             String expression,
             Map<String, Object> variables) {
-        assertPreviewSafe(expression, variables);
+        // 预览没有 Flowable execution，直接使用与运行时一致的纯编码比较。
+        String resolved = expression == null ? null
+                : com.workflow.process.condition.application.WorkflowSelectionCondition
+                        .substitute(expression, variables::get);
+        boolean safeSelectionGroup = !java.util.Objects.equals(expression, resolved)
+                && com.workflow.process.definition.application.BpmnExecutableContentValidator
+                        .isSafeDataExpression(resolved);
+        assertPreviewSafe(resolved, variables, safeSelectionGroup);
         Object value = configuration.getExpressionManager()
-                .createExpression(expression)
+                .createExpression(resolved)
                 .getValue(new MapVariableContainer(variables));
         if (value instanceof Boolean bool) {
             return bool;
@@ -68,10 +75,12 @@ public class FlowableConditionEvaluator {
      *
      * @param expression 表达式，供本方法处理{@code assert}预览安全时使用
      * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param safeSelectionGroup 已通过发布语法校验的选项条件，允许普通逻辑括号
      */
     private void assertPreviewSafe(
             String expression,
-            Map<String, Object> variables) {
+            Map<String, Object> variables,
+            boolean safeSelectionGroup) {
         String body = expression == null ? "" : expression.trim();
         // 业务条件可能依赖本次审批提交后的记录；预览不能提前调用并假定结果已稳定。
         if (body.startsWith("${sequenceFlowConditionEvaluator.")) {
@@ -81,12 +90,12 @@ public class FlowableConditionEvaluator {
                 && body.endsWith("}")) {
             body = body.substring(2, body.length() - 1);
         }
-        if (body.contains("(")
+        if (!safeSelectionGroup && (body.contains("(")
                 || body.contains(")")
                 || body.contains(":")
                 || body.contains(";")
                 || body.contains(".class")
-                || body.contains("getClass")) {
+                || body.contains("getClass"))) {
             throw new UnsafePreviewExpressionException(
                     "条件包含方法、函数或类型访问");
         }

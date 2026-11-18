@@ -46,7 +46,7 @@ class FlowActionEventDispatcherTest {
         executionService = mock(FlowActionExecutionService.class);
         FlowActionTimingCatalog catalog = mock(FlowActionTimingCatalog.class);
         when(catalog.find(anyString())).thenReturn(Optional.of(new FlowActionTimingOption(
-                "TASK_COMPLETING", "任务提交", "", "NODE", true,
+                "NODE_COMPLETED", "节点离开前", "", "NODE", true,
                 "IN_TRANSACTION", "ROLLBACK", "", false)));
         dispatcher = new FlowActionEventDispatcher(
                 actionService,
@@ -148,7 +148,7 @@ class FlowActionEventDispatcherTest {
         event.setProcessInstanceId("pi-1");
         event.setScopeType("NODE");
         event.setElementId("Task_1");
-        event.setTriggerTiming("TASK_COMPLETING");
+        event.setTriggerTiming("NODE_COMPLETED");
         return event;
     }
 }

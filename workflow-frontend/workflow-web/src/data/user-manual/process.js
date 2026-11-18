@@ -785,15 +785,19 @@ export default {
                 { key: 'context', label: '主要上下文与用途' }
               ],
               rows: [
-                { scope: 'PROCESS 全局', timings: 'PROCESS_STARTED', context: '流程变量、实体数据；初始化变量和业务关联。默认事务内 + 回滚。' },
-                { scope: 'PROCESS 全局', timings: 'PROCESS_COMPLETED', context: '历史变量、实体数据，当前任务为空；归档、完成通知。默认提交后 + 重试。' },
+                { scope: 'PROCESS 全局', timings: 'PROCESS_STARTING', context: '发起前，实例尚未创建；校验及准备首节点变量。强制事务内 + 回滚。' },
+                { scope: 'PROCESS 全局', timings: 'PROCESS_START_EXECUTED', context: '发起后，流程关联和待办同步完成；首节点已执行，处理发起结果。默认事务内 + 回滚。' },
+                { scope: 'PROCESS 全局', timings: 'PROCESS_COMPLETED', context: '流程正常结束后，整个流程正常完成；历史变量、实体数据，当前任务为空。用于归档、完成通知，默认提交后 + 重试。' },
                 { scope: 'PROCESS 全局', timings: 'PROCESS_WITHDRAWN', context: '历史变量、撤回原因、实体数据；撤回通知和清理。默认提交后 + 重试。' },
                 { scope: 'PROCESS 全局', timings: 'PROCESS_TERMINATED', context: '历史变量、终止原因、实体数据；异常清理。默认提交后 + 重试。' },
                 { scope: 'NODE 节点', timings: 'NODE_ENTERED', context: '节点、执行实例、流程变量；进入节点时准备数据。默认事务内 + 回滚。' },
-                { scope: 'NODE 节点', timings: 'NODE_COMPLETED', context: '节点完成、路由计算前；写变量可影响后续条件。默认事务内 + 回滚。' },
+                { scope: 'NODE 节点', timings: 'NODE_COMPLETED', context: '节点离开前，本次审批结果已写入；写变量可影响后续条件，会签不代表全员完成。默认事务内 + 回滚。' },
                 { scope: 'NODE 用户任务', timings: 'TASK_CREATED', context: '任务 ID、名称、办理人和变量；通知下一办理人。默认提交后 + 重试。' },
                 { scope: 'NODE 用户任务', timings: 'TASK_ASSIGNED', context: '任务和新办理人；认领、转办通知。默认提交后 + 重试。' },
-                { scope: 'NODE 用户任务', timings: 'TASK_COMPLETING', context: '任务、审批动作、审批人和变量；审批前校验、核心写入。默认事务内 + 回滚。' },
+                { scope: 'NODE 用户任务', timings: 'TASK_SUBMITTING', context: '审批办理前；普通审批与加签共用，自动认领及本次办理副作用前。强制事务内 + 回滚。' },
+                { scope: 'NODE 用户任务', timings: 'TASK_FORM_SAVING', context: '实际审批表单保存前；不包含加签输入暂存。强制事务内 + 回滚。' },
+                { scope: 'NODE 用户任务', timings: 'TASK_ADVANCING', context: '审批流转前（表单保存后）；下一审批人重验及引擎办理前，本次审批结果尚未汇总写入。强制事务内 + 回滚。' },
+                { scope: 'NODE 用户任务', timings: 'TASK_SUBMITTED', context: '审批办理后；本次提交及相关同步处理完成，可能仍在等待加签。默认事务内 + 回滚。' },
                 { scope: 'SEQUENCE_FLOW 连线', timings: 'TRANSITION_TAKEN', context: '来源、目标和变量；分支选中后、进入目标前处理审批结果和状态。默认事务内 + 回滚。' }
               ]
             },

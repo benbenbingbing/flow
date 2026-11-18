@@ -63,6 +63,44 @@ class EntityFieldDictionaryBindingTest {
     }
 
     @Test
+    void draftCanSwitchSourcesButPublicationLocksBothDirectionsAndTheInterface() {
+        EntityField current = field(EntityField.FieldType.MULTI_SELECT, false, "expense_type");
+        EntityFieldDTO external = dto(current.getFieldType(), null);
+        external.setOptionsInterfaceId("interface-1");
+        service.updateDefinition(current, external);
+        assertNull(current.getDictType());
+        assertEquals("interface-1", current.getOptionsInterfaceId());
+        assertEquals("SCALAR", current.getValueStorage());
+
+        current.setIsPublished(true);
+        assertThrows(BusinessConflictException.class, () ->
+                service.updateDefinition(current, dto(current.getFieldType(), "expense_type")));
+        external.setOptionsInterfaceId("interface-2");
+        assertThrows(BusinessConflictException.class, () -> service.updateDefinition(current, external));
+        var dictionaryField = field(EntityField.FieldType.MULTI_SELECT, true, "expense_type");
+        assertThrows(BusinessConflictException.class, () -> service.updateDefinition(dictionaryField, external));
+    }
+
+    @Test
+    void externalValuesValidateStorageShapeWithoutLookingUpCandidates() {
+        var single = field(EntityField.FieldType.SELECT, true, null);
+        single.setOptionsInterfaceId("interface-1");
+        assertDoesNotThrow(() -> EntitySelectionOptionPolicy.validateExternalValue(single, "001:A"));
+        assertThrows(IllegalArgumentException.class, () ->
+                EntitySelectionOptionPolicy.validateExternalValue(single, 1));
+        var multiple = field(EntityField.FieldType.MULTI_SELECT, true, null);
+        multiple.setOptionsInterfaceId("interface-1");
+        assertDoesNotThrow(() -> EntitySelectionOptionPolicy.validateExternalValue(multiple, java.util.List.of("A1", "A10")));
+        assertThrows(IllegalArgumentException.class, () ->
+                EntitySelectionOptionPolicy.validateExternalValue(multiple, java.util.List.of("A1", "A1")));
+        assertThrows(IllegalArgumentException.class, () ->
+                EntitySelectionOptionPolicy.validateExternalValue(multiple, "A1,A10"));
+        EntityFieldDTO invalid = dto(multiple.getFieldType(), "expense_type");
+        invalid.setOptionsInterfaceId("interface-1");
+        assertThrows(IllegalArgumentException.class, () -> EntitySelectionOptionPolicy.validateSubmitted(invalid));
+    }
+
+    @Test
     void publishedLegacyFieldMustBeReconfiguredAndStillCannotChangeItsBinding() {
         EntityField current = field(EntityField.FieldType.SELECT, true, null);
         assertThrows(IllegalArgumentException.class,

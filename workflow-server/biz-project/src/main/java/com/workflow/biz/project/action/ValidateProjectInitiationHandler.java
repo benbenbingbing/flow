@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Blocks process start when project cross-entity prerequisites are not satisfied.
+ * 在发起后检查立项的跨实体前提；不满足时回滚本次发起，不能据此准备首节点变量。
  */
 @Component("validateProjectInitiationHandler")
 public class ValidateProjectInitiationHandler implements FlowActionProvider {
@@ -33,7 +33,7 @@ public class ValidateProjectInitiationHandler implements FlowActionProvider {
      */
     @Override
     public Set<String> supportedTriggerTimings() {
-        return Set.of("PROCESS_STARTED");
+        return Set.of("PROCESS_START_EXECUTED");
     }
 
     /**

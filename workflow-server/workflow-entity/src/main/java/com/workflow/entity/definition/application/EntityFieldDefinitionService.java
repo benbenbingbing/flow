@@ -28,6 +28,8 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 public class EntityFieldDefinitionService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.ui.application.EntityFieldOptionInterfaces optionInterfaces;
 
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
@@ -110,6 +112,7 @@ public class EntityFieldDefinitionService {
             EntityFieldDTO dto) {
         requireDataFieldType(dto);
         EntitySelectionOptionPolicy.validateSubmitted(dto);
+        if (optionInterfaces != null) optionInterfaces.requireAvailable(entityId, dto.getOptionsInterfaceId());
         EntityField field = convertToEntity(dto);
         field.setId(null);
         field.setEntityId(entityId);
@@ -137,6 +140,9 @@ public class EntityFieldDefinitionService {
                 Boolean.TRUE.equals(existingField.getIsSystem())
                         || Boolean.TRUE.equals(existingField.getIsPublished());
         if (!structureLocked) {
+            if (optionInterfaces != null) {
+                optionInterfaces.requireAvailable(existingField.getEntityId(), fieldDTO.getOptionsInterfaceId());
+            }
             existingField.setFieldCode(fieldDTO.getFieldCode());
             existingField.setFieldType(fieldDTO.getFieldType());
             existingField.setDbType(fieldDTO.getDbType());
@@ -150,6 +156,7 @@ public class EntityFieldDefinitionService {
         existingField.setDefaultValue(fieldDTO.getDefaultValue());
         if (!structureLocked) {
             existingField.setDictType(fieldDTO.getDictType());
+            existingField.setOptionsInterfaceId(fieldDTO.getOptionsInterfaceId());
         }
         existingField.setValueStorage(resolveValueStorage(fieldDTO));
         existingField.setValidateRules(fieldDTO.getValidateRules());
@@ -300,6 +307,12 @@ public class EntityFieldDefinitionService {
                     "系统字段或已发布字段不能修改字段类型");
         }
         if (locked && !Objects.equals(
+                firstText(current.getOptionsInterfaceId(), null), firstText(dto.getOptionsInterfaceId(), null))) {
+            throw new BusinessConflictException(
+                    "ENTITY_FIELD_OPTIONS_INTERFACE_LOCKED",
+                    "系统字段或已发布字段不能修改选项接口；如需切换来源请新建字段");
+        }
+        if (locked && !Objects.equals(
                 firstText(current.getDictType(), null), firstText(dto.getDictType(), null))) {
             // 只以服务端保存的发布状态为准，不查询业务数据；换绑或清空都会改变历史值的解释。
             throw new BusinessConflictException(
@@ -444,6 +457,7 @@ public class EntityFieldDefinitionService {
         field.setIsUnique(dto.getIsUnique());
         field.setDefaultValue(dto.getDefaultValue());
         field.setDictType(dto.getDictType());
+        field.setOptionsInterfaceId(dto.getOptionsInterfaceId());
         field.setValueStorage(resolveValueStorage(dto));
         field.setValidateRules(dto.getValidateRules());
         field.setSortOrder(dto.getSortOrder());
@@ -497,6 +511,7 @@ public class EntityFieldDefinitionService {
      * @return 解析后的值存储文本，供调用方比较或展示
      */
     private String resolveValueStorage(EntityFieldDTO field) {
+        if (StringUtils.isNotBlank(field.getOptionsInterfaceId())) return "SCALAR";
         if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE
                 || ((field.getFieldType()
                 == EntityField.FieldType.MULTI_SELECT

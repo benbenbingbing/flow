@@ -1,4 +1,9 @@
 -- PostgreSQL 16 平台基础表空库初始化脚本。
+-- 2026-11-18 同步至 V144，引擎流程启动动作统一归入发起后；空库无动作绑定数据需转换，结构及种子不变。
+-- 2026-11-18 同步 V143，实体字段增加只读选项接口绑定，历史代码表和种子不变。
+-- 2026-11-18 同步至 V142，引擎任务完成时机归入节点离开前；空库无动作绑定数据需转换，结构及种子不变。
+-- 2026-11-18 同步至 V141，普通审批与加签办理统一前后时机；空库无动作绑定数据需转换，结构及种子不变。
+-- 2026-11-17 同步至 V140，合并撤回和终止后置时机；空库无动作绑定数据需转换，结构及种子不变。
 -- 2026-11-17 同步至 V139，合并业务操作前校验/处理时机；空库无动作绑定数据需转换，结构及种子保持不变。
 -- 2026-11-17 同步至 V138，新增单前置动作依赖、本次执行关联与业务输出快照。
 -- 2026-11-17 同步至 V137，允许发起前动作执行记录的流程实例 ID 为空。
@@ -1601,6 +1606,7 @@ CREATE TABLE "entity_field" (
   "ref_list_key" varchar(100),
   "field_id" varchar(100),
   "dict_type" varchar(100),
+  "options_interface_id" varchar(64),
   "value_storage" varchar(20) DEFAULT 'SCALAR',
   "deleted" smallint DEFAULT '0',
   CONSTRAINT "pk_entity_field_entity_field" PRIMARY KEY ("id")
@@ -5712,6 +5718,7 @@ COMMENT ON COLUMN "entity_field"."ref_field_code" IS '关联字段编码。';
 COMMENT ON COLUMN "entity_field"."ref_list_key" IS '子列表或实体引用默认使用的已发布列表编码。';
 COMMENT ON COLUMN "entity_field"."field_id" IS '旧字段编码（兼容保留）；旧字段编码；迁移注释明确为兼容保留，不是该行主键。';
 COMMENT ON COLUMN "entity_field"."dict_type" IS '绑定的系统代码表编码。';
+COMMENT ON COLUMN "entity_field"."options_interface_id" IS '已注册的只读选项接口ID；与代码表互斥，供表单加载外部候选';
 COMMENT ON COLUMN "entity_field"."value_storage" IS '值存储方式：字段值存储：SCALAR/MULTI_TABLE。';
 COMMENT ON COLUMN "entity_field"."deleted" IS '逻辑删除标记：是否删除。';
 COMMENT ON TABLE "entity_field_file_item" IS '实体字段附件项表';

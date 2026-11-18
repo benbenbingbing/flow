@@ -47,6 +47,9 @@ public class TaskInboxProjectionListener implements FlowableEventListener {
         private final Set<String> ids = new LinkedHashSet<>();
         private Pending(TaskInboxProjectionListener owner) { this.owner = owner; }
 
+        /** 原生启动登记早于任务创建；先完成权限及待办投影，再执行子流程发起后的业务动作。 */
+        @Override public int getOrder() { return org.springframework.core.Ordered.LOWEST_PRECEDENCE - 100; }
+
         /** 这里仍处于原事务；同步失败向外抛出，禁止在 afterCommit 中才更新权限投影。 */
         @Override public void beforeCommit(boolean readOnly) {
             // 修复缺失镜像时 SLA 初始化可能再次产生引擎事件，先取出批次再处理，避免修改遍历中的集合。

@@ -57,13 +57,12 @@ public class ProjectExtensionAcceptanceFlowActionHandler
     @Override
     public Set<String> supportedTriggerTimings() {
         return Set.of(
-                FlowActionTriggerTiming.PROCESS_STARTED.name(),
+                FlowActionTriggerTiming.PROCESS_START_EXECUTED.name(),
                 FlowActionTriggerTiming.PROCESS_COMPLETED.name(),
                 FlowActionTriggerTiming.NODE_ENTERED.name(),
                 FlowActionTriggerTiming.NODE_COMPLETED.name(),
                 FlowActionTriggerTiming.TASK_CREATED.name(),
                 FlowActionTriggerTiming.TASK_ASSIGNED.name(),
-                FlowActionTriggerTiming.TASK_COMPLETING.name(),
                 FlowActionTriggerTiming.TRANSITION_TAKEN.name(),
                 ProjectCustomFlowActionTriggerProvider.TIMING);
     }

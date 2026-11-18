@@ -53,6 +53,8 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class UiDataSourceExecutionAccessService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private EntityFieldOptionInterfaces fieldOptionInterfaces;
 
     private static final String FORM = "FORM";
     private static final String LIST = "LIST";
@@ -708,7 +710,11 @@ public class UiDataSourceExecutionAccessService {
             owners.add(objectMapper.convertValue(
                     form,
                     new TypeReference<Map<String, Object>>() {}));
-            for (EntityFormNode node : formNodeMapper.findByFormId(origin.configId())) {
+            List<EntityFormNode> nodes = formNodeMapper.findByFormId(origin.configId());
+            if ("FIELD_OPTIONS".equals(usage) && fieldOptionInterfaces != null) {
+                nodes = fieldOptionInterfaces.inherit(target.entityId(), nodes);
+            }
+            for (EntityFormNode node : nodes) {
                 owners.add(objectMapper.convertValue(
                         node,
                         new TypeReference<Map<String, Object>>() {}));

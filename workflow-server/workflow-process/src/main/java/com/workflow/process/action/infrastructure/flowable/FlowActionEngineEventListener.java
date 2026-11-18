@@ -1,6 +1,7 @@
 package com.workflow.process.action.infrastructure.flowable;
 
 import com.workflow.process.action.application.FlowActionDispatcher;
+import com.workflow.process.action.application.FlowActionOperationDispatcher;
 
 import com.workflow.process.status.application.ProcessEndReason;
 
@@ -16,11 +17,14 @@ import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.common.engine.api.delegate.event.FlowableEntityEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
+import org.flowable.common.engine.impl.context.Context;
+import org.flowable.bpmn.model.Activity;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.delegate.event.FlowableActivityEvent;
 import org.flowable.engine.delegate.event.FlowableCancelledEvent;
 import org.flowable.engine.delegate.event.FlowableEntityWithVariablesEvent;
 import org.flowable.engine.delegate.event.FlowableSequenceFlowTakenEvent;
+import org.flowable.engine.impl.util.CommandContextUtil;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Component;
 
@@ -58,6 +62,12 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
     private final FlowActionDispatcher dispatcher;
     private final RuntimeService runtimeService;
     private final FlowActionRuntimeAdapter flowActionHelper;
+    private final FlowActionOperationDispatcher operationActions;
+
+    private static final String COMPLETED_TASKS = FlowActionEngineEventListener.class.getName() + ".completedTasks";
+
+    private record TaskCompletionKey(String processInstanceId, String executionId, String nodeId) { }
+    private record CompletedTask(String id, String name, String assignee) { }
 
     /**
      * 接收引擎事件并转换为流程动作触发事件进行分发。
@@ -66,9 +76,28 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
      */
     @Override
     public void onEvent(FlowableEvent event) {
+        if (event.getType() == FlowableEngineEventType.TASK_COMPLETED) {
+            if (isMultiInstanceTask(event)) {
+                // Flowable 会签分支不发送 ACTIVITY_COMPLETED；以实际完成任务补齐同一个节点离开时机。
+                // 仍按当前任务/执行分支触发，不把会签整体结束再分发一次，也不伪造本地加签节点。
+                var trigger = base((FlowableEngineEvent) event);
+                taskEvent(trigger, event, FlowActionTriggerTiming.NODE_COMPLETED);
+                populateVariables(trigger, event);
+                dispatcher.dispatch(trigger);
+            } else {
+                // 普通任务仅补充随后节点离开事件的身份，不独立分发，避免同一次办理重复执行。
+                rememberCompletedTask(event);
+            }
+            return;
+        }
         FlowActionTriggerEvent triggerEvent = map(event);
         if (triggerEvent != null) {
-            dispatcher.dispatch(triggerEvent);
+            switch (FlowActionTriggerTiming.valueOf(triggerEvent.getTriggerTiming())) {
+                case PROCESS_START_EXECUTED -> operationActions.processStarted(triggerEvent);
+                case PROCESS_COMPLETED, PROCESS_WITHDRAWN, PROCESS_TERMINATED ->
+                        operationActions.processEnded(triggerEvent);
+                default -> dispatcher.dispatch(triggerEvent);
+            }
         }
     }
 
@@ -86,7 +115,8 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
         FlowActionTriggerEvent trigger = base(engineEvent);
         FlowableEngineEventType type = (FlowableEngineEventType) event.getType();
         switch (type) {
-            case PROCESS_STARTED -> processEvent(trigger, FlowActionTriggerTiming.PROCESS_STARTED, null);
+            // 仅登记发起事实；普通入口在关联/待办同步后触发，调用子流程由事务收口补齐。
+            case PROCESS_STARTED -> processEvent(trigger, FlowActionTriggerTiming.PROCESS_START_EXECUTED, null);
             case PROCESS_COMPLETED -> processEvent(trigger, FlowActionTriggerTiming.PROCESS_COMPLETED, null);
             case PROCESS_CANCELLED -> {
                 // 与状态同步和对账共用持久化类型，用户意见不能改变动作触发时机。
@@ -106,7 +136,6 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
             case ACTIVITY_COMPLETED -> activityEvent(trigger, event, FlowActionTriggerTiming.NODE_COMPLETED);
             case TASK_CREATED -> taskEvent(trigger, event, FlowActionTriggerTiming.TASK_CREATED);
             case TASK_ASSIGNED -> taskEvent(trigger, event, FlowActionTriggerTiming.TASK_ASSIGNED);
-            case TASK_COMPLETED -> taskEvent(trigger, event, FlowActionTriggerTiming.TASK_COMPLETING);
             case SEQUENCEFLOW_TAKEN -> sequenceFlowEvent(trigger, event);
             default -> {
                 return null;
@@ -168,6 +197,56 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
         trigger.setElementName(activity.getActivityName());
         trigger.setElementType(activity.getActivityType());
         trigger.setTriggerTiming(timing.name());
+        if (timing == FlowActionTriggerTiming.NODE_COMPLETED && "userTask".equals(activity.getActivityType())) {
+            var completed = completedTasks(false);
+            var task = completed == null ? null : completed.remove(new TaskCompletionKey(
+                    trigger.getProcessInstanceId(), trigger.getExecutionId(), activity.getActivityId()));
+            if (task != null) {
+                trigger.setTaskId(task.id());
+                trigger.setTaskName(task.name());
+                trigger.setTaskAssignee(task.assignee());
+            }
+        }
+    }
+
+    /**
+     * 在同一引擎命令内暂存刚完成的任务身份，供节点离开动作及其 Outbox 快照使用。
+     * 以实例、执行和节点共同定位，避免会签、循环及嵌套完成串用任务；命令关闭即释放，异常回滚不泄漏。
+     * 不缓存审批变量，节点离开时重新读取已写入的最新结果。
+     */
+    private void rememberCompletedTask(FlowableEvent event) {
+        if (event instanceof FlowableEntityEvent entityEvent && entityEvent.getEntity() instanceof Task task) {
+            var completed = completedTasks(true);
+            if (completed != null) {
+                completed.put(new TaskCompletionKey(task.getProcessInstanceId(), task.getExecutionId(), task.getTaskDefinitionKey()),
+                        new CompletedTask(task.getId(), task.getName(), task.getAssignee()));
+            }
+        }
+    }
+
+    /** 读取当前引擎命令中的已部署节点模型；会签和顺序多实例都缺少普通活动完成事件。 */
+    private boolean isMultiInstanceTask(FlowableEvent event) {
+        if (!(event instanceof FlowableEntityEvent entityEvent) || !(entityEvent.getEntity() instanceof Task task)) return false;
+        var command = Context.getCommandContext();
+        if (command == null || command.getEngineConfigurations() == null) return false;
+        var configuration = CommandContextUtil.getProcessEngineConfiguration(command);
+        if (configuration == null || task.getExecutionId() == null) return false;
+        var execution = configuration.getExecutionEntityManager().findById(task.getExecutionId());
+        return execution != null && execution.getCurrentFlowElement() instanceof Activity activity
+                && activity.hasMultiInstanceLoopCharacteristics();
+    }
+
+    /** 使用 Flowable 命令自身的生命周期管理临时身份，不占用线程或外层 Spring 事务资源。 */
+    @SuppressWarnings("unchecked")
+    private Map<TaskCompletionKey, CompletedTask> completedTasks(boolean create) {
+        var command = Context.getCommandContext();
+        if (command == null) return null;
+        var completed = (Map<TaskCompletionKey, CompletedTask>) command.getAttribute(COMPLETED_TASKS);
+        if (completed == null && create) {
+            completed = new LinkedHashMap<>();
+            command.addAttribute(COMPLETED_TASKS, completed);
+        }
+        return completed;
     }
 
     /**

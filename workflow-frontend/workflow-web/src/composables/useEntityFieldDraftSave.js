@@ -55,8 +55,10 @@ export function normalizeEntityFieldForSave(source = {}) {
     childEntityCode,
     ...field
   } = source
+  const selection = ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)
   return {
     ...field,
+    optionsInterfaceId: selection ? field.optionsInterfaceId || null : null,
     childEntityId: field.childEntityId || field.refEntityId || '',
     childRefFieldCode: field.childRefFieldCode || field.refFieldCode || '',
     refEntityId: field.refEntityId || field.childEntityId || '',
@@ -165,8 +167,10 @@ export function useEntityFieldDraftSave({
       }
     }
     if (['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(field.fieldType)
-        && !field.dictType) {
-      ElMessage.warning(`请选择代码表：${field.fieldName}`)
+        && (field.optionSource === 'INTERFACE' || field.optionsInterfaceId
+          ? !field.optionsInterfaceId || !!field.dictType
+          : !field.dictType)) {
+      ElMessage.warning(`请选择一种选项来源（代码表或接口）：${field.fieldName}`)
       return false
     }
     if (['REFERENCE', 'MULTI_REFERENCE'].includes(field.fieldType)

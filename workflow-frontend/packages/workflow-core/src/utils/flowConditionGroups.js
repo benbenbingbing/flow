@@ -7,6 +7,22 @@ export function createFlowCondition() {
   }
 }
 
+const selectionOperators = new Set(['selectionEquals', 'selectionAny', 'selectionAll'])
+const selectionCode = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,127}$/
+
+/** 路由右值是固定业务编码，与表单当前请求返回的候选无关。 */
+export function selectionConditionCodes(value) {
+  return String(value ?? '').split(',').map(code => code.trim()).filter(Boolean)
+}
+
+function validSelectionCondition(node) {
+  const codes = selectionConditionCodes(node.value)
+  return /^[A-Za-z_]\w{0,99}$/.test(node.property)
+    && codes.length > 0 && codes.length <= 50
+    && (node.operator !== 'selectionEquals' || codes.length === 1)
+    && codes.every(code => selectionCode.test(code))
+}
+
 export function createFlowConditionGroup(logic = 'AND', children = [createFlowCondition()]) {
   return {
     type: 'GROUP',
@@ -46,8 +62,17 @@ export function parseFlowConditionConfig(value) {
 }
 
 export function buildFlowConditionExpression(root, getFieldType = () => 'string') {
-  const body = buildNode(normalizeFlowConditionRoot(root), getFieldType, true)
+  const normalized = normalizeFlowConditionRoot(root)
+  if (hasSelectionRoutingCondition(normalized) && !isNodeComplete(normalized)) return ''
+  const body = buildNode(normalized, getFieldType, true)
   return body ? `\${${body}}` : ''
+}
+
+/** 外部选项条件不完整时禁止生成部分表达式，避免意外放宽审批分支。 */
+export function hasSelectionRoutingCondition(node) {
+  return node?.type === 'GROUP'
+    ? node.children?.some(hasSelectionRoutingCondition) === true
+    : selectionOperators.has(node?.operator)
 }
 
 export function parseFlowConditionExpression(expression) {
@@ -96,6 +121,15 @@ function evaluateNode(node, formData) {
     return node.logic === 'OR' ? values.some(Boolean) : values.every(Boolean)
   }
   const actual = readProperty(formData, node.property)
+  if (selectionOperators.has(node.operator)) {
+    if (!validSelectionCondition(node)) return false
+    const codes = selectionConditionCodes(node.value)
+    if (node.operator === 'selectionEquals') return actual === codes[0]
+    if (!Array.isArray(actual)) return false
+    return node.operator === 'selectionAny'
+      ? codes.some(code => actual.includes(code))
+      : codes.every(code => actual.includes(code))
+  }
   if (node.operator === 'empty') return isEmptyValue(actual)
   if (node.operator === 'notEmpty') return !isEmptyValue(actual)
   const expected = coerceExpected(node.value, actual)
@@ -160,6 +194,7 @@ function normalizeOperator(value) {
     '>=',
     '<=',
     'contains',
+    ...selectionOperators,
     'empty',
     'notEmpty'
   ].includes(normalized) ? normalized : '=='
@@ -180,6 +215,10 @@ function buildNode(node, getFieldType, root = false) {
 
 function buildCondition(condition, getFieldType) {
   if (!condition.property || !condition.operator) return ''
+  if (selectionOperators.has(condition.operator)) {
+    if (!validSelectionCondition(condition)) return ''
+    return `_wfSelectionCondition.matches(execution, '${condition.property}', '${condition.operator}', '${selectionConditionCodes(condition.value).join(',')}')`
+  }
   if (condition.operator === 'empty') {
     return `empty(${condition.property})`
   }
@@ -235,6 +274,11 @@ function createParsedGroup(logic, parts) {
 
 function parseCondition(expression) {
   const source = expression.trim()
+  const selectionMatch = source.match(/^_wfSelectionCondition\.matches\(execution, '([A-Za-z_]\w*)', '(selectionEquals|selectionAny|selectionAll)', '([^']*)'\)$/)
+  if (selectionMatch) {
+    const node = { type: 'CONDITION', property: selectionMatch[1], operator: selectionMatch[2], value: selectionMatch[3] }
+    return validSelectionCondition(node) ? node : null
+  }
   const emptyMatch = source.match(/^(empty|notEmpty)\(([A-Za-z_][\w.]*)\)$/)
   if (emptyMatch) {
     return {
@@ -403,6 +447,7 @@ function isNodeComplete(node) {
       && node.children.every(isNodeComplete)
   }
   if (!node.property || !node.operator) return false
+  if (selectionOperators.has(node.operator)) return validSelectionCondition(node)
   if (['empty', 'notEmpty'].includes(node.operator)) return true
   return node.value !== null
     && node.value !== undefined

@@ -22,7 +22,7 @@ class AssigneeIncidentPaginationTest {
 
     private AssigneeIncidentService service(String database) {
         return new AssigneeIncidentService(mapper, new ObjectMapper(), null, null, null,
-                DatabaseQueryDialects.forDatabaseId(database), null);
+                DatabaseQueryDialects.forDatabaseId(database), null, null);
     }
 
     @ParameterizedTest

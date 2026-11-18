@@ -127,11 +127,12 @@ public class EntityFieldAssignmentFlowActionHandler implements FlowActionProvide
         return fields == null ? List.of() : fields;
     }
 
-    /** 元数据误标也不能开放系统字段；关联、附件、多值和子表需要各自的业务写入契约。 */
+    /** 固定赋值仅识别本地选项；外部编码由实体表单或业务接口写入，不影响其他字段的候选。 */
     private boolean assignable(EntityField field) {
         return field != null && StringUtils.hasText(field.getFieldCode())
                 && !RESERVED.contains(field.getFieldCode().replace("_", "").toLowerCase(Locale.ROOT))
                 && !Boolean.TRUE.equals(field.getIsSystem()) && !Boolean.FALSE.equals(field.getEditable())
+                && !StringUtils.hasText(field.getOptionsInterfaceId())
                 && field.getFieldType() != null && TYPES.contains(field.getFieldType());
     }
 

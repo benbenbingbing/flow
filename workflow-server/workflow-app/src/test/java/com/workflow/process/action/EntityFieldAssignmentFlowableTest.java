@@ -84,7 +84,8 @@ class EntityFieldAssignmentFlowableTest {
                 histories, engine.getRepositoryService(), mock(FlowActionFailureCoordinator.class));
         engine.getRuntimeService().addEventListener(new EntityTransitionStatusListener(engine.getRuntimeService(),
                 engine.getRepositoryService(), new ProcessEntityStatusPolicy(engine.getRepositoryService()), mutations));
-        engine.getRuntimeService().addEventListener(new FlowActionEngineEventListener(dispatcher, engine.getRuntimeService(), helper));
+        engine.getRuntimeService().addEventListener(new FlowActionEngineEventListener(dispatcher, engine.getRuntimeService(), helper,
+                new FlowActionOperationDispatcher(dispatcher, engine.getRuntimeService(), engine.getHistoryService())));
     }
     @BeforeEach void reset() {
         failWrite = false; jdbc.update("DELETE FROM mutation_call"); jdbc.update("DELETE FROM business_record");

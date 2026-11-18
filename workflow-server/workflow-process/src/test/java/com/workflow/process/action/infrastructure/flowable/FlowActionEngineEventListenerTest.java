@@ -38,6 +38,7 @@ class FlowActionEngineEventListenerTest {
     private RuntimeService runtimeService;
     /** 被测监听器实例 */
     private FlowActionEngineEventListener listener;
+    private com.workflow.process.action.application.FlowActionOperationDispatcher operations;
 
     /** 初始化 mock 依赖与监听器实例，设置运行时变量桩数据 */
     @BeforeEach
@@ -51,7 +52,8 @@ class FlowActionEngineEventListenerTest {
                 "action", "approve",
                 "approver", "admin"));
         UserContext.setCurrentUser("admin-id", "admin");
-        listener = new FlowActionEngineEventListener(dispatcher, runtimeService, helper);
+        operations = mock(com.workflow.process.action.application.FlowActionOperationDispatcher.class);
+        listener = new FlowActionEngineEventListener(dispatcher, runtimeService, helper, operations);
     }
 
     @AfterEach
@@ -63,19 +65,24 @@ class FlowActionEngineEventListenerTest {
      * 验证所有标准引擎事件时机均被正确映射为动作触发事件。
      *
      * <p>覆盖 PROCESS_STARTED/COMPLETED、撤回/终止、NODE_ENTERED/COMPLETED、
-     * TASK_CREATED/ASSIGNED/COMPLETING、TRANSITION_TAKEN 等场景，
+     * TASK_CREATED/ASSIGNED、TRANSITION_TAKEN 等场景，
      * 逐一断言触发事件的 scopeType、elementId、triggerTiming 与实体上下文字段正确。</p>
      */
     @Test
     void shouldMapAllStandardTimings() {
         assertTrigger(engineEvent(FlowableEngineEventType.PROCESS_STARTED),
-                "PROCESS", null, "PROCESS_STARTED");
+                "PROCESS", null, "PROCESS_START_EXECUTED");
         assertTrigger(engineEvent(FlowableEngineEventType.PROCESS_COMPLETED),
                 "PROCESS", null, "PROCESS_COMPLETED");
         assertTrigger(cancelledEvent("发起人撤回: 测试"),
                 "PROCESS", null, "PROCESS_WITHDRAWN");
         assertTrigger(cancelledEvent("管理员终止"),
                 "PROCESS", null, "PROCESS_TERMINATED");
+        for (var type : java.util.List.of(FlowableEngineEventType.PROCESS_COMPLETED_WITH_TERMINATE_END_EVENT,
+                FlowableEngineEventType.PROCESS_COMPLETED_WITH_ERROR_END_EVENT,
+                FlowableEngineEventType.PROCESS_COMPLETED_WITH_ESCALATION_END_EVENT)) {
+            assertTrigger(engineEvent(type), "PROCESS", null, "PROCESS_TERMINATED");
+        }
         assertTrigger(activityEvent(FlowableEngineEventType.ACTIVITY_STARTED),
                 "NODE", "Task_1", "NODE_ENTERED");
         assertTrigger(activityEvent(FlowableEngineEventType.ACTIVITY_COMPLETED),
@@ -84,14 +91,12 @@ class FlowActionEngineEventListenerTest {
                 "NODE", "Task_1", "TASK_CREATED");
         assertTrigger(taskEvent(FlowableEngineEventType.TASK_ASSIGNED),
                 "NODE", "Task_1", "TASK_ASSIGNED");
-        assertTrigger(taskEvent(FlowableEngineEventType.TASK_COMPLETED),
-                "NODE", "Task_1", "TASK_COMPLETING");
         assertTrigger(sequenceFlowEvent(),
                 "SEQUENCE_FLOW", "Flow_1", "TRANSITION_TAKEN");
     }
 
     /**
-     * 任务完成事件中的变量应与运行时变量合并后传递给分发器。
+     * 任务创建事件中的变量应与运行时变量合并后传递给分发器。
      *
      * <p>场景：任务事件携带 action=reject，运行时变量含 entityCode 与 entityDataId，
      * 断言分发器收到的触发事件中 action 为 reject(覆盖运行时值)。</p>
@@ -101,7 +106,7 @@ class FlowActionEngineEventListenerTest {
         FlowableEngineEntityEvent event = mock(
                 FlowableEngineEntityEvent.class,
                 withSettings().extraInterfaces(FlowableEntityWithVariablesEvent.class));
-        stubBase(event, FlowableEngineEventType.TASK_COMPLETED);
+        stubBase(event, FlowableEngineEventType.TASK_CREATED);
         Task task = mock(Task.class);
         when(task.getId()).thenReturn("task-1");
         when(task.getTaskDefinitionKey()).thenReturn("Task_1");
@@ -118,6 +123,47 @@ class FlowActionEngineEventListenerTest {
         assertEquals("reject", captor.getValue().getApprovalAction());
     }
 
+    @Test
+    void taskCompletionDoesNotDispatchAnIndependentAction() {
+        listener.onEvent(taskEvent(FlowableEngineEventType.TASK_COMPLETED));
+        verifyNoInteractions(dispatcher, operations, runtimeService);
+    }
+
+    @Test
+    void nodeExitConsumesOnlyTheMatchingTaskIdentityInsideTheEngineCommand() {
+        var command = new org.flowable.common.engine.impl.interceptor.CommandContext(null);
+        org.flowable.common.engine.impl.context.Context.setCommandContext(command);
+        try {
+            var completed = taskEvent(FlowableEngineEventType.TASK_COMPLETED);
+            Task task = (Task) completed.getEntity();
+            when(task.getProcessInstanceId()).thenReturn("pi-1");
+            when(task.getExecutionId()).thenReturn("exec-1");
+            listener.onEvent(completed);
+            verifyNoInteractions(dispatcher);
+
+            var otherExecution = activityEvent(FlowableEngineEventType.ACTIVITY_COMPLETED);
+            when(otherExecution.getExecutionId()).thenReturn("other-execution");
+            listener.onEvent(otherExecution);
+            listener.onEvent(activityEvent(FlowableEngineEventType.ACTIVITY_COMPLETED));
+            listener.onEvent(activityEvent(FlowableEngineEventType.ACTIVITY_COMPLETED));
+
+            var captor = ArgumentCaptor.forClass(FlowActionTriggerEvent.class);
+            verify(dispatcher, times(3)).dispatch(captor.capture());
+            var events = captor.getAllValues();
+            org.junit.jupiter.api.Assertions.assertNull(events.get(0).getTaskId());
+            assertEquals("task-1", events.get(1).getTaskId());
+            assertEquals("NODE_COMPLETED", events.get(1).getTriggerTiming());
+            org.junit.jupiter.api.Assertions.assertNull(events.get(2).getTaskId());
+        } finally {
+            org.flowable.common.engine.impl.context.Context.removeCommandContext();
+        }
+        // 新命令不继承前一命令的身份，即使执行和节点相同。
+        listener.onEvent(activityEvent(FlowableEngineEventType.ACTIVITY_COMPLETED));
+        var captor = ArgumentCaptor.forClass(FlowActionTriggerEvent.class);
+        verify(dispatcher, times(4)).dispatch(captor.capture());
+        org.junit.jupiter.api.Assertions.assertNull(captor.getAllValues().get(3).getTaskId());
+    }
+
     /**
      * 触发事件并校验分发器收到的字段映射是否正确。
      *
@@ -131,10 +177,16 @@ class FlowActionEngineEventListenerTest {
             String scopeType,
             String elementId,
             String triggerTiming) {
-        clearInvocations(dispatcher);
+        clearInvocations(dispatcher, operations);
         listener.onEvent(event);
         ArgumentCaptor<FlowActionTriggerEvent> captor = ArgumentCaptor.forClass(FlowActionTriggerEvent.class);
-        verify(dispatcher).dispatch(captor.capture());
+        if ("PROCESS_START_EXECUTED".equals(triggerTiming)) {
+            verify(operations).processStarted(captor.capture());
+            verifyNoInteractions(dispatcher);
+        } else if (java.util.Set.of("PROCESS_COMPLETED", "PROCESS_WITHDRAWN", "PROCESS_TERMINATED").contains(triggerTiming)) {
+            verify(operations).processEnded(captor.capture());
+            verifyNoInteractions(dispatcher);
+        } else verify(dispatcher).dispatch(captor.capture());
         FlowActionTriggerEvent trigger = captor.getValue();
         assertEquals(scopeType, trigger.getScopeType());
         assertEquals(elementId, trigger.getElementId());

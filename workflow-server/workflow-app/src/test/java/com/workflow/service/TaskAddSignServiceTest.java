@@ -137,12 +137,12 @@ class TaskAddSignServiceTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({"BEFORE,false,0,approve", "PARALLEL,true,0,approve", "AFTER,true,0,approve",
             "AFTER,false,0,approve", "PARALLEL,true,1,approve", "PARALLEL,true,0,reject"})
-    void localChildHasDedicatedStagesAndNeverFakesAnEngineCompletion(String type, boolean sourceCompleted, long pending, String action) {
+    void localChildUsesApprovalStagesAndNeverFakesAnEngineCompletion(String type, boolean sourceCompleted, long pending, String action) {
         prepareTimingChild(type, sourceCompleted, pending);
         service.completeAddSignTask("child-task", action, "子任务意见");
         var events = ArgumentCaptor.forClass(com.workflow.process.action.domain.FlowActionTriggerEvent.class);
         verify(businessActions, times(2)).dispatch(events.capture());
-        assertEquals(List.of("ADD_SIGN_TASK_COMPLETING", "ADD_SIGN_TASK_COMPLETED"),
+        assertEquals(List.of("TASK_SUBMITTING", "TASK_SUBMITTED"),
                 events.getAllValues().stream().map(com.workflow.process.action.domain.FlowActionTriggerEvent::getTriggerTiming).toList());
         for (var event : events.getAllValues()) {
             assertEquals("LOCAL_ADD_SIGN", event.getTaskKind()); assertEquals("child-task", event.getTaskId());
@@ -153,7 +153,7 @@ class TaskAddSignServiceTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_TASK_COMPLETING"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_SUBMITTING"})
     void localChildRejectionLeavesChildAndSourceUntouched(String stage) {
         prepareTimingChild("BEFORE", false, 0);
         doAnswer(call -> {
@@ -187,22 +187,22 @@ class TaskAddSignServiceTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({"AFTER,1,approve", "PARALLEL,1,approve", "PARALLEL,0,approve", "AFTER,1,reject"})
-    void sourceStagingUsesDedicatedTimingsAroundPersistence(String type, long pending, String action) {
+    void sourceStagingUsesUnifiedApprovalTimingsAroundPersistence(String type, long pending, String action) {
         when(addSignMapper.findOpenBySourceTaskIdForUpdate("source-task")).thenReturn(addSign(type, false));
         lenient().when(addSignUserMapper.countPending("add-sign-1")).thenReturn(pending);
         lenient().when(addSignUserMapper.selectList(any())).thenReturn(List.of());
         assertTrue(service.handleSourceCompletion("source-task", "admin", action, "意见", "办理", Map.of("amount", 12)));
         var order = inOrder(businessActions, addSignMapper, processTaskMapper);
-        order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_SUBMITTING".equals(event.getTriggerTiming())));
+        order.verify(businessActions).dispatch(argThat(event -> "TASK_SUBMITTING".equals(event.getTriggerTiming())));
         order.verify(addSignMapper).updateById(any(ProcessTaskAddSign.class));
         order.verify(processTaskMapper).updateById(any(ProcessTask.class));
-        order.verify(businessActions).dispatch(argThat(event -> "ADD_SIGN_SOURCE_SUBMITTED".equals(event.getTriggerTiming())
+        order.verify(businessActions).dispatch(argThat(event -> "TASK_SUBMITTED".equals(event.getTriggerTiming())
                 && "ENGINE".equals(event.getTaskKind()) && event.getSubmittedFormData().equals(Map.of("amount", 12))));
         verify(businessActions, times(2)).dispatch(any());
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"ADD_SIGN_SOURCE_SUBMITTING"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"TASK_SUBMITTING"})
     void sourceStagingRejectionPreventsSavingSubmissionAndActivatingChildren(String stage) {
         when(addSignMapper.findOpenBySourceTaskIdForUpdate("source-task")).thenReturn(addSign("AFTER", false));
         doAnswer(call -> {

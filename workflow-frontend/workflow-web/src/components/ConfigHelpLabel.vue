@@ -4,6 +4,7 @@
     <el-tooltip
       v-if="resolvedContent"
       :content="resolvedContent"
+      :trigger="['hover', 'focus']"
       placement="top"
       :show-after="200"
       :hide-after="50"

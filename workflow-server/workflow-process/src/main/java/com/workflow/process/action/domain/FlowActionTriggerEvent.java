@@ -13,7 +13,7 @@ import java.util.Map;
  */
 @Data
 public class FlowActionTriggerEvent {
-    /** 业务操作编码；与引擎生命周期事件区分，避免把子任务办理当作源任务流转。 */
+    /** 业务操作编码；审批统一为 SUBMIT，由 taskKind/taskId 区分实际任务，不能据此推断引擎已流转。 */
     private String businessOperation;
     /** ENGINE / LOCAL_ADD_SIGN；本地子任务没有 Flowable Task。 */
     private String taskKind;
@@ -37,7 +37,7 @@ public class FlowActionTriggerEvent {
     private String processInstanceId;
     /** Flowable 执行实例 ID */
     private String executionId;
-    /** 任务 ID（任务级事件携带） */
+    /** 触发任务 ID；节点离开时保留实际完成的引擎任务身份，原生跳过及非任务节点为空。 */
     private String taskId;
     /** 任务名称 */
     private String taskName;

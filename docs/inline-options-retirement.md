@@ -1,6 +1,6 @@
 # 实体字段内嵌选项停用
 
-2026-11-16 起，实体选择字段（SELECT、MULTI_SELECT、RADIO、CHECKBOX）只允许绑定系统代码表。表单组件还可使用已配置的动态数据源。
+2026-11-16 停用实体选择字段（SELECT、MULTI_SELECT、RADIO、CHECKBOX）的内嵌候选。下表是该次变更记录；V143 起实体字段也可绑定受控的[外部选项接口](entity-field-option-interface.md)，内嵌选项仍不开放。
 
 本次移除了以下历史兼容路径：
 

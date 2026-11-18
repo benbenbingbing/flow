@@ -24,6 +24,7 @@ final class EntityFieldViewMapper {
         dto.setIsUnique(field.getIsUnique());
         dto.setDefaultValue(field.getDefaultValue());
         dto.setDictType(field.getDictType());
+        dto.setOptionsInterfaceId(field.getOptionsInterfaceId());
         dto.setValueStorage(field.getValueStorage());
         dto.setValidateRules(field.getValidateRules());
         dto.setSortOrder(field.getSortOrder());

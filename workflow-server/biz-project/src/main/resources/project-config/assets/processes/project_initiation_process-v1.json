@@ -209,7 +209,7 @@
     {
       "scopeType": "PROCESS",
       "elementId": null,
-      "triggerTiming": "PROCESS_STARTED",
+      "triggerTiming": "PROCESS_START_EXECUTED",
       "executionMode": "IN_TRANSACTION",
       "failurePolicy": "ROLLBACK",
       "retryConfig": "{\"maxRetries\":0}",

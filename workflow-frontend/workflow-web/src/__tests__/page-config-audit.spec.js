@@ -1738,7 +1738,7 @@ assert.equal(
 ;[
   'title="常用设置"',
   'title="可靠性与失败策略"',
-  'title="说明与参数"',
+  `:title="isFieldAssignment ? '说明与字段赋值' : '说明与参数'"`,
   "import SettingsSection from '@/components/SettingsSection.vue'"
 ].forEach((marker) => {
   assert.ok(flowActionPanel.includes(marker), `流程动作配置缺少常用优先或低频折叠分组: ${marker}`)
@@ -1746,14 +1746,14 @@ assert.equal(
 const flowActionGroupPositions = [
   flowActionPanel.indexOf('title="常用设置"'),
   flowActionPanel.indexOf('title="可靠性与失败策略"'),
-  flowActionPanel.indexOf('title="说明与参数"')
+  flowActionPanel.indexOf(`:title="isFieldAssignment ? '说明与字段赋值' : '说明与参数'"`)
 ]
 assert.deepEqual(
   flowActionGroupPositions,
   [...flowActionGroupPositions].sort((left, right) => left - right),
   '流程动作应先显示常用设置，再显示可靠性和说明参数'
 )
-;['TASK_COMPLETING', 'TASK_CREATED', 'TRANSITION_TAKEN', 'PROCESS_COMPLETED', 'PROCESS_WITHDRAWN'].forEach((timing) => {
+;['TASK_SUBMITTING', 'TASK_CREATED', 'TRANSITION_TAKEN', 'PROCESS_COMPLETED', 'PROCESS_WITHDRAWN'].forEach((timing) => {
   assert.ok(flowActionPanel.includes(timing), `流程动作配置缺少常用时机模板: ${timing}`)
 })
 
@@ -1801,7 +1801,8 @@ const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActio
   assert.equal(flowActionGuide.includes(field), false, `流程动作指南不应继续展示已移除字段: ${field}`)
 })
 ;[
-  'PROCESS_STARTED',
+  'PROCESS_STARTING',
+  'PROCESS_START_EXECUTED',
   'PROCESS_COMPLETED',
   'PROCESS_WITHDRAWN',
   'PROCESS_TERMINATED',
@@ -1809,10 +1810,18 @@ const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActio
   'NODE_COMPLETED',
   'TASK_CREATED',
   'TASK_ASSIGNED',
-  'TASK_COMPLETING',
+  'TASK_SUBMITTING',
   'TRANSITION_TAKEN'
 ].forEach((timing) => {
   assert.ok(flowActionGuide.includes(timing), `流程动作指南缺少时机说明: ${timing}`)
+})
+assert.equal(flowActionGuide.includes('TASK_COMPLETING'), false, '指南不能保留已删除的独立引擎任务完成时机')
+assert.equal(flowActionGuide.includes('PROCESS_STARTED'), false, '指南不能保留独立的引擎流程启动时机')
+;['流程正常结束后', '首节点已经执行', '流程关联和待办同步完成后处理'].forEach((marker) => {
+  assert.ok(flowActionGuide.includes(marker), `流程动作指南缺少发起与结束边界说明: ${marker}`)
+})
+;['TASK_ADVANCING', '审批流转前', '节点离开前', '本次审批结果尚未汇总写入', '会签时不代表全员已完成'].forEach((marker) => {
+  assert.ok(flowActionGuide.includes(marker), `流程动作指南缺少边界说明: ${marker}`)
 })
 ;['tocItems', 'scrollToSection', 'setupSectionObserver', 'id="scope"', 'id="scenes"'].forEach((marker) => {
   assert.ok(flowActionGuide.includes(marker), `流程动作指南缺少目录能力: ${marker}`)

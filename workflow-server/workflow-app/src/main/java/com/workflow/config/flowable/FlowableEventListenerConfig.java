@@ -53,7 +53,7 @@ public class FlowableEventListenerConfig {
      */
     @PostConstruct
     public void init() {
-        // 必须早于流程动作和知会监听器，保证 PROCESS_STARTED 已能读取子实体上下文。
+        // 必须早于启动事实登记和知会监听器，保证它们能够读取子流程自身的实体上下文。
         runtimeService.addEventListener(calledProcessEntityListener);
         runtimeService.addEventListener(taskInboxProjectionListener);
         // 注册任务完成事件监听器（不指定事件类型，监听所有事件，在监听器中过滤）

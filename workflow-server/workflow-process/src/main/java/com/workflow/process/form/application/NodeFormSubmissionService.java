@@ -111,8 +111,19 @@ public class NodeFormSubmissionService {
      * @param submittedFormData 提交的表单数据（可为空；仍会执行发布表单的权威前置处理）
      */
     public void applyEditableData(Task task, Map<String, Object> submittedFormData) {
+        applyEditableData(task, submittedFormData, null);
+    }
+
+    /**
+     * 执行实际审批表单提交，并在确认实体上下文后调用保存前扩展。
+     * 扩展先于可信表单数据投影及发布表单处理，使其数据准备可被后续读取；缺少实体上下文时不调用。
+     * @param task 实际进入表单提交的引擎任务
+     * @param submittedFormData 本次表单输入，仍按发布字段权限过滤
+     * @param beforeSave 同步保存前回调；预览、加签输入暂存和本地子任务不调用此入口
+     */
+    public void applyEditableData(Task task, Map<String, Object> submittedFormData, Runnable beforeSave) {
         SubmissionProjection projection = projectSubmission(
-                task, submittedFormData);
+                task, submittedFormData, beforeSave);
         if (projection == null) {
             if (task != null) {
                 log.warn(
@@ -429,6 +440,12 @@ public class NodeFormSubmissionService {
     private SubmissionProjection projectSubmission(
             Task task,
             Map<String, Object> submittedFormData) {
+        return projectSubmission(task, submittedFormData, null);
+    }
+
+    /** 在实体标识确认后、读取表单及可信实体数据前执行保存前准备，预览沿用无回调入口。 */
+    private SubmissionProjection projectSubmission(
+            Task task, Map<String, Object> submittedFormData, Runnable beforeSave) {
         if (task == null) {
             return null;
         }
@@ -441,6 +458,7 @@ public class NodeFormSubmissionService {
                 || !StringUtils.hasText(entityDataId)) {
             return null;
         }
+        if (beforeSave != null) beforeSave.run();
         ProcessPublishedSnapshotService.PublishedNodeForms published =
                 getPublishedNodeForms(task);
         Set<String> editableFieldCodes = resolveEditableFieldCodes(

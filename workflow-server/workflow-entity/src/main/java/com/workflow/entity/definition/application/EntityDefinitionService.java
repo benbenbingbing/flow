@@ -52,6 +52,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EntityDefinitionService {
     @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.ui.application.EntityFieldOptionInterfaces optionInterfaces;
+    @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.EntityExcelConfigurationService> excelConfigurations;
     private static final String ORGANIZATION_ENTITY_CODE = "sys_organization";
     private final EntityDefinitionMapper entityMapper;
@@ -269,6 +271,7 @@ public class EntityDefinitionService {
         if (dto.getFields() != null) {
             for (EntityFieldDTO fieldDTO : dto.getFields()) {
                 EntityFieldDefinitionService.requireDataFieldType(fieldDTO);
+                if (optionInterfaces != null) optionInterfaces.requireAvailable(entity.getId(), fieldDTO.getOptionsInterfaceId());
                 EntityField field = convertToEntity(fieldDTO);
                 field.setId(null); // 新建实体时，字段ID必须为空
                 field.setEntityId(entity.getId());
@@ -773,8 +776,10 @@ public class EntityDefinitionService {
 
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(id);
-        // 未绑定代码表的历史选择字段必须先重新配置，不能将内嵌选项重新发布。
+        // 历史内嵌选项不能重新发布；接口来源只校验配置，不调用 Provider。
         fields.forEach(EntitySelectionOptionPolicy::validatePublished);
+        if (optionInterfaces != null) fields.forEach(field ->
+                optionInterfaces.requireAvailable(id, field.getOptionsInterfaceId()));
         attachFileItems(fields);
         entity.setFields(fields);
         // 字段草稿可以迭代，但正式结构发布不能破坏仍在线上的 Excel 列映射。
@@ -1476,6 +1481,7 @@ public class EntityDefinitionService {
         field.setIsUnique(dto.getIsUnique());
         field.setDefaultValue(dto.getDefaultValue());
         field.setDictType(dto.getDictType());
+        field.setOptionsInterfaceId(dto.getOptionsInterfaceId());
         field.setValueStorage(resolveValueStorage(dto));
         field.setValidateRules(dto.getValidateRules());
         field.setSortOrder(dto.getSortOrder());
@@ -1501,6 +1507,7 @@ public class EntityDefinitionService {
      * @return 解析后的值存储文本，供调用方比较或展示
      */
     private String resolveValueStorage(EntityFieldDTO field) {
+        if (StringUtils.isNotBlank(field.getOptionsInterfaceId())) return "SCALAR";
         if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE
                 || ((field.getFieldType() == EntityField.FieldType.MULTI_SELECT
                         || field.getFieldType() == EntityField.FieldType.CHECKBOX)

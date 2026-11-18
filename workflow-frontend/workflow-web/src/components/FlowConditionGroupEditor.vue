@@ -35,6 +35,7 @@
           :entity-fields="entityFields"
           :approval-options="approvalOptions"
           :include-approval-property="includeApprovalProperty"
+          :enable-selection-routing="enableSelectionRouting"
           :operator-options="operatorOptions"
           removable
           @change="emitChange"
@@ -71,7 +72,7 @@
             @change="onOperatorChange(child)"
           >
             <el-option
-              v-for="option in operatorOptions"
+              v-for="option in operatorsFor(child.property)"
               :key="option.value"
               :label="option.label"
               :value="option.value"
@@ -79,7 +80,27 @@
           </el-select>
 
           <el-select
-            v-if="!isValuelessOperator(child.operator) && getFieldType(child.property) === 'select'"
+            v-if="selectionKind(child.property) === 'multiple'"
+            :model-value="selectionConditionCodes(child.value)"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            placeholder="输入编码后按回车"
+            size="small"
+            class="condition-value"
+            @update:model-value="codes => updateSelectionCodes(child, codes)"
+          />
+          <el-input
+            v-else-if="selectionKind(child.property) === 'single'"
+            v-model="child.value"
+            placeholder="输入外部业务编码"
+            size="small"
+            class="condition-value"
+            @input="emitChange"
+          />
+          <el-select
+            v-else-if="!isValuelessOperator(child.operator) && getFieldType(child.property) === 'select'"
             v-model="child.value"
             placeholder="选择值"
             size="small"
@@ -137,7 +158,7 @@
 
 <script setup>
 import { Delete } from '@element-plus/icons-vue'
-import { createFlowCondition, createFlowConditionGroup } from '@flow/workflow-core/utils/flowConditionGroups'
+import { createFlowCondition, createFlowConditionGroup, selectionConditionCodes } from '@flow/workflow-core/utils/flowConditionGroups'
 import {
   getProcessConditionFieldCode,
   getProcessConditionFieldLabel,
@@ -154,6 +175,7 @@ const props = defineProps({
   entityFields: { type: Array, default: () => [] },
   approvalOptions: { type: Array, default: () => [] },
   includeApprovalProperty: { type: Boolean, default: true },
+  enableSelectionRouting: { type: Boolean, default: false },
   operatorOptions: {
     type: Array,
     default: () => [
@@ -190,7 +212,31 @@ function removeChild(index) {
 
 function onPropertyChange(condition) {
   condition.value = ''
-  condition.operator = '=='
+  condition.operator = operatorsFor(condition.property)[0]?.value || '=='
+  emitChange()
+}
+
+/** 接口候选与当前业务数据相关，流程设计器不发候选请求，只编辑比较编码。 */
+function selectionKind(property) {
+  if (!props.enableSelectionRouting) return ''
+  const field = props.entityFields.find(item => getProcessConditionFieldCode(item) === property)
+  if (!field?.optionsInterfaceId) return ''
+  return ['MULTI_SELECT', 'CHECKBOX'].includes(String(field.fieldType).toUpperCase()) ? 'multiple' : 'single'
+}
+
+function operatorsFor(property) {
+  switch (selectionKind(property)) {
+    case 'single': return [{ label: '等于编码', value: 'selectionEquals' }]
+    case 'multiple': return [
+      { label: '包含任一编码', value: 'selectionAny' },
+      { label: '包含全部编码', value: 'selectionAll' }
+    ]
+    default: return props.operatorOptions
+  }
+}
+
+function updateSelectionCodes(condition, codes) {
+  condition.value = [...new Set(codes.map(code => code.trim()))].join(',')
   emitChange()
 }
 

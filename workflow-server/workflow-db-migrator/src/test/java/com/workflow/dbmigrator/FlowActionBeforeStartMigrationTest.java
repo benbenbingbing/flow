@@ -92,7 +92,8 @@ class FlowActionBeforeStartMigrationTest {
                 if (name.equals("process_action_execution")) actionTable = body;
             }
             assertEquals(202, current.size(), dialect);
-            assertEquals(2817, current.values().stream().mapToInt(List::size).sum(), dialect);
+            // 此处核对最终空库脚本，包含 V143 的 options_interface_id；V144 不增加结构。
+            assertEquals(2818, current.values().stream().mapToInt(List::size).sum(), dialect);
             if (inventory == null) inventory = current; else assertEquals(inventory, current, dialect);
             assertNotNull(actionTable);
             var column = Pattern.compile("(?m)^\\s*process_instance_id ([^\\n]+)").matcher(actionTable);

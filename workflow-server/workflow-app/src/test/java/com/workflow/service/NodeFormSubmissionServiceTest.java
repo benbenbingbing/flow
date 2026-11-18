@@ -50,6 +50,30 @@ import static org.mockito.Mockito.when;
  */
 class NodeFormSubmissionServiceTest {
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"MISSING_ENTITY", "MISSING_RECORD", "REJECT"})
+    void formBoundarySkipsMissingContextAndRejectsBeforeProjectionOrWrites(String scenario) {
+        var runtime = mock(RuntimeService.class);
+        when(runtime.getVariable("instance-1", "entityCode")).thenReturn(scenario.equals("MISSING_ENTITY") ? null : "expense");
+        when(runtime.getVariable("instance-1", "entityDataId")).thenReturn(scenario.equals("MISSING_RECORD") ? null : "data-1");
+        var snapshots = mock(ProcessPublishedSnapshotService.class);
+        var forms = mock(EntityFormRuntimeService.class);
+        var mutations = mock(EntityMutationPort.class);
+        var submissions = mock(PublishedFormSubmissionService.class);
+        var service = new NodeFormSubmissionService(runtime, snapshots, mock(EntityFormService.class), forms,
+                mutations, submissions, mock(FormSubmissionTraceService.class), new ObjectMapper(), mock(ProcessEntityVariableService.class));
+        var callback = mock(Runnable.class);
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("保存前拒绝")).when(callback).run();
+        if (scenario.equals("REJECT")) {
+            assertThrows(IllegalArgumentException.class, () -> service.applyEditableData(task(), Map.of(), callback));
+            verify(callback).run();
+        } else {
+            service.applyEditableData(task(), Map.of(), callback);
+            org.mockito.Mockito.verifyNoInteractions(callback);
+        }
+        org.mockito.Mockito.verifyNoInteractions(snapshots, forms, mutations, submissions);
+    }
+
     /** 旧实例只读名称参与提交前派生时，预览与正式补齐后的结果一致，客户端不能伪造它。 */
     @Test
     void previewRepairsMissingNameBeforeSubmissionRulesWithoutWritingRuntime() {
@@ -292,9 +316,15 @@ class NodeFormSubmissionServiceTest {
                 UiRuntimePurpose.ACTIVE_TASK))
                 .thenReturn(form);
 
+        var beforeSaveCalls = new java.util.concurrent.atomic.AtomicInteger();
         service.applyEditableData(task, Map.of(
                 "amount", 88,
-                "lockedNote", "tampered"));
+                "lockedNote", "tampered"), () -> {
+            // 扩展必须先于可信数据投影及已发布表单处理，拒绝时不会留下实体写入。
+            org.mockito.Mockito.verifyNoInteractions(snapshotService, runtimeFormService, submissionService, mutationPort);
+            beforeSaveCalls.incrementAndGet();
+        });
+        assertEquals(1, beforeSaveCalls.get());
 
         ArgumentCaptor<EntityMutationCommand> updateCaptor =
                 ArgumentCaptor.forClass(EntityMutationCommand.class);

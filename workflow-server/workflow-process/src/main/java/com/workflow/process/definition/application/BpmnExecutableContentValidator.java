@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * Fail-closed validator for Flowable executable extension points.
  */
-final class BpmnExecutableContentValidator {
+public final class BpmnExecutableContentValidator {
 
     private static final Set<String> ALLOWED_DELEGATE_EXPRESSIONS = Set.of(
             "${ccNotificationDelegate}",
@@ -129,7 +129,7 @@ final class BpmnExecutableContentValidator {
      * @param expression 表达式，作为 {@code expression.substring} 的输入影响后续处理
      * @return 安全数据表达式条件成立时为 true，否则为 false
      */
-    static boolean isSafeDataExpression(String expression) {
+    public static boolean isSafeDataExpression(String expression) {
         if (expression == null || !expression.startsWith("${")
                 || !expression.endsWith("}") || expression.length() > 1002) {
             return false;
@@ -141,7 +141,8 @@ final class BpmnExecutableContentValidator {
         }
         String body;
         try {
-            body = stripQuotedLiterals(rawBody);
+            body = stripQuotedLiterals(com.workflow.process.condition.application.WorkflowSelectionCondition
+                    .substitute(rawBody, null));
         } catch (IllegalArgumentException exception) {
             return false;
         }

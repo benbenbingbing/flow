@@ -248,7 +248,7 @@ class TaskActionServiceTest {
                 nodeFormSubmissionService, taskService);
         ordered.verify(entityVariableService).missingRecordVariables(storedVariables);
         ordered.verify(runtimeService).setVariables("proc-1", missingVariables);
-        ordered.verify(nodeFormSubmissionService).applyEditableData(task, formData);
+        ordered.verify(nodeFormSubmissionService).applyEditableData(eq(task), eq(formData), any(Runnable.class));
         ordered.verify(taskService).complete(eq("task-1"), anyMap());
     }
 
@@ -431,7 +431,7 @@ class TaskActionServiceTest {
         verify(taskService, never()).claim(any(), any());
         verify(taskService).complete(eq("task-lisi"), anyMap());
         verify(processTaskService).completeTask("task-lisi", "approve", "同意", null);
-        verify(nodeFormSubmissionService).applyEditableData(task, null);
+        verify(nodeFormSubmissionService).applyEditableData(eq(task), org.mockito.ArgumentMatchers.isNull(), any(Runnable.class));
     }
 
     /** 测试并发认领时另一用户抢先认领返回冲突：验证抛出业务冲突异常且不触发同步认领 */

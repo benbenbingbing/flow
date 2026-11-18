@@ -193,11 +193,13 @@
             </el-form-item>
             <template v-if="!isSelectedFieldStructureLocked">
               <el-form-item label="字段编码" required :error="selectedFieldCodeError">
+                <template #label>
+                  <ConfigHelpLabel label="字段编码" content="以小写英文字母开头，仅支持英文字母和数字。" />
+                </template>
                 <el-input
                   v-model="selectedField.fieldCode"
                   placeholder="小驼峰命名，如 endTime"
                 />
-                <div v-if="!selectedFieldCodeError" class="form-tip">以小写英文字母开头，仅支持英文字母和数字。</div>
               </el-form-item>
               <el-form-item label="字段类型" required>
                 <el-select
@@ -222,13 +224,13 @@
               <el-switch v-model="selectedField.isUnique" />
             </el-form-item>
             <el-form-item label="默认值">
+              <template v-if="showOptions" #label>
+                <ConfigHelpLabel label="默认值" content="请填写选项的值（value 或 key）。显示名称（label）用于界面展示。" />
+              </template>
               <el-input
                 v-model="selectedField.defaultValue"
                 :placeholder="showOptions ? '请输入选项的 value 值（如 1）' : '请输入默认值'"
               />
-              <div v-if="showOptions" class="form-tip">
-                默认值应填写选项的 value（key），而非显示文本 label
-              </div>
             </el-form-item>
           </SettingsSection>
 
@@ -253,6 +255,9 @@
 
             <!-- 字段长度配置（文本等字符串类型） -->
             <el-form-item v-if="showFieldLength" label="字段长度">
+              <template #label>
+                <ConfigHelpLabel label="字段长度" content="对应数据库 VARCHAR 长度" />
+              </template>
               <el-input-number
                 v-model="selectedField.fieldLength"
                 :min="1"
@@ -260,12 +265,14 @@
                 placeholder="默认200"
                 style="width: 100%"
               />
-              <div class="form-tip">对应数据库 VARCHAR 长度</div>
             </el-form-item>
 
             <!-- 小数精度配置（DECIMAL 类型） -->
             <template v-if="selectedField.fieldType === 'DECIMAL'">
               <el-form-item label="总位数">
+                <template #label>
+                  <ConfigHelpLabel label="总位数" content="DECIMAL 总位数（precision），包含整数和小数部分的数字位数。" />
+                </template>
                 <el-input-number
                   v-model="selectedField.fieldLength"
                   :min="1"
@@ -273,9 +280,11 @@
                   placeholder="默认18"
                   style="width: 100%"
                 />
-                <div class="form-tip">DECIMAL 总位数（precision）</div>
               </el-form-item>
               <el-form-item label="小数位数">
+                <template #label>
+                  <ConfigHelpLabel label="小数位数" content="DECIMAL 小数位数（scale），指定小数点后的数字位数。" />
+                </template>
                 <el-input-number
                   v-model="selectedField.fieldPrecision"
                   :min="0"
@@ -283,12 +292,54 @@
                   placeholder="默认2"
                   style="width: 100%"
                 />
-                <div class="form-tip">DECIMAL 小数位数（scale）</div>
               </el-form-item>
             </template>
 
             <template v-if="showOptions">
-              <el-form-item label="代码表" required>
+              <el-form-item label="选项来源" required>
+                <template #label>
+                  <ConfigHelpLabel
+                    label="选项来源"
+                    content="字段发布后，选项来源和绑定均会锁定。如需切换，请新增字段。"
+                  />
+                </template>
+                <el-radio-group
+                  :model-value="isOptionInterfaceSource ? 'INTERFACE' : 'DICTIONARY'"
+                  :disabled="isSelectedFieldStructureLocked"
+                  @change="changeOptionSource"
+                >
+                  <el-radio-button value="DICTIONARY">代码表</el-radio-button>
+                  <el-radio-button value="INTERFACE">只读接口</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item v-if="isOptionInterfaceSource" label="选项接口" required>
+                <template #label>
+                  <ConfigHelpLabel
+                    label="选项接口"
+                    content="表单继承此接口。保存时只校验外部编码格式，无需调用接口确认编码是否存在。"
+                  />
+                </template>
+                <el-select
+                  v-model="selectedField.optionsInterfaceId"
+                  :disabled="isSelectedFieldStructureLocked"
+                  :loading="optionsInterfacesLoading"
+                  filterable
+                  placeholder="选择 FORM 只读接口"
+                  style="width: 100%"
+                >
+                  <el-option v-for="item in optionsInterfaces" :key="item.extensionId"
+                    :value="item.extensionId" :label="`${item.displayName} (${item.extensionKey})`" />
+                </el-select>
+                <el-button v-if="optionsInterfacesError" link type="danger" @click="loadOptionsInterfaces">加载失败，重试</el-button>
+              </el-form-item>
+              <el-form-item v-else label="代码表" required>
+                <template #label>
+                  <ConfigHelpLabel
+                    label="代码表"
+                    :content="(isSelectedFieldStructureLocked ? '字段已发布，代码表绑定已锁定，仍可查看或维护当前代码表。' : '')
+                      + '数据保存代码项编码，显示名称从代码表关联解析。'"
+                  />
+                </template>
                 <div class="field-dict-binding">
                   <DictDefinitionPicker
                     v-model="selectedField.dictType"
@@ -306,8 +357,6 @@
                     </el-button>
                   </div>
                 </div>
-                <div v-if="isSelectedFieldStructureLocked" class="form-tip">字段已发布，代码表绑定已锁定；可查看或维护当前代码表。</div>
-                <div class="form-tip">数据保存代码项编码，显示名称从代码表关联解析。</div>
               </el-form-item>
             </template>
 
@@ -339,19 +388,22 @@
 
             <!-- 子表单配置 -->
             <template v-if="isSubForm">
-              <el-alert
-                title="子表单已改为页面组件"
-                description="在实体关系中定义组成关系，再从表单设计左侧添加子表单或明细编辑；数据随主表统一保存。"
-                type="info"
-                :closable="false"
-                show-icon
-              />
+              <el-alert type="info" :closable="false" show-icon>
+                <template #title>
+                  <ConfigHelpLabel
+                    label="子表单已改为页面组件"
+                    content="在实体关系中定义组成关系，再从表单设计左侧添加子表单或明细编辑。数据随主表统一保存。"
+                  />
+                </template>
+              </el-alert>
               <el-form-item v-if="selectedField.relationCode" label="旧关系绑定">
+                <template #label>
+                  <ConfigHelpLabel label="旧关系绑定" content="此绑定用于兼容旧版子表单字段。请在实体关系中查看和管理关系定义。" />
+                </template>
                 <el-input
                   :model-value="`${selectedField.relationName || selectedField.relationCode} (${selectedField.relationCode})`"
                   disabled
                 />
-                <div class="form-tip">仅用于兼容历史 SUB_FORM 承载字段，关系配置以独立关系定义为准。</div>
               </el-form-item>
               <el-button type="primary" text @click="activeDesignTab = 'relations'">
                 前往实体关系管理
@@ -360,7 +412,14 @@
 
             <!-- 展示组件统一在页面引用关系，旧字段仅保留识别提示。 -->
             <template v-if="isSubList">
-              <el-alert title="子列表已改为页面组件" description="先在实体关系中定义关联，再到表单或列表的关联内容中选择目标列表；实体字段不再配置展示页面。" type="info" :closable="false" show-icon />
+              <el-alert type="info" :closable="false" show-icon>
+                <template #title>
+                  <ConfigHelpLabel
+                    label="子列表已改为页面组件"
+                    content="先在实体关系中定义关联，再到表单或列表的关联内容中选择目标列表。"
+                  />
+                </template>
+              </el-alert>
               <el-button type="primary" link @click="activeDesignTab = 'relations'">前往实体关系管理</el-button>
             </template>
 
@@ -377,10 +436,15 @@
                   <el-input v-model="item.itemName" placeholder="如：项目章程、需求文档" />
                 </el-form-item>
                 <el-form-item label="是否必填">
+                  <template #label>
+                    <ConfigHelpLabel label="是否必填" content="开启后，该附件项至少需要上传一个文件。" />
+                  </template>
                   <el-switch v-model="item.required" />
-                  <div class="form-tip">开启后，该附件项至少需要上传一个文件。</div>
                 </el-form-item>
                 <el-form-item label="文件类型">
+                  <template #label>
+                    <ConfigHelpLabel label="文件类型" content="可输入自定义扩展名并按回车确认。留空时允许所有文件类型。" />
+                  </template>
                   <el-select
                     v-model="item.fileTypes"
                     multiple
@@ -404,7 +468,6 @@
                       />
                     </el-option-group>
                   </el-select>
-                  <div class="form-tip">可直接输入自定义扩展名并回车；不选表示允许所有类型。</div>
                 </el-form-item>
                 <el-form-item label="单文件大小">
                   <el-input-number
@@ -435,6 +498,9 @@
             <!-- 实体引用配置 -->
             <template v-if="isReference">
               <el-form-item label="目标实体" required>
+                <template #label>
+                  <ConfigHelpLabel label="目标实体" :content="getEntityReferenceSelectionHint(selectedField.fieldType)" />
+                </template>
                 <EntityDefinitionPicker
                   v-model="selectedField.refEntityId"
                   placeholder="选择目标实体"
@@ -444,7 +510,6 @@
                   :exclude-values="[String(entityId)]"
                   @change="onReferenceEntityChange"
                 />
-                <div class="form-tip">{{ getEntityReferenceSelectionHint(selectedField.fieldType) }}</div>
               </el-form-item>
               <el-form-item v-if="selectedField.refEntityId" label="显示字段">
                 <el-select
@@ -940,6 +1005,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { entityApi } from '@/api/entity'
+import { uiExtensionApi } from '@/api/uiConfig'
 
 import { getDictList } from '@/api/system/dict'
 import { useUserStore } from '@/stores/user'
@@ -1113,6 +1179,36 @@ const {
 // 是否显示选项配置
 const showOptions = computed(() => {
   return selectedField.value && ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(selectedField.value.fieldType)
+})
+const isOptionInterfaceSource = computed(() => Boolean(selectedField.value?.optionsInterfaceId) || selectedField.value?.optionSource === 'INTERFACE')
+const optionsInterfaces = ref([])
+const optionsInterfacesLoading = ref(false)
+const optionsInterfacesError = ref(false)
+
+/** 接口与代码表互斥，来源只在未发布字段中可更换。 */
+function changeOptionSource(source) {
+  if (!selectedField.value || isSelectedFieldStructureLocked.value) return
+  selectedField.value.optionSource = source
+  if (source === 'INTERFACE') selectedField.value.dictType = null
+  else selectedField.value.optionsInterfaceId = null
+}
+
+async function loadOptionsInterfaces() {
+  optionsInterfacesLoading.value = true
+  optionsInterfacesError.value = false
+  try {
+    optionsInterfaces.value = await uiExtensionApi.availableInterfaces({
+      ownerType: 'ENTITY', ownerId: entityId, bindingCode: 'FIELD_OPTIONS'
+    }) || []
+  } catch {
+    optionsInterfacesError.value = true
+  } finally {
+    optionsInterfacesLoading.value = false
+  }
+}
+
+watch([showOptions, isOptionInterfaceSource], ([visible, useInterface]) => {
+  if (visible && useInterface && !optionsInterfacesLoading.value && !optionsInterfaces.value.length) loadOptionsInterfaces()
 })
 
 // 是否显示字段长度配置（字符串相关类型）
@@ -1762,6 +1858,11 @@ onMounted(async () => {
 .readonly-panel :deep(.el-form) {
   pointer-events: none;
   opacity: 0.78;
+}
+
+/* 系统实体的字段不可编辑，但仍可读取配置说明。 */
+.readonly-panel :deep(.config-help-label__button) {
+  pointer-events: auto;
 }
 
 .property-panel :deep(.el-input__inner),

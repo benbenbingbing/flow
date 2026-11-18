@@ -143,7 +143,7 @@ public class TaskActionService {
                 null,
                 List.of(),
                 true,
-                true, null);
+                true, true, null);
     }
 
     /**
@@ -189,7 +189,7 @@ public class TaskActionService {
                 nextApprovalScopeKey,
                 nextApproverSelections,
                 true,
-                true, null);
+                true, true, null);
     }
 
     /**
@@ -202,13 +202,13 @@ public class TaskActionService {
             String actionLabel, Map<String, Object> formData, String nextApprovalScopeKey,
             List<NextApproverSelectionRequest> nextApproverSelections, String returnTargetNodeId) {
         completeTaskInternal(taskId, userId, "reject", comment, null, actionLabel, formData,
-                nextApprovalScopeKey, nextApproverSelections, true, true, returnTargetNodeId);
+                nextApprovalScopeKey, nextApproverSelections, true, true, true, returnTargetNodeId);
     }
 
     /**
      * 加签收口时办理先前暂存的原任务动作；发起加签时已校验原任务权限，
      * 收口前先判断下一审批人是否需原办理人手动选择，因此此处不再以
-     * 当前登录人做交互式办理校验。
+     * 当前登录人做交互式办理校验。只触发实际表单保存和引擎推进，不重复审批办理前后。
      *
      * @param taskId Flowable 任务 ID，提交前重新读取以确认任务仍活动
      * @param userId 办理人 ID，写入审批变量和处理日志
@@ -232,7 +232,7 @@ public class TaskActionService {
                 null,
                 List.of(),
                 false,
-                false, null);
+                false, false, null);
     }
 
     /**
@@ -270,7 +270,7 @@ public class TaskActionService {
     }
 
     /**
-     * 统一办理顺序：授权与认领、节点表单写入、下一审批人重验、引擎完成和本地待办同步。
+     * 统一办理顺序：授权、审批办理前、认领、实际表单保存、推进前、下一审批人重验、引擎及本地同步、审批办理后。
      * checkAccess/validateNextApprover 仅由已完成对应校验的后台收口路径关闭；
      * 任一步失败都依赖外层事务回滚，避免引擎任务与本地记录状态分叉。
      *
@@ -285,6 +285,7 @@ public class TaskActionService {
      * @param nextApproverSelections 用户选择的后续办理人，由覆盖服务重验
      * @param checkAccess 交互办理时为 true；后台加签收口已提前授权时关闭
      * @param validateNextApprover 交互办理时为 true；后台收口前已判断手选需求时关闭
+     * @param emitApprovalActions 是否为本次直接审批提交；后台执行已提交输入时为 false，防止重复执行业务动作
      * @param returnTargetNodeId 专用退回命令的目标约束，空值沿用旧表单兼容字段
      */
     private void completeTaskInternal(String taskId, String userId, String action, String comment, String transferTo,
@@ -293,6 +294,7 @@ public class TaskActionService {
                                       List<NextApproverSelectionRequest> nextApproverSelections,
                                       boolean checkAccess,
                                       boolean validateNextApprover,
+                                      boolean emitApprovalActions,
                                       String returnTargetNodeId) {
         comment = comment == null ? "" : comment;
         requireConfiguredNodeOperation(taskId, action, comment, transferTo, formData, returnTargetNodeId);
@@ -324,8 +326,9 @@ public class TaskActionService {
         var operation = operationActions.task(task, taskId, transfer ? "TRANSFER" : "SUBMIT", userId,
                 formData, operationParameters);
         operation.setApprovalAction(normalizedAction);
-        // 同一前置边界内的动作按配置顺序执行；校验或处理由处理器决定，均先于认领和表单写入。
-        operationActions.fire(operation, transfer ? TASK_TRANSFERRING : TASK_FORM_SAVING);
+        // 一次交互审批只执行一次统一前后动作；后台加签收口沿用已提交输入，不再次计作审批。
+        if (transfer) operationActions.fire(operation, TASK_TRANSFERRING);
+        else if (emitApprovalActions) operationActions.fire(operation, TASK_SUBMITTING);
         if (checkAccess) {
             String currentIdentity = currentTaskIdentity();
             if (!StringUtils.hasText(assignee)) {
@@ -360,12 +363,14 @@ public class TaskActionService {
                             formData);
         }
 
-        nodeFormSubmissionService.applyEditableData(task, formData);
+        // 只有表单服务确认存在实体提交上下文，才触发表单边界；加签暂存和本地子任务不会进入这里。
+        nodeFormSubmissionService.applyEditableData(task, formData,
+                transfer ? null : () -> operationActions.fire(operation, TASK_FORM_SAVING));
 
         // 检查是否是多实例任务（会签/或签），以已部署 BPMN 为准
         boolean isMultiInstance = multiInstanceOutcomeService.isMultiInstance(task);
 
-        // 影响路由/候选人的变量必须先写入，再重验下一审批人，不能在重验后改写其依据。
+        // 下一审批人重验依赖的变量必须先写入；节点离开前虽能计算路由，也不能再改写已重验的选人依据。
         if (!transfer) operationActions.fire(operation, TASK_ADVANCING);
         if ("transfer".equals(normalizedAction)) {
             if (nextApproverSelections != null
@@ -489,7 +494,8 @@ public class TaskActionService {
                     processInstanceId,
                     taskId);
         }
-        operationActions.fire(operation, transfer ? TASK_TRANSFERRED : TASK_SUBMITTED);
+        if (transfer) operationActions.fire(operation, TASK_TRANSFERRED);
+        else if (emitApprovalActions) operationActions.fire(operation, TASK_SUBMITTED);
     }
 
     /**
@@ -919,7 +925,7 @@ public class TaskActionService {
 
             // 清理本地待办
             processTaskService.deleteTasksByProcessInstance(processInstanceId);
-            operationActions.fire(operation, PROCESS_WITHDRAW_EXECUTED);
+            // 结束动作由引擎事件登记，在事务提交前统一触发，确保本次日志及待办清理全部完成。
 
             log.info("流程实例 {} 已被用户 {} 撤回，原因: {}",
                     LogValue.safe(processInstanceId), LogValue.safe(userId), LogValue.safe(reason));

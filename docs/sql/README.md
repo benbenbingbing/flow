@@ -4,6 +4,54 @@
 
 本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132、V133 的 MySQL 增量脚本及执行限制见下文。
 
+## 2026-11-18 同步 V144 合并流程发起时机
+
+同时检查 SQL 和 Java 迁移，原最高版本为工作区已有的 V143；本轮新增 [`V144__merge_process_started_into_start_after.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V144__merge_process_started_into_start_after.sql)，将全部旧 `PROCESS_STARTED` 配置迁到 `PROCESS_START_EXECUTED`（发起后），不按处理器用途转到发起前。`PROCESS_COMPLETED` 改称流程正常结束后；当前20项标准时机（流程7、用户任务节点12、连线1），见[发起边界及顺序](../flow-action-timing-extension.md#v144-合并发起时机)。
+
+本轮只转换业务动作绑定，不改 DDL、字段、索引、约束、种子或退役对象。七份空库脚本仅新增 V144 说明，与本轮修改前逐字比较，结构、注释及种子全部保留；最终结构包含已有 V143 的 `entity_field.options_interface_id`，为 **202张表、2,818字段**。七方言表名及字段清单一致，`entity_field` 32列、`process_action` 25列、`process_action_execution` 44列；历史空库清单测试同步核对这一最终字段数。
+
+验证：相关后端 **377项测试通过，43类，0失败/错误/跳过**。V144 的3项 Flyway 测试在 H2 MySQL / PostgreSQL / Oracle 兼容模式执行真实 SQL，检查草稿/发布/禁用/删除配置、动作身份、发布版本、执行方式、失败策略、参数、顺序及依赖保留，原有发起前/后与正常结束配置不误改，历史执行原文、validate 和再次 migrate。真实 Flowable / Spring / MyBatis / H2 验证普通发起只执行一次、发起后晚于关联/待办同步、调用子流程晚于权限投影、立即结束先发起后再正常结束后、首节点失败不触发、发起后及外层失败共同回滚、独立事务隔离、通知提交后消费及旧入队快照继续执行；项目处理器声明与三份实际随包配置一致。前端时机约束2项、页面配置审计、管理端及 Embed 生产构建通过。
+
+迁移清单：本轮新增 **V144__merge_process_started_into_start_after.sql**；已有 V140、V141、V142 SQL 及 **V143__entity_field_options_interface.java** 沿用工作区内容，没有修改、删除或重命名历史 SQL / Java 迁移。未改 V001、建立基线或执行 repair。未连接业务库，七种数据库均未进行实机迁移或全量导入，H2 兼容模式及静态核对不替代实机验证。
+
+## 2026-11-18 同步 V143 实体字段选项接口
+
+创建前同时核对 SQL 和 Java 迁移，当时最高版本为 V142。新增唯一的 [V143__entity_field_options_interface.java](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V143__entity_field_options_interface.java)，仅向 `entity_field` 增加可空 `options_interface_id`：MySQL、OB MySQL、PostgreSQL、人大金仓使用 VARCHAR(64)，Oracle、达梦、OB Oracle 使用 VARCHAR2(64 CHAR)。已有代码表、主键、索引、约束、种子和退役对象不变。
+
+七种脚本逐方言核对一致：**202 张表、2,818 个字段**，`entity_field` 为 32 列。本次变更新增列无非空约束，默认 NULL，七种脚本均有用途注释。H2 在 MySQL、PostgreSQL、Oracle 兼容模式执行增量迁移、验证及再次 migrate，历史字典列及记录保持不变；七种数据库均未实机升级或完整导入。
+
+本次仅新增上述 Java 迁移，未修改、删除或重命名历史迁移，未改 V001，未建全量基线或执行 repair。
+
+## 2026-11-18 同步 V142 合并引擎任务完成时机
+
+同时检查 SQL 和 Java 迁移后，原最高版本为 V141；本轮新增 [`V142__merge_task_completion_into_node_exit.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V142__merge_task_completion_into_node_exit.sql)。旧 `TASK_COMPLETING` 配置归入 `NODE_COMPLETED`（节点离开前），保留本次审批结果已写入、尚未继续路由的边界，不提前到 `TASK_ADVANCING`（审批流转前，表单保存后）。V142时有21个标准时机（流程8、用户任务节点12、连线1），具体边界及顺序见[时机说明](../flow-action-timing-extension.md#v142-合并引擎任务完成时机)。
+
+本轮不改 DDL、约束、索引、种子或退役对象。七份空库脚本仅新增 V142 说明，均为 **202张表、2,817字段**；`process_action` 25列、`process_action_execution` 44列。逐方言核对表名和字段清单一致，并与 Git 原文件比较：剔除 V140～V142 新增的版本说明后全文一致，字段类型、长度、可空性、默认值、用途注释、主键、索引、约束及种子全部保留。
+
+验证：相关后端 **344项测试通过，39类，0失败/错误/跳过**。V142 的3项 Flyway 测试在 H2 MySQL / PostgreSQL / Oracle 兼容模式执行实际 SQL，检查草稿/发布/禁用/删除配置、动作身份、版本、执行方式、失败策略、参数、排序和依赖保留、旧执行原文、validate 及再次 migrate。真实 Flowable / Spring / MyBatis / H2 测试覆盖审批结果读取、路由写入、普通和顺序/并行会签、或签取消分支、原生跳过、加签最后收口、正反例事务回滚及提交后快照。前端时机约束2项、页面配置总审计、管理端和 Embed 生产构建通过；总审计已同步动态分组标题和退役时机断言。
+
+迁移清单：本轮新增 **V142__merge_task_completion_into_node_exit.sql**；已有 **V140__merge_flow_action_end_timings.sql**、**V141__unify_approval_action_timings.sql** 沿用前轮工作区内容；历史 SQL / Java 迁移修改、删除、重命名均为 **无**。未改 V001、建立基线或执行 repair。未连接业务库，七种数据库未执行实机升级或全量导入，H2 兼容模式和静态核对不替代实机验证。
+
+## 2026-11-18 同步 V141 统一审批办理时机
+
+同时检查 SQL 和 Java 迁移后，原最高版本为 V140；本轮仅新增 [`V141__unify_approval_action_timings.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V141__unify_approval_action_timings.sql)。四种加签专用时机归入审批办理前/后，动作 ID、发布版本、排序、启用状态、执行方式、失败策略和依赖保留；历史执行和已入队快照不变。具体边界和当前顺序见[时机说明](../flow-action-timing-extension.md#v141-统一审批时机)。
+
+本轮无 DDL、种子或退役对象变化。七份最终脚本仅新增 V141 说明，仍为 **202张表、2,817字段**；`process_action` 为25列，`process_action_execution` 为44列。已有 V140 保留原有工作区内容；没有修改、删除或重命名主分支历史 SQL / Java 迁移，没有改 V001、建立基线或执行 repair。
+
+V141 的3项 Flyway 测试在 H2 MySQL / PostgreSQL / Oracle 兼容模式执行实际迁移，覆盖四种旧编码、草稿/发布/删除配置、其他配置字段和历史执行保留、validate 及再次 migrate。所选后端322项测试全部通过（37类，0失败/错误/跳过），含统一审批前后、真实嵌套收口及正反例事务验证；前端约束2项及管理端/Embed构建通过。七份脚本除版本说明外与原文件逐字一致，表名、字段、索引、约束、用途注释和种子均保持原状。
+
+未连接业务库，七种数据库未执行实机升级或全量导入。迁移清单：本轮新增 **V141__unify_approval_action_timings.sql**；已有 **V140__merge_flow_action_end_timings.sql** 保持上一轮工作区内容；历史迁移修改、删除或重命名均为 **无**。
+
+## 2026-11-17 同步 V140 合并流程结束时机
+
+已同时检查 SQL 和 Java 迁移，原最高版本 V139；本次仅新增 [`V140__merge_flow_action_end_timings.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V140__merge_flow_action_end_timings.sql)。迁移将两种旧业务后置编码归入统一的撤回后、流程终止后时机，保留动作身份、发布版本、执行方式、失败策略、排序和依赖；执行审计和已入队快照保持原文。详见[触发边界及顺序](../flow-action-timing-extension.md#v140-结束时机合并及触发边界)。
+
+本次不涉及 DDL、系统种子或退役对象变化，七份空库脚本仅追加 V140 说明，最终仍为 **202 张表、2,817 个字段**；受影响的 `process_action` 为25列、`process_action_execution` 为44列。没有修改、删除或重命名已有 SQL / Java 迁移，没有修改 V001、建立基线或执行 repair。
+
+V140 的3项 Flyway 测试在 H2 MySQL / PostgreSQL / Oracle 兼容模式执行真实迁移，检查配置转换、身份/版本/排序/策略/依赖及审计保留、validate 和再次 migrate。七份脚本逐字核对，除 V140 说明外无任何变化。所选后端303项测试全部通过，覆盖结束时序、正反例、回滚、去重、系统通道和旧队列快照；前端约束2项、管理端及 Embed 构建通过。页面总审计有既有动态标题的静态断言失配，详情及复现命令见时机说明。
+
+未连接业务库，七种数据库未进行实机升级或全量导入。迁移清单：新增 **V140__merge_flow_action_end_timings.sql**；修改、删除、重命名历史 SQL / Java 迁移均为 **无**。
+
 ## 2026-11-17 同步 V139 合并业务操作前时机
 
 已同时检查 SQL 和 Java 迁移，原最高版本为 V138；本次新增唯一的 [`V139__merge_flow_action_before_timings.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V139__merge_flow_action_before_timings.sql)。迁移仅更新 `process_action.trigger_timing` 的八种旧配置值，不涉及 DDL、索引、约束或种子。七份空库脚本均同步版本说明，仍为 **202 张表、2,817 个字段**；空库没有 `process_action` 绑定种子需要转换，所有结构、字段语义、已有种子及退役对象清理结果保持不变。

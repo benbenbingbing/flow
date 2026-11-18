@@ -45,7 +45,7 @@ public class FlowActionTimingCatalog {
         boolean bpmnTypeSpecified = StringUtils.hasText(bpmnType);
         boolean userTask = isUserTask(bpmnType);
         List<FlowActionTimingOption> options = new ArrayList<>();
-        // 先收集内置标准时机，按作用域与用户任务限制过滤
+        // 枚举声明按作用域及常见业务路径排序；先过滤再返回，不能按名称或编码重新排序。
         for (FlowActionTriggerTiming timing : FlowActionTriggerTiming.values()) {
             if (scope != null && !timing.getScopeTypes().contains(scope)) {
                 continue;

@@ -10,7 +10,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 在 F07 启动事务内执行成员、投入、角色、权限和交接门禁。
+ * 在 F07 发起后、事务提交前执行成员、投入、角色、权限和交接门禁。
+ * 首节点已经执行，失败仍回滚本次发起；这里写入的复核变量供后续节点使用。
  */
 @Component("validateProjectMemberChangeHandler")
 public class ValidateProjectMemberChangeHandler
@@ -35,7 +36,7 @@ public class ValidateProjectMemberChangeHandler
      */
     @Override
     public Set<String> supportedTriggerTimings() {
-        return Set.of("PROCESS_STARTED");
+        return Set.of("PROCESS_START_EXECUTED");
     }
 
     /**

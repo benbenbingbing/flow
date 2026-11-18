@@ -299,9 +299,10 @@ public class SendNotificationHandler implements FlowActionProvider {
               源节点完成时目标任务可能尚未创建，无法获得真实任务 ID 和最终办理人。应配置在目标用户任务的
               <code>TASK_CREATED</code>，并使用 <code>AFTER_COMMIT + RETRY</code>。
             </el-collapse-item>
-            <el-collapse-item title="NODE_COMPLETED 和 TASK_COMPLETING 有什么区别？">
-              <code>TASK_COMPLETING</code> 是引擎 TASK_COMPLETED 的兼容映射，表单已经保存。审批前校验或处理使用 TASK_FORM_SAVING，路由准备使用 TASK_ADVANCING；
-              <code>NODE_COMPLETED</code> 适用于所有节点，主要用于节点结束后的变量计算和路由准备。
+            <el-collapse-item title="审批流转前、节点离开前和审批办理后有什么区别？">
+              <code>TASK_ADVANCING</code>（审批流转前）在实际表单处理后、下一审批人重验及引擎办理前，适合校验已保存的数据或准备候选人变量；本次审批结果尚未汇总写入。
+              <code>NODE_COMPLETED</code>（节点离开前）在当前执行实例完成后、继续路由前，适合读取本次审批结果并计算路由变量；会签时不代表全员已完成。
+              <code>TASK_SUBMITTED</code>（审批办理后）在本次提交及相关同步处理完成后，下一节点可能已经创建，也可能仍在等待加签，适合办理记录及提交后通知。
             </el-collapse-item>
             <el-collapse-item title="结束类动作为什么不能依赖 currentTask？">
               正常完成、撤回或终止后，活动任务通常已经删除。请使用 <code>getHistoricProcessInstance()</code>、
@@ -493,49 +494,49 @@ const storageFieldList = [
 
 const engineTimingDetailList = [
   {
-    code: 'PROCESS_STARTED',
-    label: '引擎流程启动时',
+    code: 'PROCESS_START_EXECUTED',
+    label: '发起后',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'IN_TRANSACTION',
     policy: 'ROLLBACK',
-    phase: '流程实例创建并发出 PROCESS_STARTED 事件时，仍处于流程启动主事务内。',
-    context: '流程实例、流程定义、执行实例、启动变量、实体编码和实体数据 ID；任务字段通常为空。',
-    use: '初始化流程变量、创建业务关联、启动后必须同步完成的核心写入。',
-    caution: '失败会导致流程启动整体回滚；不要在此同步调用不稳定的外部网络服务。'
+    phase: '引擎启动、流程关联和待办同步完成后；调用子流程在事务提交前补齐，同一实例只触发一次。',
+    context: '流程实例、实体标识、发起人和发起后的流程变量快照；没有独立的触发任务。',
+    use: '记录发起结果、发起后核心业务写入、提交后发送发起通知。',
+    caution: '首节点已经执行，首节点所需变量应在发起前准备；此时仍可能回滚，通知需选择 AFTER_COMMIT。'
   },
   {
     code: 'PROCESS_COMPLETED',
-    label: '引擎流程正常结束时',
+    label: '流程正常结束后',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'AFTER_COMMIT',
     policy: 'RETRY',
-    phase: '流程通过普通结束事件正常完成并发出 PROCESS_COMPLETED 事件时。',
+    phase: '流程正常完成、本次同步处理完成后，在外层事务提交前统一触发。',
     context: '历史变量、实体数据、流程实例标识；当前任务为空。',
     use: '归档、完成通知、报表同步、外部系统完成状态回写。',
     caution: '不要用于撤回或异常终止；需要区分结束类型时分别使用 WITHDRAWN 和 TERMINATED。'
   },
   {
     code: 'PROCESS_WITHDRAWN',
-    label: '引擎实例撤回时',
+    label: '撤回后',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'AFTER_COMMIT',
     policy: 'RETRY',
-    phase: '流程被取消且取消原因被平台识别为“撤回”时。',
+    phase: '实例撤回、日志及本地待办清理完成后，在外层事务提交前统一触发。',
     context: '历史变量、实体数据、撤回原因、操作人；当前任务通常已删除。',
     use: '撤回通知、资源释放、业务状态恢复、撤回后的外部同步。',
     caution: '只处理平台可识别的撤回；普通取消或异常结束会进入 PROCESS_TERMINATED。'
   },
   {
     code: 'PROCESS_TERMINATED',
-    label: '引擎实例终止时',
+    label: '流程终止后',
     scope: '全局流程',
     elementType: '整个流程',
     mode: 'AFTER_COMMIT',
     policy: 'RETRY',
-    phase: '主动终止、非撤回取消，或终止/错误/升级结束事件导致流程结束时。',
+    phase: '人工、系统或 BPMN 终止及本次同步处理完成后，在外层事务提交前统一触发。',
     context: '历史变量、实体数据、终止原因和操作人；当前任务为空。',
     use: '异常清理、终止通知、补偿资源、终止状态同步。',
     caution: '不要与正常完成共用同一业务语义；处理器应允许 endReason 为空或为引擎事件编码。'
@@ -554,15 +555,15 @@ const engineTimingDetailList = [
   },
   {
     code: 'NODE_COMPLETED',
-    label: '节点完成、路由计算前',
+    label: '节点离开前',
     scope: '节点',
     elementType: '所有非连线元素',
     mode: 'IN_TRANSACTION',
     policy: 'ROLLBACK',
-    phase: 'Flowable 发出 ACTIVITY_COMPLETED 事件，节点执行结束且流程继续路由仍处于同一事务时。',
-    context: '节点、执行实例和最新流程变量；用户任务专属审批字段不保证完整。',
+    phase: '当前执行实例完成且尚未继续路由时；会签和顺序多实例按实际完成任务补齐同一节点离开时机，不重复触发整体结束。',
+    context: '节点、执行实例和最新流程变量；实际完成的引擎用户任务保留任务 ID、名称和办理人，本次审批结果已写入。',
     use: '计算后续条件变量、写入节点结果、准备网关或顺序流判断数据。',
-    caution: '修改变量可能改变后续分支；会签或循环节点可能多次触发。'
+    caution: '按实际执行实例触发，会签不代表全员完成；修改变量可能改变后续分支，候选人变量应在审批流转前准备以接受重验。'
   },
   {
     code: 'TASK_CREATED',
@@ -589,18 +590,6 @@ const engineTimingDetailList = [
     caution: '同一任务可能触发多次，外部通知必须使用幂等键或业务去重规则。'
   },
   {
-    code: 'TASK_COMPLETING',
-    label: '引擎任务完成事件（兼容时机）',
-    scope: '用户任务',
-    elementType: 'UserTask',
-    mode: 'IN_TRANSACTION',
-    policy: 'ROLLBACK',
-    phase: '用户提交完成命令并产生 TASK_COMPLETED 事件时，提交变量已合并，流程继续流转仍在同一事务中。',
-    context: '触发任务、审批动作、审批人、审批意见相关变量、实体数据和完整流程变量快照。',
-    use: '兼容已有引擎完成事件扩展。新增表单保存前逻辑使用 TASK_FORM_SAVING，推进前使用 TASK_ADVANCING。',
-    caution: '失败会回滚任务完成和流程流转；外部 HTTP、短信和邮件不应放在此时机同步执行。'
-  },
-  {
     code: 'TRANSITION_TAKEN',
     label: '分支选中、进入目标节点前',
     scope: '连线',
@@ -614,19 +603,21 @@ const engineTimingDetailList = [
   }
 ]
 
-// 业务操作的准确阶段由后端目录维护，新增时机自动进入指南，避免与运行时契约漂移。
-const timingDetailList = computed(() => [
-  ...runtimeTimingOptions.value.filter(option => option.operationPhase).map(option => ({
-    code: option.value, label: option.label, scope: option.scopeType === 'PROCESS' ? '当前流程全局动作' : '用户任务节点',
-    elementType: option.userTaskOnly ? 'UserTask' : 'Process',
+// 全部时机沿用后端目录的实际顺序；结束时机已统一，不能再追加一份原生结束选项。
+const timingDetailList = computed(() => runtimeTimingOptions.value.map(option => {
+  const detail = engineTimingDetailList.find(item => item.code === option.value)
+  return {
+    ...detail,
+    code: option.value, label: option.label,
+    scope: option.scopeType === 'PROCESS' ? '当前流程全局动作' : option.scopeType === 'SEQUENCE_FLOW' ? '连线' : '节点',
+    elementType: option.userTaskOnly ? 'UserTask' : detail?.elementType || 'Process',
     mode: option.defaultExecutionMode, policy: option.defaultFailurePolicy,
     phase: option.description, context: option.availableContext,
-    use: option.blocking ? '按配置顺序执行校验或处理；异常阻止本次操作。' : '业务步骤完成后处理或通知。',
-    caution: option.blocking ? '只允许事务内执行且失败回滚；处理器按顺序校验或处理，提交表单快照只读。'
-      : '事务内后处理仍可能回滚；选择 AFTER_COMMIT 后通过 Outbox 通知。不是整个外层事务的 beforeCommit。'
-  })),
-  ...engineTimingDetailList
-])
+    use: detail?.use || (option.blocking ? '按配置顺序执行校验或处理；异常阻止本次操作。' : '业务步骤完成后处理或通知。'),
+    caution: detail?.caution || (option.blocking ? '只允许事务内执行且失败回滚；处理器按顺序校验或处理，提交表单快照只读。'
+      : '事务内后处理仍可能回滚；选择 AFTER_COMMIT 后通过 Outbox 通知。')
+  }
+}))
 
 const executionPolicyList = [
   {
@@ -707,6 +698,11 @@ const paramTypeList = [
 ]
 
 const contextList = [
+  { method: 'getBusinessOperation()', returnType: 'String', availability: '业务操作时机', desc: '普通审批、加签原任务提交和加签子任务办理均为 SUBMIT；其他操作使用各自编码。' },
+  { method: 'getTaskKind()', returnType: 'String', availability: '任务业务时机', desc: 'ENGINE 为原引擎任务，LOCAL_ADD_SIGN 为本地加签待办；统一审批动作通过此字段区分。' },
+  { method: 'getSourceTaskId()', returnType: 'String', availability: '本地加签', desc: '所属原任务 ID；当前 taskId 仍是实际办理的子任务 ID。' },
+  { method: 'getSubmittedFormData()', returnType: 'Map<String, Object>', availability: '审批提交', desc: '本次输入的只读快照。加签原任务提交时可能只暂存，本地子任务无独立审批表单。' },
+  { method: 'getOperationParameters()', returnType: 'Map<String, Object>', availability: '业务操作时机', desc: '意见、审批动作等操作输入；加签通过 type 区分 BEFORE / AFTER / PARALLEL。' },
   { method: 'getActionId()', returnType: 'String', availability: '全部时机', desc: '当前已发布 process_action 记录 ID。' },
   { method: 'getActionName()', returnType: 'String', availability: '全部时机', desc: '动作业务名称。' },
   { method: 'getTriggerTiming()', returnType: 'String', availability: '全部时机', desc: '本次触发的业务时机编码。' },
@@ -723,7 +719,7 @@ const contextList = [
   { method: 'getTaskName()', returnType: 'String', availability: 'TASK_*', desc: '触发任务名称。' },
   { method: 'getTaskAssignee()', returnType: 'String', availability: 'TASK_*', desc: '事件发生时的办理人；候选人模式下可能为空。' },
   { method: 'getOperatorId()', returnType: 'String', availability: '用户触发事件', desc: '当前用户、审批人或发起人的兜底标识。' },
-  { method: 'getApprovalAction()', returnType: 'String', availability: 'TASK_COMPLETING', desc: '审批动作变量 action 或 approved，例如 approve、reject。' },
+  { method: 'getApprovalAction()', returnType: 'String', availability: '审批办理及任务完成时机', desc: '本次审批动作，例如 approve、reject；普通审批和加签使用同一字段。' },
   { method: 'getSequenceFlowId()', returnType: 'String', availability: '连线动作', desc: '兼容字段；新动作通常与 elementId 相同。' },
   { method: 'getSourceNodeId()/Name()', returnType: 'String', availability: 'TRANSITION_TAKEN', desc: '本次实际经过连线的来源节点。' },
   { method: 'getTargetNodeId()/Name()', returnType: 'String', availability: 'TRANSITION_TAKEN', desc: '本次实际经过连线的目标节点。' },
@@ -740,8 +736,9 @@ const contextList = [
 ]
 
 const sceneGuideList = [
-  { scene: '流程启动初始化', timing: 'PROCESS_STARTED', mode: 'IN_TRANSACTION + ROLLBACK', reason: '初始化失败时流程不应成功启动。' },
-  { scene: '审批前业务校验', timing: 'TASK_FORM_SAVING', mode: 'IN_TRANSACTION + ROLLBACK', reason: '校验、任务完成和流程流转保持原子性。' },
+  { scene: '发起前校验及变量准备', timing: 'PROCESS_STARTING', mode: 'IN_TRANSACTION + ROLLBACK', reason: '实例尚未创建，可阻断发起并准备首节点所需变量。' },
+  { scene: '发起结果处理', timing: 'PROCESS_START_EXECUTED', mode: 'IN_TRANSACTION + ROLLBACK', reason: '流程关联和待办同步完成后处理；失败仍回滚本次发起。' },
+  { scene: '审批前业务校验', timing: 'TASK_SUBMITTING', mode: 'IN_TRANSACTION + ROLLBACK', reason: '校验、任务完成和流程流转保持原子性。' },
   { scene: '计算后续分支变量', timing: 'NODE_COMPLETED', mode: 'IN_TRANSACTION + ROLLBACK', reason: '变量可参与后续网关或连线条件计算。' },
   { scene: '通知下一办理人', timing: 'TASK_CREATED', mode: 'AFTER_COMMIT + RETRY', reason: '此时已获得真实任务 ID 和最终目标任务。' },
   { scene: '转办或认领通知', timing: 'TASK_ASSIGNED', mode: 'AFTER_COMMIT + RETRY', reason: '每次办理人变化都能获得最新人员。' },

@@ -43,6 +43,9 @@ public class EntityFieldDTO {
     private List<Map<String, Object>> options;
     /** 字典类型 */
     private String dictType;
+
+    /** 已注册的只读选项接口；仅供表单取候选，不在实体提交时调用。 */
+    private String optionsInterfaceId;
     /** 值存储方式 */
     private String valueStorage;
     /** 验证规则 */

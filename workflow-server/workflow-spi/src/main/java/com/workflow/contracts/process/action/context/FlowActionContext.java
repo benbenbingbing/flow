@@ -24,7 +24,7 @@ import java.util.List;
  */
 @Data
 public class FlowActionContext {
-    /** 当前业务操作，供同一处理器区分审批、转办、加签及实例操作。 */
+    /** 当前业务操作；各类审批统一为 SUBMIT，通过 taskKind 及 operationParameters.type 区分加签场景。 */
     private String businessOperation;
     /** ENGINE / LOCAL_ADD_SIGN；子任务必须通过 sourceTaskId 定位源任务。 */
     private String taskKind;
@@ -94,7 +94,7 @@ public class FlowActionContext {
     private String processDefinitionId;
     /** Flowable 执行实例 ID */
     private String executionId;
-    /** 任务 ID（任务级事件携带） */
+    /** 触发任务 ID；节点离开时保留实际完成的引擎任务身份，原生跳过及非任务节点为空。 */
     private String taskId;
     /** 任务名称 */
     private String taskName;

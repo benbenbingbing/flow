@@ -979,6 +979,7 @@
           :entity-code="entityInfo.entityCode || ''"
           :entity-definition="entityInfo"
           :entity-fields="entityFields"
+          :data-source-runtime="previewDataSourceRuntime"
           :form-actions="previewActions"
           @form-action="handlePreviewAction"
         />
@@ -1052,6 +1053,7 @@ import { Check, View, Search, Document, Edit, DocumentAdd, Plus, Rank, Setting, 
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import { createFormDataSourceRuntime } from '@flow/workflow-core/form-runtime'
 import FormActionBar from '@/components/FormActionBar.vue'
 import FormNodeValueLinkage from '@/components/form-designer/FormNodeValueLinkage.vue'
 import FormNodeAttachmentConditions from '@/components/form-designer/FormNodeAttachmentConditions.vue'
@@ -2052,13 +2054,23 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
 // 预览数据
 const previewForm = computed(() => {
   const sortedFields = [...formFields.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-  const previewNodes = sortedFields.map((field, index) =>
-    fieldToNodeEntity({
+  const previewNodes = sortedFields.map((field, index) => {
+    const node = fieldToNodeEntity({
       ...field,
       dataSourceBindings: { ...(field.dataSourceBindings || {}) },
       legacyProps: { ...(field.legacyProps || {}) },
     }, index)
-  )
+    // 只补预览投影，不把继承绑定写回表单草稿；实际预览仍须由后端校验已保存节点。
+    const source = node.bindingType === 'ENTITY_FIELD' && entityFields.value.find(item =>
+      String(item.id) === String(node.bindingRef) || item.fieldCode === node.bindingRef)
+    if (source?.optionsInterfaceId) {
+      const bindings = parseDocument(node.dataSourceBindingsDocument)
+      node.dataSourceBindingsDocument = stringifyConfig({
+        ...bindings, FIELD_OPTIONS: { extensionId: source.optionsInterfaceId }
+      })
+    }
+    return node
+  })
   return {
     ...form.value,
     viewConfig: viewConfig.value,
@@ -2066,6 +2078,14 @@ const previewForm = computed(() => {
     nodes: previewNodes,
     viewCompositions: relatedContents.value
   }
+})
+const previewDataSourceRuntime = createFormDataSourceRuntime({
+  getForm: () => previewForm.value,
+  getMode: () => previewMode.value,
+  executeDataSource: request => uiExtensionApi.preview(request.extensionId, {
+    usage: request.bindingCode, configType: 'FORM', configId: request.ownerId,
+    targetType: request.targetType, targetKey: request.targetKey, input: request.input
+  })
 })
 const previewModeOptions = computed(() =>
   (isSystemEntity.value

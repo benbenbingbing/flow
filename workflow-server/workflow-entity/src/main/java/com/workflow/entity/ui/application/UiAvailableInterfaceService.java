@@ -96,6 +96,11 @@ public class UiAvailableInterfaceService {
                                 UiExtensionDefinition::getExtensionKey));
         List<UiAvailableInterface> result = new ArrayList<>();
         for (UiExtensionDefinition definition : definitions) {
+            if ("ENTITY".equals(owner.type())
+                    && UiDataSourceUsages.FIELD_OPTIONS.equals(normalizedBinding)
+                    && !"REGISTERED_PROVIDER".equals(normalize(definition.getSourceType()))) {
+                continue;
+            }
             if (!scopeMatches(definition, owner)) {
                 continue;
             }
@@ -147,6 +152,9 @@ public class UiAvailableInterfaceService {
             String bindingCode) {
         if (!"ENTITY".equals(owner.type())) {
             return Set.of(owner.type());
+        }
+        if (UiDataSourceUsages.FIELD_OPTIONS.equals(bindingCode)) {
+            return Set.of("FORM");
         }
         Set<String> pageContexts =
                 UiEventBindingApplicability.contextsForEvent(bindingCode);
