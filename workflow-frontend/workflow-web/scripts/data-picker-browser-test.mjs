@@ -228,6 +228,13 @@ try {
   const returnedFields = settings.getByRole('region', { name: '返回字段' })
   const appearance = settings.getByRole('region', { name: '弹窗与回显' })
   const write = settings.getByRole('region', { name: '选择后写入' })
+  async function checkHelp(section, label, example) {
+    const button = section.getByRole('button', { name: `查看${label}配置说明` })
+    await button.hover()
+    await page.getByRole('tooltip').filter({ hasText: example }).waitFor()
+  }
+  await checkHelp(source, '分页查询接口', /pageNum.*"records".*"total"/s)
+  await checkHelp(source, '按标识查询', /input\.picker\.values.*"C001"/s)
   await source.getByRole('combobox', { name: '按标识查询' }).waitFor()
   assert.match(await returnedFields.innerText(), /字段编码\s+字段名称\s+字段类型/)
   assert.match(await appearance.innerText(), /弹窗展示列/)
@@ -258,6 +265,8 @@ try {
   assert.equal(await returnedFields.getByRole('combobox', { name: '字段描述接口' }).count(), 1)
   assert.equal(await source.getByRole('combobox', { name: '字段描述接口' }).count(), 0)
   assert.equal(await appearance.count(), 0)
+  await checkHelp(returnedFields, '字段描述接口', /"valueField".*"fields".*"columns"/s)
+  await checkHelp(returnedFields, '测试表单数据', /data\.project_id.*保存当前属性.*获取字段描述/s)
   await source.getByText('实体列表', { exact: true }).click()
   assert.match(await source.innerText(), /目标实体/)
   assert.equal(await returnedFields.count(), 0)

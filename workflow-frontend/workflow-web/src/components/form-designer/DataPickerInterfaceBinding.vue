@@ -1,5 +1,8 @@
 <template>
-  <el-form-item :label="label">
+  <el-form-item :label="label" class="picker-help-item">
+    <template #label>
+      <ConfigHelpLabel :label="label" :content="help" />
+    </template>
     <el-select :model-value="binding?.extensionId" :aria-label="label" filterable clearable :placeholder="placeholder"
       @update:model-value="emit('select', $event)">
       <el-option v-for="item in options" :key="item.extensionId" :label="`${item.displayName} (${item.extensionKey})`" :value="item.extensionId" />
@@ -15,8 +18,11 @@
 </template>
 
 <script setup>
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+
 defineProps({
   label: { type: String, required: true },
+  help: { type: String, required: true },
   placeholder: { type: String, default: '请选择接口' },
   binding: Object,
   options: { type: Array, default: () => [] },

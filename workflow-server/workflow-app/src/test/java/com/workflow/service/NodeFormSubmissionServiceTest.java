@@ -50,6 +50,8 @@ import static org.mockito.Mockito.when;
  */
 class NodeFormSubmissionServiceTest {
 
+    private final EntityRecordQueryPort entityRecords = mock(EntityRecordQueryPort.class);
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"MISSING_ENTITY", "MISSING_RECORD", "REJECT"})
     void formBoundarySkipsMissingContextAndRejectsBeforeProjectionOrWrites(String scenario) {
@@ -61,7 +63,7 @@ class NodeFormSubmissionServiceTest {
         var mutations = mock(EntityMutationPort.class);
         var submissions = mock(PublishedFormSubmissionService.class);
         var service = new NodeFormSubmissionService(runtime, snapshots, mock(EntityFormService.class), forms,
-                mutations, submissions, mock(FormSubmissionTraceService.class), new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                mutations, submissions, mock(FormSubmissionTraceService.class), new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
         var callback = mock(Runnable.class);
         org.mockito.Mockito.doThrow(new IllegalArgumentException("保存前拒绝")).when(callback).run();
         if (scenario.equals("REJECT")) {
@@ -90,7 +92,7 @@ class NodeFormSubmissionServiceTest {
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, mock(EntityFormService.class), runtimeFormService,
                 mutationPort, submissionService, traceService, new ObjectMapper(),
-                new ProcessEntityVariableService(records));
+                new ProcessEntityVariableService(records), records);
         Task task = task();
         FormSubmissionExecutionContext executionContext = executionContext();
         when(traceService.current(eq("PROCESS_APPROVAL_SUBMIT"), eq("task:task-1"),
@@ -165,7 +167,7 @@ class NodeFormSubmissionServiceTest {
                 mutationPort,
                 submissionService,
                 traceService,
-                new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
         Task task = task();
         FormSubmissionExecutionContext executionContext =
                 executionContext();
@@ -263,7 +265,7 @@ class NodeFormSubmissionServiceTest {
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
                 runtimeFormService, mutationPort, submissionService,
-                traceService, new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                traceService, new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
         FormSubmissionExecutionContext executionContext =
                 executionContext();
         when(traceService.current(
@@ -392,7 +394,7 @@ class NodeFormSubmissionServiceTest {
                         mutationPort,
                         submissionService,
                         traceService,
-                        new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                        new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
         FormSubmissionExecutionContext executionContext =
                 executionContext();
         when(traceService.current(
@@ -540,7 +542,7 @@ class NodeFormSubmissionServiceTest {
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
                 runtimeFormService, mutationPort, submissionService,
-                traceService, new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                traceService, new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
 
         Task task = task();
         when(runtimeService.getVariable("instance-1", "entityCode")).thenReturn("expense");
@@ -620,7 +622,7 @@ class NodeFormSubmissionServiceTest {
                 mutationPort,
                 submissionService,
                 traceService,
-                new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
         Task task = task();
         FormSubmissionExecutionContext executionContext =
                 executionContext();
@@ -708,7 +710,7 @@ class NodeFormSubmissionServiceTest {
                         mock(EntityMutationPort.class),
                         mock(PublishedFormSubmissionService.class),
                         mock(FormSubmissionTraceService.class),
-                        new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                        new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
         Task task = task();
         when(runtimeService.getVariable(
                 "instance-1",
@@ -755,7 +757,7 @@ class NodeFormSubmissionServiceTest {
                         mutationPort,
                         submissionService,
                         traceService,
-                        new ObjectMapper(), mock(ProcessEntityVariableService.class));
+                        new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
         FormSubmissionExecutionContext executionContext =
                 executionContext();
         when(traceService.current(

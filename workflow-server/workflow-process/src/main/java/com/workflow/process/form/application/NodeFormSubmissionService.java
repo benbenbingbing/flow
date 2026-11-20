@@ -2,6 +2,8 @@ package com.workflow.process.form.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
@@ -25,7 +27,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -64,6 +65,8 @@ public class NodeFormSubmissionService {
     private final ObjectMapper objectMapper;
     /** 让旧实例的只读表单预览与正式办理使用相同的实体系统字段。 */
     private final ProcessEntityVariableService entityVariableService;
+    /** 读取审批表单当前保存的附件引用，避免沿用发起时的流程快照。 */
+    private final EntityRecordQueryPort entityRecords;
 
     /**
      * 只读投影审批表单中允许当前节点编辑的提交值。
@@ -465,7 +468,7 @@ public class NodeFormSubmissionService {
                 published.nodeForms(),
                 published.history().getId(),
                 entityCode);
-        Set<String> declaredFieldCodes = resolveDeclaredFieldCodes(
+        DeclaredFields declaredFields = resolveDeclaredFields(
                 published.nodeForms(),
                 published.history().getId(),
                 entityCode);
@@ -481,7 +484,9 @@ public class NodeFormSubmissionService {
         }
         Map<String, Object> trustedValues = currentEntityData(
                 processInstanceId,
-                declaredFieldCodes);
+                declaredFields.codes());
+        putCurrentAttachments(trustedValues, declaredFields.attachmentCodes(),
+                entityCode, entityDataId);
         trustedValues.putAll(submittedEditableValues);
         return new SubmissionProjection(
                 processInstanceId,
@@ -494,18 +499,18 @@ public class NodeFormSubmissionService {
     }
 
     /**
-     * 解析{@code declared}字段编码集合；输出作为后续校验或处理的输入。
+     * 解析节点表单声明的字段及其中的附件字段，供审批提交投影限制读取范围。
      *
      * @param nodeForms 节点表单集合，供本方法解析{@code declared}字段编码集合时使用
      * @param processVersionHistoryId 流程版本历史ID，后续用于解析{@code declared}字段编码集合时定位或关联目标
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @return 节点表单提交集合，供调用方遍历或展示
+     * @return 全部声明字段及其中必须从实体记录读取的附件字段
      */
-    private Set<String> resolveDeclaredFieldCodes(
+    private DeclaredFields resolveDeclaredFields(
             List<ProcessNodeForm> nodeForms,
             String processVersionHistoryId,
             String entityCode) {
-        Set<String> result = new HashSet<>();
+        DeclaredFields result = new DeclaredFields(new HashSet<>(), new HashSet<>());
         if (!nodeForms.isEmpty()) {
             for (ProcessNodeForm nodeForm : nodeForms) {
                 collectDeclaredFields(
@@ -529,22 +534,20 @@ public class NodeFormSubmissionService {
     }
 
     /**
-     * 收集{@code declared}字段；结果供调用方的后续步骤使用。
+     * 同时收集扁平字段和 FIELD 节点中的声明，兼容历史与当前表单配置。
      *
      * @param form 表单，供本方法收集{@code declared}字段时使用
-     * @param fieldCodes 字段编码集合，供本方法收集{@code declared}字段时使用
+     * @param declaredFields 累积结果，用于限制审批投影和附件读取范围
      */
     private void collectDeclaredFields(
             EntityForm form,
-            Set<String> fieldCodes) {
+            DeclaredFields declaredFields) {
         if (form == null) {
             return;
         }
         if (form.getFields() != null) {
-            form.getFields().stream()
-                    .map(EntityFormField::getFieldCode)
-                    .filter(StringUtils::hasText)
-                    .forEach(fieldCodes::add);
+            form.getFields().forEach(field ->
+                    declaredFields.add(field.getFieldCode(), field.getFieldType()));
         }
         if (form.getNodes() == null) {
             return;
@@ -559,8 +562,49 @@ public class NodeFormSubmissionService {
                     props.get("fieldCode"),
                     node.getBindingRef(),
                     node.getNodeKey());
-            if (StringUtils.hasText(fieldCode)) {
-                fieldCodes.add(fieldCode);
+            declaredFields.add(fieldCode, asString(props.get("fieldType")));
+        }
+    }
+
+    private record DeclaredFields(Set<String> codes, Set<String> attachmentCodes) {
+        private void add(String code, String type) {
+            if (!StringUtils.hasText(code)) {
+                return;
+            }
+            codes.add(code);
+            if ("FILE".equalsIgnoreCase(type) || "IMAGE".equalsIgnoreCase(type)) {
+                attachmentCodes.add(code);
+            }
+        }
+    }
+
+    /**
+     * 用当前实体记录的附件覆盖流程快照，供预览、提交前绑定和正式校验共用。
+     * 调用方随后叠加可编辑字段的本次输入，保留显式清空的语义。
+     *
+     * @param target 已声明字段的可信投影，本方法仅更新其中的附件
+     * @param attachmentCodes 发布表单声明的文件和图片字段
+     * @param entityCode 流程关联的实体编码
+     * @param recordId 流程关联的实体记录 ID
+     * @throws IllegalStateException 需要读取附件但关联记录不存在
+     */
+    private void putCurrentAttachments(
+            Map<String, Object> target, Set<String> attachmentCodes,
+            String entityCode, String recordId) {
+        if (attachmentCodes.isEmpty()) {
+            return;
+        }
+        EntityRecordData record = entityRecords.findById(entityCode, recordId);
+        if (record == null) {
+            throw new IllegalStateException("流程关联的实体记录不存在: " + entityCode + "/" + recordId);
+        }
+        Map<String, Object> data = record.getData();
+        // 旧实例可能仍保存 URL，已从实体删除的附件也不能从快照恢复。
+        for (String code : attachmentCodes) {
+            if (data != null && data.containsKey(code)) {
+                target.put(code, data.get(code));
+            } else {
+                target.remove(code);
             }
         }
     }

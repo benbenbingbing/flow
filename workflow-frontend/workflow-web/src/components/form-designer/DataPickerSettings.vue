@@ -29,7 +29,7 @@
       </template>
       <template v-else>
         <DataPickerInterfaceBinding v-for="usage in recordInterfaceUsages" :key="usage.code"
-          :label="usage.label" :placeholder="usage.placeholder" :binding="binding(usage.code)" :options="interfaces[usage.code]"
+          :label="usage.label" :help="usage.help" :placeholder="usage.placeholder" :binding="binding(usage.code)" :options="interfaces[usage.code]"
           :input-draft="inputDrafts[usage.code]" :input-error="inputErrors[usage.code]"
           @select="changeBinding(usage.code, $event)" @edit-input="updateInput(usage.code, $event)" />
       </template>
@@ -46,10 +46,14 @@
         </el-select>
       </el-form-item>
       <template v-if="schemaMode === 'INTERFACE'">
-        <DataPickerInterfaceBinding label="字段描述接口" :binding="binding('FIELD_PICKER_SCHEMA')" :options="interfaces.FIELD_PICKER_SCHEMA"
+        <DataPickerInterfaceBinding label="字段描述接口" :help="descriptionHelp"
+          :binding="binding('FIELD_PICKER_SCHEMA')" :options="interfaces.FIELD_PICKER_SCHEMA"
           :input-draft="inputDrafts.FIELD_PICKER_SCHEMA" :input-error="inputErrors.FIELD_PICKER_SCHEMA"
           @select="changeBinding('FIELD_PICKER_SCHEMA', $event)" @edit-input="updateInput('FIELD_PICKER_SCHEMA', $event)" />
-        <el-form-item label="测试表单数据">
+        <el-form-item label="测试表单数据" class="picker-help-item">
+          <template #label>
+            <ConfigHelpLabel label="测试表单数据" :content="testDataHelp" />
+          </template>
           <div class="picker-fetch">
             <el-input v-model="sampleText" type="textarea" :rows="2" aria-label="测试表单数据" placeholder="可选" />
             <el-button :loading="loading" :disabled="!formId" @click="loadSchema">获取字段描述</el-button>
@@ -169,6 +173,7 @@ import { getEntityFields } from '@/api/entityForm'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import { normalizeRows } from '@/components/related-content/relatedContentOptions.js'
 import { loadPublishedListSettings } from '@/views/form-designer/useReferenceListSettings'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
 import DataPickerInterfaceBinding from './DataPickerInterfaceBinding.vue'
@@ -200,9 +205,39 @@ const editableFields = computed(() => editableSchema.value.fields.filter(field =
 const fieldOptionLabel = item => item.label && item.label !== item.code ? `${item.label} (${item.code})` : item.code
 const targetOptionLabel = item => fieldOptionLabel({ code: item.fieldCode, label: item.fieldLabel || item.fieldName })
 const recordInterfaceUsages = [
-  { code: 'FIELD_PICKER_QUERY', label: '分页查询接口' },
-  { code: 'FIELD_PICKER_RESOLVE', label: '按标识查询', placeholder: '选择根据记录标识查单条记录的接口' }
+  {
+    code: 'FIELD_PICKER_QUERY',
+    label: '分页查询接口',
+    help: [
+      '打开弹窗、搜索或翻页时调用。读取 input.picker 中的 pageNum（从 1 开始）、pageSize 和 keyword，按关键词筛选后分页。',
+      '返回示例',
+      '{ "records": [{ "id": "C001", "name": "华东客户" }], "total": 1 }',
+      'records 是当前页，total 是筛选后的总条数。输出 Schema 将两者分别声明为 array 和 integer。'
+    ].join('\n')
+  },
+  {
+    code: 'FIELD_PICKER_RESOLVE',
+    label: '按标识查询',
+    placeholder: '选择根据记录标识查单条记录的接口',
+    help: [
+      '确认选择时按标识查最新记录用于回填。字段按「记录标识」保存时，打开已有表单也用它查名称。',
+      '读取 input.picker.values，例如 ["C001"]，精确查找对应记录。输出 Schema 根类型为 array，查不到时返回 []。',
+      '返回示例',
+      '[{ "id": "C001", "name": "华东客户" }]'
+    ].join('\n')
+  }
 ]
+const descriptionHelp = [
+  '返回字段定义、记录标识、显示名称和弹窗列。字段编码与查询接口返回的记录一致，标识字段使用 STRING。',
+  '最小返回示例',
+  '{ "schemaVersion": "1", "valueField": "id", "labelField": "name",',
+  '"fields": [{ "code": "id", "type": "STRING" }, { "code": "name", "label": "名称", "type": "STRING" }],',
+  '"columns": [{ "field": "name" }] }'
+].join('\n')
+const testDataHelp = [
+  '这里填预览时模拟的表单字段值，例如 {"project_id": "P001"}。字段描述接口的「输入映射」填 {"projectId": "data.project_id"}，接口即可从 input.projectId 读取。无需表单参数时保留 {}。',
+  '绑定后先点「保存当前属性」，再点「获取字段描述」。获取后配置写入和回填，保存属性并发布表单。'
+].join('\n')
 const queryFields = computed(() => {
   const id = binding('FIELD_PICKER_QUERY')?.extensionId
   return pickerQuerySchemaFields((props.interfaces.FIELD_PICKER_QUERY || []).find(item => item.extensionId === id)?.outputSchema)
@@ -343,7 +378,7 @@ async function loadSchema() {
   const requestBinding = binding('FIELD_PICKER_SCHEMA')
   const fingerprint = JSON.stringify(requestBinding)
   if (inputErrors.value.FIELD_PICKER_SCHEMA) { ElMessage.warning(inputErrors.value.FIELD_PICKER_SCHEMA); return }
-  if (!requestBinding?.extensionId) { ElMessage.warning('请先绑定字段描述接口并保存当前字段'); return }
+  if (!requestBinding?.extensionId) { ElMessage.warning('请先绑定字段描述接口并保存当前属性'); return }
   loading.value = true
   try {
     const data = parseJsonConfig(sampleText.value, { fieldName: '测试表单数据' })
@@ -357,7 +392,7 @@ async function loadSchema() {
     if (props.field !== field || sourceMode.value !== 'INTERFACE' || schemaMode.value !== 'INTERFACE'
         || JSON.stringify(binding('FIELD_PICKER_SCHEMA')) !== fingerprint) return
     update({ pickerSchema: result })
-    ElMessage.success('字段描述已获取，请检查回填映射后保存当前字段并发布')
+    ElMessage.success('字段描述已获取，请检查回填映射后保存当前属性并发布')
   } catch (error) { ElMessage.error(error.message || '获取字段描述失败') }
   finally { loading.value = false }
 }
@@ -378,6 +413,9 @@ async function loadSchema() {
 }
 .picker-settings-group > :deep(.el-form-item) { margin-bottom: 12px; }
 .picker-settings-group > :deep(.el-form-item:last-child) { margin-bottom: 0; }
+/* 问号使用标签右侧的留白，让文字与问号同排，同时保持输入控件对齐。 */
+.data-picker-settings :deep(.picker-help-item .el-form-item__label) { padding-right: 8px; }
+.data-picker-settings :deep(.picker-help-item .config-help-label) { flex-shrink: 0; max-width: none; white-space: nowrap; }
 .data-picker-settings :deep(.el-select), .data-picker-settings :deep(.entity-definition-picker) { width: 100%; }
 .picker-fields { display: grid; gap: 6px; width: 100%; min-width: 0; }
 .picker-fields > .el-button { justify-self: start; }
