@@ -207,7 +207,7 @@ public class UiConfigInterfaceReferenceValidator {
         throw new IllegalArgumentException(label + "必须为 JSON 对象");
     }
 
-    /** 三个读取能力必须属于当前字段；字段结构和映射随发布快照固定，避免借用其它节点的接口。 */
+    /** 按选择器来源校验当前字段的配置，接口必须属于字段允许的作用域。 */
     private void validatePicker(Map<?, ?> node, String path, Owner owner) {
         if (!node.containsKey("nodeType") && !path.matches(".*\\.(?:nodes|legacyFields|fields)\\[\\d+\\]")) return;
         Map<String, Object> props = configurationMap(node.containsKey("props") ? node.get("props") : node.get("propsDocument"), "选择器字段属性");
@@ -218,11 +218,17 @@ public class UiConfigInterfaceReferenceValidator {
             throw new IllegalArgumentException("数据选择器必须绑定实体属性");
         }
         String fieldType = firstText(props.get("fieldType"), node.get("fieldType"));
-        if (!List.of("STRING", "SELECT").contains(normalize(fieldType))) throw new IllegalArgumentException("数据选择器仅支持 STRING、SELECT 属性");
         Map<String, Object> componentProps = configurationMap(props.containsKey("componentProps") ? props.get("componentProps") : node.get("componentProps"), "选择器组件参数");
         Map<String, Object> bindings = configurationMap(node.containsKey("dataSourceBindings") ? node.get("dataSourceBindings") : node.get("dataSourceBindingsDocument"), "选择器接口绑定");
-        var validated = DataPickerConfigurationPolicy.validate(componentProps, bindings, firstText(props.get("fieldCode"), node.get("fieldCode")));
+        var validated = DataPickerConfigurationPolicy.validate(componentProps, bindings,
+                firstText(props.get("fieldCode"), node.get("fieldCode")), normalize(fieldType));
         validated.forEach((usage, binding) -> validateReference(binding, "extensionId", null, usage, path, owner));
+        if ("QUERY_SCHEMA".equals(DataPickerConfigurationPolicy.schemaMode(componentProps, bindings))) {
+            String id = text(validated.get(UiDataSourceUsages.FIELD_PICKER_QUERY).get("extensionId"));
+            var query = resolveDefinition(id, null);
+            DataPickerConfigurationPolicy.validateQuerySchema(DataPickerConfigurationPolicy.schema(componentProps, bindings),
+                    configurationMap(query.getOutputSchemaDocument(), "分页接口输出 Schema"));
+        }
     }
 
     /** 回填目标必须是当前表单实际绑定的属性，并在发布前校验类型；不能把结构节点或外部字段作为目标。 */
@@ -242,8 +248,8 @@ public class UiConfigInterfaceReferenceValidator {
         for (Map<String, Object> field : fields.values()) {
             if (!"DATA_PICKER".equals(normalize(text(field.get("componentType"))))) continue;
             Map<String, Object> props = configurationMap(field.get("componentProps"), "选择器组件参数");
-            Map<String, Object> schema = configurationMap(props.get("pickerSchema"), "选择器字段描述");
-            Map<String, String> sourceTypes = DataPickerConfigurationPolicy.validateSchema(schema);
+            Map<String, String> sourceTypes = DataPickerConfigurationPolicy.validateSchema(
+                    DataPickerConfigurationPolicy.schema(props, Map.of()));
             if (!(props.get("pickerMappings") instanceof List<?> mappings)) continue;
             for (Object item : mappings) {
                 Map<String, Object> mapping = stringMap(item);

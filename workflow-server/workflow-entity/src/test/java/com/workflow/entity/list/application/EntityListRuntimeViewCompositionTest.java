@@ -1134,6 +1134,38 @@ class EntityListRuntimeViewCompositionTest {
                         && "unsaved-name".equals(filters.get("name")) && "EQ".equals(filters.get("name_op"))), anyLong(), anyLong());
     }
 
+    /** 按键解析应保留固定条件及映射参数，即使查询区没有开放 ID 筛选。 */
+    @Test
+    void pickerResolvesOnlyWithinPublishedAndMappedFilters() {
+        EntityListConfig config = publishedList();
+        config.setFixedFilterConfig("""
+                {"id":["member-1","member-2"],"id_op":"IN","active":true}
+                """);
+        config.setViewConfig("""
+                {"inputParameterSchema":{"properties":{"project":{"type":"string"}},"required":["project"]},
+                "inputParameterBindings":[{"parameter":"project","usage":"FILTER","targetField":"projectId"}]}
+                """);
+        configureActiveList(config);
+        EntityDataDTO record = new EntityDataDTO();
+        record.setId("member-2");
+        Map<String, Object> narrowed = Map.of("id", "member-2", "id_op", "EQ", "active", true,
+                "active_op", "EQ", "projectId", "project-1", "projectId_op", "EQ");
+        when(dataListService.findPageWithResolvedConfig("target_entity", "default", config, narrowed, 1, 1))
+                .thenReturn(new PageResult<>(List.of(record), 1, 1, 1));
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setScene("FORM_PICKER");
+        request.setSelectionRecordId("member-2");
+        var context = new com.workflow.entity.list.api.response.EntityListRuntimeContextDTO();
+        context.setParameters(Map.of("project", "project-1"));
+        request.setContext(context);
+        assertEquals(List.of(record), ((PageResult<?>) service.query("target_entity", "default", request)).getRecords());
+        request.setSelectionRecordId("outside");
+        assertEquals(0, ((PageResult<?>) service.query("target_entity", "default", request)).getTotal());
+        request.setScene("PAGE");
+        assertThrows(IllegalArgumentException.class, () -> service.query("target_entity", "default", request));
+        verify(dataListService).findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong());
+    }
+
     /** 隐藏参数只依赖发布用途，字段没有出现在列表列配置中时也能参与数据库筛选。 */
     @ParameterizedTest
     @ValueSource(strings = {"EQ", "NE", "LIKE", "IN"})

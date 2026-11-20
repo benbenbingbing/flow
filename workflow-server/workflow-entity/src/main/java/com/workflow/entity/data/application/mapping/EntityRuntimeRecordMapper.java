@@ -9,7 +9,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -227,7 +229,7 @@ public class EntityRuntimeRecordMapper {
             Map<String, Object> data,
             Collection<EntityField> fields) {
         Map<String, Object> customData = new HashMap<>();
-        Map<String, String> fieldCodeByColumn = new HashMap<>();
+        Map<String, EntityField> fieldsByColumn = new HashMap<>();
         if (fields != null) {
             for (EntityField field : fields) {
                 if (field == null || !StringUtils.hasText(field.getFieldCode())) {
@@ -236,18 +238,28 @@ public class EntityRuntimeRecordMapper {
                 String columnName = StringUtils.hasText(field.getDbColumnName())
                         ? field.getDbColumnName()
                         : toColumnName(field.getFieldCode());
-                fieldCodeByColumn.put(columnName, field.getFieldCode());
+                fieldsByColumn.put(columnName, field);
             }
         }
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             if (!STORAGE_SYSTEM_COLUMNS.contains(entry.getKey())) {
-                String fieldCode = fieldCodeByColumn.getOrDefault(
-                        entry.getKey(),
-                        underscoreToCamel(entry.getKey()));
-                customData.put(fieldCode, parseJsonValue(entry.getValue()));
+                EntityField field = fieldsByColumn.get(entry.getKey());
+                String fieldCode = field == null ? underscoreToCamel(entry.getKey()) : field.getFieldCode();
+                customData.put(fieldCode, readFieldValue(field, entry.getValue()));
             }
         }
         return customData;
+    }
+
+    /** JDBC 时间戳按属性定义保留数据库的本地日期/时间，避免 JSON 序列化时转成其他时区的钟表时间。 */
+    private Object readFieldValue(EntityField field, Object value) {
+        if (field != null && value instanceof Timestamp timestamp) {
+            if (field.getFieldType() == EntityField.FieldType.DATE) return timestamp.toLocalDateTime().toLocalDate().toString();
+            if (field.getFieldType() == EntityField.FieldType.DATETIME) {
+                return DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(timestamp.toLocalDateTime());
+            }
+        }
+        return parseJsonValue(value);
     }
 
     /**

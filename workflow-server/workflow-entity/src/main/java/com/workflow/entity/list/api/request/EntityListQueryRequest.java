@@ -16,6 +16,8 @@ public class EntityListQueryRequest {
     private long pageNum = 1;
     /** 每页大小，默认 10 */
     private long pageSize = 10;
+    /** 选择器确认及回显时按记录 ID 收窄查询，同时保留已发布列表的数据权限及固定条件。 */
+    private String selectionRecordId;
     /** 用户点击表头选择的实体字段编码；为空时恢复列表发布配置中的默认排序。 */
     private String sortField;
     /** 与 sortField 配套的 asc/desc；只允许发布配置中明确启用排序的展示列。 */

@@ -8,16 +8,19 @@
   <MobileFileField v-else-if="['file', 'image'].includes(type)" ref="fileRef" v-bind="fieldProps" :services="services" @update:model-value="handleChange" />
   <MobileCascaderField v-else-if="type === 'cascader'" ref="cascaderRef" v-bind="fieldProps" :required="required" @update:model-value="handleChange" @focus="handleFocus" @blur="handleBlur" />
   <MobileDataPickerField v-else-if="type === 'data_picker'" ref="dataPickerRef" v-bind="fieldProps" :required="required" @patch-form="patchCustomForm" />
-  <MobileReadonlyField v-else-if="disabled" :field="field" :model-value="modelValue" :options="choices" :context="context" :services="services" />
+  <MobileReadonlyField v-else-if="disabled || (valuePicker && readonly)" :field="editorField" :model-value="modelValue" :options="choices" :context="context" :services="services" />
   <h3 v-else-if="type === 'section'" class="field-section">{{ fieldLabel }}</h3>
   <MobileRichTextEditor v-else-if="type === 'rich_text'" :label="fieldLabel" :model-value="fieldValue" @update:model-value="input" @blur="blur" @focus="handleFocus" />
-  <VanField v-else-if="type === 'switch'" class="mobile-form-field" :border="false" :label="fieldLabel" :required="required" :label-align="labelPosition" :input-align="inputAlign" center><template #input><VanSwitch :model-value="Boolean(fieldValue)" size="24px" @update:model-value="handleChange" /></template></VanField>
+  <VanField v-else-if="type === 'switch'" class="mobile-form-field" :border="false" :label="fieldLabel" :required="required" :label-align="labelPosition" :input-align="inputAlign" center><template #input><VanSwitch :model-value="Boolean(normalizeFieldDefaultValue(editorField, fieldValue))" size="24px" @update:model-value="handleChange" /></template></VanField>
   <VanField v-else-if="['radio', 'checkbox'].includes(type)" class="mobile-form-field" :border="false" :label="fieldLabel" :required="required" :label-align="labelPosition"><template #input>
     <VanRadioGroup v-if="type === 'radio'" :model-value="fieldValue" @update:model-value="handleChange"><VanRadio v-for="choice in choices" :key="String(choice.value)" :name="choice.value" :disabled="choice.disabled">{{ choice.text }}</VanRadio></VanRadioGroup>
     <VanCheckboxGroup v-else :model-value="Array.isArray(fieldValue) ? fieldValue : []" @update:model-value="handleChange"><VanCheckbox v-for="choice in choices" :key="String(choice.value)" :name="choice.value" :disabled="choice.disabled">{{ choice.text }}</VanCheckbox></VanCheckboxGroup>
   </template></VanField>
   <VanField v-else-if="selectionType || dateType" class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="selectionLabel" :placeholder="`请选择${fieldLabel}`" :label-align="labelPosition" :input-align="inputAlign" center readonly is-link clickable :required="required" @click="openPicker" />
-  <VanField v-else class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="type === 'number' ? numberDraft ?? fieldValue : fieldValue" :type="['textarea', 'password', 'number'].includes(type) ? type : 'text'" :placeholder="placeholder" :maxlength="parsedComponentProps.maxlength" :autosize="type === 'textarea'" :label-align="labelPosition" :input-align="inputAlign" :required="required" @update:model-value="input" @focus="handleFocus" @blur="blur" />
+  <VanField v-else class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="inputValue"
+    :type="['textarea', 'password', 'number'].includes(type) && !exactNumber ? type : 'text'" :inputmode="exactNumber ? (field.fieldType === 'LONG' ? 'numeric' : 'decimal') : undefined"
+    :error-message="exactNumber ? numberError : undefined" :placeholder="placeholder" :maxlength="parsedComponentProps.maxlength" :autosize="type === 'textarea'" :label-align="labelPosition" :input-align="inputAlign" :required="required" @update:model-value="input" @focus="handleFocus" @blur="blur" />
+  <MobileDataPickerField v-if="valuePicker && !disabled && !readonly" ref="dataPickerRef" v-bind="fieldProps" @patch-form="patchCustomForm" />
   <p v-if="optionError" class="field-unsupported" role="alert">{{ optionError }}<button @click="loadOptions">重试</button></p>
   <p v-if="scriptConfigurationErrors.length" class="field-unsupported" role="alert">{{ scriptConfigurationErrors.join('；') }}</p>
   <MobileEntityPicker v-if="entityType" v-model:show="pickerOpen" :title="`选择${fieldLabel}`" :model-value="selectedRecords" :multiple="multiple" :load-options="loadEntityOptions" :identity="`${context.form?.id || ''}:${field.fieldCode}`" @confirm="selectRecords" />
@@ -45,7 +48,9 @@ import { FIELD_SCRIPT_EVENTS, readComponentScriptEvents } from '@flow/workflow-c
 import { readFieldScripts, validateFieldScript } from '@flow/workflow-core/browser/field-event-scripts'
 import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cell as VanCell, showFailToast } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
-import { useFormField } from '@flow/workflow-core/vue/useFormField'
+import { normalizeFieldDefaultValue, useFormField } from '@flow/workflow-core/vue/useFormField'
+import { usePickerNumericInput } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
+import { pickerNativeComponent } from '@flow/workflow-core/data-picker'
 import { getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 import { referenceListParameterState } from '@flow/workflow-core/page-parameters'
 import MobileReadonlyField from './MobileReadonlyField.vue'
@@ -70,7 +75,15 @@ const emit = defineEmits(['update:modelValue', 'patch-form', 'change', 'blur', '
 const componentOptions = getCurrentInstance().type
 const mobileScriptEvents = computed(() => readComponentScriptEvents(componentOptions, mobileFieldType(props.field)))
 const { fieldValue, fieldLabel, parsedComponentProps, placeholder, handleChange, handleInput, handleBlur, handleFocus, handleSelectionChange } = useFormField(props, emit, { applyDefaults: () => !props.disabled, scriptEvents: mobileScriptEvents })
-const type = computed(() => mobileFieldType(props.field))
+const isDataPicker = computed(() => mobileFieldType(props.field) === 'data_picker')
+const valuePicker = computed(() => isDataPicker.value && pickerNativeComponent(props.field))
+const type = computed(() => valuePicker.value || mobileFieldType(props.field))
+const editorField = computed(() => valuePicker.value ? { ...props.field, componentType: type.value } : props.field)
+const exactNumber = computed(() => valuePicker.value === 'number' && ['LONG', 'DECIMAL'].includes(String(props.field.fieldType).toUpperCase()))
+const { value: numberText, error: numberError, input: editNumber, reset: resetNumber } = usePickerNumericInput(props, value => {
+  fieldValue.value = value
+  handleInput(value)
+})
 const labelPosition = computed(() => resolveMobileLabelPosition(props.context.form))
 const inputAlign = computed(() => labelPosition.value === 'top' ? 'left' : 'right')
 const custom = computed(() => getMobileFieldExtension(props.field))
@@ -93,7 +106,10 @@ function updateCustomValue(value) {
   if (!props.disabled && !props.readonly && !props.field.isDisplayOnly) emit('update:modelValue', value)
 }
 function patchCustomForm(patch) {
-  if (!props.disabled && !props.readonly) emit('patch-form', patch)
+  if (!props.disabled && !props.readonly) {
+    if (exactNumber.value) resetNumber()
+    emit('patch-form', patch)
+  }
 }
 const entityType = computed(() => ['user', 'dept', 'role', 'group', 'entity', 'sub_list'].includes(type.value))
 const dateType = computed(() => ['date', 'datetime', 'time'].includes(type.value))
@@ -112,6 +128,7 @@ let openedPickerParameterKey = ''
 // 与桌面一致，来源变化后关闭当前选择器，废弃旧候选和还在加载的请求。
 watch(pickerParameterKey, () => { pickerOpen.value = false })
 const customRef = ref(), cascaderRef = ref(), dataPickerRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
+const inputValue = computed(() => exactNumber.value ? numberText.value : (type.value === 'number' ? numberDraft.value ?? fieldValue.value : fieldValue.value))
 function normalizeOptions(options) { return (Array.isArray(options) ? options : []).map(option => typeof option === 'object' ? { ...option, text: option.text ?? option.label ?? option.name ?? String(option.value ?? option.id), value: option.value ?? option.id, ...(option.children ? { children: normalizeOptions(option.children) } : {}) } : { text: String(option), value: option }) }
 const choices = computed(() => normalizeOptions(props.options ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : [])))
 const selectionLabel = computed(() => {
@@ -126,7 +143,7 @@ async function loadOptions() {
   // 宿主已解析系统状态或动态候选时直接消费，包括明确的空结果，不重复请求或提示缺少来源。
   if (props.options != null) return
   // 级联与数据选择器有独立的查询、回显与重试流程，不能被旧选项绑定重复加载或影响校验。
-  if (['cascader', 'data_picker'].includes(type.value)) return
+  if (type.value === 'cascader' || isDataPicker.value) return
   try {
     let result
     if (props.dataSourceRuntime && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length) {
@@ -144,9 +161,10 @@ async function loadOptions() {
   catch (cause) { if (generation === optionGeneration) optionError.value = cause.message }
 }
 // 仅在选项来源身份变化时重载；输入其它字段造成 context 重建时不重复请求代码表。
-watch([type, () => props.field.id, () => props.field.dictType, () => props.options, () => props.context.form?.configHash], loadOptions, { immediate: true })
+watch([type, isDataPicker, () => props.field.id, () => props.field.dictType, () => props.options, () => props.context.form?.configHash], loadOptions, { immediate: true })
 onBeforeUnmount(() => { optionGeneration++ })
 function input(value) {
+  if (exactNumber.value) { editNumber(value); return }
   if (type.value === 'number') {
     numberDraft.value = value
     // 保留小数点和负号的输入中间态；业务模型只持有 number/null。
@@ -174,7 +192,7 @@ watch(() => [props.modelValue, props.field.refEntityId], async () => {
   catch { /* 已保存值仍显示原 ID；查询失败不能清除记录。 */ }
 }, { immediate: true })
 async function blur() {
-  if (type.value === 'number') { fieldValue.value = normalizeNumber(numberDraft.value ?? fieldValue.value); numberDraft.value = null; await nextTick() }
+  if (type.value === 'number' && !exactNumber.value) { fieldValue.value = normalizeNumber(numberDraft.value ?? fieldValue.value); numberDraft.value = null; await nextTick() }
   if (committed !== JSON.stringify(fieldValue.value)) { await handleChange(fieldValue.value); committed = JSON.stringify(fieldValue.value) }
   await handleBlur()
 }
@@ -235,7 +253,8 @@ function confirmDate() { handleChange(type.value === 'date' ? dateParts.value.jo
  */
 async function validate() {
   if (!props.disabled && !props.readonly && (!capability.value.editable || !capability.value.validate)) return false
-  return !optionError.value && (await customRef.value?.validate?.()) !== false
+  return !optionError.value && (props.disabled || props.readonly || !exactNumber.value || !numberError.value)
+    && (await customRef.value?.validate?.()) !== false
     && (await subFormRef.value?.validate?.()) !== false && (await fileRef.value?.validate?.()) !== false
     && (await cascaderRef.value?.validate?.()) !== false
     && (await dataPickerRef.value?.validate?.()) !== false

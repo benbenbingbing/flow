@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.integration.database.api.schema.SchemaType;
 
 import java.math.BigDecimal;
@@ -12,6 +13,26 @@ public final class EntityQueryScalarValues {
      * 初始化实体查询标量值集合，保存构造参数供后续方法使用。
      */
     private EntityQueryScalarValues() { }
+
+    /** 选值和编辑器使用精确数字及本地日期文本，入库时恢复对应的 JDBC 类型。 */
+    static Object pickerStorageValue(EntityField field, Object value) {
+        if (!(value instanceof String text) || text.isBlank()) return value;
+        EntityField.FieldType type = field.getFieldType();
+        if (type == null) return value;
+        // 兼容既有写入方的其他日期格式，选择器和标准日期控件使用下列本地格式。
+        boolean convert = switch (type) {
+            case LONG, DECIMAL -> true;
+            case DATE -> text.matches("\\d{4}-\\d{2}-\\d{2}");
+            case DATETIME -> text.matches("\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,9})?)?");
+            default -> false;
+        };
+        if (!convert) return value;
+        try {
+            return scalarValue(value, EntityTableDefinitionFactory.fieldType(field).kind());
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException("字段值的格式或范围有误: " + field.getFieldName(), invalid);
+        }
+    }
 
     /**
      * 按可信发布字段的物理类型转换一个比较值，保留 NULL，不猜测字符串的用途。

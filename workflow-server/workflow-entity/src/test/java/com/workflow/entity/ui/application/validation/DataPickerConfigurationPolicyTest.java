@@ -23,15 +23,63 @@ class DataPickerConfigurationPolicyTest {
 
     @Test
     void publicationRequiresCompleteBindingsAndStableStringIdentity() {
-        assertEquals(3, DataPickerConfigurationPolicy.validate(Map.of("pickerSchema", SCHEMA), BINDINGS, "customer").size());
-        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(Map.of(), BINDINGS, "customer"));
-        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(Map.of("pickerSchema", SCHEMA), Map.of(), "customer"));
+        assertEquals(3, DataPickerConfigurationPolicy.validate(Map.of("pickerSchema", SCHEMA), BINDINGS, "customer", "STRING").size());
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(Map.of(), BINDINGS, "customer", "STRING"));
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(Map.of("pickerSchema", SCHEMA), Map.of(), "customer", "STRING"));
         var changed = new LinkedHashMap<>(SCHEMA);
         changed.put("fields", List.of(Map.of("code", "code", "type", "INTEGER"), Map.of("code", "name", "type", "STRING")));
         assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validateSchema(changed));
         var badBindings = new LinkedHashMap<>(BINDINGS);
         badBindings.put("FIELD_PICKER_SCHEMA", Map.of("extensionId", "describe", "outputMapping", "invalid"));
-        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(Map.of("pickerSchema", SCHEMA), badBindings, "customer"));
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(Map.of("pickerSchema", SCHEMA), badBindings, "customer", "STRING"));
+    }
+
+    @Test
+    void defaultAndStaticDescriptionsOnlyRequireQueryAndResolve() {
+        var dataBindings = new LinkedHashMap<>(BINDINGS);
+        dataBindings.remove("FIELD_PICKER_SCHEMA");
+        assertEquals(2, DataPickerConfigurationPolicy.validate(Map.of(), dataBindings, "customer", "STRING").size());
+        assertEquals(2, DataPickerConfigurationPolicy.validate(
+                Map.of("pickerSchemaSource", "MANUAL", "pickerSchema", SCHEMA), dataBindings, "customer", "STRING").size());
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(
+                Map.of("pickerSchemaSource", "INTERFACE", "pickerSchema", SCHEMA), dataBindings, "customer", "STRING"));
+        Map<String, Object> queryOutput = Map.of("properties", Map.of("records", Map.of("items",
+                Map.of("properties", Map.of("code", Map.of("type", "string"), "name", Map.of("type", "string"))))));
+        assertDoesNotThrow(() -> DataPickerConfigurationPolicy.validateQuerySchema(SCHEMA, queryOutput));
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validateQuerySchema(SCHEMA, Map.of()));
+    }
+
+    @Test
+    void typedValueRequiresCompatibleDeclaredSourceWhileRecordIdentityStaysString() {
+        for (String type : List.of("STRING", "TEXT", "INTEGER", "LONG", "DECIMAL", "DATE", "DATETIME", "BOOLEAN", "RICH_TEXT")) {
+            var schema = new LinkedHashMap<>(SCHEMA);
+            schema.put("fields", List.of(Map.of("code", "code", "type", "STRING"),
+                    Map.of("code", "name", "type", "STRING"), Map.of("code", "businessValue", "type", type)));
+            var props = Map.of("pickerSchema", schema, "pickerValueMode", "FIELD", "pickerWriteField", "businessValue");
+            assertEquals(3, DataPickerConfigurationPolicy.validate(props, BINDINGS, "customer", type).size());
+            assertThrows(IllegalArgumentException.class,
+                    () -> DataPickerConfigurationPolicy.validate(props, BINDINGS, "customer", "SELECT"));
+        }
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(
+                Map.of("pickerSchema", SCHEMA, "pickerWriteField", "name"), BINDINGS, "customer", "DATE"));
+    }
+
+    @Test
+    void entityListRequiresAnActiveFilterContractAndNoBusinessInterfaces() {
+        var schema = new LinkedHashMap<>(SCHEMA);
+        schema.put("valueField", "id");
+        schema.put("fields", List.of(Map.of("code", "id", "type", "STRING"),
+                Map.of("code", "name", "type", "STRING"), Map.of("code", "staffNo", "type", "STRING")));
+        var props = Map.of("pickerSource", "ENTITY_LIST", "pickerSchema", schema, "pickerList", Map.of(
+                "entityId", "e", "entityCode", "member", "listKey", "active",
+                "parameterMappings", List.of(Map.of("parameter", "projectId", "sourceType", "ENTITY_FIELD", "sourceField", "project_id"))));
+        assertTrue(DataPickerConfigurationPolicy.validate(props, Map.of(), "member", "STRING").isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(props, BINDINGS, "member", "STRING"));
+        var view = Map.of("inputParameterSchema", Map.of("properties", Map.of("projectId", Map.of("type", "string"))),
+                "inputParameterBindings", List.of(Map.of("usage", "FILTER", "parameter", "projectId")));
+        var types = Map.of("id", "STRING", "name", "STRING", "staffNo", "STRING");
+        assertDoesNotThrow(() -> DataPickerConfigurationPolicy.validatePublishedList(props, new LinkedHashMap<>(view), types));
+        assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validatePublishedList(props, Map.of(), types));
     }
 
     @Test
@@ -42,7 +90,7 @@ class DataPickerConfigurationPolicyTest {
                 List.of(mapping("name", "constructor")),
                 List.of(mapping("name", "contact"), mapping("code", "contact")))) {
             assertThrows(IllegalArgumentException.class, () -> DataPickerConfigurationPolicy.validate(
-                    Map.of("pickerSchema", SCHEMA, "pickerMappings", mappings), BINDINGS, "customer"));
+                    Map.of("pickerSchema", SCHEMA, "pickerMappings", mappings), BINDINGS, "customer", "STRING"));
         }
     }
 

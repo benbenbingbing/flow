@@ -254,6 +254,16 @@ public class EntityListRuntimeService {
                 safeRequest.getConfigHash(),
                 safeRequest.getRuntimeContext(),
                 compositionContext);
+        // 按键解析是列表的附加交集。仅允许定位单条记录，且复用列表的数据范围和参数规则。
+        String selectionId = safeRequest.getSelectionRecordId();
+        if (selectionId != null) {
+            if (!"FORM_PICKER".equals(normalized(safeRequest.getScene(), "PAGE"))
+                    || selectionId.isBlank() || selectionId.length() > 1000) {
+                throw new IllegalArgumentException("选择器记录 ID 无效");
+            }
+            safeRequest.setPageNum(1);
+            safeRequest.setPageSize(1);
+        }
         return queryResolved(
                 entityCode,
                 listKey,
@@ -363,6 +373,18 @@ public class EntityListRuntimeService {
         if (hasTrustedFilterConflict(EntityListFixedFilters.normalize(requiredFilters), parameterFilters)
                 || hasTrustedFilterConflict(EntityListFixedFilters.normalize(filters), parameterFilters)) return emptyPage(safeRequest);
         requiredFilters.putAll(parameterFilters);
+        String selectionId = safeRequest.getSelectionRecordId();
+        if (selectionId != null) {
+            // ID 本身也可以是列表固定条件。先判断候选是否落在已有 ID 条件内，
+            // 再改为精确查找，兼容固定 IN 和页面参数，同时禁止覆盖原范围。
+            if (!matchesIdFilter(requiredFilters, selectionId) || !matchesIdFilter(filters, selectionId)) {
+                return emptyPage(safeRequest);
+            }
+            removeIdFilters(requiredFilters);
+            removeIdFilters(filters);
+            requiredFilters.put("id", selectionId);
+            requiredFilters.put("id_op", "EQ");
+        }
         filters = EntityListFixedFilters.apply(filters, requiredFilters);
         validateDatabaseQuery(config, filters);
 
@@ -428,7 +450,8 @@ public class EntityListRuntimeService {
             // 自定义接口只能返回候选 ID。再次通过固定条件、关联条件和 DataScope 查询验证，
             // 防止接口忽略 filters，或 AFTER 步骤替换结果后绕过访问范围。
             return secureCompositionCustomQueryPage(config, entityCode, listKey, filters, normalizedResult,
-                    Math.max(1, safeRequest.getPageNum()), Math.max(1, Math.min(200, safeRequest.getPageSize())));
+                    Math.max(1, safeRequest.getPageNum()), Math.max(1, Math.min(200, safeRequest.getPageSize())),
+                    selectionId != null);
         }
         return customQuery
                 ? secureListEventReplacement(config, entityCode, listKey, normalizedResult)
@@ -573,6 +596,7 @@ public class EntityListRuntimeService {
      * @param candidatePage 候选人分页，供本方法处理{@code secure}组合自定义查询分页时使用
      * @param requestedPageNum 请求页码，后续归一化并换算为数据库查询偏移
      * @param requestedPageSize 请求页大小，后续限制单次查询和返回数量
+     * @param includeSelectionName 按 ID 回显时补充权威记录名称，即使弹窗没有启用名称列
      * @return 处理后的{@code secure}组合自定义查询分页结果，供调用方继续处理
      */
     private PageResult<?> secureCompositionCustomQueryPage(
@@ -582,7 +606,8 @@ public class EntityListRuntimeService {
             Map<String, Object> trustedFilters,
             PageResult<?> candidatePage,
             long requestedPageNum,
-            long requestedPageSize) {
+            long requestedPageSize,
+            boolean includeSelectionName) {
         List<?> candidates = candidatePage.getRecords() == null
                 ? List.of() : candidatePage.getRecords();
         int pageSize = (int) Math.max(
@@ -634,7 +659,8 @@ public class EntityListRuntimeService {
         }
 
         Set<String> visibleFieldCodes =
-                publishedVisibleFieldCodes(config);
+                new LinkedHashSet<>(publishedVisibleFieldCodes(config));
+        if (includeSelectionName) visibleFieldCodes.add("name");
         List<Map<String, Object>> records = orderedIds.stream()
                 .map(authoritativeById::get)
                 .map(record -> projectPublishedListFields(

@@ -33,6 +33,7 @@ function dictionaryOptions(items = []) {
   ])
 }
 export const formServices = {
+  entityListRuntime: lists,
   getFormRuntimeRelease: forms.getFormRuntimeRelease, getEntityFields: forms.getEntityFields, precheckUnique: forms.precheckFormFieldUnique,
   async loadDictionaryOptions(dictCode) { return dictionaryOptions(await forms.getDictionaryItems(dictCode)) },
   async resolveEntityCode(id) { const options = await entities.entityApi.resolveOptions({ ids: [String(id)] }); return options.find(item => String(item.id) === String(id))?.entityCode || '' },

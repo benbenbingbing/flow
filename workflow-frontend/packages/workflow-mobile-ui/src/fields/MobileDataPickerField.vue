@@ -1,13 +1,24 @@
 <template>
-  <div class="mobile-data-picker">
-    <VanField :label="field.fieldLabel || field.fieldName" :model-value="label" :placeholder="field.placeholder || '请选择数据'"
+  <div class="mobile-data-picker" :class="{ 'picker-action': nativeComponent }">
+    <button v-if="nativeComponent && !disabled && !readonly" type="button" @click="open">选择</button>
+    <VanField v-if="!nativeComponent" :label="field.fieldLabel || field.fieldName" :model-value="label" :placeholder="field.placeholder || '请选择数据'"
       readonly :is-link="!disabled && !readonly" :clickable="!disabled && !readonly" :required="required" :label-align="labelPosition" :border="false" @click="open" />
-    <button v-if="modelValue !== null && modelValue !== undefined && modelValue !== '' && !disabled && !readonly" class="picker-clear" :disabled="state.confirming" @click="clear">清空选择</button>
+    <button v-if="!nativeComponent && modelValue !== null && modelValue !== undefined && modelValue !== '' && !disabled && !readonly" class="picker-clear" :disabled="state.confirming" @click="clear">清空选择</button>
     <div v-if="state.resolving" class="picker-note" role="status">正在回显已选数据…</div>
-    <div v-if="state.restoreError || (!state.open && state.error)" class="picker-error" role="alert">{{ state.restoreError || state.error }} <button @click="retry">重试回显</button></div>
+    <div v-if="!nativeComponent && (state.restoreError || (!state.open && state.error))" class="picker-error" role="alert">{{ state.restoreError || state.error }} <button @click="retry">重试回显</button></div>
     <VanPopup :show="state.open" position="bottom" round safe-area-inset-bottom :close-on-click-overlay="false" @update:show="value => !value && close()">
       <VanNavBar :title="config.pickerTitle || '选择数据'" left-text="取消" @click-left="close" />
-      <div class="picker-search">
+      <form v-if="config.pickerSource === 'ENTITY_LIST' && state.list?.queryFields.length" @submit.prevent="searchList">
+        <template v-for="item in state.list.queryFields" :key="item.fieldCode">
+          <template v-if="item.queryType === 'BETWEEN'">
+            <VanField v-model="listFilters[item.fieldCode + '_start']" :label="item.fieldName" placeholder="起始值" clearable />
+            <VanField v-model="listFilters[item.fieldCode + '_end']" :label="item.fieldName" placeholder="结束值" clearable />
+          </template>
+          <VanField v-else v-model="listFilters[item.fieldCode]" :label="item.fieldName" :placeholder="item.placeholder" clearable />
+        </template>
+        <button type="submit" :disabled="state.confirming">搜索</button>
+      </form>
+      <div v-else-if="config.pickerSource !== 'ENTITY_LIST'" class="picker-search">
         <VanSearch v-model="keyword" placeholder="输入关键词搜索" :disabled="state.confirming" @search="search" />
         <button :disabled="state.confirming" @click="search">搜索</button>
       </div>
@@ -30,26 +41,34 @@
 </template>
 <script setup>
 import { computed, ref, watch } from 'vue'
+import DOMPurify from 'dompurify'
 import { Field as VanField, Popup as VanPopup, NavBar as VanNavBar, Search as VanSearch, Empty as VanEmpty, showConfirmDialog } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useDataPickerFieldRuntime } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
+import { buildListRequestFilters, listQueryDefaults } from '@flow/workflow-core/list-query-filters'
 import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
-const props = defineProps({ ...formFieldProps, required: Boolean })
+const props = defineProps({ ...formFieldProps, required: Boolean, services: Object })
 const emit = defineEmits(['patch-form'])
 const keyword = ref('')
+const listFilters = ref({})
 const labelPosition = computed(() => resolveMobileLabelPosition(props.context.form))
-const { state, config, label, open, close, query, commit, clear, retry, validate } = useDataPickerFieldRuntime(props, emit, async () => {
+const { state, config, nativeComponent, label, open, close, query, commit, clear, retry, validate } = useDataPickerFieldRuntime(props, emit, async () => {
   try { await showConfirmDialog({ title: '确认回填', message: '将更新已有字段内容，是否继续？' }); return true }
   catch { return false }
-})
+}, () => props.services?.entityListRuntime, html => DOMPurify.sanitize(html))
 function search() {
   if (!state.value.confirming) query({ pageNum: 1, keyword: keyword.value })
 }
 watch(() => state.value.open, () => { keyword.value = '' })
+watch(() => state.value.list, list => { listFilters.value = listQueryDefaults(list?.queryFields || []) })
+function searchList() {
+  if (!state.value.confirming) query({ pageNum: 1, filters: buildListRequestFilters(listFilters.value, state.value.list?.queryFields) })
+}
 defineExpose({ validate })
 </script>
 <style scoped>
 .mobile-data-picker { border-bottom: 1px solid var(--flow-mobile-border); }
+.picker-action { display: flex; justify-content: flex-end; }
 button { border: 0; background: transparent; color: var(--flow-mobile-accent-text); min-height: 44px; padding: 8px 16px; }
 button:disabled { color: var(--flow-mobile-muted); }
 .picker-note, .picker-error { padding: 8px 16px; font-size: 13px; }

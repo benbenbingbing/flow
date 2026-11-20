@@ -1,9 +1,11 @@
 <template>
   <div class="node-data-settings">
-    <SettingsSection v-if="isDataPicker" v-show="activeNodeSettingsTab === 'extension'" title="数据选择器与回填" :default-expanded="true">
-      <DataPickerSettings :field="selectedField" :form-id="form.id" :fields="formFields" />
+    <SettingsSection v-if="isDataPicker" v-show="activeNodeSettingsTab === 'extension'" title="数据选择器配置" :default-expanded="true">
+      <DataPickerSettings :field="selectedField" :form-id="form.id" :fields="referenceParameterSourceFields"
+        :interfaces="interfacesByUsage" :source-fields="referenceParameterSourceFields" :source-entity-fields="referenceParameterEntityFields" />
     </SettingsSection>
     <SettingsSection
+      v-if="!isDataPicker"
       :disabled="!isReferenceFieldNode"
       disabled-reason="仅实体引用字段支持此配置"
       v-show="activeNodeSettingsTab === 'extension'"
@@ -465,6 +467,7 @@ const {
   selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel,
   selectedNodeInterfaces,
+  interfacesByUsage,
   clearSelectedNodeDataSourceBinding,
   isSubFormField,
   isSubListField,

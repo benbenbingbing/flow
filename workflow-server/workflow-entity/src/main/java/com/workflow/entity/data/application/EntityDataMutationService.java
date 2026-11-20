@@ -169,7 +169,7 @@ public class EntityDataMutationService {
         }
         // 业务编号只由服务器创建，客户端值不应进入写前唯一性预留或字段规则校验。
         data.remove("code");
-        validator.validatePublishedFields(
+        validator.preparePublishedFieldsForWrite(
                 entityCode,
                 data,
                 data.get("id") == null
@@ -317,7 +317,7 @@ public class EntityDataMutationService {
                         parentFormData,
                         existingData);
         updateData.remove("code");
-        validator.validatePublishedFields(
+        validator.preparePublishedFieldsForWrite(
                 entityCode,
                 updateData,
                 id);

@@ -5,6 +5,8 @@ import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
 import { getMobileFieldExtension, mobileFieldCapability, mobileFieldType, registerMobileExtension } from '../../packages/workflow-mobile-ui/src/fields/registry.js'
 import { runtimeFieldState, validateRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
+import { pickerNativeComponent } from '@flow/workflow-core/data-picker'
+import { usePickerNumericInput } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
 
 /** 执行真实 SFC setup 和暴露的 validate；视觉组件/事件环境替身不改变能力查询和校验分支。 */
 function setup(filename, props, bindings = {}, returned = '') {
@@ -15,6 +17,7 @@ function setup(filename, props, bindings = {}, returned = '') {
   const values = {
     ...vue, defineProps: () => props, defineOptions() {}, defineEmits: () => () => {}, defineExpose: value => { exposed = value },
     formFieldProps: {}, getMobileFieldExtension, mobileFieldCapability, mobileFieldType, runtimeFieldState, validateRuntimeFields,
+    pickerNativeComponent, usePickerNumericInput,
     getCurrentInstance: () => ({ type: {} }), provide() {}, onBeforeUnmount() {}, FIELD_SCRIPT_EVENTS: Symbol('field-events'),
     useFormField: () => ({ fieldValue: vue.ref(props.modelValue), parsedComponentProps: vue.ref({}), staticOptions: vue.ref([]) }),
     ...bindings

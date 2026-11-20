@@ -26,7 +26,15 @@ export default [
     "defaultForFieldTypes": [],
     "supportedFieldTypes": [
       "STRING",
-      "SELECT"
+      "SELECT",
+      "TEXT",
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DATE",
+      "DATETIME",
+      "BOOLEAN",
+      "RICH_TEXT"
     ]
   },
   {

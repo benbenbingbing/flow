@@ -1,6 +1,7 @@
 package com.workflow.entity.data.api.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -31,7 +32,8 @@ public class EntityDataDTO {
     private String currentTaskId;           // 当前任务ID
     private String currentTaskName;         // 当前任务名称
     private String currentTaskAssignee;     // 当前任务审批人
-    private Map<String, Object> data;       // 自定义字段数据
+    @JsonSerialize(contentUsing = EntityFieldValueSerializer.class)
+    private Map<String, Object> data;       // 自定义字段数据，超出浏览器精度的数值按精确文本传输
     private String submitterId;             // 首次成功提交审批的实际用户ID，草稿为空，供提交人权限判断使用
     private String submitterName;           // 首次提交时的用户名快照，随 submitTime 固定，不受后续编辑或重提影响
     private String deptId;                  // 所属部门ID

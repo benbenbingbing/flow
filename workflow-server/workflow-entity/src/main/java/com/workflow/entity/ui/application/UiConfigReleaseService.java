@@ -61,6 +61,8 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormFiel
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.entity.list.application.EntityListQueryPolicy;
+import com.workflow.entity.ui.application.validation.DataPickerConfigurationPolicy;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplate;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplateVersion;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -3674,6 +3676,7 @@ public class UiConfigReleaseService {
             validateUnifiedRelationComponents(snapshot);
             formConfigurationValidator.validateForm(runtimeForm(snapshot));
             validateSubListReferences(snapshot);
+            validatePickerListReferences(snapshot);
             validateFormActions(snapshot);
             validateExtensionReferences(snapshot);
             Map<String, Object> referenceSnapshot =
@@ -3997,6 +4000,7 @@ public class UiConfigReleaseService {
             formNodeService.validateSnapshotSubFormParameterContracts(
                     snapshotForm);
             validateSubListReferences(snapshot);
+            validatePickerListReferences(snapshot);
             validateFormActions(snapshot);
             validateExtensionReferences(snapshot);
             Map<String, Object> referenceSnapshot =
@@ -4142,6 +4146,49 @@ public class UiConfigReleaseService {
                 throw new IllegalArgumentException(
                         "子列表固定版本与目标实体或列表编码不一致: " + label);
             }
+        }
+    }
+
+    /**
+     * 数据选择器跟随目标列表的当前发布版本。发布或激活表单时验证目标归属和可用字段，
+     * 以免旧草稿绑定失效列表或用过期的字段类型回填。
+     */
+    private void validatePickerListReferences(Map<String, Object> snapshot) {
+        for (EntityFormNode node : snapshotNodes(snapshot)) {
+            Map<String, Object> props = PageParameterPolicy.map(node.getPropsDocument());
+            if (!"DATA_PICKER".equals(normalize(text(props.get("componentType"))))) continue;
+            Map<String, Object> component = PageParameterPolicy.map(props.get("componentProps"));
+            if (!"ENTITY_LIST".equals(component.get("pickerSource"))) continue;
+
+            Map<String, Object> target = PageParameterPolicy.map(component.get("pickerList"));
+            String entityId = text(target.get("entityId"));
+            String entityCode = text(target.get("entityCode"));
+            String listKey = text(target.get("listKey"));
+            String label = nodeLabel(node);
+            if (!StringUtils.hasText(entityId) || !StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) {
+                throw new IllegalArgumentException("数据选择器必须绑定已发布实体列表: " + label);
+            }
+            EntityListConfig list = listConfigMapper.findByEntityIdAndListKey(entityId, listKey);
+            UiConfigRelease active = list == null ? null : releaseMapper.findActive(LIST, list.getId());
+            if (active == null || !Objects.equals(list.getActiveReleaseId(), active.getId())) {
+                throw new IllegalArgumentException("数据选择器的目标列表没有可用的发布版本: " + label);
+            }
+            EntityListConfigDTO published = runtimeList(verifiedSnapshot(active), list.getId());
+            if (!Objects.equals(entityId, published.getEntityId()) || !Objects.equals(entityCode, published.getEntityCode())
+                    || !Objects.equals(listKey, published.getListKey())) {
+                throw new IllegalArgumentException("数据选择器的目标实体与列表不匹配: " + label);
+            }
+
+            Set<String> visible = published.getFields() == null ? Set.of() : published.getFields().stream()
+                    .filter(field -> EntityListQueryPolicy.isEntityField(field) && Boolean.TRUE.equals(field.getShowInList()))
+                    .map(EntityListField::getFieldCode).collect(java.util.stream.Collectors.toSet());
+            Map<String, String> types = new LinkedHashMap<>(Map.of("id", "STRING", "name", "STRING"));
+            if (!visible.isEmpty()) {
+                formService.getEntityFields(entityId).stream()
+                        .filter(field -> visible.contains(field.getFieldCode()) && !Boolean.FALSE.equals(field.getUiConfigurable()))
+                        .forEach(field -> types.putIfAbsent(field.getFieldCode(), String.valueOf(field.getFieldType())));
+            }
+            DataPickerConfigurationPolicy.validatePublishedList(component, published.getViewConfig(), types);
         }
     }
 

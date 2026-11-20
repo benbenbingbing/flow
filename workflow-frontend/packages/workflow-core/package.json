@@ -41,6 +41,7 @@
     "./form-runtime/runtimeFormTabs": "./dist/shared/form-runtime/runtimeFormTabs.js",
     "./form-runtime/uniquePrecheckContext": "./dist/shared/form-runtime/uniquePrecheckContext.js",
     "./next-approver": "./dist/shared/next-approver.js",
+    "./list-query-filters": "./dist/shared/list-query-filters.js",
     "./page-parameters": "./dist/shared/page-parameters.js",
     "./subform-parameter-contract": "./dist/shared/subform-parameter-contract.js",
     "./subform-value-sync": "./dist/shared/subform-value-sync.js",

@@ -13,10 +13,12 @@ import 'element-plus/dist/index.css'
 import 'vant/lib/index.css'
 import PcField from '/src/extensions/builtin/fields/components/DataPickerField.vue'
 import MobileField from '/@fs/${path.resolve('../packages/workflow-mobile-ui/src/fields/MobileFieldRenderer.vue')}'
+import {pickerListSchema} from '@flow/workflow-core/data-picker'
+import {entityListRuntimeApi} from '@/api/entityListRuntime'
 const schema={schemaVersion:'1',valueField:'code',labelField:'name',fields:[{code:'code',type:'STRING',label:'客户编码'},{code:'name',type:'STRING',label:'客户名称'},{code:'contact',type:'STRING',label:'联系人'}],columns:[{field:'code'},{field:'name'}]}
 const state=reactive({pc:{customer:'',contact:''},mobile:{customer:'',contact:''},disabled:false,failure:false,delay:false,scope:'A',calls:[],patches:[]})
 const pending=[]
-const fields={}
+const fields=reactive({})
 const fieldRefs={}
 for(const side of ['pc','mobile'])fields[side]={fieldId:'customer-id',fieldCode:'customer',fieldName:'客户',fieldType:'STRING',componentType:'data_picker',componentProps:{pickerSchema:schema,pickerPageSize:1,pickerTitle:side==='pc'?'PC客户':'手机客户',pickerMappings:[{sourcePath:'selection.data.contact',targetPath:'form.contact',overwrite:'ALWAYS',clearOnEmpty:false}]},dataSourceBindings:Object.fromEntries(['SCHEMA','QUERY','RESOLVE'].map(code=>['FIELD_PICKER_'+code,{extensionId:code}]))}
 // 从旧选择组件切换过来时可能残留 FIELD_OPTIONS；移动宿主不得重复调用通用选项接口。
@@ -37,19 +39,61 @@ function runtime(side){return {executeOwnerUsage:async(_field,usage,context)=>{
 const runtimes={pc:runtime('pc'),mobile:runtime('mobile')}
 const app=createApp({setup(){return()=>h('main',{style:'max-width:900px;margin:20px auto'},['pc','mobile'].map(side=>h('section',{id:side,style:'margin:20px;border:1px solid #ddd;padding:16px'},[
  h('h2',side==='pc'?'电脑端':'移动端'),h(side==='pc'?PcField:MobileField,{ref:value=>{fieldRefs[side]=value},field:fields[side],modelValue:state[side].customer,formData:state[side],mode:'edit',disabled:state.disabled,
- context:{form:{id:'f',configHash:'hash'},mode:'edit',params:{scope:state.scope},getFormData:()=>state[side]},dataSourceRuntime:runtimes[side],
+ context:{form:{id:'f',configHash:'hash'},mode:'edit',params:{scope:state.scope},getFormData:()=>state[side]},dataSourceRuntime:runtimes[side],services:{entityListRuntime:entityListRuntimeApi},
+ 'onUpdate:modelValue':value=>{state[side].customer=value},
  'onPatch-form':patch=>{state.patches.push({side,patch});Object.assign(state[side],patch)}}),h('p',state[side].contact)
  ])))}})
 app.use(ElementPlus).mount('#app')
-window.pickerTest={state,pending,validate:side=>fieldRefs[side].validate(),settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,350));await nextTick()},release:()=>{while(pending.length)pending.shift()()}}
+const listFields=[{fieldCode:'name',fieldName:'成员姓名',showInList:true,isQuery:true,queryType:'LIKE'},{fieldCode:'contact',fieldName:'工号',showInList:true},
+ {fieldCode:'externalNo',fieldName:'外部编号',showInList:true},{fieldCode:'amount',fieldName:'金额',showInList:true},
+ {fieldCode:'shipDay',fieldName:'交付日期',showInList:true},{fieldCode:'enabled',fieldName:'启用',showInList:true}]
+const listRecords=[{id:'0001',name:'成员甲',project:'A',data:{contact:'NO1',externalNo:'9223372036854775807',shipDay:'2024-02-29'}},
+ {id:'0002',name:'成员乙',project:'B',data:{contact:'NO2',amount:'123456789.123456789',enabled:0}}]
+window.pickerTest={state,pending,validate:side=>fieldRefs[side].validate(),settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,350));await nextTick()},release:()=>{while(pending.length)pending.shift()()},
+ listSchema:()=>({fields:listFields,configHash:'member-list-release',viewConfig:{
+  inputParameterSchema:{properties:{projectId:{type:'string'}},required:['projectId']},
+  inputParameterBindings:[{parameter:'projectId',usage:'FILTER',targetField:'project'}]
+ }}),
+ listQuery:(entityCode,listKey,input)=>{
+  state.calls.push({entityCode,listKey,input})
+  const scoped=listRecords.filter(row=>row.project===input.context.parameters.projectId
+    && (!input.selectionRecordId||row.id===input.selectionRecordId)
+    && (!input.filters?.name||row.name.includes(input.filters.name)))
+  return {records:scoped,total:scoped.length}
+ },
+ useList:()=>{
+  for(const side of ['pc','mobile']){
+   state[side]={customer:'',contact:'',project_id:side==='pc'?'A':'B'}
+   Object.assign(fields[side],{dataSourceBindings:{},componentProps:{...fields[side].componentProps,pickerSource:'ENTITY_LIST',
+    pickerSchema:pickerListSchema(listFields,[{fieldCode:'contact',fieldType:'STRING'}]),
+    pickerList:{entityId:'members',entityCode:'member',listKey:'picker',parameterMappings:[{parameter:'projectId',sourceType:'FIELD',sourceField:'project_id'}]}
+   }})
+  }
+ },
+ useTyped:(kind='numeric')=>{
+  state.calls.length=0
+  for(const side of ['pc','mobile']){
+   const [initialValue, fieldType, writeField]=kind==='numeric'
+    ? (side==='pc'?['9100000000000000000','LONG','externalNo']:['0.010000000000000001','DECIMAL','amount'])
+    : (side==='pc'?['2024-02-01','DATE','shipDay']:[true,'BOOLEAN','enabled'])
+   state[side].customer=initialValue
+   fields[side].fieldType=fieldType
+   Object.assign(fields[side].componentProps,{pickerValueMode:'FIELD',pickerWriteField:writeField,
+    pickerSchema:pickerListSchema(listFields,[{fieldCode:'contact',fieldType:'STRING'},{fieldCode:writeField,fieldType}])})
+  }
+ }
+}
 `
 const fixture = mkdtempSync(path.resolve('.data-picker-fixture-'))
 writeFileSync(path.join(fixture, 'index.html'), '<html><meta name="viewport" content="width=device-width,initial-scale=1"><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>')
 writeFileSync(path.join(fixture, 'main.js'), harness)
+writeFileSync(path.join(fixture, 'listApi.js'), "export const entityListRuntimeApi={getSchema:(...args)=>window.pickerTest.listSchema(...args),query:(...args)=>window.pickerTest.listQuery(...args)}")
 let server, browser
 try {
   server = await createServer({ configFile: false, plugins: [vue()], resolve: { dedupe: ['vue'], alias: [
-    { find: '@flow/workflow-core/vue/useDataPickerFieldRuntime', replacement: path.resolve('../packages/workflow-core/src/composables/useDataPickerFieldRuntime.js') }
+    { find: '@flow/workflow-core/vue/useDataPickerFieldRuntime', replacement: path.resolve('../packages/workflow-core/src/composables/useDataPickerFieldRuntime.js') },
+    { find: '@/api/entityListRuntime', replacement: path.join(fixture, 'listApi.js') },
+    { find: '@', replacement: path.resolve('src') }
   ] }, optimizeDeps: { entries: [path.join(fixture, 'index.html')] }, cacheDir: path.join(fixture, 'cache'), server: { host: '127.0.0.1', port: 3398, strictPort: true, fs: { allow: [path.resolve('..')] } } })
   await server.listen()
   browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true })
@@ -107,9 +151,66 @@ try {
   await page.evaluate(() => { pickerTest.state.delay = false }); await settle()
   await page.locator('#mobile .van-field').first().click(); await settle()
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, '390px 屏幕无水平溢出')
+  await page.locator('.van-popup:visible .van-nav-bar__left').click(); await settle()
+  await page.evaluate(() => pickerTest.useList()); await settle()
+  await page.setViewportSize({ width: 1100, height: 850 })
+  const dialog = page.locator('.el-dialog:visible')
+  await page.locator('#pc').getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  assert.match(await dialog.innerText(), /成员甲/)
+  assert.doesNotMatch(await dialog.innerText(), /成员乙/)
+  await dialog.getByRole('textbox', { name: '成员姓名' }).fill('甲')
+  await dialog.getByRole('button', { name: '搜索', exact: true }).click(); await settle()
+  await dialog.getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  assert.deepEqual(await state('pc'), { customer: '0001', contact: 'NO1', project_id: 'A' })
+  assert.equal(await page.locator('#pc input').first().inputValue(), '成员甲')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator('#mobile .van-field').first().click(); await settle()
+  const options = page.locator('.van-popup:visible .picker-record')
+  assert.equal(await options.count(), 1)
+  assert.match(await options.first().innerText(), /成员乙/)
+  await options.first().click(); await settle()
+  assert.deepEqual(await state('mobile'), { customer: '0002', contact: 'NO2', project_id: 'B' })
+  assert.equal(await page.locator('#mobile .van-field input').first().inputValue(), '成员乙')
+  const listCalls = await page.evaluate(() => pickerTest.state.calls.filter(call => call.listKey === 'picker'))
+  assert.ok(listCalls.some(call => call.input.filters?.name === '甲' && call.input.filters.name_op === 'LIKE'))
+  assert.ok(listCalls.some(call => call.input.selectionRecordId === '0002' && call.input.context.parameters.projectId === 'B'))
+
+  await page.evaluate(() => pickerTest.useTyped()); await settle()
+  assert.equal(await page.evaluate(() => pickerTest.state.calls.length), 0, '业务值打开时直接回显，无按键解析')
+  assert.equal(await page.locator('#pc input').first().inputValue(), '9100000000000000000')
+  assert.equal(await page.locator('#mobile .van-field input').first().inputValue(), '0.010000000000000001')
+  await page.locator('#mobile').getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  await options.first().click(); await settle()
+  assert.equal((await state('mobile')).customer, '123456789.123456789')
+  assert.equal(await page.locator('#mobile .van-field input').first().inputValue(), '123456789.123456789')
+  await page.setViewportSize({ width: 1100, height: 850 })
+  await page.locator('#pc').getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  await dialog.getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  assert.equal((await state('pc')).customer, '9223372036854775807')
+  const longInput = page.locator('#pc input').first()
+  assert.equal(await longInput.inputValue(), '9223372036854775807')
+  await longInput.fill('9223372036854775808'); await settle()
+  assert.equal(await page.evaluate(() => pickerTest.validate('pc')), false)
+  assert.equal((await state('pc')).customer, '9223372036854775807')
+  await longInput.fill('9223372036854775806'); await settle()
+  assert.equal(await page.evaluate(() => pickerTest.validate('pc')), true)
+  assert.equal((await state('pc')).customer, '9223372036854775806')
+
+  await page.evaluate(() => pickerTest.useTyped('date-boolean')); await settle()
+  assert.equal(await page.locator('#pc .el-date-editor input').inputValue(), '2024-02-01')
+  await page.locator('#pc').getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  await dialog.getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  assert.equal(await page.locator('#pc .el-date-editor input').inputValue(), '2024-02-29')
+  await page.setViewportSize({ width: 390, height: 844 })
+  const toggle = page.locator('#mobile').getByRole('switch')
+  assert.equal(await toggle.getAttribute('aria-checked'), 'true')
+  await page.locator('#mobile').getByRole('button', { name: '选择', exact: true }).click(); await settle()
+  await options.first().click(); await settle()
+  assert.equal((await state('mobile')).customer, false)
+  assert.equal(await toggle.getAttribute('aria-checked'), 'false')
   assert.deepEqual(errors, [])
   await page.screenshot({ path: '/tmp/flow-data-picker-mobile.png', fullPage: true })
-  console.log('data picker browser acceptance passed: PC/mobile dynamic columns, pagination, search, cancel, atomic fill, clear, readonly restore, failure/retry, stale confirm isolation')
+  console.log('data picker browser acceptance passed: PC/mobile interface and published entity list, filtering, pagination, atomic fill, restore and stale confirm isolation')
 } finally {
   await browser?.close(); await server?.close()
   rmSync(fixture, { recursive: true, force: true })

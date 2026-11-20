@@ -849,6 +849,10 @@ public class EntityRelationRuntimeService {
                             trusted.prepared());
                 }
                 normalizeJsonValues(childData);
+                // 聚合子行独立写表，与主表共用数字及日期文本的 JDBC 类型转换。
+                for (EntityField field : childDefinition.getFields()) {
+                    childData.computeIfPresent(field.getFieldCode(), (key, value) -> EntityQueryScalarValues.pickerStorageValue(field, value));
+                }
                 pendingWrites.add(new PendingChildWrite(
                         childId,
                         isNewChild,

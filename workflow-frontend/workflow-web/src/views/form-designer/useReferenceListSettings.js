@@ -5,6 +5,7 @@ import { entityListConfigApi } from '@/api/entityListConfig'
 import { normalizeRows } from '@/components/related-content/relatedContentOptions.js'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { listFilterParameterSchema, validateReferenceListParameterMappings } from '@flow/workflow-core/page-parameters'
+import { isEntityListPicker, pickerListSchema } from '@flow/workflow-core/data-picker'
 
 /** 配置自定义实体的选择列表和参数映射，列表契约始终取自当前发布版本。 */
 export function useReferenceListSettings({ selectedField, fields, entityFields, nodeById, nodeTypeOf, rememberEntityOption }) {
@@ -19,7 +20,7 @@ export function useReferenceListSettings({ selectedField, fields, entityFields, 
   const canMapParameters = computed(() => supportsParameterMappings(selectedField.value))
   const sourceFields = computed(() => sourceFieldsFor(selectedField.value))
   const sourceScope = computed(() => dataScope(selectedField.value))
-  const childEntityId = computed(() => canMapParameters.value && selectedField.value.refListKey
+  const childEntityId = computed(() => (canMapParameters.value && selectedField.value.refListKey || entityPickerConfig(selectedField.value)?.listKey)
     ? entityIdForScope(sourceScope.value)
     : '')
   const sourceEntityFields = computed(() => sourceScope.value
@@ -121,27 +122,47 @@ export function useReferenceListSettings({ selectedField, fields, entityFields, 
 
   /** 保存前复核来源字段和目标发布版本，防止沿用失效参数或保存校验期间改动的映射。 */
   async function validateMappings(field) {
-    const { refListParameterMappings: mappings, refListKey, refEntityId } = field
-    if (!supportsParameterMappings(field) || mappings == null || Array.isArray(mappings) && !mappings.length) return
+    if (String(field.componentType || '').toUpperCase() === 'DATA_PICKER') {
+      const inputError = Object.values(field.pickerInputErrors || {})[0]
+      if (inputError) throw new Error(inputError)
+    }
+    const picker = entityPickerConfig(field)
+    const mappings = picker ? picker.parameterMappings || [] : field.refListParameterMappings
+    const refListKey = picker ? picker.listKey : field.refListKey
+    const refEntityId = picker ? picker.entityId : field.refEntityId
+    if (!picker && (!supportsParameterMappings(field) || mappings == null || Array.isArray(mappings) && !mappings.length)) return
     if (!Array.isArray(mappings)) throw new Error('列表参数映射必须为数组')
     const scope = dataScope(field)
     const target = normalizeRows(await entityListConfigApi.getByEntityId(refEntityId))
       .find(list => list.listKey === refListKey)
     if (!target) throw new Error('列表参数映射需要有效的选择列表')
     const scopedEntityId = entityIdForScope(scope)
-    const [schema, availableEntityFields] = await Promise.all([
-      loadParameterSchema(target),
+    const [published, availableEntityFields, targetFields] = await Promise.all([
+      loadPublishedListSettings(target),
       scope && mappings.some(mapping => mapping?.sourceType === 'ENTITY_FIELD')
         ? loadEntitySourceFields(scopedEntityId)
-        : usableEntityFields(entityFields.value)
+        : usableEntityFields(entityFields.value),
+      picker ? loadEntitySourceFields(refEntityId) : []
     ])
-    if (field.refListParameterMappings !== mappings || field.refListKey !== refListKey || field.refEntityId !== refEntityId
+    const currentPicker = picker && entityPickerConfig(field)
+    const unchanged = picker
+      ? JSON.stringify(currentPicker) === JSON.stringify(picker)
+      : field.refListParameterMappings === mappings && field.refListKey === refListKey && field.refEntityId === refEntityId
+    if (!unchanged
         || dataScope(field) !== scope || entityIdForScope(scope) !== scopedEntityId) {
       throw new Error('列表参数映射已修改，请重新保存')
     }
-    const error = validateReferenceListParameterMappings(mappings, schema, sourceFieldsFor(field), availableEntityFields)
+    const error = validateReferenceListParameterMappings(mappings, listFilterParameterSchema(published.viewConfig), sourceFieldsFor(field), availableEntityFields)
     if (error) throw new Error(`${field.fieldLabel || field.fieldCode}的列表参数映射：${error}`)
-    field.refEntityCode = target.entityCode || field.refEntityCode || ''
+    if (picker) {
+      const config = safeParseConfig(field.componentProps)
+      field.componentProps = JSON.stringify({ ...config,
+        pickerList: { ...picker, entityCode: published.entityCode },
+        pickerSchema: pickerListSchema(published.fields, targetFields)
+      })
+    } else {
+      field.refEntityCode = target.entityCode || field.refEntityCode || ''
+    }
   }
 
   return { lists, isReference, canMapParameters, sourceFields, sourceEntityFields, parameterSchema, parameterError, parameterLoading,
@@ -159,11 +180,22 @@ async function loadEntitySourceFields(entityId) {
 const isReferenceComponent = field => ['REFERENCE', 'MULTI_REFERENCE'].includes(String(field?.componentType || '').toUpperCase())
 const supportsParameterMappings = field => isReferenceComponent(field)
   && String(field.refEntityType || '').toUpperCase() === 'CUSTOM'
+function entityPickerConfig(field) {
+  const config = safeParseConfig(field?.componentProps)
+  return String(field?.componentType || '').toUpperCase() === 'DATA_PICKER' && isEntityListPicker(config)
+    ? config.pickerList || {} : null
+}
 
 /** 使用启用版本的隐藏筛选声明，列表草稿的改动需要发布后才可映射。 */
 async function loadParameterSchema(list) {
+  return listFilterParameterSchema((await loadPublishedListSettings(list)).viewConfig)
+}
+
+/** 实体引用和数据选择器均基于激活快照，列表草稿里的列和参数不能参与配置。 */
+export async function loadPublishedListSettings(list) {
   const releases = await entityListConfigApi.getReleases(list.id)
   const release = releases.find(item => item.status === 'ACTIVE')
-  if (!release?.snapshotDocument) throw new Error('请选择一个已发布的选择列表')
-  return listFilterParameterSchema(safeParseConfig(release.snapshotDocument).list?.viewConfig)
+  const snapshot = safeParseConfig(release?.snapshotDocument).list
+  if (!snapshot) throw new Error('请选择一个已发布的选择列表')
+  return snapshot
 }

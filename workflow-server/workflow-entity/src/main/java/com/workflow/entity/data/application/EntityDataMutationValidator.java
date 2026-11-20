@@ -76,6 +76,15 @@ public class EntityDataMutationValidator {
             String entityCode,
             Map<String, Object> storageData,
             String excludeId) {
+        validatePublishedFields(entityCode, storageData, excludeId, false);
+    }
+
+    /** 正式写入前完成字段校验，并将可写列映射中的数字和日期文本转成 JDBC 标量。 */
+    public void preparePublishedFieldsForWrite(String entityCode, Map<String, Object> storageData, String excludeId) {
+        validatePublishedFields(entityCode, storageData, excludeId, true);
+    }
+
+    private void validatePublishedFields(String entityCode, Map<String, Object> storageData, String excludeId, boolean writing) {
         EntityPublishedSnapshot snapshot =
                 snapshotService.getLatestByEntityCode(
                         entityCode);
@@ -90,6 +99,12 @@ public class EntityDataMutationValidator {
                 snapshot,
                 storageData,
                 excludeId);
+        if (!writing) return;
+        for (EntityField field : snapshot.getFields()) {
+            if (isRelationField(field) || !StringUtils.hasText(field.getFieldCode())) continue;
+            String column = recordMapper.toColumnName(field.getFieldCode());
+            storageData.computeIfPresent(column, (key, value) -> EntityQueryScalarValues.pickerStorageValue(field, value));
+        }
     }
 
     /**

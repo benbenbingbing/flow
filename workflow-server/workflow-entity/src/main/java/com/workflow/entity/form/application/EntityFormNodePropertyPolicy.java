@@ -2,6 +2,7 @@ package com.workflow.entity.form.application;
 
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.ui.application.validation.BuiltInButtonAppearancePolicy;
+import com.workflow.entity.ui.application.validation.DataPickerConfigurationPolicy;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -73,7 +74,7 @@ public final class EntityFormNodePropertyPolicy {
                     Map.entry("date", Set.of("DATE")),
                     Map.entry("datetime", Set.of("DATETIME")),
                     Map.entry("select", Set.of("SELECT", "STRING")),
-                    Map.entry("data_picker", Set.of("STRING", "SELECT")),
+                    Map.entry("data_picker", DataPickerConfigurationPolicy.SUPPORTED_FIELD_TYPES),
                     Map.entry(
                             "select_multiple",
                             Set.of("MULTI_SELECT")),

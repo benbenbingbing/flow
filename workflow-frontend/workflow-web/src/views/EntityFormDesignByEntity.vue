@@ -1172,6 +1172,7 @@ import {
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
+import { DATA_PICKER_USAGES } from '@flow/workflow-core/data-picker'
 import {
   getFormById,
   createForm,
@@ -1817,10 +1818,11 @@ const selectedNodeTitle = computed(() => {
 })
 const availableNodeDataSourceUsages = computed(() => {
   const allowed = new Set(getFormNodeDataSourceUsages(selectedNodeType.value))
-  return formDataSourceUsages.filter(usage => allowed.has(usage.value))
+  return genericNodeDataSourceUsages.filter(usage => allowed.has(usage.value))
 })
 
-const nodeDataSourceUsageOptions = computed(() => formDataSourceUsages.map(usage => ({
+const genericNodeDataSourceUsages = formDataSourceUsages.filter(usage => !DATA_PICKER_USAGES.includes(usage.value))
+const nodeDataSourceUsageOptions = computed(() => genericNodeDataSourceUsages.map(usage => ({
   ...usage,
   disabled: !availableNodeDataSourceUsages.value.some(item => item.value === usage.value)
 })))
@@ -2003,7 +2005,7 @@ const selectedNodeDataSourceBindingCount = computed(() => {
       delete bindings[usage]
     }
   }
-  return Object.values(bindings).filter(Boolean).length
+  return Object.entries(bindings).filter(([code, binding]) => binding && !DATA_PICKER_USAGES.includes(code)).length
 })
 const selectedNodeDataSourceUsageLabel = computed(() =>
   availableNodeDataSourceUsages.value.find(
@@ -2040,6 +2042,7 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   selectedNodeDataSourceBindingCount, availableNodeDataSourceUsages, nodeDataSourceUsageOptions,
   isNodeDataSourceUsageConfigured, selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel, selectedNodeInterfaces,
+  interfacesByUsage,
   clearSelectedNodeDataSourceBinding, canConfigureSelectedNodeRelations,
   isSubFormField, isSubListField, getEntityNameById, formListByEntity,
   handleChildFormChange, childFormReleases, childFormReleaseLoading,

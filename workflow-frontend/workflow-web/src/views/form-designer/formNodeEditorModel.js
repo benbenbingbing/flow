@@ -6,6 +6,7 @@ import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-run
 import { normalizeSubListDisplayConfig, SUB_LIST_ACTION_DISPLAY_VERSION } from '@/shared/sub-list'
 import { readFieldScripts } from '@flow/workflow-core/browser/field-event-scripts'
 import { assertNoEmbeddedSelectionOptions } from '@/shared/selection-option-policy'
+import { DATA_PICKER_USAGES } from '@flow/workflow-core/data-picker'
 
 /**
  * 统一组件目录按宿主节点、绑定与实体类型筛选；平台预置和项目组件遵守相同约束。
@@ -70,7 +71,8 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
       props,
       node.nodeKey
     )
-    const allowedDataSourceUsages = getFormNodeDataSourceUsages(nodeType)
+    // 选择器绑定由组件配置区编辑，通用面板只投影自己的用途。
+    const allowedDataSourceUsages = getFormNodeDataSourceUsages(nodeType).filter(usage => !DATA_PICKER_USAGES.includes(usage))
     const firstBinding = Object.entries(bindings)
       .find(([usage]) =>
         allowedDataSourceUsages.includes(String(usage).toUpperCase())

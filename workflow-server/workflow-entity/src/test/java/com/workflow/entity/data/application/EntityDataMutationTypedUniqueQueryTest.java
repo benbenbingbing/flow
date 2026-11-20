@@ -1,6 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider;
@@ -11,6 +12,9 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import org.apache.ibatis.builder.annotation.ProviderContext;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +53,37 @@ class EntityDataMutationTypedUniqueQueryTest {
             return 0L;
         });
         validator.validatePublishedFields("asset", Map.of("serial", "9223372036854775807"), "current-record");
-        verify(mapper).countByCondition(eq("biz_asset"), anyMap());
+        var writable = new LinkedHashMap<String, Object>(Map.of("serial", "9223372036854775807"));
+        validator.preparePublishedFieldsForWrite("asset", writable, "current-record");
+        assertEquals(Long.MAX_VALUE, writable.get("serial"));
+        verify(mapper, times(2)).countByCondition(eq("biz_asset"), anyMap());
+    }
+
+    @Test
+    void entityDataKeepsUnsafeNumbersExactInTheBrowserIncludingChildRows() {
+        var decimal = new BigDecimal("123456789.123456789");
+        var dto = new EntityDataDTO();
+        dto.setData(Map.of("serial", Long.MAX_VALUE, "count", 12L, "total", new BigDecimal("10.25"),
+                "children", List.of(Map.of("amount", decimal))));
+        var json = new ObjectMapper().valueToTree(dto).get("data");
+        assertEquals("9223372036854775807", json.get("serial").textValue());
+        assertTrue(json.get("count").isIntegralNumber());
+        assertTrue(json.get("total").isNumber());
+        assertEquals(decimal.toString(), json.get("children").get(0).get("amount").textValue());
+        var field = new EntityField(); field.setFieldType(EntityField.FieldType.DECIMAL);
+        assertEquals(decimal, EntityQueryScalarValues.pickerStorageValue(field, decimal.toString()));
+    }
+
+    @Test
+    void jdbcDateAndDatetimeUseTheirDeclaredLocalValues() {
+        var day = new EntityField(); day.setFieldCode("day"); day.setFieldType(EntityField.FieldType.DATE);
+        var meeting = new EntityField(); meeting.setFieldCode("meeting"); meeting.setFieldType(EntityField.FieldType.DATETIME);
+        var jdbcTime = Timestamp.valueOf("2024-02-29 13:45:20");
+        var record = new EntityRuntimeRecordMapper(new ObjectMapper()).toDto(
+                Map.of("day", jdbcTime, "meeting", jdbcTime), "calendar", List.of(day, meeting));
+        assertEquals("2024-02-29", record.getData().get("day"));
+        assertEquals("2024-02-29T13:45:20", record.getData().get("meeting"));
+        assertEquals(LocalDateTime.of(2024, 2, 29, 13, 45, 20),
+                EntityQueryScalarValues.pickerStorageValue(meeting, "2024-02-29 13:45:20"));
     }
 }
