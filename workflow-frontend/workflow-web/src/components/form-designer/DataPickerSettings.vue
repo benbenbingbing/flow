@@ -1,68 +1,72 @@
 <template>
   <div class="data-picker-settings">
-    <el-form-item label="数据来源">
-      <el-radio-group :model-value="sourceMode" @update:model-value="changeSource">
-        <el-radio-button value="ENTITY_LIST">实体列表</el-radio-button>
-        <el-radio-button value="INTERFACE">自定义接口</el-radio-button>
-      </el-radio-group>
-    </el-form-item>
-    <template v-if="sourceMode === 'ENTITY_LIST'">
-      <el-form-item label="目标实体">
-        <EntityDefinitionPicker :model-value="listConfig.entityId" value-key="id" title="选择目标实体" clearable
-          :query="{ status: 'PUBLISHED' }" @selected="selectEntity" />
+    <section class="picker-settings-group" aria-label="数据来源">
+      <h4 class="picker-settings-heading">数据来源</h4>
+      <el-form-item label="来源类型">
+        <el-radio-group :model-value="sourceMode" @update:model-value="changeSource">
+          <el-radio-button value="ENTITY_LIST">实体列表</el-radio-button>
+          <el-radio-button value="INTERFACE">自定义接口</el-radio-button>
+        </el-radio-group>
       </el-form-item>
-      <el-form-item label="选择列表">
-        <el-select :model-value="listConfig.listKey" :loading="listLoading" :disabled="!listConfig.entityId"
-          placeholder="选择已发布列表" filterable @update:model-value="changeList">
-          <el-option v-for="list in lists" :key="list.listKey" :label="list.listName || list.listKey" :value="list.listKey" />
-        </el-select>
-      </el-form-item>
-      <el-form-item v-if="listConfig.listKey || listError" label="列表参数映射">
-        <el-alert v-if="listError" :title="listError" type="warning" :closable="false" />
-        <PageParameterMappingEditor v-else-if="publishedList" :model-value="listConfig.parameterMappings || []"
-          :schema="listParameterSchema" :source-fields="sourceFields" :entity-fields="sourceEntityFields"
-          reference-list @update:model-value="updateList({ parameterMappings: $event })" />
-        <span v-else-if="listLoading">正在读取列表配置…</span>
-      </el-form-item>
-    </template>
-    <template v-else>
-      <el-form-item label="字段描述">
+      <template v-if="sourceMode === 'ENTITY_LIST'">
+        <el-form-item label="目标实体">
+          <EntityDefinitionPicker :model-value="listConfig.entityId" value-key="id" title="选择目标实体" clearable
+            :query="{ status: 'PUBLISHED' }" @selected="selectEntity" />
+        </el-form-item>
+        <el-form-item label="选择列表">
+          <el-select :model-value="listConfig.listKey" :loading="listLoading" :disabled="!listConfig.entityId"
+            placeholder="选择已发布列表" filterable @update:model-value="changeList">
+            <el-option v-for="list in lists" :key="list.listKey" :label="list.listName || list.listKey" :value="list.listKey" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="listConfig.listKey || listError" label="列表参数映射">
+          <el-alert v-if="listError" :title="listError" type="warning" :closable="false" />
+          <PageParameterMappingEditor v-else-if="publishedList" :model-value="listConfig.parameterMappings || []"
+            :schema="listParameterSchema" :source-fields="sourceFields" :entity-fields="sourceEntityFields"
+            reference-list @update:model-value="updateList({ parameterMappings: $event })" />
+          <span v-else-if="listLoading">正在读取列表配置…</span>
+        </el-form-item>
+      </template>
+      <template v-else>
+        <DataPickerInterfaceBinding v-for="usage in recordInterfaceUsages" :key="usage.code"
+          :label="usage.label" :placeholder="usage.placeholder" :binding="binding(usage.code)" :options="interfaces[usage.code]"
+          :input-draft="inputDrafts[usage.code]" :input-error="inputErrors[usage.code]"
+          @select="changeBinding(usage.code, $event)" @edit-input="updateInput(usage.code, $event)" />
+      </template>
+    </section>
+
+    <section v-if="sourceMode === 'INTERFACE'" class="picker-settings-group" aria-label="返回字段">
+      <h4 class="picker-settings-heading">返回字段</h4>
+      <el-form-item label="定义方式">
         <el-select :model-value="schemaMode" @update:model-value="changeSchemaMode">
           <el-option label="通用默认（id / name）" value="DEFAULT" />
           <el-option label="手动输入" value="MANUAL" />
-          <el-option label="从接口字段选择" value="QUERY_SCHEMA" />
-          <el-option label="通过接口获取" value="INTERFACE" />
+          <el-option label="从分页接口选择字段" value="QUERY_SCHEMA" />
+          <el-option label="通过字段描述接口获取" value="INTERFACE" />
         </el-select>
       </el-form-item>
-      <template v-for="usage in interfaceUsages" :key="usage.code">
-        <el-form-item :label="usage.label">
-          <el-select :model-value="binding(usage.code)?.extensionId" filterable clearable placeholder="请选择接口"
-            @update:model-value="value => changeBinding(usage.code, value)">
-            <el-option v-for="item in interfaces[usage.code] || []" :key="item.extensionId" :label="`${item.displayName} (${item.extensionKey})`" :value="item.extensionId" />
-          </el-select>
-          <details v-if="binding(usage.code)?.extensionId" class="picker-binding-input">
-            <summary>输入映射</summary>
-            <el-input :model-value="inputDrafts[usage.code] ?? JSON.stringify(binding(usage.code).inputMapping || {}, null, 2)"
-              type="textarea" :rows="2" placeholder='{"filters.projectId":"data.project_id"}'
-              @update:model-value="value => updateInput(usage.code, value)" />
-            <small v-if="inputErrors[usage.code]" class="picker-error" role="alert">{{ inputErrors[usage.code] }}</small>
-          </details>
+      <template v-if="schemaMode === 'INTERFACE'">
+        <DataPickerInterfaceBinding label="字段描述接口" :binding="binding('FIELD_PICKER_SCHEMA')" :options="interfaces.FIELD_PICKER_SCHEMA"
+          :input-draft="inputDrafts.FIELD_PICKER_SCHEMA" :input-error="inputErrors.FIELD_PICKER_SCHEMA"
+          @select="changeBinding('FIELD_PICKER_SCHEMA', $event)" @edit-input="updateInput('FIELD_PICKER_SCHEMA', $event)" />
+        <el-form-item label="测试表单数据">
+          <div class="picker-fetch">
+            <el-input v-model="sampleText" type="textarea" :rows="2" aria-label="测试表单数据" placeholder="可选" />
+            <el-button :loading="loading" :disabled="!formId" @click="loadSchema">获取字段描述</el-button>
+            <span v-if="schema" class="picker-field-count">{{ schema.fields.length }} 个字段</span>
+          </div>
         </el-form-item>
       </template>
-      <el-form-item v-if="schemaMode === 'INTERFACE'" label="获取字段描述">
-        <div class="picker-fetch">
-          <el-input v-model="sampleText" type="textarea" :rows="2" aria-label="测试表单数据" placeholder="测试表单数据（可选）" />
-          <el-button :loading="loading" :disabled="!formId" @click="loadSchema">获取字段描述</el-button>
-          <span v-if="schema">{{ schema.fields.length }} 个字段</span>
-        </div>
-      </el-form-item>
-      <template v-if="['MANUAL', 'QUERY_SCHEMA'].includes(schemaMode)">
+      <template v-if="editsRecordSchema">
         <el-form-item v-if="schemaMode === 'MANUAL'" label="字段列表">
           <div class="picker-fields">
-            <div v-for="(item, index) in editableSchema.fields" :key="index" class="picker-field-row">
-              <el-input :model-value="item.code" placeholder="字段编码" @change="value => updateField(index, 'code', value)" />
-              <el-input :model-value="item.label" placeholder="字段名称" @change="value => updateField(index, 'label', value)" />
-              <el-select :model-value="item.type" @update:model-value="value => updateField(index, 'type', value)">
+            <div v-if="editableSchema.fields.length" class="picker-field-row picker-grid-head" aria-hidden="true">
+              <span>字段编码</span><span>字段名称</span><span>字段类型</span>
+            </div>
+            <div v-for="(item, index) in editableSchema.fields" :key="index" class="picker-field-row picker-grid-row">
+              <el-input :model-value="item.code" aria-label="字段编码" placeholder="字段编码" @change="value => updateField(index, 'code', value)" />
+              <el-input :model-value="item.label" aria-label="字段名称" placeholder="字段名称" @change="value => updateField(index, 'label', value)" />
+              <el-select :model-value="item.type" aria-label="字段类型" @update:model-value="value => updateField(index, 'type', value)">
                 <el-option v-for="type in fieldTypes" :key="type" :label="type" :value="type" />
               </el-select>
               <el-button link type="danger" @click="removeField(index)">移除</el-button>
@@ -77,57 +81,77 @@
             <el-option v-for="item in queryFields" :key="item.code" :value="item.code" :label="fieldOptionLabel(item)" />
           </el-select>
         </el-form-item>
-        <el-form-item label="记录标识字段">
-          <el-select :model-value="editableSchema.valueField" placeholder="选择字符串字段" @update:model-value="value => setSchema({ valueField: value })">
+        <el-form-item label="记录标识">
+          <el-select :model-value="editableSchema.valueField" placeholder="选择用于定位记录的字符串字段" @update:model-value="value => setSchema({ valueField: value })">
             <el-option v-for="item in editableFields.filter(field => field.type === 'STRING')" :key="item.code" :value="item.code" :label="fieldOptionLabel(item)" />
           </el-select>
         </el-form-item>
-        <el-form-item label="显示字段">
-          <el-select :model-value="editableSchema.labelField" placeholder="选择显示名称字段" @update:model-value="value => setSchema({ labelField: value })">
-            <el-option v-for="item in editableFields" :key="item.code" :value="item.code" :label="fieldOptionLabel(item)" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="弹窗列">
-          <el-select :model-value="editableSchema.columns.map(column => column.field)" multiple placeholder="选择并排列展示字段"
-            @update:model-value="value => setSchema({ columns: value.map(field => ({ field })) })">
-            <el-option v-for="item in editableFields" :key="item.code" :value="item.code" :label="fieldOptionLabel(item)" />
-          </el-select>
-        </el-form-item>
       </template>
-    </template>
-    <el-form-item v-if="fieldType === 'STRING'" label="写入方式">
-      <el-select :model-value="writeMode" @update:model-value="value => update({ pickerValueMode: value, pickerWriteField: undefined })">
-        <el-option label="记录标识" value="KEY" />
-        <el-option label="指定字段值" value="FIELD" />
-      </el-select>
-    </el-form-item>
-    <el-form-item v-if="writeMode === 'FIELD'" label="写入当前字段">
-      <el-select :model-value="writeFields.some(item => item.code === config.pickerWriteField) ? config.pickerWriteField : undefined"
-        :placeholder="writeFields.length ? '选择取值来源字段' : '数据源尚无兼容字段'" :disabled="!writeFields.length" filterable
-        @update:model-value="value => update({ pickerValueMode: 'FIELD', pickerWriteField: value })">
-        <el-option v-for="item in writeFields" :key="item.code" :label="fieldOptionLabel(item)" :value="item.code" />
-      </el-select>
-    </el-form-item>
-    <div class="picker-schema-toolbar">
-      <strong>选择后回填</strong>
-      <el-button :disabled="!schema" @click="addMapping">添加映射</el-button>
-    </div>
-    <div v-for="(mapping, index) in mappings" :key="index" class="picker-mapping">
-      <el-select :model-value="mapping.sourcePath" placeholder="来源字段" @update:model-value="value => updateMapping(index, 'sourcePath', value)">
-        <el-option v-for="source in schema?.fields || []" :key="source.code" :label="source.label" :value="`selection.data.${source.code}`" />
-      </el-select>
-      <el-select :model-value="mapping.targetPath" placeholder="当前表单目标字段" @update:model-value="value => updateMapping(index, 'targetPath', value)">
-        <el-option v-for="target in targetFields" :key="target.fieldCode" :label="target.fieldLabel || target.fieldName || target.fieldCode" :value="`form.${target.fieldCode}`" :disabled="!compatible(mapping, target)" />
-      </el-select>
-      <el-select :model-value="mapping.overwrite" @update:model-value="value => updateMapping(index, 'overwrite', value)">
-        <el-option label="始终覆盖" value="ALWAYS" /><el-option label="仅空值覆盖" value="IF_EMPTY" /><el-option label="覆盖前确认" value="CONFIRM" />
-      </el-select>
-      <el-select :model-value="mapping.clearOnEmpty" @update:model-value="value => updateMapping(index, 'clearOnEmpty', value)">
-        <el-option label="来源为空时清空" :value="true" /><el-option label="来源为空时保留" :value="false" />
-      </el-select>
-      <el-button link type="danger" @click="update({ pickerMappings: mappings.filter((_item, position) => position !== index) })">删除</el-button>
-    </div>
-    <p class="form-tip">回填规则属于当前字段，随表单发布。清空选择默认保留其它字段，可在组件基础配置中开启清空处理。</p>
+    </section>
+
+    <section v-if="sourceMode === 'INTERFACE' && editsRecordSchema" class="picker-settings-group" aria-label="弹窗与回显">
+      <h4 class="picker-settings-heading">弹窗与回显</h4>
+      <el-form-item label="显示名称字段">
+        <el-select :model-value="editableSchema.labelField" placeholder="选择显示名称字段" @update:model-value="value => setSchema({ labelField: value })">
+          <el-option v-for="item in editableFields" :key="item.code" :value="item.code" :label="fieldOptionLabel(item)" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="弹窗展示列">
+        <el-select :model-value="editableSchema.columns.map(column => column.field)" multiple placeholder="选择并排列展示字段"
+          @update:model-value="value => setSchema({ columns: value.map(field => ({ field })) })">
+          <el-option v-for="item in editableFields" :key="item.code" :value="item.code" :label="fieldOptionLabel(item)" />
+        </el-select>
+      </el-form-item>
+    </section>
+
+    <section class="picker-settings-group" aria-label="选择后写入">
+      <h4 class="picker-settings-heading">选择后写入</h4>
+      <el-form-item v-if="fieldType === 'STRING'" label="写入方式">
+        <el-select :model-value="writeMode" @update:model-value="value => update({ pickerValueMode: value, pickerWriteField: undefined })">
+          <el-option label="记录标识" value="KEY" />
+          <el-option label="指定字段值" value="FIELD" />
+        </el-select>
+      </el-form-item>
+      <el-form-item v-if="writeMode === 'FIELD'" label="写入当前字段">
+        <el-select :model-value="writeFields.some(item => item.code === config.pickerWriteField) ? config.pickerWriteField : undefined"
+          :placeholder="writeFields.length ? '选择记录中的来源字段' : '数据源尚无兼容字段'" :disabled="!writeFields.length" filterable
+          @update:model-value="value => update({ pickerValueMode: 'FIELD', pickerWriteField: value })">
+          <el-option v-for="item in writeFields" :key="item.code" :label="fieldOptionLabel(item)" :value="item.code" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="其他字段回填">
+        <div class="picker-fields">
+          <div v-if="mappings.length" class="picker-mapping-row picker-grid-head" aria-hidden="true">
+            <span>记录来源字段</span><span></span><span>表单目标字段</span><span>覆盖策略</span><span>来源为空时</span>
+          </div>
+          <div v-for="(mapping, index) in mappings" :key="index" class="picker-mapping-row picker-grid-row">
+            <el-select :model-value="mapping.sourcePath" aria-label="记录来源字段" placeholder="记录来源字段" filterable
+              @update:model-value="value => updateMapping(index, 'sourcePath', value)">
+              <el-option v-for="source in schema?.fields || []" :key="source.code" :label="fieldOptionLabel(source)" :value="`selection.data.${source.code}`" />
+            </el-select>
+            <span class="picker-mapping-arrow" aria-hidden="true">→</span>
+            <el-select :model-value="mapping.targetPath" aria-label="表单目标字段" placeholder="表单目标字段" filterable
+              @update:model-value="value => updateMapping(index, 'targetPath', value)">
+              <el-option v-for="target in targetFields" :key="target.fieldCode" :label="targetOptionLabel(target)" :value="`form.${target.fieldCode}`" :disabled="!compatible(mapping, target)" />
+            </el-select>
+            <div class="picker-overwrite">
+              <span class="picker-compact-label" aria-hidden="true">覆盖策略</span>
+              <el-select :model-value="mapping.overwrite" aria-label="覆盖策略" @update:model-value="value => updateMapping(index, 'overwrite', value)">
+                <el-option label="始终覆盖" value="ALWAYS" /><el-option label="仅空值覆盖" value="IF_EMPTY" /><el-option label="覆盖前确认" value="CONFIRM" />
+              </el-select>
+            </div>
+            <div class="picker-empty-policy">
+              <span class="picker-compact-label" aria-hidden="true">来源为空时</span>
+              <el-select :model-value="mapping.clearOnEmpty" aria-label="来源为空时" @update:model-value="value => updateMapping(index, 'clearOnEmpty', value)">
+                <el-option label="清空目标" :value="true" /><el-option label="保留目标" :value="false" />
+              </el-select>
+            </div>
+            <el-button link type="danger" @click="update({ pickerMappings: mappings.filter((_item, position) => position !== index) })">删除</el-button>
+          </div>
+          <el-button :disabled="!schema" @click="addMapping">添加映射</el-button>
+        </div>
+      </el-form-item>
+    </section>
   </div>
 </template>
 <script setup>
@@ -147,6 +171,7 @@ import { normalizeRows } from '@/components/related-content/relatedContentOption
 import { loadPublishedListSettings } from '@/views/form-designer/useReferenceListSettings'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
+import DataPickerInterfaceBinding from './DataPickerInterfaceBinding.vue'
 
 const props = defineProps({
   field: { type: Object, required: true }, formId: [String, Number], fields: { type: Array, default: () => [] },
@@ -161,6 +186,7 @@ const sourceMode = computed(() => isEntityListPicker(config.value) ? 'ENTITY_LIS
 const listConfig = computed(() => config.value.pickerList || {})
 const listParameterSchema = computed(() => listFilterParameterSchema(publishedList.value?.viewConfig))
 const schemaMode = computed(() => pickerSchemaSource(config.value, Boolean(binding('FIELD_PICKER_SCHEMA')?.extensionId)))
+const editsRecordSchema = computed(() => ['MANUAL', 'QUERY_SCHEMA'].includes(schemaMode.value))
 const schema = computed(() => sourceMode.value === 'ENTITY_LIST'
   ? (publishedList.value ? pickerListSchema(publishedList.value.fields, listEntityFields.value) : config.value.pickerSchema)
   : schemaMode.value === 'DEFAULT' ? DEFAULT_PICKER_SCHEMA : config.value.pickerSchema)
@@ -172,11 +198,11 @@ const emptySchema = { fields: [], columns: [], valueField: '', labelField: '' }
 const editableSchema = computed(() => config.value.pickerSchema || emptySchema)
 const editableFields = computed(() => editableSchema.value.fields.filter(field => field.code))
 const fieldOptionLabel = item => item.label && item.label !== item.code ? `${item.label} (${item.code})` : item.code
-const interfaceUsages = computed(() => [
+const targetOptionLabel = item => fieldOptionLabel({ code: item.fieldCode, label: item.fieldLabel || item.fieldName })
+const recordInterfaceUsages = [
   { code: 'FIELD_PICKER_QUERY', label: '分页查询接口' },
-  { code: 'FIELD_PICKER_RESOLVE', label: '按键解析接口' },
-  ...(schemaMode.value === 'INTERFACE' ? [{ code: 'FIELD_PICKER_SCHEMA', label: '字段描述接口' }] : [])
-])
+  { code: 'FIELD_PICKER_RESOLVE', label: '按标识查询', placeholder: '选择根据记录标识查单条记录的接口' }
+]
 const queryFields = computed(() => {
   const id = binding('FIELD_PICKER_QUERY')?.extensionId
   return pickerQuerySchemaFields((props.interfaces.FIELD_PICKER_QUERY || []).find(item => item.extensionId === id)?.outputSchema)
@@ -337,15 +363,46 @@ async function loadSchema() {
 }
 </script>
 <style scoped>
+.data-picker-settings { display: grid; gap: 12px; container-type: inline-size; }
+.picker-settings-group { min-width: 0; padding: 0 12px 12px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; }
+.picker-settings-heading {
+  margin: 0 -12px 12px;
+  padding: 7px 12px;
+  border-radius: 5px 5px 0 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-lighter);
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.picker-settings-group > :deep(.el-form-item) { margin-bottom: 12px; }
+.picker-settings-group > :deep(.el-form-item:last-child) { margin-bottom: 0; }
 .data-picker-settings :deep(.el-select), .data-picker-settings :deep(.entity-definition-picker) { width: 100%; }
-.picker-fields, .picker-binding-input, .picker-fetch { width: 100%; }
-.picker-field-row { display: grid; grid-template-columns: 1fr 1fr minmax(100px, .6fr) auto; gap: 8px; margin-bottom: 8px; }
-.picker-binding-input { margin-top: 6px; }
-.picker-binding-input summary { cursor: pointer; font-size: 13px; color: var(--el-text-color-secondary); }
-.picker-fetch { display: flex; align-items: center; gap: 8px; }
-.picker-error { color: var(--el-color-danger); }
-.picker-schema-toolbar { display: flex; align-items: center; justify-content: space-between; margin: 12px 0; gap: 8px; }
-.picker-mapping { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
-.picker-mapping :deep(.el-select) { min-width: 0; }
-.form-tip { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
+.picker-fields { display: grid; gap: 6px; width: 100%; min-width: 0; }
+.picker-fields > .el-button { justify-self: start; }
+.picker-field-row, .picker-mapping-row { display: grid; align-items: center; gap: 6px; min-width: 0; }
+.picker-field-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .7fr) 2.5em; }
+.picker-mapping-row { grid-template-columns: minmax(0, 1.3fr) 14px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, .9fr) 2.5em; }
+.picker-grid-row > * { min-width: 0; }
+.picker-grid-row > .el-button { margin: 0; }
+.picker-grid-head, .picker-compact-label, .picker-field-count { color: var(--el-text-color-secondary); font-size: 12px; line-height: 18px; }
+.picker-grid-head { padding-top: 3px; }
+.picker-mapping-arrow { color: var(--el-text-color-secondary); text-align: center; }
+.picker-compact-label { display: none; }
+.picker-fetch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
+.picker-fetch :deep(.el-textarea) { flex: 1 1 150px; }
+
+/* 窄抽屉也让来源和目标保持同排，策略移到对应映射的下一行。 */
+@container (max-width: 610px) {
+  .picker-settings-group :deep(.el-form-item) { display: block; }
+  .picker-settings-group :deep(.el-form-item__label) { width: auto !important; justify-content: flex-start; }
+  .picker-settings-group :deep(.el-form-item__content) { margin-left: 0 !important; }
+  .picker-mapping-row { grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr) 2.5em; }
+  .picker-mapping-row.picker-grid-head > :nth-child(n + 4) { display: none; }
+  .picker-mapping-row.picker-grid-row { align-items: end; padding-bottom: 8px; border-bottom: 1px solid var(--el-border-color-lighter); }
+  .picker-overwrite { grid-column: 1; }
+  .picker-empty-policy { grid-column: 3; }
+  .picker-compact-label { display: block; margin-bottom: 2px; }
+}
 </style>

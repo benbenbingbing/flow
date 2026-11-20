@@ -8,10 +8,11 @@ import path from 'node:path'
 // 运行真实 Element Plus/Vant 面板；内存接口按相同绑定协议提供数据，不访问业务库。
 const harness = `
 import {createApp,h,reactive,nextTick} from 'vue'
-import ElementPlus from 'element-plus'
+import ElementPlus,{ElForm} from 'element-plus'
 import 'element-plus/dist/index.css'
 import 'vant/lib/index.css'
 import PcField from '/src/extensions/builtin/fields/components/DataPickerField.vue'
+import DataPickerSettings from '/src/components/form-designer/DataPickerSettings.vue'
 import MobileField from '/@fs/${path.resolve('../packages/workflow-mobile-ui/src/fields/MobileFieldRenderer.vue')}'
 import {pickerListSchema} from '@flow/workflow-core/data-picker'
 import {entityListRuntimeApi} from '@/api/entityListRuntime'
@@ -81,6 +82,16 @@ window.pickerTest={state,pending,validate:side=>fieldRefs[side].validate(),settl
    Object.assign(fields[side].componentProps,{pickerValueMode:'FIELD',pickerWriteField:writeField,
     pickerSchema:pickerListSchema(listFields,[{fieldCode:'contact',fieldType:'STRING'},{fieldCode:writeField,fieldType}])})
   }
+ },
+ mountSettings:()=>{
+  const field=reactive({fieldType:'TEXT',fieldCode:'customer',componentProps:{pickerSchemaSource:'MANUAL',pickerSchema:schema,
+   pickerWriteField:'name',pickerMappings:[{sourcePath:'selection.data.contact',targetPath:'form.contact',overwrite:'ALWAYS',clearOnEmpty:false}]}})
+  const host=document.createElement('main')
+  host.id='settings';host.style.margin='16px'
+  document.body.append(host)
+  createApp({setup(){return()=>h(ElForm,{labelWidth:'90px',size:'small'},()=>h(DataPickerSettings,{field,formId:'f',
+   fields:[{fieldId:'contact-id',fieldCode:'contact',fieldType:'STRING',fieldLabel:'联系人'},
+    {fieldId:'customer-no-id',fieldCode:'customer_no',fieldType:'STRING',fieldLabel:'客户编号'}]}))}}).use(ElementPlus).mount(host)
  }
 }
 `
@@ -208,9 +219,50 @@ try {
   await options.first().click(); await settle()
   assert.equal((await state('mobile')).customer, false)
   assert.equal(await toggle.getAttribute('aria-checked'), 'false')
-  assert.deepEqual(errors, [])
   await page.screenshot({ path: '/tmp/flow-data-picker-mobile.png', fullPage: true })
-  console.log('data picker browser acceptance passed: PC/mobile interface and published entity list, filtering, pagination, atomic fill, restore and stale confirm isolation')
+
+  await page.setViewportSize({ width: 1100, height: 900 })
+  await page.evaluate(() => pickerTest.mountSettings())
+  const settings = page.locator('#settings')
+  const source = settings.getByRole('region', { name: '数据来源' })
+  const returnedFields = settings.getByRole('region', { name: '返回字段' })
+  const appearance = settings.getByRole('region', { name: '弹窗与回显' })
+  const write = settings.getByRole('region', { name: '选择后写入' })
+  await source.getByRole('combobox', { name: '按标识查询' }).waitFor()
+  assert.match(await returnedFields.innerText(), /字段编码\s+字段名称\s+字段类型/)
+  assert.match(await appearance.innerText(), /弹窗展示列/)
+  assert.match(await write.innerText(), /写入当前字段/)
+  await write.getByRole('button', { name: '添加映射' }).click()
+  const mapping = write.locator('.picker-grid-row').last()
+  // 下拉面板挂在 body 上，按控件的 aria-controls 查找，避免匹配另一侧仍在收起的同名选项。
+  async function chooseOption(select, name) {
+    const listId = await select.getByRole('combobox').getAttribute('aria-controls')
+    await select.click()
+    await page.locator(`[id="${listId}"]`).getByRole('option', { name, exact: true }).click()
+  }
+  const mappingSelects = mapping.locator('.el-select')
+  await chooseOption(mappingSelects.nth(0), '客户编码 (code)')
+  await chooseOption(mappingSelects.nth(1), '客户编号 (customer_no)')
+  assert.match(await mapping.innerText(), /客户编码 \(code\)\s+→\s+客户编号 \(customer_no\)/)
+  await settle()
+
+  for (const width of [1100, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    const [fromBox, toBox, policyBox] = await Promise.all([0, 1, 2].map(index => mappingSelects.nth(index).boundingBox()))
+    assert.ok(fromBox && toBox && policyBox)
+    assert.equal(fromBox.y, toBox.y, `在 ${width}px 宽度下来源和目标同排`)
+    assert.equal(policyBox.y > toBox.y, width === 390)
+    assert.equal(await settings.evaluate(panel => panel.scrollWidth <= panel.clientWidth), true)
+  }
+  await chooseOption(returnedFields.locator('.el-select').first(), '通过字段描述接口获取')
+  assert.equal(await returnedFields.getByRole('combobox', { name: '字段描述接口' }).count(), 1)
+  assert.equal(await source.getByRole('combobox', { name: '字段描述接口' }).count(), 0)
+  assert.equal(await appearance.count(), 0)
+  await source.getByText('实体列表', { exact: true }).click()
+  assert.match(await source.innerText(), /目标实体/)
+  assert.equal(await returnedFields.count(), 0)
+  assert.deepEqual(errors, [])
+  console.log('data picker browser acceptance passed: PC/mobile interface and entity list runtime, designer groups and mapping layout')
 } finally {
   await browser?.close(); await server?.close()
   rmSync(fixture, { recursive: true, force: true })
