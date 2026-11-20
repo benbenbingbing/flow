@@ -43,10 +43,11 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch, provide, getCurrentInstance } from 'vue'
 import { FIELD_SCRIPT_EVENTS, readComponentScriptEvents } from '@flow/workflow-core/browser/field-script-metadata'
 import { readFieldScripts, validateFieldScript } from '@flow/workflow-core/browser/field-event-scripts'
-import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cell as VanCell } from 'vant'
+import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cell as VanCell, showFailToast } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useFormField } from '@flow/workflow-core/vue/useFormField'
 import { getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
+import { referenceListParameterState } from '@flow/workflow-core/page-parameters'
 import MobileReadonlyField from './MobileReadonlyField.vue'
 import MobileCascaderField from './MobileCascaderField.vue'
 import MobileDataPickerField from './MobileDataPickerField.vue'
@@ -99,6 +100,17 @@ const dateType = computed(() => ['date', 'datetime', 'time'].includes(type.value
 const selectionType = computed(() => entityType.value || ['select', 'select_multiple'].includes(type.value))
 const multiple = computed(() => type.value === 'select_multiple' || parsedComponentProps.value.multiple === true || ['MULTI_REFERENCE', 'MULTI_SELECT'].includes(String(props.field.fieldType).toUpperCase()))
 const remoteOptions = ref(null), optionError = ref(''), pickerOpen = ref(false), selectionDraft = ref([]), selectedRecords = ref([])
+const referenceConfig = computed(() => parsedComponentProps.value.refConfig || {})
+const pickerParameters = computed(() => type.value === 'entity'
+  && String(props.field.refEntityType || referenceConfig.value.refEntityType || 'CUSTOM').toUpperCase() === 'CUSTOM'
+  ? referenceListParameterState(referenceConfig.value.parameterMappings, props.formData, props.context.scriptFields, props.context.record)
+  : null)
+const pickerParameterKey = computed(() => pickerParameters.value
+  ? JSON.stringify([props.field.refEntityId, referenceConfig.value.listKey || props.field.refListKey, pickerParameters.value])
+  : '')
+let openedPickerParameterKey = ''
+// 与桌面一致，来源变化后关闭当前选择器，废弃旧候选和还在加载的请求。
+watch(pickerParameterKey, () => { pickerOpen.value = false })
 const customRef = ref(), cascaderRef = ref(), dataPickerRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
 function normalizeOptions(options) { return (Array.isArray(options) ? options : []).map(option => typeof option === 'object' ? { ...option, text: option.text ?? option.label ?? option.name ?? String(option.value ?? option.id), value: option.value ?? option.id, ...(option.children ? { children: normalizeOptions(option.children) } : {}) } : { text: String(option), value: option }) }
 const choices = computed(() => normalizeOptions(props.options ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : [])))
@@ -166,7 +178,16 @@ async function blur() {
   if (committed !== JSON.stringify(fieldValue.value)) { await handleChange(fieldValue.value); committed = JSON.stringify(fieldValue.value) }
   await handleBlur()
 }
-function openPicker() { selectionDraft.value = Array.isArray(fieldValue.value) ? [...fieldValue.value] : []; initializeDate(); pickerOpen.value = true }
+function openPicker() {
+  if (pickerParameters.value?.error) {
+    showFailToast(pickerParameters.value.error)
+    return
+  }
+  openedPickerParameterKey = pickerParameterKey.value
+  selectionDraft.value = Array.isArray(fieldValue.value) ? [...fieldValue.value] : []
+  initializeDate()
+  pickerOpen.value = true
+}
 function confirmChoice({ selectedValues }) {
   // 空列的 Picker 可能返回 [undefined]；加载中或失败时点击确认不能清除已保存的编码。
   if (selectedValues[0] !== undefined) handleChange(selectedValues[0])
@@ -176,11 +197,24 @@ function toggleChoice({ value, disabled }) { if (disabled) return; selectionDraf
 function confirmMultiple() { handleChange([...selectionDraft.value]); pickerOpen.value = false }
 async function loadEntityOptions(query) {
   if (!props.services.loadEntityOptions) throw new Error('当前表单未提供选择能力')
-  return props.services.loadEntityOptions(props.field, query, props.context)
+  if (pickerParameters.value?.error) throw new Error(pickerParameters.value.error)
+  return props.services.loadEntityOptions(props.field, query, props.context, pickerParameters.value?.parameters)
 }
 async function selectRecords(records) {
+  if (openedPickerParameterKey !== pickerParameterKey.value) return
+  const nextValue = multiple.value ? records.map(item => item.id) : records[0]?.id ?? null
+  if (pickerParameters.value) {
+    if (!pickerOpen.value) return
+    // 筛选只影响候选。多选需比较整组 ID，首条不变时仍可能新增或移除其他项。
+    const current = props.modelValue
+    const unchanged = multiple.value
+      ? Array.isArray(current) && current.length === nextValue.length
+        && current.every((id, index) => String(id) === String(nextValue[index]))
+      : records.length > 0 && String(nextValue) === String(current)
+    if (unchanged) return
+  }
   selectedRecords.value = records
-  fieldValue.value = multiple.value ? records.map(item => item.id) : records[0]?.id ?? null
+  fieldValue.value = nextValue
   await handleSelectionChange(multiple.value ? records : records[0] || null)
 }
 const dateParts = ref([]), timeParts = ref([])

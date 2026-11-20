@@ -26,7 +26,25 @@
               <el-input v-model="row.targetValue" :disabled="disabled" placeholder="当前字段的值" @input="persist('value')" />
               <el-button :disabled="disabled" type="danger" text aria-label="删除值映射" @click="removeRow('value', index)"><el-icon><Delete /></el-icon></el-button>
             </div>
-            <el-button :disabled="disabled" type="primary" text @click="addRow('value')"><el-icon><Plus /></el-icon>添加映射</el-button>
+            <template v-if="model.fallback">
+              <div class="mapping-row">
+                <span class="fallback-source">其他值（未匹配时）</span>
+                <span>→</span>
+                <el-input
+                  v-model="model.fallback.targetValue"
+                  :disabled="disabled"
+                  aria-label="其他值的回填值"
+                  placeholder="当前字段的值，留空则清空"
+                  @input="persist('value')"
+                />
+                <el-button :disabled="disabled" type="danger" text aria-label="删除其他值映射" @click="setFallback(null)"><el-icon><Delete /></el-icon></el-button>
+              </div>
+              <el-checkbox v-model="model.fallback.includeEmpty" :disabled="disabled" @change="persist('value')">空值也按其他处理</el-checkbox>
+            </template>
+            <div class="mapping-actions">
+              <el-button :disabled="disabled" type="primary" text @click="addRow('value')"><el-icon><Plus /></el-icon>添加映射</el-button>
+              <el-button v-if="!model.fallback" :disabled="disabled" type="primary" text @click="setFallback({ targetValue: '', includeEmpty: false })"><el-icon><Plus /></el-icon>添加其他值映射</el-button>
+            </div>
           </div>
         </el-form-item>
       </template>
@@ -93,6 +111,11 @@ function persist(group) {
   if (props.disabled || group === 'options' && !supportsOptions.value) return
   persistDraft(group)
 }
+function setFallback(fallback) {
+  if (props.disabled) return
+  model.value.fallback = fallback
+  persist('value')
+}
 function addRow(group) {
   if (props.disabled || group === 'options' && !supportsOptions.value) return
   if (group === 'value') model.value.mappings.push({ sourceValue: '', targetValue: '' })
@@ -113,7 +136,9 @@ function removeRow(group, index) {
 .linkage-description { margin: 6px 0 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
 .options-linkage { border-top: 1px solid var(--el-border-color-lighter); padding-top: 16px; margin-top: 16px; }
 .linkage-rows, .filter-row { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.mapping-row > .el-input { flex: 1; min-width: 0; }
+.mapping-row > .el-input, .fallback-source { flex: 1; min-width: 0; }
+.fallback-source { box-sizing: border-box; padding: 0 11px; border-radius: 4px; background: var(--el-fill-color-light); color: var(--el-text-color-regular); }
+.mapping-actions { display: flex; flex-wrap: wrap; }
 .linkage-rows > .el-button { align-self: flex-start; }
 .node-value-linkage :deep(.el-select) { width: 100%; }
 </style>

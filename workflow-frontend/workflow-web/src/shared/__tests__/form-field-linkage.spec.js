@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { effectScope, nextTick, ref } from 'vue'
 import { getFieldLinkageDraftError, useFieldValueLinkage } from '../../composables/useFieldValueLinkage.js'
-import { getAttachmentConditionError, patchFieldLinkageRules, readFieldValueLinkage, updateFieldValueLinkage } from '../form-field-linkage.js'
+import { getAttachmentConditionError, getFieldValueLinkageError, patchFieldLinkageRules, readFieldValueLinkage, updateFieldValueLinkage } from '../form-field-linkage.js'
 import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
+import { settleRuntimeLinkages } from '@flow/workflow-core/form-runtime/formModel'
 import { createFlowConditionConfig, createFlowConditionGroup } from '@flow/workflow-core/utils/flowConditionGroups'
 import { readFieldStateConditions, updateFieldStateCondition } from '../form-field-state-conditions.js'
 import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
@@ -113,6 +114,49 @@ updateFieldValueLinkage(rootMapping, model, 'value')
 assert.equal(rootMapping.valueFormula, '${amount} * 2')
 assert.equal('valueMapping' in LinkageEngine.getFieldLinkageRules(rootMapping), false)
 assert.equal(LinkageEngine.processAllLinkages([rootMapping], { amount: 5, source: 'a' }).values.mapped, 10)
+
+// 兜底随节点保存和重载，精确规则优先，空值是否参与由配置决定。
+const mappedField = { id: 'mapped', nodeType: 'FIELD', fieldId: 'mapped', fieldCode: 'mapped', fieldType: 'STRING' }
+const mappedModel = readFieldValueLinkage(mappedField)
+assert.equal(mappedModel.fallback, null)
+Object.assign(mappedModel, {
+  valueEnabled: true,
+  sourceField: 'source',
+  mappings: [{ sourceValue: '1', targetValue: 'A' }, { sourceValue: '2', targetValue: 'B' }],
+  fallback: { targetValue: 'C', includeEmpty: false }
+})
+updateFieldValueLinkage(mappedField, mappedModel, 'value')
+const mappedPayload = buildFormNodePayload(mappedField, { componentProps: JSON.parse(mappedField.componentProps) })
+const reloadedField = { fieldCode: 'mapped', componentProps: JSON.stringify(mappedPayload.props.componentProps) }
+const reloadedModel = readFieldValueLinkage(reloadedField)
+assert.deepEqual(reloadedModel.fallback, mappedModel.fallback)
+const mappedValues = (source) => LinkageEngine.processAllLinkages([reloadedField], { source }).values
+for (const [source, target] of [[1, 'A'], ['2', 'B'], ['3', 'C'], ['其他', 'C'], [0, 'C'], [false, 'C']]) {
+  assert.deepEqual(mappedValues(source), { mapped: target })
+}
+for (const empty of [undefined, null, '', '  ', []]) assert.deepEqual(mappedValues(empty), {})
+const matched = settleRuntimeLinkages([reloadedField], { source: '1' }).record
+assert.equal(settleRuntimeLinkages([reloadedField], { ...matched, source: '3' }).record.mapped, 'C')
+assert.equal(settleRuntimeLinkages([reloadedField], { ...matched, source: '' }).record.mapped, 'A')
+
+reloadedModel.fallback.includeEmpty = true
+updateFieldValueLinkage(reloadedField, reloadedModel, 'value')
+for (const empty of [undefined, null, '', '  ', []]) assert.deepEqual(mappedValues(empty), { mapped: 'C' })
+reloadedModel.mappings.push({ sourceValue: '', targetValue: 'E' })
+updateFieldValueLinkage(reloadedField, reloadedModel, 'value')
+assert.deepEqual(mappedValues(''), { mapped: 'E' })
+reloadedModel.fallback = null
+updateFieldValueLinkage(reloadedField, reloadedModel, 'value')
+assert.equal(Object.hasOwn(JSON.parse(reloadedField.componentProps).linkageRules.valueMapping, 'fallback'), false)
+assert.deepEqual(mappedValues('3'), {})
+
+reloadedModel.mappings = []
+reloadedModel.fallback = { targetValue: '', includeEmpty: false }
+assert.equal(getFieldValueLinkageError(reloadedModel), '')
+updateFieldValueLinkage(reloadedField, reloadedModel, 'value')
+assert.deepEqual(mappedValues('3'), { mapped: '' }, '可以把未匹配的目标值清空')
+reloadedModel.sourceField = ''
+assert.match(getFieldValueLinkageError(reloadedModel), /源字段/)
 
 // 附件条件同时维护兼容副本，未完成条件阻止保存且不影响其他联动。
 const file = { componentProps: JSON.stringify({ linkageRules: { valueFormula: '1' }, attachmentItemRequiredRules: untouched.attachmentItemRequiredRules }) }

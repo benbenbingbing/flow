@@ -1145,15 +1145,8 @@ assert.ok(
     `事件执行链的平台默认处理缺少简要说明: ${marker}`
   )
 })
-;[
-  'validateNodeDataSourceMappings(selectedField.value)',
-  'validateNodeDataSourceMappings(field)'
-].forEach((marker) => {
-  assert.ok(
-    formDesigner.includes(marker),
-    `表单数据源映射保存前必须执行严格 JSON 校验: ${marker}`
-  )
-})
+assert.match(formDesigner, /async function saveSelectedNode\(\)[\s\S]*?validateNodeDataSourceMappings\(field\)[\s\S]*?fieldToNodePayload\(field/, '保存当前节点前必须执行严格 JSON 校验')
+assert.match(formDesigner, /if \(persistNodes\) \{[\s\S]*?validateNodeDataSourceMappings\(field\)[\s\S]*?replaceFormNodes\(/, '保存草稿节点前必须执行严格 JSON 校验')
 ;['getFormFieldComponentOptions', 'selectedComponentConfig', 'validationRules', 'extensionConfig', 'modeOptions'].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
 })

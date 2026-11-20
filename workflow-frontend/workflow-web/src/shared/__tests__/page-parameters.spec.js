@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mapPageParameters, resolvePageParameters, initializePageFields, pageParameterFields, pageParameterFilterFields, pageParameterInitializationFields, validatePageParameterMappings } from '@flow/workflow-core/page-parameters'
 import { buildSubFormParentContext } from '@flow/workflow-core/subform-parameter-contract'
 import { mergeFormNodeFieldMetadata } from '@flow/workflow-core/form-node-property-schema'
+import { listFilterParameterSchema, referenceListParameterState, resolveListFilterParameters, validateReferenceListParameterMappings } from '@flow/workflow-core/page-parameters'
 
 const schema = { type: 'object', properties: { project: { type: 'string' }, count: { type: 'integer', default: 3 }, enabled: { type: 'boolean' }, info: { type: 'object' } }, required: ['project'] }
 const mappings = [{ parameter: 'project', sourceType: 'FIELD', sourceField: 'projectId' }, { parameter: 'enabled', sourceType: 'LITERAL', value: 'false' }, { parameter: 'info', sourceType: 'PARAMETER', sourceField: 'parentInfo' }]
@@ -127,3 +128,46 @@ assert.deepEqual(pageParameterFilterFields([
   { fieldCode: 'legacyInterfaceValue', interfaceExtensionId: 'extension-1' }
 ]).map(field => field.fieldCode), hiddenFilterFields.map(field => field.fieldCode))
 console.log('list parameter fields passed: hidden/non-query entity fields included, computed columns excluded')
+
+const memberListConfig = {
+  inputParameterSchema: { properties: { projectId: { type: 'string', default: 'legacy' }, pageContext: { type: 'string' } } },
+  inputParameterBindings: [{ parameter: 'projectId', usage: 'FILTER', targetField: 'project_id' }]
+}
+const pickerMappings = [{ parameter: 'projectId', sourceType: 'FIELD', sourceField: 'project_id' }]
+assert.deepEqual(Object.keys(listFilterParameterSchema(memberListConfig).properties), ['projectId'])
+assert.equal(referenceListParameterState([], {}), null)
+const draft = { project_id: 'project-a' }
+assert.deepEqual(referenceListParameterState(pickerMappings, draft), { parameters: { projectId: 'project-a' }, error: '' })
+draft.project_id = 'project-b'
+const scope = referenceListParameterState(pickerMappings, draft)
+assert.deepEqual(resolveListFilterParameters(memberListConfig, scope.parameters, ['projectId']), { projectId: 'project-b' })
+assert.match(referenceListParameterState(pickerMappings, { project_id: ' ' }, [{ fieldCode: 'project_id', fieldLabel: '所属项目' }]).error, /请先填写「所属项目」/)
+assert.throws(() => resolveListFilterParameters(memberListConfig, {}, ['projectId']), /缺少筛选参数/)
+assert.throws(() => resolveListFilterParameters({ ...memberListConfig, inputParameterBindings: [] }, scope.parameters, ['projectId']), /已取消参数 projectId 的筛选用途/)
+
+const entityMapping = { parameter: 'projectId', sourceType: 'ENTITY_FIELD', sourceField: 'owning_project' }
+const entityOptions = [{ fieldCode: 'owning_project' }]
+const referenceSchema = {
+  properties: { projectId: { type: 'string' }, minimum: { type: 'integer' }, active: { type: 'boolean' }, roles: { type: 'array' } }
+}
+const mixedMappings = [
+  entityMapping,
+  { parameter: 'minimum', sourceType: 'LITERAL', value: '0' },
+  { parameter: 'active', sourceType: 'LITERAL', value: false },
+  { parameter: 'roles', sourceType: 'LITERAL', value: '["reviewer"]' }
+]
+assert.equal(validateReferenceListParameterMappings(mixedMappings, referenceSchema, [], entityOptions), '')
+assert.match(validateReferenceListParameterMappings([entityMapping], referenceSchema, entityOptions, []), /实体属性.*不存在/)
+assert.match(validateReferenceListParameterMappings([{ ...entityMapping, sourceType: 'FIELD' }], referenceSchema, [], entityOptions), /来源字段.*不存在/)
+assert.match(validateReferenceListParameterMappings([{ parameter: 'active', sourceType: 'LITERAL', value: 'bad' }], referenceSchema, [], []), /类型不正确/)
+assert.match(validateReferenceListParameterMappings([{ parameter: 'roles', sourceType: 'LITERAL', value: '[]' }], referenceSchema, [], []), /不能为空/)
+assert.match(validateReferenceListParameterMappings([{ parameter: 'active', sourceType: 'LITERAL', value: ' ' }], referenceSchema, [], []), /设置固定值/)
+const entityRecord = { data: { owning_project: 'stored-project' } }
+const entityScope = referenceListParameterState(mixedMappings, {}, [], entityRecord)
+assert.equal(entityScope.error, '')
+assert.deepEqual(resolvePageParameters({ inputParameterSchema: referenceSchema }, entityScope.parameters), {
+  projectId: 'stored-project', minimum: 0, active: false, roles: ['reviewer']
+})
+assert.equal(referenceListParameterState([entityMapping], { owning_project: 'current-project' }, [], entityRecord).parameters.projectId, 'current-project')
+assert.match(referenceListParameterState([entityMapping], { owning_project: '' }, [], entityRecord).error, /实体属性.*暂无值/)
+assert.match(referenceListParameterState([entityMapping], {}).error, /实体属性.*暂无值/)

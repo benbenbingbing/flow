@@ -358,10 +358,18 @@ export const LinkageEngine = {
 
       // 处理值联动（字段映射）
       if (rules.valueMapping) {
-        const sourceValue = formData[rules.valueMapping.sourceField]
-        const mapping = rules.valueMapping.rules.find(r => String(r.sourceValue) === String(sourceValue))
+        const { sourceField, rules: mappings = [], fallback } = rules.valueMapping
+        const sourceValue = formData[sourceField]
+        const sourceText = String(sourceValue)
+        const mapping = mappings.find(r => String(r.sourceValue) === sourceText)
         if (mapping) {
           result.values[fieldKey] = mapping.targetValue
+        } else if (sourceField && fallback?.targetValue != null) {
+          // 先保留显式映射的优先级。默认跳过未填写或已清空的来源，避免初始化覆盖目标字段。
+          const hasSourceValue = sourceValue != null && sourceText.trim() !== ''
+          if (hasSourceValue || fallback.includeEmpty === true) {
+            result.values[fieldKey] = fallback.targetValue
+          }
         }
       }
 

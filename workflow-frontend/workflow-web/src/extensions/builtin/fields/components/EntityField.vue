@@ -8,6 +8,7 @@
       :list-key="listKey"
       :runtime-entity-code="runtimeEntityCode"
       :context="pickerContext"
+      :picker-parameters="pickerParameters"
       :multiple="isMultiple"
       :placeholder="placeholder"
       :disabled="isDisabled"
@@ -27,12 +28,15 @@ defineOptions({ scriptEvents: [
 ] })
 import { computed } from 'vue'
 import EntitySelector from '@/components/EntitySelector.vue'
+import { referenceListParameterState } from '@flow/workflow-core/page-parameters'
 import { useFormField } from '@flow/workflow-core/vue/useFormField'
 
 const props = defineProps({
   field: { type: Object, required: true },
   modelValue: { type: [String, Number, Array], default: '' },
   disabled: { type: Boolean, default: false },
+  formData: { type: Object, default: null },
+  context: { type: Object, default: () => ({}) },
   options: { type: Array, default: null }
 })
 
@@ -91,12 +95,22 @@ const runtimeEntityCode = computed(() => {
 const listKey = computed(() => {
   return parsedComponentProps.value.refConfig?.listKey
     || props.field?.refListKey
+    || parsedComponentProps.value.refConfig?.refListKey
     || ''
 })
 
 const pickerContext = computed(() => {
   return parsedComponentProps.value.refConfig?.context || {}
 })
+
+const pickerParameters = computed(() => entityType.value === 'CUSTOM'
+  ? referenceListParameterState(
+      parsedComponentProps.value.refConfig?.parameterMappings,
+      props.formData ?? props.context.getFormData?.(),
+      props.context.scriptFields,
+      props.context.record
+    )
+  : null)
 
 const refEntityId = computed(() => {
   return props.field?.refEntityId || ''

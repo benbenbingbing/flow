@@ -78,11 +78,14 @@ async function setFile(name, uploaderIndex = 0, backendNodeId = null) {
   } else await send('DOM.setFileInputFiles', { backendNodeId, files: [path.join(uploadDir,name)] })
   await evaluate('attachmentTest.settle()')
 }
-async function replace(name, fileIndex = 0) {
+async function chooseFile(label, name, uploaderIndex = 0, matchIndex = 0) {
   const count=choosers.length
-  await click('更新',0,fileIndex)
-  assert.equal(choosers.length,count+1,'更新必须打开文件选择器')
-  await setFile(name,0,choosers.at(-1).backendNodeId)
+  await click(label,uploaderIndex,matchIndex)
+  assert.equal(choosers.length,count+1,label+'必须打开文件选择器')
+  await setFile(name,uploaderIndex,choosers.at(-1).backendNodeId)
+}
+function replace(name, fileIndex = 0) {
+  return chooseFile('更新',name,0,fileIndex)
 }
 async function saveAndReload() {
   const data=await snapshot('attachmentTest.state.data')
@@ -110,6 +113,25 @@ try {
   await send('Emulation.setDeviceMetricsOverride',{width:1100,height:1200,deviceScaleFactor:1,mobile:false})
   await send('Page.navigate',{url:`http://127.0.0.1:3400/${path.basename(fixture)}/index.html`})
   await waitFor("Boolean(window.attachmentTest)&&document.querySelectorAll('.file-uploader').length===2",'Form did not initialize')
+  assert.equal(await evaluate("document.querySelectorAll('.file-uploader .el-upload-dragger').length"),0,'表单附件仅支持点击上传')
+  const uploadLayout = await evaluate(`(() => {
+    const [grouped, single] = document.querySelectorAll('.file-uploader')
+    const tags = grouped.querySelector('.group-tags').getBoundingClientRect()
+    const actions = grouped.querySelector('.group-actions')
+    const actionRect = actions.getBoundingClientRect()
+    return {
+      sameRow: Math.abs(tags.top + tags.height / 2 - actionRect.top - actionRect.height / 2) < 1,
+      rightAligned: Math.abs(actionRect.right - grouped.getBoundingClientRect().right) < 1,
+      text: Array.from(actions.children, node => node.textContent.trim()),
+      singleLeftAligned: Math.abs(single.querySelector('.el-upload button').getBoundingClientRect().left - single.getBoundingClientRect().left) < 1
+    }
+  })()`)
+  assert.deepEqual(uploadLayout, {
+    sameRow: true,
+    rightAligned: true,
+    text: ['点击上传', '需求说明书'],
+    singleLeftAligned: true
+  })
   await click('删除',1)
   assert.deepEqual(await snapshot('attachmentTest.state.data.single'),[{fileId:'file-second-pdf',name:'second.pdf',size:1}],'删除单组附件必须保留其他文件')
   await click('删除')
@@ -118,7 +140,7 @@ try {
   assert.equal(await evaluate("document.querySelectorAll('.file-uploader')[0].querySelectorAll('.file-item').length"),1)
   assert.equal(await evaluate('attachmentTest.preview.value.validate()'),false,'删除必填附件后必须阻止提交')
   await saveAndReload()
-  await setFile('new.pdf')
+  await chooseFile('点击上传','new.pdf')
   assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{fileId:'file-new-pdf',name:'new.pdf',size:1}])
   await replace('replacement.pdf')
   assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{fileId:'file-replacement-pdf',name:'replacement.pdf',size:1}],'达到数量上限时仍可替换，不能追加文件')
@@ -150,6 +172,7 @@ try {
   await evaluate('attachmentTest.state.delay=500')
   await setFile('requirements.pdf')
   await evaluate("document.querySelectorAll('.group-tag')[1].click()")
+  assert.equal(await evaluate("document.querySelector('.group-actions .el-tag').textContent.trim()"),'设计说明书')
   await setFile('design-new.pdf')
   await waitFor('attachmentTest.state.data.attachment.需求说明书.length===1&&attachmentTest.state.data.attachment.设计说明书.length===2','Concurrent uploads lost their original group')
   assert.equal(await evaluate('attachmentTest.state.data.attachment.需求说明书[0].name'),'requirements.pdf')
@@ -169,7 +192,7 @@ try {
   await evaluate("attachmentTest.state.readonly=false;attachmentTest.state.uploadPrefix='new-file-';attachmentTest.settle()")
   await click('删除')
   await setFile('new.pdf')
-  await setFile('new.pdf',1)
+  await chooseFile('点击上传','new.pdf',1)
   assert.deepEqual(await snapshot('attachmentTest.state.data.attachment.需求说明书'),[{fileId:'new-file-new-pdf',name:'new.pdf',size:1}])
   assert.deepEqual(await snapshot('attachmentTest.state.data.single'),[{fileId:'new-file-new-pdf',name:'new.pdf',size:1}])
   assert.equal(await evaluate("document.querySelectorAll('.file-uploader .file-name').length"),3,'编辑模式必须显示已上传的附件')

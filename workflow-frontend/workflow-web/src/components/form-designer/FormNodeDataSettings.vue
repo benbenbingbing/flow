@@ -8,7 +8,8 @@
       disabled-reason="仅实体引用字段支持此配置"
       v-show="activeNodeSettingsTab === 'extension'"
       title="引用选择配置"
-      description="配置引用数据的选择列表，查看引用类型和目标实体"
+      :description="canMapReferenceListParameters ? '配置选择列表和列表参数映射' : '配置引用数据的选择列表，查看引用类型和目标实体'"
+      :default-expanded="canMapReferenceListParameters"
     >
       <template #summary>
         <el-tag size="small" type="info">实体引用</el-tag>
@@ -19,7 +20,7 @@
         label="选择列表"
       >
         <el-select
-          :model-value="selectedField.refListKey" @update:model-value="isReferenceFieldNode && (selectedField.refListKey = $event)"
+          :model-value="selectedField.refListKey" @update:model-value="handleReferenceListChange"
           clearable
           placeholder="留空使用默认选择器"
           style="width: 100%"
@@ -35,6 +36,23 @@
           配置后使用统一列表运行时，字段、范围、排序和选择模式均继承该 listKey。
         </div>
       </SettingsFormItem>
+      <el-form-item
+        v-if="canMapReferenceListParameters && selectedField.refListKey"
+        label="列表参数映射"
+        class="reference-list-parameter-item"
+      >
+        <el-alert v-if="referenceParameterError" :title="referenceParameterError" type="warning" :closable="false" />
+        <div v-if="referenceParameterLoading" class="form-tip">正在读取选择列表的已发布参数…</div>
+        <PageParameterMappingEditor
+          v-else
+          :model-value="selectedField.refListParameterMappings || []"
+          :schema="referenceParameterSchema"
+          :source-fields="referenceParameterSourceFields"
+          :entity-fields="referenceParameterEntityFields"
+          reference-list
+          @update:model-value="selectedField.refListParameterMappings = $event"
+        />
+      </el-form-item>
       <el-form-item label="引用类型">
         <el-select
           :model-value="selectedField.refEntityType" @update:model-value="isReferenceFieldNode && (selectedField.refEntityType = $event)"
@@ -413,6 +431,7 @@ import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
 import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
 import FormContentDisplaySettings from './FormContentDisplaySettings.vue'
 import DataPickerSettings from './DataPickerSettings.vue'
+import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
 import BuiltInButtonAppearanceEditor from '@/components/BuiltInButtonAppearanceEditor.vue'
 import { normalizeBuiltInActionBar } from '@flow/workflow-core/builtin-button-appearance'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
@@ -458,11 +477,21 @@ const {
   subListTargetFields,
   subListTargetFieldsLoading,
   handleSubListChange,
-  isReferenceFieldNode,
-  handleReferenceEntitySelected,
   rememberEntityOption,
-  referenceListOptions
+  referenceListSettings
 } = context
+const {
+  lists: referenceListOptions,
+  isReference: isReferenceFieldNode,
+  canMapParameters: canMapReferenceListParameters,
+  sourceFields: referenceParameterSourceFields,
+  sourceEntityFields: referenceParameterEntityFields,
+  parameterSchema: referenceParameterSchema,
+  parameterLoading: referenceParameterLoading,
+  parameterError: referenceParameterError,
+  changeEntity: handleReferenceEntitySelected,
+  changeList: handleReferenceListChange
+} = referenceListSettings
 
 const canEditSelectedDataSourceUsage = computed(() =>
   availableNodeDataSourceUsages.value.some(usage => usage.value === selectedField.value?.dataSourceUsage)
@@ -618,8 +647,13 @@ const selectedSubListParameterContract = computed({
   font-size: 12px;
 }
 
+.reference-list-parameter-item :deep(.el-form-item__content),
 .sub-list-parameter-item :deep(.el-form-item__content) {
   min-width: 0;
+}
+
+.reference-list-parameter-item :deep(.el-form-item__content) {
+  gap: 8px;
 }
 
 .property-advanced {

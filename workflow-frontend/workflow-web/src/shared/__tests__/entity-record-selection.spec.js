@@ -155,10 +155,10 @@ let selectedLoads = 0
 const dialogVisible = ref(false)
 const selectedRows = ref([])
 await selectorMethod('openSelector', {
-    props: { disabled: false }, dialogVisible, selectedRows,
-    selectedList: ref([projectA]), normalizeRecordSelection,
-    openRequestId: 0,
-    useUnifiedList: ref(true), loadSelectedData: async () => { selectedLoads += 1 },
+  props: { disabled: false, pickerParameters: null }, dialogVisible, selectedRows,
+  selectedList: ref([projectA]), normalizeRecordSelection,
+  openRequestId: 0, pickerParameterKey: ref(''), openedPickerParameterKey: '',
+  useUnifiedList: ref(true), loadSelectedData: async () => { selectedLoads += 1 },
   loadData: assert.fail, pageNum: ref(2), searchKeyword: ref('')
 })()
 assert.equal(dialogVisible.value, true)

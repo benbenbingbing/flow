@@ -9,6 +9,31 @@ import { updateBpmnExtensionProperty } from '../../../components/node-config/bpm
 function editor(entityFields = []) {
   return createFormNodeEditorModel({ entityFields: { value: entityFields }, activeExtensionMap: { value: new Map() } })
 }
+test('单选和多选实体的列表参数映射可保存、回读和清空', () => {
+  const model = editor()
+  const parameterMappings = [
+    { parameter: 'projectId', sourceType: 'FIELD', sourceField: 'project_id' },
+    { parameter: 'department', sourceType: 'ENTITY_FIELD', sourceField: 'deptId' },
+    { parameter: 'enabled', sourceType: 'LITERAL', value: false }
+  ]
+  const refConfig = { refEntityType: 'CUSTOM', refEntityId: 'members', entityCode: 'project_member', listKey: 'picker', parameterMappings }
+  for (const fieldType of ['REFERENCE', 'MULTI_REFERENCE']) {
+    const node = {
+      nodeType: 'FIELD', nodeKey: 'project_member_id', bindingType: 'ENTITY_FIELD', bindingRef: 'project_member_id',
+      propsDocument: JSON.stringify({
+        fieldCode: 'project_member_id', fieldType, componentType: fieldType.toLowerCase(),
+        componentProps: { refConfig }
+      })
+    }
+    const field = model.nodeToField(node)
+    assert.deepEqual(field.refListParameterMappings, parameterMappings)
+    assert.deepEqual(model.fieldToNodePayload(field).props.componentProps.refConfig, refConfig)
+    field.refListParameterMappings = []
+    const savedProps = model.fieldToNodePayload(field).props
+    assert.equal(savedProps.componentProps.refConfig.parameterMappings, undefined)
+    assert.deepEqual(model.nodeToField({ ...node, propsDocument: JSON.stringify(savedProps) }).refListParameterMappings, [])
+  }
+})
 test('节点复制和保存回读保留函数引用，根草稿显式清空覆盖旧代码', () => {
   const model = editor()
   const binding = { mode: 'function', handler: 'trimText', version: 1 }

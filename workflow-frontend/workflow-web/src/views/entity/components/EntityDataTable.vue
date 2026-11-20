@@ -673,7 +673,8 @@ watch(
   () => {
     restoreCurrentPageSelection()
   },
-  { flush: 'sync' }
+  // 选择弹窗首次挂载时可能已带当前页数据，先恢复勾选才能正确合并后来新勾选的记录。
+  { immediate: true, flush: 'sync' }
 )
 
 async function openConfiguredList(button: any, row?: any) {

@@ -2,7 +2,7 @@
   <div class="file-uploader">
     <!-- 多组模式：field.fileItems 存在且非空 -->
     <template v-if="isMultiGroup">
-      <!-- 顶部标签栏 -->
+      <!-- 附件分组与上传工具栏 -->
       <div class="group-toolbar">
         <div class="group-tags">
           <el-tooltip
@@ -21,28 +21,21 @@
             </div>
           </el-tooltip>
         </div>
+        <div class="group-actions">
+          <el-upload
+            :http-request="uploadRequest"
+            :disabled="disabled"
+            :accept="activeAcceptTypes"
+            :before-upload="beforeUploadActive"
+            :on-success="handleSuccessActive"
+            :on-error="handleError"
+            :show-file-list="false"
+          >
+            <el-button type="primary" plain size="small" :icon="Upload" :disabled="disabled">点击上传</el-button>
+          </el-upload>
+          <el-tag v-if="activeItem" size="small" type="primary">{{ activeItem.itemName }}</el-tag>
+        </div>
       </div>
-
-      <!-- 统一上传区域 -->
-      <el-upload
-        class="multi-group-uploader"
-        :http-request="uploadRequest"
-        :disabled="disabled"
-        :accept="activeAcceptTypes"
-        :before-upload="beforeUploadActive"
-        :on-success="handleSuccessActive"
-        :on-error="handleError"
-        :show-file-list="false"
-        drag
-      >
-        <el-icon class="el-icon--upload"><Upload /></el-icon>
-        <div class="el-upload__text">
-          拖拽文件到此处或 <em>点击上传</em>
-        </div>
-        <div class="upload-target" v-if="activeItem">
-          当前上传至：<el-tag size="small" type="primary">{{ activeItem.itemName }}</el-tag>
-        </div>
-      </el-upload>
 
       <!-- 替换使用独立选择器，避免依赖 el-upload 未公开的内部 ref；取消选择不会改动原附件。 -->
       <input
@@ -127,12 +120,8 @@
           :on-error="handleError"
           :on-exceed="handleExceed"
           :show-file-list="false"
-          drag
         >
-          <el-icon class="el-icon--upload"><Upload /></el-icon>
-          <div class="el-upload__text">
-            拖拽文件到此处或 <em>点击上传</em>
-          </div>
+          <el-button type="primary" plain size="small" :icon="Upload" :disabled="disabled">点击上传</el-button>
           <template #tip>
             <div class="upload-tip" v-if="showTips">
               <span v-if="acceptTypes">支持格式: {{ acceptTypes }}</span>
@@ -561,9 +550,7 @@ watch(() => props.modelValue, () => {
 /* 多组模式：工具栏 */
 .group-toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -609,28 +596,14 @@ watch(() => props.modelValue, () => {
 .group-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  margin-inline-start: auto;
+  gap: 4px 8px;
 }
 
 .group-limit-tip {
   font-size: 12px;
   color: #909399;
-}
-
-/* 多组上传区域 */
-.multi-group-uploader {
-  margin-bottom: 16px;
-}
-
-.multi-group-uploader :deep(.el-upload-dragger) {
-  width: 100%;
-  padding: 24px;
-}
-
-.upload-target {
-  margin-top: 8px;
-  font-size: 13px;
-  color: #606266;
 }
 
 /* 文件列表 */

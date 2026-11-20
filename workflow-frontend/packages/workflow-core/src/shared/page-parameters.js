@@ -4,6 +4,7 @@ import { normalizeInputParameterSchema, normalizeInputParameterDefaultValue, val
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value))
 const blocked = new Set(['__proto__', 'constructor', 'prototype'])
+const referenceListSources = new Set(['FIELD', 'ENTITY_FIELD', 'LITERAL'])
 // 旧发布字段只带 readonly、不带 isSystem；与后端 PublishedFormRecordView 的系统维护范围一致，
 // 放开业务只读字段时仍保护审计和流程状态。name/code/deptId 等业务初值不在此范围内。
 const systemManagedFields = new Set([
@@ -11,6 +12,14 @@ const systemManagedFields = new Set([
   'currentTaskId', 'currentTaskName', 'currentTaskAssignee', 'submitterId', 'submitterName',
   'submitTime', 'create_time', 'update_time', 'create_by', 'update_by', 'deleted'
 ])
+
+function parameterFieldValue(record, field, fallback) {
+  if (!field || blocked.has(field)) return undefined
+  for (const data of [record, record?.extData, record?.data]) {
+    if (own(data, field)) return data[field]
+  }
+  return fallback
+}
 
 /** 仅复制声明的来源字段；表单调用方传最新编辑值，列表调用方传当前行，均不改变记录身份或授权。 */
 export function mapPageParameters(mappings = [], source = {}) {
@@ -23,10 +32,11 @@ export function mapPageParameters(mappings = [], source = {}) {
     seen.add(key)
     let value
     if (mapping.sourceType === 'FIELD') {
-      const data = source.data || {}
+      value = parameterFieldValue(source.data, mapping.sourceField)
+    } else if (mapping.sourceType === 'ENTITY_FIELD') {
+      // 当前值优先，包括显式清空；未进入编辑数据的属性只从宿主已加载的同一记录读取。
       const field = mapping.sourceField
-      value = own(data, field) ? data[field]
-        : own(data.extData, field) ? data.extData[field] : own(data.data, field) ? data.data[field] : undefined
+      value = parameterFieldValue(source.data, field, parameterFieldValue(source.entityData, field))
     } else if (mapping.sourceType === 'RECORD_ID') value = source.recordId
     else if (mapping.sourceType === 'PARAMETER') value = source.params?.[mapping.sourceField]
     else if (mapping.sourceType === 'LITERAL') value = mapping.value
@@ -52,6 +62,89 @@ export function resolvePageParameters(viewConfig, supplied = {}) {
   const errors = validateSubFormParameters(result, schema)
   if (errors.length) throw new Error(`页面输入参数：${errors.join('；')}`)
   return clone(result)
+}
+
+/** 引用选择器只映射已发布为隐藏筛选的参数；普通页面传参仍可使用完整契约。 */
+export function listFilterParameterSchema(viewConfig) {
+  const config = safeParseConfig(viewConfig)
+  const schema = normalizeInputParameterSchema(config.inputParameterSchema)
+  const filterParameters = new Set((config.inputParameterBindings || [])
+    .filter(binding => binding.usage === 'FILTER' && binding.targetField)
+    .map(binding => binding.parameter))
+  return {
+    ...schema,
+    properties: Object.fromEntries(Object.entries(schema.properties).filter(([code]) => filterParameters.has(code))),
+    required: (schema.required || []).filter(code => filterParameters.has(code))
+  }
+}
+
+const emptyListParameter = value => isEmptySubFormValue(value)
+  || (typeof value === 'string' && !value.trim())
+
+function checkReferenceListMappingShape(mappings) {
+  if (!Array.isArray(mappings) || mappings.some(mapping => !referenceListSources.has(mapping?.sourceType))) {
+    throw new Error('列表参数来源仅支持表单属性、实体属性或固定值')
+  }
+}
+
+/** 使用当前作用域的编辑值和已加载记录；空来源阻止打开选择器，避免查询范围扩大。 */
+export function referenceListParameterState(mappings, data, fields = [], entityData) {
+  if (mappings == null || (Array.isArray(mappings) && !mappings.length)) return null
+  try {
+    checkReferenceListMappingShape(mappings)
+    const parameters = mapPageParameters(mappings, { data, entityData })
+    const missing = mappings.find(mapping => emptyListParameter(parameters[mapping.parameter]))
+    if (!missing) return { parameters, error: '' }
+    if (missing.sourceType === 'LITERAL') throw new Error(`请为参数 ${missing.parameter} 设置固定值`)
+    if (!missing.sourceField) throw new Error(`请为参数 ${missing.parameter} 选择来源属性`)
+    const source = fields.find(field => field.fieldCode === missing.sourceField)
+    const label = source?.fieldLabel || source?.fieldName || missing.sourceField
+    throw new Error(missing.sourceType === 'ENTITY_FIELD'
+      ? `当前记录的实体属性「${label}」暂无值`
+      : `请先填写「${label}」`)
+  } catch (error) {
+    return { parameters: {}, error: error.message }
+  }
+}
+
+/** 保存前校验来源作用域及固定值类型，沿用列表运行时的参数转换规则。 */
+export function validateReferenceListParameterMappings(mappings, schema, formFields, entityFields) {
+  try {
+    checkReferenceListMappingShape(mappings)
+    const error = validatePageParameterMappings(mappings, schema, formFields)
+    if (error) return error
+    for (const mapping of mappings) {
+      const { parameter, sourceType, sourceField, value } = mapping
+      if (sourceType === 'ENTITY_FIELD' && !entityFields.some(field => field.fieldCode === sourceField)) {
+        return `来源实体属性 ${sourceField || '（未选择）'} 不存在`
+      }
+      if (sourceType === 'LITERAL') {
+        if (emptyListParameter(value)) return `请为参数 ${parameter} 设置固定值`
+        resolvePageParameters({
+          inputParameterSchema: { properties: { [parameter]: schema.properties[parameter] }, required: [parameter] }
+        }, { [parameter]: value })
+      }
+    }
+    return ''
+  } catch (error) {
+    return error.message
+  }
+}
+
+/** 目标列表可能独立重新发布。再次检查映射仍能产生附加筛选，然后按发布声明转换类型。 */
+export function resolveListFilterParameters(viewConfig, supplied, mappedNames = []) {
+  if (mappedNames.length) {
+    const schema = listFilterParameterSchema(viewConfig)
+    for (const name of mappedNames) {
+      if (!own(schema.properties, name)) throw new Error(`选择列表已取消参数 ${name} 的筛选用途，请重新配置表单字段`)
+      if (emptyListParameter(supplied?.[name])) throw new Error(`选择列表缺少筛选参数 ${name}`)
+    }
+  }
+  const parameters = resolvePageParameters(viewConfig, supplied)
+  for (const name of mappedNames) {
+    if (emptyListParameter(parameters[name])) throw new Error(`选择列表缺少筛选参数 ${name}`)
+  }
+  return parameters
 }
 
 /**

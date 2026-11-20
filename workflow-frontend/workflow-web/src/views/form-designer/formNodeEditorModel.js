@@ -248,6 +248,7 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
         field.refEntityId = String(compProps.refConfig.refEntityId || '')
         field.refEntityCode = compProps.refConfig.entityCode || ''
         field.refListKey = compProps.refConfig.listKey || ''
+        field.refListParameterMappings = compProps.refConfig.parameterMappings || []
       }
 
       // 恢复事件配置
@@ -327,12 +328,17 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
         delete compProps.subFormConfig
       }
       // 序列化实体引用配置
-      if ((field.componentType || '').toUpperCase() === 'REFERENCE' || (field.componentType || '').toUpperCase() === 'MULTI_REFERENCE') {
+      const componentType = String(field.componentType || '').toUpperCase()
+      if (['REFERENCE', 'MULTI_REFERENCE'].includes(componentType)) {
         compProps.refConfig = {
           refEntityType: field.refEntityType || '',
           refEntityId: field.refEntityId || '',
           entityCode: field.refEntityCode || '',
           listKey: field.refListKey || ''
+        }
+        // 映射随表单节点发布，只保存字段编码和参数编码，运行时再读取来源值。
+        if (String(field.refEntityType || '').toUpperCase() === 'CUSTOM' && field.refListKey && field.refListParameterMappings?.length) {
+          compProps.refConfig.parameterMappings = field.refListParameterMappings
         }
       }
 

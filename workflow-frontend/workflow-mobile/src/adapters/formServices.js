@@ -7,7 +7,7 @@ import { createEntityListRuntimeApi } from '@flow/workflow-api/entityListRuntime
 import { assertRelatedContentResolveContract } from '@flow/workflow-core/related-content-runtime'
 import { normalizeRuntimeFormRelease } from '@flow/workflow-core/form-runtime/release'
 import { normalizeEntityRecordForForm } from '@flow/workflow-core/form-runtime'
-import { resolvePageParameters } from '@flow/workflow-core/page-parameters'
+import { resolveListFilterParameters, resolvePageParameters } from '@flow/workflow-core/page-parameters'
 import { createBrowserFileAccess } from '@flow/workflow-api/file'
 import { notifyRequestError } from '@flow/workflow-api/request'
 
@@ -36,24 +36,38 @@ export const formServices = {
   getFormRuntimeRelease: forms.getFormRuntimeRelease, getEntityFields: forms.getEntityFields, precheckUnique: forms.precheckFormFieldUnique,
   async loadDictionaryOptions(dictCode) { return dictionaryOptions(await forms.getDictionaryItems(dictCode)) },
   async resolveEntityCode(id) { const options = await entities.entityApi.resolveOptions({ ids: [String(id)] }); return options.find(item => String(item.id) === String(id))?.entityCode || '' },
-  async loadEntityOptions(field, query, runtimeContext = {}) {
+  async loadEntityOptions(field, query, runtimeContext = {}, mappedParameters = {}) {
     const { type, ...context } = selectorContext(field)
-    const config = safeParseConfig(field.componentProps), listKey = field.refListKey || config.refConfig?.refListKey
+    const refConfig = safeParseConfig(field.componentProps).refConfig || {}
+    const listKey = refConfig.listKey || field.refListKey || refConfig.refListKey
+    const mappedFilterParameters = Object.keys(mappedParameters)
     if (type === 'CUSTOM' && listKey) {
       const entityCode = context.entityCode || await formServices.resolveEntityCode(context.refEntityId)
       if (!entityCode) throw new Error('已发布选择列表缺少目标实体')
       // 配置的业务选择范围必须走 FORM_PICKER，绝不退回全量 entity-selector。
-      return formServices.loadPublishedList({ entityCode, listKey, scene: 'FORM_PICKER', ...query, filters: query.keyword ? { keyword: query.keyword } : {}, context: runtimeContext.listContext || {} })
+      const listContext = runtimeContext.listContext || {}
+      return formServices.loadPublishedList({
+        entityCode, listKey, scene: 'FORM_PICKER', ...query,
+        filters: query.keyword ? { keyword: query.keyword } : {},
+        context: mappedFilterParameters.length
+          ? { ...listContext, parameters: { ...(listContext.params || listContext.parameters), ...mappedParameters } }
+          : listContext,
+        mappedFilterParameters
+      })
     }
+    if (mappedFilterParameters.length) throw new Error('列表参数映射需要有效的已发布选择列表')
     return forms.getEntityOptions(type, { ...query, ...context })
   },
   async resolveEntitySelection(field, values) {
     const { type, ...context } = selectorContext(field)
     return request.get(`/entity-selector/${type}/batch`, { params: { ...context, ids: values.join(',') } })
   },
-  async loadPublishedList({ entityCode, listKey, scene, pageNum = 1, pageSize = 20, filters = {}, context = {}, ...release }) {
+  async loadPublishedList({ entityCode, listKey, scene, pageNum = 1, pageSize = 20, filters = {}, context = {}, mappedFilterParameters = [], ...release }) {
     const schema = await lists.getSchema(entityCode, listKey, scene, release)
-    const result = await lists.query(entityCode, listKey, { ...release, configHash: schema.configHash, scene, pageNum, pageSize, filters, context })
+    const queryContext = mappedFilterParameters.length
+      ? { ...context, parameters: resolveListFilterParameters(schema.viewConfig, context.parameters, mappedFilterParameters) }
+      : context
+    const result = await lists.query(entityCode, listKey, { ...release, configHash: schema.configHash, scene, pageNum, pageSize, filters, context: queryContext })
     const records = Array.isArray(result) ? result : result.records || result.list || result.rows || []
     return { records, total: result.total ?? records.length, columns: schema.columns || [] }
   },

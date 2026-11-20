@@ -27,6 +27,7 @@ const state=reactive({
  rows:['a','b'].map(id=>({id,name:'记录 '+id,actionCapabilities:Object.fromEntries(keys.map(k=>[k,{visible:true,enabled:true}]))})),
  selected:[], events:[], caps:{}, saved:null
 })
+state.selected = [state.rows[0]]
 registerListToolbarAction('inspect',ctx=>state.events.push({key:ctx.config.key,count:ctx.selectedRows.length}))
 // 组件故意忽略 disabled，验证平台捕获阶段依然阻断不满足要求的点击。
 registerListButtonComponent('inspect',{setup:()=>()=>h('button',{id:'component-action',onClick:()=>state.events.push({key:'component',count:state.selected.length})},'组件操作')})
@@ -115,6 +116,9 @@ try {
   const toolbarButton=label=>`([...document.querySelectorAll('#runtime .table-toolbar button')]).find(e=>e.textContent.trim()===${JSON.stringify(label)})`
   const disabled=label=>evaluate(`${toolbarButton(label)}.disabled`)
   const toggle=async index=>step(`document.querySelectorAll('#runtime .el-table__body tr')[${index}].querySelector('.el-checkbox__input').click()`)
+  assert.equal(await evaluate("document.querySelector('#runtime .el-table__body tr .el-checkbox__original').checked"), true, '首次渲染即恢复已保存的勾选')
+  await toggle(0)
+  assert.equal(await evaluate('selectionTest.state.selected.length'), 0)
   assert.equal(await disabled('自由操作'),false)
   assert.equal(await disabled('单条操作'),true)
   assert.equal(await disabled('批量操作'),true)

@@ -72,18 +72,20 @@
       class="entity-selector-dialog"
     >
       <AsyncEntityDataList
-        v-if="useUnifiedList"
+        v-if="useUnifiedList && (!pickerParameters || (dialogVisible && !pickerParameters.error))"
+        :key="pickerParameterKey"
         :entity-code="effectiveEntityCode"
         :list-key="listKey"
         scene="FORM_PICKER"
-        :context="context"
+        :context="listContext"
+        :mapped-filter-parameters="mappedFilterParameters"
         :selection-mode="multiple ? 'MULTIPLE' : 'SINGLE'"
         :initial-selected-rows="selectedList"
         @confirm="handleRuntimeConfirm"
         @cancel="dialogVisible = false"
       />
 
-      <div v-else class="selector-layout" :class="{ 'is-multiple': multiple }">
+      <div v-else-if="!useUnifiedList" class="selector-layout" :class="{ 'is-multiple': multiple }">
         <div class="selector-body">
           <!-- 实体类型标签（系统实体时显示） -->
           <div v-if="isSystemEntity" class="entity-type-bar">
@@ -269,6 +271,10 @@ const props = defineProps({
     type: Object,
     default: () => ({})
   },
+  pickerParameters: {
+    type: Object,
+    default: null
+  },
   // 是否多选
   multiple: {
     type: Boolean,
@@ -325,6 +331,13 @@ const useUnifiedList = computed(() =>
   && !!effectiveEntityCode.value
   && !!props.listKey
 )
+const mappedFilterParameters = computed(() => Object.keys(props.pickerParameters?.parameters || {}))
+const pickerParameterKey = computed(() => props.pickerParameters
+  ? JSON.stringify([effectiveEntityCode.value, props.listKey, props.pickerParameters])
+  : '')
+const listContext = computed(() => props.pickerParameters
+  ? { ...props.context, params: { ...(props.context.params || props.context.parameters), ...props.pickerParameters.parameters } }
+  : props.context)
 const dialogTitle = computed(() => {
   if (props.title) return props.title
   const typeMap = {
@@ -358,6 +371,7 @@ const restoringPageSelection = ref(false)
 let listRequestId = 0
 let selectedRequestId = 0
 let openRequestId = 0
+let openedPickerParameterKey = ''
 let selectionRestoreId = 0
 
 // 监听值变化
@@ -390,6 +404,12 @@ watch(() => props.disabled, (disabled) => {
     openRequestId += 1
     dialogVisible.value = false
   }
+})
+
+// 来源值变化时作废弹窗中的选择草稿和未完成的打开操作，避免确认上一批候选。
+watch(pickerParameterKey, () => {
+  openRequestId += 1
+  dialogVisible.value = false
 })
 
 watch(dialogVisible, (visible) => {
@@ -482,10 +502,16 @@ async function loadSelectedData() {
 // 打开选择器
 async function openSelector() {
   if (props.disabled) return
+  if (props.pickerParameters?.error || (props.pickerParameters && !useUnifiedList.value)) {
+    ElMessage.warning(props.pickerParameters?.error || '列表参数映射需要有效的已发布选择列表')
+    return
+  }
   const requestId = ++openRequestId
+  const scope = pickerParameterKey.value
   await loadSelectedData()
-  if (props.disabled || requestId !== openRequestId) return
+  if (props.disabled || requestId !== openRequestId || scope !== pickerParameterKey.value) return
   selectedRows.value = normalizeRecordSelection(selectedList.value)
+  openedPickerParameterKey = scope
   dialogVisible.value = true
   if (useUnifiedList.value) {
     return
@@ -496,7 +522,8 @@ async function openSelector() {
 }
 
 function handleRuntimeConfirm(rows) {
-  if (props.disabled) return
+  if (props.disabled || openedPickerParameterKey !== pickerParameterKey.value
+      || (props.pickerParameters && !dialogVisible.value)) return
   const selected = Array.isArray(rows) ? rows : []
   if (props.multiple) {
     selectedList.value = selected

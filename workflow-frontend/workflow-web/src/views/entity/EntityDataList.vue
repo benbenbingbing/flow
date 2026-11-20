@@ -283,7 +283,7 @@ import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue
 import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vue'
 import { useEntityDataSelectionState } from './composables/useEntityDataSelectionState'
 import PageState from '@/components/PageState.vue'
-import { mapPageParameters, resolvePageParameters } from '@flow/workflow-core/page-parameters'
+import { mapPageParameters, resolveListFilterParameters } from '@flow/workflow-core/page-parameters'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
@@ -303,6 +303,7 @@ const props = withDefaults(defineProps<{
   showSelectionFooter?: boolean
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
   initialSelectedRows?: any[]
+  mappedFilterParameters?: string[]
   embedded?: boolean
   showSearch?: boolean
   showPagination?: boolean
@@ -325,6 +326,7 @@ const props = withDefaults(defineProps<{
   showSelectionFooter: true,
   selectionMode: 'NONE',
   initialSelectedRows: () => [],
+  mappedFilterParameters: () => [],
   embedded: false,
   showSearch: true,
   showPagination: true,
@@ -983,7 +985,11 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
         order: sortState.value.sortDirection === 'asc' ? 'ascending' : 'descending'
       })
     }
-    resolvedInputParameters.value = resolvePageParameters(listConfig.value?.viewConfig, props.context?.params || props.context?.parameters || {})
+    resolvedInputParameters.value = resolveListFilterParameters(
+      listConfig.value?.viewConfig,
+      props.context?.params || props.context?.parameters || {},
+      props.mappedFilterParameters
+    )
     const params = buildRequestFilters()
     const res = await entityListRuntimeApi.query(
       entityCode.value,
@@ -1017,6 +1023,11 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
   } catch (error) {
     if (!isCurrent()) return
     console.error('加载数据列表失败:', error)
+    if (props.mappedFilterParameters.length) {
+      dataList.value = []
+      selectedRows.value = []
+      total.value = 0
+    }
     dataError.value = error?.message || '无法读取列表数据；当前页面不会把错误显示成空列表。'
     if (options?.throwOnError === true) throw error
   } finally {

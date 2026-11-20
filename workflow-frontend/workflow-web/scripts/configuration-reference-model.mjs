@@ -1987,6 +1987,18 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: '${quantity} * ${price}',
     expectedEffect: '数量或单价变化时重新计算当前字段。'
   },
+  'src/components/form-designer/FormNodeValueLinkage.vue:model.fallback.targetValue': {
+    label: '其他值映射',
+    meaning: '在普通映射规则全部未命中时设置当前字段的回填值，留空则清空当前字段。',
+    example: 'C',
+    expectedEffect: '若已配置 1 → A 和 2 → B，源字段输入 3 时当前字段回填 C。'
+  },
+  'src/components/form-designer/FormNodeValueLinkage.vue:model.fallback.includeEmpty': {
+    label: '空值也按其他处理',
+    meaning: '允许未填写或已清空的源字段在未命中普通规则时触发其他值映射。',
+    example: true,
+    expectedEffect: '没有空值的显式映射时，打开空表单或清空源字段也会应用其他值映射。'
+  },
   'src/components/form-designer/FormNodeValueLinkage.vue:model.optionsEnabled': {
     label: '启用选项联动',
     meaning: '启用选择类组件基于其他字段值的选项过滤。',

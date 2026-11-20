@@ -45,6 +45,7 @@ export function readFieldValueLinkage(field) {
     formula: rules.calculationFormula ?? rules.valueFormula ?? '',
     sourceField: rules.valueMapping?.sourceField || '',
     mappings: clone(rules.valueMapping?.rules || []),
+    fallback: clone(rules.valueMapping?.fallback ?? null),
     optionsEnabled: !!rules.optionsLinkage,
     dependsOn: rules.optionsLinkage?.dependsOn || '',
     filters: Object.entries(rules.optionsLinkage?.filterRules || {}).map(([dependValue, allowedOptions]) => ({ dependValue, allowedOptions: clone(allowedOptions) }))
@@ -63,6 +64,7 @@ export function updateFieldValueLinkage(field, model, group) {
   if (model.valueEnabled) {
     if (model.sourceType === 'field') {
       patch.valueMapping = { sourceField: model.sourceField, rules: model.mappings }
+      if (model.fallback) patch.valueMapping.fallback = model.fallback
     } else {
       // 保持历史公式字段引用的输入兼容；显式 ${...} 表达式不作改写。
       patch[model.formulaKey] = model.formula.includes('${') ? model.formula : model.formula.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, '${$1}')
@@ -82,7 +84,7 @@ export function getFieldValueLinkageError(model) {
   if (model.valueEnabled) {
     if (model.sourceType === 'formula' && !model.formula.trim()) return '请填写值联动的计算公式或关闭值联动'
     if (model.sourceType === 'field') {
-      if (!model.sourceField || !model.mappings.length) return '请填写值联动的源字段和映射规则，或关闭值联动'
+      if (!model.sourceField || (!model.mappings.length && !model.fallback)) return '请填写值联动的源字段和映射规则，或关闭值联动'
       if (new Set(model.mappings.map(row => String(row.sourceValue))).size !== model.mappings.length) return '值联动的源值不能重复'
     }
   }

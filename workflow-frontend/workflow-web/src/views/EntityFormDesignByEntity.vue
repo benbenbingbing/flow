@@ -1141,6 +1141,7 @@ import {
 import {
   getDefaultFormFieldComponentType as getDefaultComponentType
 } from '@flow/workflow-core/extensions/core/fieldPolicy'
+import { useReferenceListSettings } from './form-designer/useReferenceListSettings.js'
 
 import {
   getRuntimeRegexPatternError,
@@ -1399,7 +1400,6 @@ const entityCodeById = ref({})
 const formListByEntity = ref([])
 const childFormReleases = ref([])
 const childFormReleaseLoading = ref(false)
-const referenceListOptions = ref([])
 const subListOptions = ref([])
 const subListTargetFields = ref([])
 const subListTargetFieldsLoading = ref(false)
@@ -1960,11 +1960,10 @@ const selectedCrossFieldRuleCount = computed(() => selectedValidationConfig.valu
 const canConfigureSelectedNodeModeAccess = computed(() =>
   selectedNodePropertySchema.value.editable.includes('modeAccess')
 )
-const isReferenceFieldNode = computed(() =>
-  ['REFERENCE', 'MULTI_REFERENCE'].includes(
-    String(selectedField.value?.componentType || '').toUpperCase()
-  )
-)
+const referenceListSettings = useReferenceListSettings({
+  selectedField, fields: formFields, entityFields, nodeById, nodeTypeOf, rememberEntityOption
+})
+const isReferenceFieldNode = referenceListSettings.isReference
 const canConfigureSelectedNodeRelations = computed(() =>
   selectedNodePropertySchema.value.childForm
     || isSubListField(selectedField.value)
@@ -2046,9 +2045,7 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   handleChildFormChange, childFormReleases, childFormReleaseLoading,
   subListOptions, subListTargetFields, subListTargetFieldsLoading,
   handleSubListChange,
-  isReferenceFieldNode, handleReferenceEntitySelected,
-  rememberEntityOption, getEntityReferenceSelectionHint,
-  referenceListOptions
+  referenceListSettings, rememberEntityOption, getEntityReferenceSelectionHint
 })
 
 // 预览数据
@@ -3095,9 +3092,6 @@ function addField(entityField) {
   formFields.value.push(newField)
   // 连续添加字段时仅选中新节点，避免自动展开属性抽屉打断画布操作。
   selectField(newField)
-  if (['REFERENCE', 'MULTI_REFERENCE'].includes((newField.componentType || '').toUpperCase())) {
-    loadReferenceLists(newField.refEntityId, false)
-  }
   ElMessage.success('字段已添加')
 }
 
@@ -3310,7 +3304,7 @@ function prepareFieldProperties(field) {
     }
   }
   if (field && ['REFERENCE', 'MULTI_REFERENCE'].includes((field.componentType || '').toUpperCase())) {
-    loadReferenceLists(field.refEntityId, false)
+    referenceListSettings.loadLists(field)
   }
 }
 
@@ -3712,41 +3706,6 @@ function handleRefEntityChange(entityId) {
   loadFormListByEntity(entityId || entityInfo.value.id)
 }
 
-async function handleReferenceEntitySelected(entity) {
-  rememberEntityOption(entity)
-  const targetEntityId = entity?.id || ''
-  if (selectedField.value) {
-    selectedField.value.refEntityCode = entity?.entityCode || ''
-    selectedField.value.refListKey = ''
-  }
-  await loadReferenceLists(targetEntityId)
-}
-
-async function loadReferenceLists(targetEntityId, reset = true) {
-  if (reset && selectedField.value) {
-    selectedField.value.refListKey = ''
-  }
-  if (!targetEntityId) {
-    referenceListOptions.value = []
-    return
-  }
-  if (selectedField.value && !selectedField.value.refEntityCode) {
-    const options = await entityApi.resolveOptions({ ids: [String(targetEntityId)] }).catch(() => [])
-    const entity = options?.[0]
-    rememberEntityOption(entity)
-    selectedField.value.refEntityCode = entity?.entityCode || ''
-  }
-  try {
-    const response = await entityListConfigApi.getByEntityId(targetEntityId)
-    referenceListOptions.value = Array.isArray(response)
-      ? response
-      : response?.records || response?.list || response?.data || []
-  } catch (error) {
-    console.error('加载实体引用列表失败:', error)
-    referenceListOptions.value = []
-  }
-}
-
 async function loadDataSources({ strict = false } = {}) {
   if (!form.value.id) {
     interfaceExtensions.value = []
@@ -3859,53 +3818,55 @@ async function ensureFormMetadata() {
 }
 
 async function saveSelectedNode() {
-  if (!selectedField.value) return
-  if (isTabNode.value && !selectedField.value.parentId) {
+  const field = selectedField.value
+  if (!field) return
+  if (isTabNode.value && !field.parentId) {
     ElMessage.warning('请选择所属 Tab 集合后再保存 Tab 页')
     return
   }
-  if (selectedField.value.parentId) {
-    const parent = nodeById(selectedField.value.parentId)
-    if (!isValidParentCandidate(parent, selectedField.value)) {
+  if (field.parentId) {
+    const parent = nodeById(field.parentId)
+    if (!isValidParentCandidate(parent, field)) {
       ElMessage.warning('当前父容器不兼容，或节点树会形成循环/超过 8 层')
       return
     }
   } else if (!canPlaceFormNodeAtRoot(selectedNodeType.value)
-      || getSubtreeHeight(selectedField.value.id) > FORM_NODE_MAX_DEPTH) {
+      || getSubtreeHeight(field.id) > FORM_NODE_MAX_DEPTH) {
     ElMessage.warning('当前节点不能放在根节点，或节点树超过 8 层')
     return
   }
   try {
-    validateNodeValidationRules(selectedField.value)
+    validateNodeValidationRules(field)
   } catch (error) {
     ElMessage.warning(error.message)
     return
   }
   savingNode.value = true
   try {
+    await referenceListSettings.validateMappings(field)
     const currentFormId = await ensureFormMetadata()
-    await ensureChildFormReleaseBinding(selectedField.value)
-    await ensureSubListBinding(selectedField.value)
-    validateNodeDataSourceMappings(selectedField.value)
-    const payload = fieldToNodePayload(selectedField.value, {
-      forPatch: selectedField.value.revision > 0
+    await ensureChildFormReleaseBinding(field)
+    await ensureSubListBinding(field)
+    validateNodeDataSourceMappings(field)
+    const payload = fieldToNodePayload(field, {
+      forPatch: field.revision > 0
     })
     let saved
-    if (selectedField.value.revision > 0) {
+    if (field.revision > 0) {
       saved = await patchFormNode(
         currentFormId,
-        selectedField.value.id,
+        field.id,
         {
-          expectedRevision: selectedField.value.revision,
+          expectedRevision: field.revision,
           ...payload
         }
       )
     } else {
       saved = await createFormNode(currentFormId, payload)
     }
-    const refreshed = nodeToField(saved, selectedField.value)
-    Object.assign(selectedField.value, refreshed)
-    rememberNodeBaseline(selectedField.value)
+    const refreshed = nodeToField(saved, field)
+    Object.assign(field, refreshed)
+    rememberNodeBaseline(field)
     const latest = await getFormById(currentFormId)
     form.value.revision = latest.revision
     await loadDiff()
@@ -4186,6 +4147,7 @@ async function handleSave() {
         }
         await ensureChildFormReleaseBinding(field)
         await ensureSubListBinding(field)
+        await referenceListSettings.validateMappings(field)
         validateNodeDataSourceMappings(field)
       }
       await replaceFormNodes(
