@@ -363,7 +363,7 @@ const scopeList = [
     position: '用户任务“流程动作”',
     scopeType: 'NODE',
     elements: 'UserTask 用户任务',
-    timings: '审批 / 转办 / 加签 / 加签子任务的业务阶段，以及原有节点和任务生命周期事件',
+    timings: '审批、选择节点回退、转办、加签的业务时机，以及节点和任务生命周期事件',
     description: '同时具备节点生命周期和人工任务生命周期。'
   },
   {
@@ -702,7 +702,7 @@ const contextList = [
   { method: 'getTaskKind()', returnType: 'String', availability: '任务业务时机', desc: 'ENGINE 为原引擎任务，LOCAL_ADD_SIGN 为本地加签待办；统一审批动作通过此字段区分。' },
   { method: 'getSourceTaskId()', returnType: 'String', availability: '本地加签', desc: '所属原任务 ID；当前 taskId 仍是实际办理的子任务 ID。' },
   { method: 'getSubmittedFormData()', returnType: 'Map<String, Object>', availability: '审批提交', desc: '本次输入的只读快照。加签原任务提交时可能只暂存，本地子任务无独立审批表单。' },
-  { method: 'getOperationParameters()', returnType: 'Map<String, Object>', availability: '业务操作时机', desc: '意见、审批动作等操作输入；加签通过 type 区分 BEFORE / AFTER / PARALLEL。' },
+  { method: 'getOperationParameters()', returnType: 'Map<String, Object>', availability: '业务操作时机', desc: '包含意见、审批动作等输入。选择节点回退的目标节点和活动 ID 记录在此，回退后还包含新待办 ID。加签的 type 区分 BEFORE / AFTER / PARALLEL。' },
   { method: 'getActionId()', returnType: 'String', availability: '全部时机', desc: '当前已发布 process_action 记录 ID。' },
   { method: 'getActionName()', returnType: 'String', availability: '全部时机', desc: '动作业务名称。' },
   { method: 'getTriggerTiming()', returnType: 'String', availability: '全部时机', desc: '本次触发的业务时机编码。' },

@@ -671,13 +671,19 @@ public class NextApprovalRouteService {
             NextApprovalPreviewRequest request) {
         String action = normalizeAction(request == null
                 ? null : request.getAction());
-        variables.put("approved", action);
+        // 与引擎实际重提保持一致，使用通过分支，并保留重提动作供条件表达式读取。
+        variables.put("approved", "resubmit".equals(action) ? "approve" : action);
         variables.put("action", action);
         variables.put(
                 "comment",
                 request == null || request.getComment() == null
                         ? ""
                         : request.getComment());
+        if ("resubmit".equals(action)) {
+            variables.put("_rejected_", false);
+            variables.put("_resubmitted_", true);
+            variables.put("resubmitted", true);
+        }
         if (request != null) {
             if (StringUtils.hasText(request.getActionLabel())) {
                 variables.put("actionLabel", request.getActionLabel());
@@ -714,6 +720,7 @@ public class NextApprovalRouteService {
             case "APPROVE", "APPROVED" -> "approve";
             case "REJECT", "REJECTED" -> "reject";
             case "TRANSFER", "TRANSFERRED" -> "transfer";
+            case "RESUBMIT" -> "resubmit";
             default -> action;
         };
     }

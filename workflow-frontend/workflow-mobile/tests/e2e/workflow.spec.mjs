@@ -5,7 +5,7 @@ const field = (id, parentId, label, extra = {}) => ({ id, parentId, nodeKey: id,
 const simpleForm = () => ({ id: 'form-test', configHash: 'graph-test', fields: [], nodes: [field('name', '', '事项名称')] })
 
 /** 所有 API 请求在浏览器内截获；审批写入仅记录到测试数组，绝不请求真实业务服务。 */
-async function fixture(page, { actions, eventResult, theme = () => DEFAULT_MOBILE_THEME, form = simpleForm(), record = { id: 'record-test', name: '测试流程', entityCode: 'test' }, preview, complete, progress = {}, candidates = [], processOperations = { withdraw: false }, operations = { approve: true, reject: true, manualCc: false }, rejected = { canResubmit: false } } = {}) {
+async function fixture(page, { actions, eventResult, theme = () => DEFAULT_MOBILE_THEME, form = simpleForm(), record = { id: 'record-test', name: '测试流程', entityCode: 'test' }, preview, complete, progress = {}, candidates = [], processOperations = { withdraw: false }, operations = { approve: true, reject: true, manualCc: false }, rejected = { canResubmit: false }, returnTargets = [] } = {}) {
   const writes = [], requests = [], unexpected = [], errors = []
   page.on('pageerror', error => errors.push(error.message))
   const row = { id: 'record-test', taskId: 'task-test', processInstanceId: 'instance-test', dataName: record.name, processName: '测试流程', startUserName: '测试用户', assigneeName: '另一位办理人', entityCode: 'test', entityStatus: 'FINANCE_REVIEW', entityStatusText: '财务复核中', status: 'RUNNING', statusText: '运行中' }
@@ -35,6 +35,8 @@ async function fixture(page, { actions, eventResult, theme = () => DEFAULT_MOBIL
     else if (endpoint === '/entity-selector/USER') data = { records: [{ username: 'reviewer', nickname: '测试办理人' }], total: 1 }
     else if (endpoint === '/process-rollback/resubmit/instance-test') { writes.push({ endpoint, body }); data = {} }
     else if (endpoint === '/process-task/withdraw') { writes.push({ endpoint, body }); data = {} }
+    else if (endpoint === '/tasks/task-test/return-targets') data = returnTargets
+    else if (endpoint === '/tasks/task-test/return') { writes.push({ endpoint, body }); data = {} }
     else if (endpoint === '/process-task/history/instance-test') data = []
     else if (endpoint === '/tasks/task-test/operations') data = operations
     else if (endpoint === '/ui-runtime/form-actions/resolve') data = actions || [{ key: 'submitApproval', label: '提交审批', type: 'built-in', placement: 'FOOTER', visible: true, enabled: true }]
@@ -588,15 +590,15 @@ test('下一审批人候选受发布范围约束并携带当前表单提交', as
 test('我发起的无需任务办理权即可按实例能力撤回', async ({ page }) => {
   const state = await fixture(page, { processOperations: { withdraw: true, terminate: false } })
   await page.goto('process/instance-test?kind=started')
-  await page.locator('.van-nav-bar__right').getByRole('button', { name: '更多操作', exact: true }).click()
-  await expect(page.locator('.mobile-action-bar')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '撤回流程', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '撤回流程', exact: true }).click()
+  const bottomBar = page.locator('.mobile-action-bar')
+  await bottomBar.getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(bottomBar.getByRole('button')).toHaveCount(1)
+  await page.getByRole('button', { name: '撤回', exact: true }).click()
   await page.getByPlaceholder('请填写操作说明').fill('测试撤回')
   await page.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page).toHaveURL(/inbox\/started/)
   expect(state.writes).toEqual([{ endpoint: '/process-task/withdraw', body: { processInstanceId: 'instance-test', reason: '测试撤回' } }])
-  expect(state.requests.filter(item => item.endpoint === '/process-instance/instance-test/operations')).toHaveLength(2)
+  expect(state.requests.filter(item => item.endpoint === '/process-instance/instance-test/operations')).toHaveLength(3)
   expect(state.requests.some(item => item.endpoint.startsWith('/tasks/'))).toBe(false)
   expect(state.errors).toEqual([])
 })
@@ -615,7 +617,10 @@ for (const scenario of [
     await expect(page.getByRole('tabpanel').first()).toBeVisible()
     const more = page.getByRole('button', { name: '更多操作', exact: true })
     if (await more.count() && await more.isEnabled()) await more.click()
-    await expect(page.getByRole('button', { name: '撤回流程', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '撤回', exact: true })).toHaveCount(0)
+    if (scenario.capabilities.terminate) {
+      await expect(page.getByRole('button', { name: '终止', exact: true })).toBeVisible()
+    } else await expect(more).toHaveCount(0)
     expect(state.writes).toEqual([])
   })
 }
@@ -625,12 +630,52 @@ test('移动端撤回确认时节点权限变化则阻止写入', async ({ page 
   const state = await fixture(page, { processOperations: () => ({ withdraw: allowed, terminate: false }) })
   await page.goto('process/instance-test?kind=started')
   await page.getByRole('button', { name: '更多操作', exact: true }).click()
-  await page.getByRole('button', { name: '撤回流程', exact: true }).click()
+  await page.getByRole('button', { name: '撤回', exact: true }).click()
   allowed = false
   await page.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page.getByText('当前流程已不允许撤回，请刷新后重试', { exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
-  expect(state.requests.filter(item => item.endpoint === '/process-instance/instance-test/operations')).toHaveLength(2)
+  expect(state.requests.filter(item => item.endpoint === '/process-instance/instance-test/operations')).toHaveLength(3)
+})
+
+test('底栏六项按能力排序，选节点退回时只发送目标、意见和表单引用', async ({ page }) => {
+  const state = await fixture(page, {
+    operations: { approve: true, return: true, manualCc: true, transfer: true, addSign: true, addSignTypes: ['PARALLEL'] },
+    processOperations: { withdraw: true, terminate: true },
+    returnTargets: [{ activityInstanceId: 'previous-review', nodeId: 'review', nodeName: '初审' }]
+  })
+  await detail(page)
+  await page.getByPlaceholder('请输入事项名称').fill('未提交草稿')
+  await page.locator('.mobile-action-bar').getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.locator('.van-action-sheet__item')).toHaveText(['退回', '撤回', '终止', '知会', '转办', '加签'])
+  await page.getByRole('button', { name: '退回', exact: true }).click()
+  await expect(page.getByText('当前未提交的表单修改不会随退回保存')).toBeVisible()
+  await page.getByText('回退目标', { exact: true }).click()
+  await page.getByRole('button', { name: '初审', exact: true }).click()
+  await page.getByPlaceholder('请填写操作说明').fill('请补充内容')
+  await page.getByRole('button', { name: '确认', exact: true }).click()
+  await expect(page).toHaveURL(/inbox\/todo/)
+  expect(state.writes).toEqual([{ endpoint: '/tasks/task-test/return', body: {
+    targetActivityInstanceId: 'previous-review', comment: '请补充内容',
+    formId: 'form-test', formConfigHash: 'graph-test', requestId: expect.any(String)
+  } }])
+  expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
+})
+
+test('我发起的选节点退回待办按实际任务重新提交', async ({ page }) => {
+  const state = await fixture(page, {
+    operations: { approve: true, historyResubmit: true },
+    rejected: { canResubmit: true, historyReturn: true, taskId: 'task-test' }
+  })
+  await page.goto('process/instance-test?kind=started')
+  await page.getByPlaceholder('请输入事项名称').fill('已补充')
+  await page.getByRole('button', { name: '重新提交', exact: true }).click()
+  await page.getByRole('button', { name: '确认提交', exact: true }).click()
+  await expect(page).toHaveURL(/inbox\/started/)
+  expect(state.writes[0].body).toMatchObject({
+    taskId: 'task-test', action: 'resubmit', formId: 'form-test', formConfigHash: 'graph-test', formData: { name: '已补充' }
+  })
+  expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
 })
 
 test('驳回使用发布的动作选项；转办保持办理人协议', async ({ page }) => {
@@ -642,8 +687,8 @@ test('驳回使用发布的动作选项；转办保持办理人协议', async ({
   await expect(page).toHaveURL(/inbox\/todo/)
   expect(state.writes[0].body).toMatchObject({ action: 'reject', actionLabel: '驳回' })
   await detail(page)
-  await expect(page.locator('.mobile-action-bar').getByRole('button')).toHaveText(['提交审批'])
-  await page.locator('.van-nav-bar__right').getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.locator('.mobile-action-bar').getByRole('button', { name: '提交审批', exact: true })).toBeVisible()
+  await page.locator('.mobile-action-bar').getByRole('button', { name: '更多操作', exact: true }).click()
   await page.getByRole('button', { name: '转办', exact: true }).click()
   await page.getByText('办理人', { exact: true }).click()
   await page.getByText('测试办理人', { exact: true }).click()

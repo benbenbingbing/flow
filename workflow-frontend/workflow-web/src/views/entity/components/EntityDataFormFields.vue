@@ -403,6 +403,11 @@ const internalDataSourceRuntime = createFormDataSourceRuntime({
 })
 const dataSourceRuntime = props.dataSourceRuntime || internalDataSourceRuntime
 
+// 首次加载选项的监听器会立即执行，须先初始化标准表单和扩展表单的判定。
+const missingCustomForm = computed(() => Boolean(props.defaultForm?.customComponent
+  && !hasCustomFormComponent(props.defaultForm.customComponent, props.defaultForm.customComponentVersion || undefined)))
+const showCustomForm = computed(() => Boolean(props.defaultForm?.customComponent) && !missingCustomForm.value)
+
 let fieldLoadSequence = 0
 let mounted = true
 onBeforeUnmount(() => { mounted = false; fieldLoadSequence += 1 })
@@ -507,10 +512,7 @@ watch(() => formData.value.data, () => {
 }, { deep: true })
 
 // 配置声明了扩展但当前构建未安装时必须阻断，不能回退标准表单绕过业务校验。
-const missingCustomForm = computed(() => Boolean(props.defaultForm?.customComponent
-  && !hasCustomFormComponent(props.defaultForm.customComponent, props.defaultForm.customComponentVersion || undefined)))
 const missingCustomFormMessage = computed(() => `表单扩展 ${props.defaultForm?.customComponent} 未安装或当前版本不可用，请联系管理员启用对应业务模块。`)
-const showCustomForm = computed(() => Boolean(props.defaultForm?.customComponent) && !missingCustomForm.value)
 
 const hasConfiguredForm = computed(() =>
   Boolean(props.defaultForm) && (

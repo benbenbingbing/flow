@@ -6,6 +6,7 @@ import com.workflow.core.result.Result;
 import com.workflow.process.task.api.request.TaskAddSignRequest;
 import com.workflow.process.cc.api.request.TaskCcRequest;
 import com.workflow.process.task.application.TaskAddSignService;
+import com.workflow.process.task.application.TaskHistoryReturnService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -25,19 +26,37 @@ public class TaskOperationController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
 
+    private final TaskHistoryReturnService historyReturns;
+
     /** 任务加签服务 */
     private final TaskAddSignService taskAddSignService;
     private final com.workflow.process.task.application.TaskOperationApplicationService operationService;
 
     /**
-     * 查询任务可执行的操作集合（含加签、转办、知会是否可用及加签类型）。
+     * 查询任务可执行的操作集合，含历史回退、发起人重提、转办、知会及加签类型。
      *
      * @param taskId 任务ID
      * @return 操作集合
      */
     @GetMapping("/api/tasks/{taskId}/operations")
     public Result<Map<String, Object>> operations(@PathVariable String taskId) {
-        return Result.success(operationService.operations(taskId));
+        var capabilities = new java.util.LinkedHashMap<>(operationService.operations(taskId));
+        capabilities.put("return", !historyReturns.targets(taskId).isEmpty());
+        capabilities.put("historyResubmit", historyReturns.canResubmit(taskId));
+        return Result.success(capabilities);
+    }
+
+    /** 查询在当前实例中经实际办理路径验证的目标。 */
+    @GetMapping("/api/tasks/{taskId}/return-targets")
+    public Result<List<TaskHistoryReturnService.Target>> returnTargets(@PathVariable String taskId) {
+        return Result.success(historyReturns.targets(taskId));
+    }
+
+    /** 在共用幂等事务内将当前待办回退到所选的历史活动。 */
+    @PostMapping("/api/tasks/{taskId}/return")
+    public Result<TaskHistoryReturnService.Outcome> returnTask(
+            @PathVariable String taskId, @Valid @RequestBody TaskHistoryReturnService.Request request) {
+        return Result.success(historyReturns.execute(taskId, request));
     }
 
     /**

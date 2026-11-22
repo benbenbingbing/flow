@@ -1,5 +1,6 @@
 <template>
-  <footer v-if="primary.length || (more.length && !$slots.more)" class="mobile-action-bar">
+  <footer v-if="$slots.leading || primary.length || (more.length && !$slots.more)" class="mobile-action-bar">
+    <div v-if="$slots.leading" class="mobile-action-leading"><slot name="leading" /></div>
     <VanButton v-if="more.length && !$slots.more" :disabled="Boolean(loadingKey)" @click="openMore">更多操作</VanButton>
     <VanButton v-for="action in primary" :key="action.runtimeKey || action.key" type="primary" :disabled="action.enabled === false || Boolean(loadingKey)" :loading="loadingKey === (action.runtimeKey || action.key)" @click="$emit('action', action)">{{ action.label }}</VanButton>
   </footer>
@@ -19,4 +20,8 @@ const more = computed(() => visible.value.filter(action => !primary.value.includ
 /** 自定义入口只改变位置，复用原有操作分类、弹层和提交期间的禁用规则。 */
 function openMore() { if (!props.loadingKey) showMore.value = true }
 </script>
-<style scoped>.mobile-action-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, 600px); display: flex; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--flow-mobile-surface); border-top: 1px solid var(--flow-mobile-border); z-index: 10; }.mobile-action-bar > button { flex: 1; }</style>
+<style scoped>
+.mobile-action-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, 600px); display: flex; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--flow-mobile-surface); border-top: 1px solid var(--flow-mobile-border); z-index: 10; }
+.mobile-action-bar > button { flex: 1; }
+.mobile-action-leading { margin-right: auto; }
+</style>

@@ -73,6 +73,8 @@ public class ProcessProgressRuntimeService {
     /** Flowable 公开 Query.orderBy 扩展使用固定引擎列；不接受请求提供的列名或排序表达式。 */
     private static final org.flowable.common.engine.api.query.QueryProperty HISTORY_TRANSACTION_ORDER =
             () -> "TRANSACTION_ORDER_";
+    private static final com.fasterxml.jackson.databind.ObjectMapper RETURN_LOG_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
     /** 日期时间格式化器（用于操作日志时间格式化） */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -160,9 +162,14 @@ public class ProcessProgressRuntimeService {
                 .processInstanceId(processInstanceId)
                 .orderByHistoricActivityInstanceStartTime().asc()
                 .list();
+        var returnActions = new java.util.HashMap<String, com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog>();
+        var reworkActivities = new java.util.HashSet<String>();
+        readReturnHistory(processInstanceId, returnActions, reworkActivities);
         // 4. 提取已完成的节点
         List<String> completedNodes = historicActivities.stream()
-                .filter(h -> h.getEndTime() != null && !ProcessEndReason.isCancelled(h.getDeleteReason()))
+                .filter(h -> h.getEndTime() != null && !ProcessEndReason.isCancelled(h.getDeleteReason())
+                        && !returnActions.containsKey(h.getTaskId())
+                        && !reworkActivities.contains(h.getId()))
                 .map(HistoricActivityInstance::getActivityId)
                 .distinct()
                 .collect(Collectors.toList());
@@ -193,7 +200,8 @@ public class ProcessProgressRuntimeService {
         Map<String, HistoricActivityInstance> latestActivities = new java.util.LinkedHashMap<>();
         historicActivities.forEach(activity -> latestActivities.put(activity.getActivityId(), activity));
         List<String> cancelledNodes = latestActivities.values().stream()
-                .filter(activity -> ProcessEndReason.isCancelled(activity.getDeleteReason()))
+                .filter(activity -> ProcessEndReason.isCancelled(activity.getDeleteReason())
+                        && !returnActions.containsKey(activity.getTaskId()))
                 .map(HistoricActivityInstance::getActivityId).distinct().collect(Collectors.toList());
         progress.setCancelledNodes(cancelledNodes);
         progress.setTerminatedNodes(cancelledNodes); // 旧客户端继续识别取消节点；新客户端根据 endType 展示原因。
@@ -278,6 +286,26 @@ public class ProcessProgressRuntimeService {
                             // 历史读取失败只确认任务已结束，不能凭兜底结果声称审批通过。
                             dto.setAction("COMPLETED");
                         }
+                    }
+                    var returnAction = returnActions.get(h.getTaskId());
+                    if (returnAction != null && "userTask".equals(activityType)) {
+                        dto.setAction("RETURNED");
+                        dto.setActionLabel("退回");
+                        dto.setStatus("COMPLETED");
+                        dto.setAssignee(returnAction.getOperatorId());
+                        dto.setAssigneeName(returnAction.getOperatorName());
+                        dto.setComment(returnAction.getOperationComment());
+                    } else if (reworkActivities.contains(h.getId())) {
+                        dto.setNeedsRework(true);
+                        String label = dto.getActionLabel();
+                        if (!StringUtils.hasText(label)) {
+                            label = switch (String.valueOf(dto.getAction())) {
+                                case "APPROVED" -> "通过";
+                                case "REJECTED" -> "驳回";
+                                default -> "已办理";
+                            };
+                        }
+                        dto.setActionLabel(label + "（需重办）");
                     }
                     return dto;
                 })
@@ -942,6 +970,30 @@ public class ProcessProgressRuntimeService {
                     approvalConfig.getOptions() != null ? approvalConfig.getOptions().size() : 0);
         } catch (Exception e) {
             log.warn("从BPMN加载审批配置失败: {}", e.getMessage());
+        }
+    }
+
+    /** 根据活动实例标记重办，同一个 BPMN 节点后来顺利办结时仍保留旧轮次的历史。 */
+    private void readReturnHistory(String processInstanceId,
+            Map<String, com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog> actions,
+            java.util.Set<String> reworkActivities) {
+        var records = operationLogMapper.selectList(com.baomidou.mybatisplus.core.toolkit.Wrappers
+                .<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog>lambdaQuery()
+                .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getProcessInstanceId,
+                        processInstanceId)
+                .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationType,
+                        com.workflow.process.task.application.TaskHistoryReturnService.OPERATION));
+        for (var record : records) {
+            if (!com.workflow.process.task.application.TaskHistoryReturnService.OPERATION.equals(record.getOperationType())
+                    || !StringUtils.hasText(record.getNewValue())) continue;
+            try {
+                var change = RETURN_LOG_JSON.readValue(record.getNewValue(),
+                        com.workflow.process.task.application.TaskHistoryReturnService.ReturnHistory.class);
+                actions.put(record.getTaskId(), record);
+                if (change.invalidatedActivityIds() != null) reworkActivities.addAll(change.invalidatedActivityIds());
+            } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+                log.warn("无法读取流程回退影响记录", error);
+            }
         }
     }
 

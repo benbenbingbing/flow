@@ -140,7 +140,18 @@
 
     <template #footer>
       <div class="approval-dialog-footer">
+        <ApprovalWorkflowMenu
+          :task="isViewMode ? null : currentTask"
+          :instance-id="String(currentTask?.processInstanceId || '')"
+          :active="presentedDialogVisible && !initialLoading && !initialLoadError"
+          :allow-return="canUseHistoryReturn"
+          :dirty="Boolean(savedApprovalFingerprint) && savedApprovalFingerprint !== approvalFingerprint()"
+          :form-reference="approvalActionFormContext"
+          @completed="handleWorkflowOperationCompleted"
+          @history-resubmit="applyHistoryResubmit"
+        />
         <FormActionBar v-if="!initialLoading && !initialLoadError"
+          class="approval-form-actions"
           :actions="footerActions"
           :loading-key="actionLoadingKey"
           @action="handleFormAction"
@@ -181,6 +192,7 @@ import { useUserStore } from '@/stores/user'
 import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
 import EntityProcessRoundHistory from './EntityProcessRoundHistory.vue'
 import ApprovalDecisionPanel from './ApprovalDecisionPanel.vue'
+import ApprovalWorkflowMenu from './ApprovalWorkflowMenu.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import {
@@ -257,6 +269,7 @@ const formActions = ref<any[]>([])
 const actionPendingKey = ref('')
 const actionLoadingKey = ref('')
 const currentTask = ref<any>(null)
+const historyResubmit = ref(false)
 const archiveRounds = ref<any[]>([])
 const archiveLoadError = ref('')
 const hasProcessHistory = computed(() => Boolean(currentTask.value?.processInstanceId) || archiveRounds.value.length > 0)
@@ -332,6 +345,11 @@ const approvalDialogTitle = computed(() => {
 
 // 计算属性：获取当前有效的审批配置
 const effectiveApprovalConfig = computed(() => {
+  if (historyResubmit.value) {
+    return { enabled: true, commentLabel: '重提说明', options: [
+      { value: 'resubmit', label: '重新提交', type: 'primary', showComment: true }
+    ] }
+  }
   if (approvalConfig.value) {
     return approvalConfig.value
   }
@@ -424,6 +442,9 @@ const approvalActionFormContext = computed(() => {
       || formReleaseContext.value.configHash
   }
 })
+const canUseHistoryReturn = computed(() => !isViewMode.value && !approvalConflictMessage.value
+  && (!effectiveFormConfig.value || formActions.value.some(action =>
+    action.key === 'submitApproval' && action.visible !== false && action.enabled !== false)))
 const resolvedDiagnosticForm = computed(() =>
   approvalNormalForm.value || effectiveFormConfig.value
 )
@@ -538,11 +559,29 @@ const showApprovalDecisionSection = computed(() =>
     )
   )
 )
-const footerActions = computed(() =>
-  footerFormActions(formActions.value).filter(action =>
-    action.key !== 'submitApproval' || isApprovalFormTab.value
-  )
-)
+const footerActions = computed(() => {
+  const actions = footerFormActions(formActions.value).filter(action =>
+    action.key !== 'submitApproval' || isApprovalFormTab.value)
+  if (!historyResubmit.value) return actions
+  if (!effectiveFormConfig.value) {
+    return [...actions, { key: 'submitApproval', label: '重新提交', type: 'built-in', buttonType: 'primary' }]
+  }
+  return actions.map(action => action.key === 'submitApproval' ? { ...action, label: '重新提交' } : action)
+})
+
+/** 发起人重提复用审批表单校验和审批人预览，提交仍绑定当前待办。 */
+function applyHistoryResubmit(enabled: boolean) {
+  if (!enabled || historyResubmit.value || isViewMode.value) return
+  const wasClean = savedApprovalFingerprint === approvalFingerprint()
+  historyResubmit.value = true
+  approveForm.action = 'resubmit'
+  if (wasClean) savedApprovalFingerprint = approvalFingerprint()
+}
+
+function handleWorkflowOperationCompleted(key: string) {
+  if (['return', 'withdraw', 'terminate', 'transfer'].includes(key)) processDialogVisible.value = false
+  emit('success')
+}
 const runtimeForms = computed(() => {
   if (overrideForm.value) {
     return [approvalNormalForm.value].filter(Boolean)
@@ -639,6 +678,7 @@ const openApprove = async (
   const session = resetArchiveRounds()
   resetProcessDetail()
   savedApprovalFingerprint = ''
+  historyResubmit.value = false
   // 审批任务可能复用同一流程实例，仍需先清空上一个任务的诊断坐标。
   processRuntimeMetadata.value = {}
   resetNextApproverPreview()
@@ -657,7 +697,10 @@ const openApprove = async (
     name: row.currentTaskName || row.name || '任务审批',
     startUserName: row.startUserName,
     processName: row.processName,
-    entityCode: row.entityCode
+    entityCode: row.entityCode,
+    ...(row.canClaim === undefined ? {} : { canClaim: row.canClaim }),
+    claimRequired: row.claimRequired,
+    nodeType: row.nodeType
   }
   approveForm.action = 'approve'
   approveForm.comment = ''
@@ -683,6 +726,9 @@ const openApprove = async (
           if (actionableTask?.taskName) {
             currentTask.value.name = actionableTask.taskName
           }
+          if (actionableTask?.canClaim !== undefined) currentTask.value.canClaim = actionableTask.canClaim
+          if (actionableTask?.claimRequired !== undefined) currentTask.value.claimRequired = actionableTask.claimRequired
+          if (actionableTask?.nodeType) currentTask.value.nodeType = actionableTask.nodeType
         }
         const config = progressRes.approvalConfig
         if (config && Array.isArray(config.options) && config.options.length > 0) {
@@ -726,6 +772,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
   const session = resetArchiveRounds()
   resetProcessDetail()
   savedApprovalFingerprint = ''
+  historyResubmit.value = false
   runtimeDiagnosticsRef.value?.reset()
   approvalConflictMessage.value = ''
   resetNextApproverPreview()
@@ -1004,7 +1051,7 @@ const submitApprove = async () => {
         ? { headers: { [BUSINESS_TRACE_HEADER]: previewTraceKey } }
         : {})
     })
-    ElMessage.success('审批成功')
+    ElMessage.success(historyResubmit.value ? '重新提交成功' : '审批成功')
     processDialogVisible.value = false
     emit('success')
   } catch (e: any) {
@@ -1124,6 +1171,14 @@ defineExpose({
 
 .approval-dialog-footer {
   min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.approval-form-actions {
+  margin-left: auto;
 }
 
 @media (max-width: 900px) {

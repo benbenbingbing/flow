@@ -156,6 +156,9 @@ public class ProcessProgressDTO {
          * 处理方式显示文本（如"同意，需要会签"）
          */
         private String actionLabel;
+
+        /** 该次历史办理已被后续回退覆盖，进度中保留记录并提示需重办。 */
+        private boolean needsRework;
         
         /**
          * 审批意见/备注

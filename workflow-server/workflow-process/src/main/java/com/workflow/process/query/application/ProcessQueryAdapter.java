@@ -315,7 +315,9 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
             String starter = instance == null ? null : instance.getStartUserId();
             boolean canResubmit = !addSignOpen && starter != null
                     && (starter.equals(actor.userId()) || starter.equals(actor.username()))
-                    && (Boolean.TRUE.equals(runtime.getVariable(task.instanceId(), "_rejected_"))
+                    && (Boolean.TRUE.equals(tasks.getVariableLocal(taskId,
+                            com.workflow.process.task.application.TaskHistoryReturnService.RESUBMIT_MARKER))
+                    || Boolean.TRUE.equals(runtime.getVariable(task.instanceId(), "_rejected_"))
                     || "reject".equals(runtime.getVariable(task.instanceId(), "approved")));
             actions.put("resubmit", new ActionCapability(canResubmit,
                     canResubmit ? null : "TASK_ACTION_NOT_ALLOWED", canResubmit ? null : "当前不是发起人的退回待办"));

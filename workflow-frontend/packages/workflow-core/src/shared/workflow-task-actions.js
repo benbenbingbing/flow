@@ -51,3 +51,15 @@ export function taskApprovalConflictMessage(error) {
   const code = codes.find(value => Object.prototype.hasOwnProperty.call(reasons, value))
   return code ? `${reasons[code]}。你填写的内容仍保留在当前弹窗。` : ''
 }
+
+/** 审批底栏只展示已确认可办的操作。撤回和终止属于实例，与当前审批人身份独立。 */
+export function getApprovalMenuActions({ task = {}, instance = {}, allowReturn = true, assigned = true } = {}) {
+  return [
+    { key: 'return', label: '退回', allowed: allowReturn && task.return === true },
+    { key: 'withdraw', label: '撤回', allowed: instance.withdraw === true },
+    { key: 'terminate', label: '终止', allowed: instance.terminate === true },
+    { key: 'cc', label: '知会', allowed: task.manualCc === true },
+    { key: 'transfer', label: '转办', allowed: assigned && task.transfer === true },
+    { key: 'addSign', label: '加签', allowed: assigned && resolveAllowedAddSignTypes(task).length > 0 }
+  ].filter(item => item.allowed)
+}

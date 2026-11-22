@@ -162,7 +162,8 @@ export function useProcessDetail({ request }) {
               ? `发起人: ${node.assigneeName || node.assignee || startUserName}`
               : (node.assignee ? `执行人: ${node.assigneeName || node.assignee} ${actionText}${commentText}` : `${actionText}${commentText}`),
             time: node.endTime || node.startTime,
-            type: node.action === 'TRANSFERRED' ? 'warning' : (['TERMINATED', 'CANCELLED'].includes(node.status) ? 'danger' : node.status === 'WITHDRAWN' ? 'warning' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
+            type: ['TRANSFERRED', 'RETURNED'].includes(node.action) || node.needsRework ? 'warning'
+              : (['TERMINATED', 'CANCELLED'].includes(node.status) ? 'danger' : node.status === 'WITHDRAWN' ? 'warning' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
             status: node.status,
             action: node.action
           }

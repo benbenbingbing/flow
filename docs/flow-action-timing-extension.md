@@ -34,7 +34,7 @@
 
 设计器的“全局流程动作”只作用于当前流程定义及其发布版本，对应 `PROCESS`；目录中的 `GLOBAL` 仅表示任意实体的流程可选用该处理器。任务操作按源用户任务节点绑定，不隐式继承流程级规则，也不自动套用到本地加签子任务。
 
-每个实际业务边界只配置一次时机，处理器自行决定校验或处理；同一时机的事务内动作按配置顺序执行，任一异常阻断操作。目录共 20 个标准时机：流程级 7 个、用户任务节点 12 个、连线 1 个。
+每个实际业务边界只配置一次时机，处理器自行决定校验或处理。同一时机的事务内动作按配置顺序执行。目录共 22 个标准时机，包含流程级 7 个、用户任务节点 14 个和连线 1 个。
 
 | 配置位置 | 操作 | 执行前 | 执行后 |
 | --- | --- | --- | --- |
@@ -42,6 +42,7 @@
 | 当前流程全局动作 | 撤回 | `PROCESS_WITHDRAWING`（撤回前） | `PROCESS_WITHDRAWN`（撤回后） |
 | 当前流程全局动作 | 终止 | `PROCESS_TERMINATING`（终止前） | `PROCESS_TERMINATED`（流程终止后） |
 | 源用户任务节点 | 普通审批、驳回、重提、自定义办理、加签期间原任务提交及加签子任务审批 | `TASK_SUBMITTING`（审批办理前） | `TASK_SUBMITTED`（审批办理后） |
+| 源用户任务节点 | 选择节点回退 | `TASK_RETURNING`（选择回退前） | `TASK_RETURNED`（选择回退后） |
 | 用户任务节点 | 转办 | `TASK_TRANSFERRING`（转办前） | `TASK_TRANSFERRED` |
 | 用户任务节点 | 发起加签 | `TASK_ADD_SIGNING`（加签前） | `TASK_ADD_SIGNED` |
 
@@ -58,7 +59,9 @@
 
 ### 上下文与执行限制
 
-- `businessOperation` 区分 START / COMPLETE / WITHDRAW / TERMINATE / SUBMIT / TRANSFER / ADD_SIGN。普通审批、加签原任务提交及子任务审批均为 SUBMIT，通过任务类型和加签输入区分。
+选择回退前在校验当前办理权、已发布策略和目标活动后执行。选择回退后在目标待办创建、待办同步及退回记录写入后执行。两者的 `elementId` 和 `taskId` 始终指向发起回退操作的用户任务，目标节点正常执行进入节点和待办创建等生命周期动作。回退参数包括 `comment`、`targetNodeId`、`targetActivityInstanceId`，后置阶段另含 `targetTaskId`。
+
+- `businessOperation` 区分 START / COMPLETE / WITHDRAW / TERMINATE / SUBMIT / RETURN / TRANSFER / ADD_SIGN。普通审批、加签原任务提交及子任务审批均为 SUBMIT，通过任务类型和加签输入区分。
 - `taskKind=ENGINE` 表示原引擎任务；`LOCAL_ADD_SIGN` 表示本地子任务，`taskId` 是子任务 ID，`sourceTaskId` 是源任务 ID，`elementId` 仍绑定源节点。
 - `submittedFormData` 是本次提交表单的只读深拷贝；`operationParameters` 提供意见、转办目标或加签类型和有效人员。它们与动作配置的 `extraParams` 分开，随 Outbox 载荷保留，不授予额外写入权限。
 - 前置处理器可校验输入，也可通过平台受控端口写业务数据和流程变量；不再根据时机名称施加“校验阶段只读”限制。提交表单及操作参数快照仍只读，节点字段授权和保留变量保护继续生效。
@@ -145,10 +148,12 @@ V142 将旧 `TASK_COMPLETING` 配置迁移到 `NODE_COMPLETED`，不提前到尚
 | 6 | 审批流转前（表单保存后） | `TASK_ADVANCING` |
 | 7 | 节点离开前 | `NODE_COMPLETED` |
 | 8 | 审批办理后 | `TASK_SUBMITTED` |
-| 9 | 转办前 | `TASK_TRANSFERRING` |
-| 10 | 转办操作执行后 | `TASK_TRANSFERRED` |
-| 11 | 加签前 | `TASK_ADD_SIGNING` |
-| 12 | 加签操作执行后 | `TASK_ADD_SIGNED` |
+| 9 | 选择回退前 | `TASK_RETURNING` |
+| 10 | 选择回退后 | `TASK_RETURNED` |
+| 11 | 转办前 | `TASK_TRANSFERRING` |
+| 12 | 转办操作执行后 | `TASK_TRANSFERRED` |
+| 13 | 加签前 | `TASK_ADD_SIGNING` |
+| 14 | 加签操作执行后 | `TASK_ADD_SIGNED` |
 
 其中审批办理前后覆盖本地加签；表单保存前、审批流转前及节点离开前仅在实际执行对应步骤时触发。节点离开后先路由、再触发审批办理后，流程结束动作则延迟到外层事务提交前，不应把此表当成所有分支都会经过的单一路径。
 

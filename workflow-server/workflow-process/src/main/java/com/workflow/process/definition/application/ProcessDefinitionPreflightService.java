@@ -99,6 +99,8 @@ public class ProcessDefinitionPreflightService {
     private final ObjectMapper objectMapper;
     @org.springframework.beans.factory.annotation.Autowired
     private ProcessCancellationStatusValidator cancellationStatusValidator;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.process.task.application.operation.NodeHistoryReturnPolicy historyReturnPolicy;
 
     /**
      * 对当前持久化草稿执行完整发布预检。
@@ -156,6 +158,7 @@ public class ProcessDefinitionPreflightService {
                 if (nodeOperationPolicyBpmnValidator != null) {
                     nodeOperationPolicyBpmnValidator.validate(bpmnXml);
                 }
+                if (historyReturnPolicy != null) historyReturnPolicy.validate(bpmnXml);
                 if (cancellationStatusValidator != null) {
                     cancellationStatusValidator.validate(config);
                 }

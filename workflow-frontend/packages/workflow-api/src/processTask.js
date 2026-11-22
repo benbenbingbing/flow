@@ -29,8 +29,8 @@ function getStatistics() {
  * 获取任务详情
  * @param {string} taskId - 任务ID
  */
-function getTaskDetail(taskId) {
-  return request.get(`/process-task/detail/${taskId}`)
+function getTaskDetail(taskId, config) {
+  return request.get(`/process-task/detail/${taskId}`, config)
 }
 
 /**
@@ -87,13 +87,22 @@ function resumeTaskSla(taskId) {
   return request.post(`/tasks/${taskId}/sla/resume`)
 }
 
-function getTaskOperations(taskId) {
-  return request.get(`/tasks/${taskId}/operations`)
+function getTaskOperations(taskId, config = {}) {
+  return request.get(`/tasks/${encodeURIComponent(taskId)}/operations`, config)
 }
 
 /** 实例级能力不要求发起人同时是当前任务办理人。 */
-function getProcessOperations(processInstanceId) {
-  return request.get(`/process-instance/${encodeURIComponent(processInstanceId)}/operations`)
+function getProcessOperations(processInstanceId, config = {}) {
+  return request.get(`/process-instance/${encodeURIComponent(processInstanceId)}/operations`, config)
+}
+
+/** 可选目标使用历史活动 ID，重复节点的不同办理轮次保持独立。 */
+function getTaskReturnTargets(taskId) {
+  return request.get(`/tasks/${encodeURIComponent(taskId)}/return-targets`, { silentError: true })
+}
+
+function returnTask(taskId, data) {
+  return request.post(`/tasks/${encodeURIComponent(taskId)}/return`, data, { silentError: true })
 }
 
 function previewAddSign(taskId, userIds, type = 'PARALLEL') {
@@ -175,8 +184,8 @@ function resubmitProcess(processInstanceId, data) {
  * 检查流程是否被驳回
  * @param {string} processInstanceId - 流程实例ID
  */
-function checkRejectedStatus(processInstanceId) {
-  return request.get(`/process-rollback/rejected-status/${processInstanceId}`)
+function checkRejectedStatus(processInstanceId, config) {
+  return request.get(`/process-rollback/rejected-status/${processInstanceId}`, config)
 }
 
 // 统一导出
@@ -193,7 +202,7 @@ const processTaskApi = {
   acknowledgeTask,
   pauseTaskSla,
   resumeTaskSla,
-  getTaskOperations, getProcessOperations,
+  getTaskOperations, getProcessOperations, getTaskReturnTargets, returnTask,
   previewAddSign,
   addSignTask,
   cancelAddSign,
@@ -209,5 +218,5 @@ const processTaskApi = {
   checkRejectedStatus
 }
 
-return { getTodoList, getDoneList, getStatistics, getTaskDetail, completeTask, previewNextApproval, getNextApproverOptions, claimTask, getTaskSla, acknowledgeTask, pauseTaskSla, resumeTaskSla, getTaskOperations, getProcessOperations, previewAddSign, addSignTask, cancelAddSign, ccTask, getMyCcList, markCcRead, withdrawProcess, getProcessHistory, getMyStartedList, terminateProcess, rejectTask, resubmitProcess, checkRejectedStatus, processTaskApi }
+return { getTodoList, getDoneList, getStatistics, getTaskDetail, completeTask, previewNextApproval, getNextApproverOptions, claimTask, getTaskSla, acknowledgeTask, pauseTaskSla, resumeTaskSla, getTaskOperations, getProcessOperations, getTaskReturnTargets, returnTask, previewAddSign, addSignTask, cancelAddSign, ccTask, getMyCcList, markCcRead, withdrawProcess, getProcessHistory, getMyStartedList, terminateProcess, rejectTask, resubmitProcess, checkRejectedStatus, processTaskApi }
 }

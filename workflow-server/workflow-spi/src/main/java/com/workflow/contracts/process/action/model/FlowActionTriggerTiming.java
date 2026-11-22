@@ -106,6 +106,16 @@ public enum FlowActionTriggerTiming {
             EnumSet.of(FlowActionScopeType.NODE), true,
             FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
             "触发任务标识、最终流程变量、提交表单和操作参数；触发任务可能已结束", "AFTER_EXECUTE"),
+    TASK_RETURNING(
+            "选择回退前", "源待办与目标校验通过后、关闭待办和移动执行前",
+            EnumSet.of(FlowActionScopeType.NODE), true,
+            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
+            "源节点与源待办、操作人、回退目标、历史活动 ID 和意见", "BEFORE_EXECUTE"),
+    TASK_RETURNED(
+            "选择回退后", "目标待办创建、流程与业务投影同步后",
+            EnumSet.of(FlowActionScopeType.NODE), true,
+            FlowActionExecutionMode.IN_TRANSACTION, FlowActionFailurePolicy.ROLLBACK,
+            "源节点与源待办、回退目标新待办 ID、操作参数和最新流程变量", "AFTER_EXECUTE"),
     TASK_TRANSFERRING(
             "转办前", "权限与操作检查通过后、自动认领、表单保存及办理人变更前",
             EnumSet.of(FlowActionScopeType.NODE), true,

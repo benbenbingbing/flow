@@ -186,7 +186,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用按执行人和多人办理、办理表单、审批设置排列。', notes: '知会统一进入协同；自动跳过、SLA 和标识备注进入高级。' },
+                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用按执行人和多人办理、办理表单、审批设置排列。', notes: '知会在协同页签，自动跳过、选择节点回退、SLA 和标识备注在高级页签。' },
                 { option: '服务任务 / 发送任务', meaning: '显示“常用、协同、高级、流程动作”。常用展示任务主配置，协同展示知会。', notes: 'REST 可靠性、结果映射等仍在常用内按低频分组折叠。' },
                 { option: '其他任务、调用活动与网关', meaning: '显示“常用、高级、流程动作”。常用展示类型专属配置。', notes: '页面不会为不支持的能力显示空页签。' },
                 { option: '开始、结束事件与连线', meaning: '开始、结束事件显示适用的基础配置和流程动作；连线条件与连线实体状态并入常用。', notes: '开始事件暂不支持节点表单配置；连线实体状态是常用内的折叠配置区。' },
@@ -798,6 +798,7 @@ export default {
                 { scope: 'NODE 用户任务', timings: 'TASK_FORM_SAVING', context: '实际审批表单保存前；不包含加签输入暂存。强制事务内 + 回滚。' },
                 { scope: 'NODE 用户任务', timings: 'TASK_ADVANCING', context: '审批流转前（表单保存后）；下一审批人重验及引擎办理前，本次审批结果尚未汇总写入。强制事务内 + 回滚。' },
                 { scope: 'NODE 用户任务', timings: 'TASK_SUBMITTED', context: '审批办理后；本次提交及相关同步处理完成，可能仍在等待加签。默认事务内 + 回滚。' },
+                { scope: 'NODE 用户任务', timings: 'TASK_RETURNING / TASK_RETURNED', context: '分别在当前用户任务执行选择回退前、目标待办创建并完成同步后触发。两个动作均绑定执行退回的源任务。前置必须事务内回滚，后置可在提交后执行。' },
                 { scope: 'SEQUENCE_FLOW 连线', timings: 'TRANSITION_TAKEN', context: '来源、目标和变量；分支选中后、进入目标前处理审批结果和状态。默认事务内 + 回滚。' }
               ]
             },
@@ -950,7 +951,8 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '跳过方式', meaning: '选择不跳过、始终跳过或满足条件时跳过。', defaultLimit: '默认不跳过；仅用户任务支持。', effect: '始终跳过会直接继续流转；条件跳过仅在表达式结果为 true 时继续流转。', publish: '命中后不创建待办，也不会写入当前节点审批结果或意见。' },
-                { field: '条件表达式', meaning: '通过条件组设置自动跳过的 Flowable 表达式。', defaultLimit: '仅“满足条件时跳过”显示且必填；只提供安全的比较操作符。', effect: '结果为 true 时跳过，结果为 false 时正常创建待办。', publish: '引用的实体字段必须在令牌到达用户任务前有值。' }
+                { field: '条件表达式', meaning: '通过条件组设置自动跳过的 Flowable 表达式。', defaultLimit: '仅“满足条件时跳过”显示且必填；只提供安全的比较操作符。', effect: '结果为 true 时跳过，结果为 false 时正常创建待办。', publish: '引用的实体字段必须在令牌到达用户任务前有值。' },
+                { field: '选择节点回退', meaning: '用户任务独立配置关闭、可退回的历史节点或仅指定节点。可选配发起人重提节点。', defaultLimit: '默认关闭。目标需位于实例已实际办理的同一段单执行路径内。', effect: '审批详情左下角的三个点按能力显示退回、撤回、终止、知会、转办和加签。退回时选择目标并填写意见。', publish: '配置随流程版本发布。并行、包容、多实例、事件及子流程边界限制可选目标。' }
               ]
             },
             {

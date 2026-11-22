@@ -84,12 +84,14 @@ public class TaskAddSignService {
     public Map<String, Object> operations(String taskId) {
         Task task = requireSourceTask(taskId);
         requireTaskOperator(task);
+        if (task.isSuspended()) return Map.of("approve", false, "reject", false);
         ProcessTaskAddSign current = findOpenBySourceTask(taskId);
+        boolean historyResubmit = isHistoryResubmission(taskId);
         return Map.of(
                 "approve", true,
                 "reject", true,
-                "transfer", current == null,
-                "addSign", current == null,
+                "transfer", current == null && !historyResubmit,
+                "addSign", current == null && !historyResubmit,
                 "manualCc", true,
                 "addSignTypes", TYPES,
                 "activeAddSign", current == null ? Map.of() : addSignView(current));
@@ -107,6 +109,7 @@ public class TaskAddSignService {
     public Map<String, Object> preview(String taskId, List<String> requestedUserIds, String requestedType) {
         Task task = requireSourceTask(taskId);
         requireTaskOperator(task);
+        requireTaskSupportsAddSign(taskId);
         String type = normalizeType(requestedType);
         Resolution resolution = resolveUsers(requestedUserIds, task.getAssignee());
         return Map.of(
@@ -142,6 +145,7 @@ public class TaskAddSignService {
     public Map<String, Object> addSign(String taskId, TaskAddSignRequest request) {
         Task sourceTask = requireSourceTask(taskId);
         String operator = requireTaskOperator(sourceTask);
+        requireTaskSupportsAddSign(taskId);
         String type = normalizeType(request.getType());
         requireAddSignAllowed(taskId, request, type);
         if (!"ALL".equalsIgnoreCase(request.getCompletionPolicy())) {
@@ -150,6 +154,9 @@ public class TaskAddSignService {
         ProcessTask sourceMirror = processTaskMapper.selectByTaskIdForUpdate(taskId);
         if (sourceMirror == null) {
             throw new IllegalStateException("任务镜像不存在，请先同步流程任务");
+        }
+        if (!ProcessTask.STATUS_TODO.equals(sourceMirror.getStatus())) {
+            throw new IllegalStateException("当前任务已结束，无法加签");
         }
         if (findOpenBySourceTask(taskId) != null) {
             throw new IllegalStateException("当前任务已存在进行中的加签");
@@ -215,6 +222,15 @@ public class TaskAddSignService {
                 "generatedTaskIds", generatedTaskIds,
                 "users", resolution.users().stream().map(this::userView).toList(),
                 "summary", structureSummary(type));
+    }
+
+    /** 重提待办保留给发起人，避免加签把任务变成无法由发起人独立重提的编排。 */
+    private void requireTaskSupportsAddSign(String taskId) {
+        if (isHistoryResubmission(taskId)) throw new IllegalArgumentException("发起人重提待办不允许加签");
+    }
+
+    private boolean isHistoryResubmission(String taskId) {
+        return Boolean.TRUE.equals(taskService.getVariableLocal(taskId, TaskHistoryReturnService.RESUBMIT_MARKER));
     }
 
     /**
@@ -288,6 +304,11 @@ public class TaskAddSignService {
     @Transactional(readOnly = true)
     public boolean isAddSignSourceTask(String taskId) {
         return findOpenBySourceTask(taskId) != null;
+    }
+
+    /** 选择回退持有源待办锁时读取最新加签状态，避免使用锁前的事务快照。 */
+    public boolean hasOpenAddSignForUpdate(String taskId) {
+        return findOpenBySourceTaskForUpdate(taskId) != null;
     }
 
     /**

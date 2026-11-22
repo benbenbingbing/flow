@@ -1830,6 +1830,31 @@
             </template>
           </SettingsSection>
 
+          <SettingsSection v-if="isUserTask" title="选择节点回退"
+            description="允许办理人回退到本实例已经办理过的前序用户任务"
+            :default-expanded="taskReturnForm.mode !== 'OFF'">
+            <el-form-item label="退回范围">
+              <el-select v-model="taskReturnForm.mode" @change="onTaskReturnModeChange">
+                <el-option label="关闭" value="OFF" />
+                <el-option label="可退回的历史节点" value="HISTORY" :disabled="!taskReturnSupported" />
+                <el-option label="仅指定节点" value="FIXED" :disabled="!taskReturnSupported" />
+              </el-select>
+            </el-form-item>
+            <el-alert v-if="!taskReturnSupported" type="info" :closable="false"
+              title="当前节点或所在流程作用域不支持选择回退。" />
+            <el-form-item v-if="taskReturnForm.mode === 'FIXED'" label="指定节点" required>
+              <el-select v-model="taskReturnForm.targetNodeIds" multiple filterable
+                placeholder="选择前序用户任务" @change="reconcileTaskReturnResubmit">
+                <el-option v-for="option in taskReturnOptions" :key="option.value" v-bind="option" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="taskReturnForm.mode !== 'OFF'" label="发起人重提节点">
+              <el-select v-model="taskReturnForm.resubmitNodeId" clearable filterable placeholder="可选">
+                <el-option v-for="option in taskReturnResubmitOptions" :key="option.value" v-bind="option" />
+              </el-select>
+            </el-form-item>
+          </SettingsSection>
+
           <NodeSlaEditor v-if="isUserTask" v-model="slaForm"
             :sla-policy-options="slaPolicyOptions" :work-calendar-options="workCalendarOptions"
             :entity-fields="entityFields" />
@@ -1865,6 +1890,10 @@
 import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import EntityUserRelationPathSelector from "./EntityUserRelationPathSelector.vue"
 import NodeSlaEditor from "./node-config/NodeSlaEditor.vue"
+import {
+  TASK_RETURN_PROPERTY, readTaskReturnConfiguration, supportsTaskReturnSource,
+  taskReturnNodeOptions, validateTaskReturnConfiguration
+} from './node-config/taskReturnConfiguration.js'
 import { updateBpmnExtensionProperty } from './node-config/bpmnExtensionProperties.js'
 import { buildSequenceFlowConditionConfig, buildSequenceFlowConditionExpression } from './node-config/sequenceFlowCondition.js'
 import { loadProcessConditionFieldOptions } from './node-config/processConditionFields.js'
@@ -2286,6 +2315,26 @@ const nodeFormSelectionDirty = ref(false)
 const nodeFormInitializing = ref(false)
 let nodeFormInitializationSequence = 0
 const advancedForm = ref(createAutoSkipForm())
+const taskReturnForm = ref(readTaskReturnConfiguration())
+const taskReturnSupported = computed(() =>
+  supportsTaskReturnSource(toRaw(props.element)?.businessObject, assigneeForm.value.isMultiInstance))
+const taskReturnOptions = computed(() =>
+  taskReturnNodeOptions(toRaw(props.element)?.businessObject, assigneeForm.value.isMultiInstance))
+const taskReturnResubmitOptions = computed(() => taskReturnForm.value.mode === 'FIXED'
+  ? taskReturnOptions.value.filter(option => taskReturnForm.value.targetNodeIds.includes(option.value))
+  : taskReturnOptions.value)
+
+function reconcileTaskReturnResubmit() {
+  if (!taskReturnResubmitOptions.value.some(option => option.value === taskReturnForm.value.resubmitNodeId)) {
+    taskReturnForm.value.resubmitNodeId = ''
+  }
+}
+
+function onTaskReturnModeChange(mode) {
+  if (mode !== 'FIXED') taskReturnForm.value.targetNodeIds = []
+  if (mode === 'OFF') taskReturnForm.value.resubmitNodeId = ''
+  else reconcileTaskReturnResubmit()
+}
 const slaForm = ref({
   enabled: false,
   policyCode: '',
@@ -2881,6 +2930,12 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
   if (newElement?.businessObject) {
     const bo = toRaw(newElement).businessObject
     const extProps = getExtensionProperties(bo)
+    try {
+      taskReturnForm.value = readTaskReturnConfiguration(extProps[TASK_RETURN_PROPERTY])
+    } catch {
+      taskReturnForm.value = readTaskReturnConfiguration()
+      ElMessage.warning('回退配置无法读取，应用到画布后将按当前设置保存')
+    }
     
     console.log('加载节点配置:', bo.id, bo.name, '扩展属性:', extProps)
     
@@ -4648,7 +4703,13 @@ function applyConfigurationSection(section) {
       }
       case 'advanced':
         if (!updateAutoSkipConfig()) return false
-        if (isUserTask.value && !updateSlaConfig()) return false
+        if (isUserTask.value) {
+          if (!updateSlaConfig()) return false
+          if (taskReturnForm.value.mode !== 'OFF' || getExtensionProperties(props.element.businessObject)[TASK_RETURN_PROPERTY]) {
+            // 显式关闭也保存，避免从兼容的旧扩展容器重新读出已启用的配置。
+            updateExtensionProperty(TASK_RETURN_PROPERTY, JSON.stringify(taskReturnForm.value))
+          }
+        }
         break
       default:
         console.warn('未知的配置分区:', section)
@@ -4671,6 +4732,10 @@ async function applyNodeConfiguration() {
       parseJsonObject(callForm.value.inputParameters, '调用活动输入参数')
       parseJsonObject(callForm.value.outputParameters, '调用活动输出参数')
     } catch (error) { ElMessage.warning(error.message); return }
+  }
+  if (isUserTask.value) {
+    const returnError = validateTaskReturnConfiguration(taskReturnForm.value, taskReturnOptions.value, taskReturnSupported.value)
+    if (returnError) { ElMessage.warning(returnError); return }
   }
   if (isUserTask.value && approvalForm.value.enabled) {
     // 审批选项必须在任何分区写入 bpmn-js 前完成预检，避免后置失败留下半应用状态。

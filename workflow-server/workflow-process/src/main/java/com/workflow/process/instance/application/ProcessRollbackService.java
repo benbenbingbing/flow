@@ -132,6 +132,20 @@ public class ProcessRollbackService {
             return null;
         }
 
+        // 新回退只标记实际产生的编辑任务。发起人读取此任务时才进入重提模式。
+        String actor = com.workflow.admin.security.context.UserContext.getUsername();
+        String actorId = com.workflow.admin.security.context.UserContext.getUserId();
+        String starter = processInstance.getStartUserId();
+        if (starter != null && (starter.equals(actor) || starter.equals(actorId))) {
+            for (var task : taskService.createTaskQuery().processInstanceId(processInstanceId).active().list()) {
+                if (task.getAssignee() != null && (task.getAssignee().equals(actor) || task.getAssignee().equals(actorId))
+                        && Boolean.TRUE.equals(taskService.getVariableLocal(task.getId(),
+                        com.workflow.process.task.application.TaskHistoryReturnService.RESUBMIT_MARKER))) {
+                    return Map.of("rejected", true, "canResubmit", true, "taskId", task.getId(), "historyReturn", true);
+                }
+            }
+        }
+
         // 检查流程变量中是否有驳回标记
         Map<String, Object> vars = runtimeService.getVariables(processInstanceId);
         

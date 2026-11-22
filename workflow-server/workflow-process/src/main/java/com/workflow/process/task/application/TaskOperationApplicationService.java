@@ -16,6 +16,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TaskOperationApplicationService {
     private final TaskAddSignService taskAddSignService;
+    private final LocalAddSignTaskAccessService localAddSignAccess;
     private final ProcessCcRuntimeService ccRuntimeService;
     private final NodeOperationCapabilityService nodeOperationCapabilityService;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -28,7 +29,14 @@ public class TaskOperationApplicationService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> operations(String taskId) {
+        if (taskAddSignService.isAddSignTask(taskId)) {
+            // 本地加签仅有办理能力，不能继承源引擎任务的退回、知会等管理操作。
+            var authorized = localAddSignAccess.requireCurrentUserAccess(taskId, null);
+            boolean active = !authorized.sourceTask().isSuspended();
+            return Map.of("approve", active, "reject", active);
+        }
         Map<String, Object> operations = new LinkedHashMap<>(taskAddSignService.operations(taskId));
+        if (Boolean.FALSE.equals(operations.get("approve"))) return operations;
         operations.put("manualCc", ccRuntimeService.isManualCcAllowed(taskId));
         NodeOperationCapabilityService.OperationCapabilities capabilities =
                 nodeOperationCapabilityService.availableCapabilities(taskId);

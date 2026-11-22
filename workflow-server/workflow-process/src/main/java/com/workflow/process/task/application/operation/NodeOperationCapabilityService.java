@@ -233,7 +233,7 @@ public class NodeOperationCapabilityService {
         ProcessInstance runtime = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .singleResult();
-        if (runtime == null) {
+        if (runtime == null || runtime.isSuspended()) {
             return false;
         }
         String startUserId = runtime.getStartUserId();

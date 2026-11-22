@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import {
+  getApprovalMenuActions,
   getTodoTaskMoreActions,
   isTaskClaimable,
   taskApprovalConflictMessage
@@ -29,6 +30,15 @@ assert.deepEqual(getTodoTaskMoreActions({
   taskOperations: { transfer: true, addSign: true, addSignTypes: ['BEFORE'] }
 }).map(action => action.command), ['transfer', 'addSign', 'cc'])
 assert.deepEqual(getTodoTaskMoreActions({ ...task, nodeType: 'ADD_SIGN' }), [])
+
+const allOperations = { return: true, manualCc: true, transfer: true, addSign: true, addSignTypes: ['BEFORE'] }
+assert.deepEqual(getApprovalMenuActions({ task: allOperations, instance: { withdraw: true, terminate: true } })
+  .map(action => action.key), ['return', 'withdraw', 'terminate', 'cc', 'transfer', 'addSign'])
+assert.deepEqual(getApprovalMenuActions({ task: allOperations, assigned: false, allowReturn: false })
+  .map(action => action.key), ['cc'])
+assert.deepEqual(getApprovalMenuActions({ instance: { withdraw: false, terminate: true } })
+  .map(action => action.key), ['terminate'])
+assert.deepEqual(getApprovalMenuActions({ task: { return: 'true', addSign: true } }), [])
 
 for (const errorCode of ['TASK_ALREADY_CLAIMED', 'TASK_ALREADY_COMPLETED', 'TASK_STATE_CHANGED']) {
   for (const error of [
@@ -145,6 +155,7 @@ async function submitApproval(error) {
   const dependencies = {
     currentTask: { value: task },
     approveSubmitLoading,
+    historyResubmit: { value: false },
     approveForm,
     entityData,
     processDialogVisible,

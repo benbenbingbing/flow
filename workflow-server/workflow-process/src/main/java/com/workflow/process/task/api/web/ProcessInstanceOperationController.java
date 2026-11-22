@@ -31,7 +31,8 @@ public class ProcessInstanceOperationController {
         accessService.requireReadAccess(processInstanceId);
         String userId = UserContext.getUserId();
         if (userId == null || userId.isBlank()) userId = UserContext.getUsername();
-        return Result.success(Map.of("withdraw",
-                capabilityService.canWithdrawProcess(processInstanceId, userId)));
+        return Result.success(Map.of(
+                "withdraw", capabilityService.canWithdrawProcess(processInstanceId, userId),
+                "terminate", capabilityService.canTerminateProcess(processInstanceId, userId)));
     }
 }

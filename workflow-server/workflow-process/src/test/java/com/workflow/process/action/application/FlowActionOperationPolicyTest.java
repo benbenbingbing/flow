@@ -81,8 +81,8 @@ class FlowActionOperationPolicyTest {
 
     @Test void catalogContainsOnlyRealBusinessBoundaries() {
         var options = new FlowActionTimingCatalog(List.of()).list(null, null);
-        assertEquals(20, options.size());
-        assertEquals(15, options.stream().filter(option -> option.getOperationPhase() != null).count());
+        assertEquals(22, options.size());
+        assertEquals(17, options.stream().filter(option -> option.getOperationPhase() != null).count());
         assertTrue(options.stream().noneMatch(option -> "VALIDATE".equals(option.getOperationPhase())
                 || option.getValue().endsWith("_VALIDATING")
                 || option.getLabel().contains("执行前处理") || option.getLabel().contains("前业务校验")));
@@ -97,7 +97,7 @@ class FlowActionOperationPolicyTest {
                 "PROCESS_WITHDRAWING", "PROCESS_WITHDRAWN", "PROCESS_TERMINATING", "PROCESS_TERMINATED"),
                 catalog.list("PROCESS", "bpmn:Process").stream().map(FlowActionTimingOption::getValue).toList());
         assertEquals(List.of("NODE_ENTERED", "TASK_ASSIGNED", "TASK_CREATED", "TASK_SUBMITTING", "TASK_FORM_SAVING", "TASK_ADVANCING",
-                "NODE_COMPLETED", "TASK_SUBMITTED", "TASK_TRANSFERRING", "TASK_TRANSFERRED",
+                "NODE_COMPLETED", "TASK_SUBMITTED", "TASK_RETURNING", "TASK_RETURNED", "TASK_TRANSFERRING", "TASK_TRANSFERRED",
                 "TASK_ADD_SIGNING", "TASK_ADD_SIGNED"),
                 catalog.list("NODE", "bpmn:UserTask").stream().map(FlowActionTimingOption::getValue).toList());
         assertEquals(List.of("NODE_ENTERED", "NODE_COMPLETED"), catalog.list("NODE", "bpmn:ServiceTask")

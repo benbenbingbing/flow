@@ -4,6 +4,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.validation.PublishedFormCrossFieldValidator;
+import com.workflow.entity.form.application.validation.PublishedFormRequiredValidator;
+import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.context.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
@@ -32,9 +48,11 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,6 +69,84 @@ import static org.mockito.Mockito.when;
 class NodeFormSubmissionServiceTest {
 
     private final EntityRecordQueryPort entityRecords = mock(EntityRecordQueryPort.class);
+
+    /** 旧 URL 快照不能覆盖已登记附件，可编辑字段的本次清空仍要经过必填校验。 */
+    @Test
+    void approvalValidatesCurrentAttachmentsInsteadOfLegacyProcessSnapshot() {
+        var runtime = mock(RuntimeService.class);
+        var snapshots = mock(ProcessPublishedSnapshotService.class);
+        var runtimeForms = mock(EntityFormRuntimeService.class);
+        var mutations = mock(EntityMutationPort.class);
+        var traces = mock(FormSubmissionTraceService.class);
+        var releases = mock(UiConfigReleaseService.class);
+        var records = mock(EntityDataDynamicService.class);
+        var mapper = new ObjectMapper();
+        var codec = new JsonDocumentCodec(mapper);
+        var requiredValidator = new PublishedFormRequiredValidator(records,
+                mock(EntityFieldMapper.class), mock(EntityFieldFileItemMapper.class),
+                new PublishedFormConditionEvaluator(mapper), codec, mapper);
+        var submission = new PublishedFormSubmissionService(mock(EntityDefinitionMapper.class),
+                mock(EntityFormMapper.class), mock(EntityRelationMapper.class), releases,
+                mock(UiInterfaceExtensionService.class), codec, new UiExtensionDefinitionValidator(codec),
+                requiredValidator, mock(PublishedFormCrossFieldValidator.class));
+        var service = new NodeFormSubmissionService(runtime, snapshots, mock(EntityFormService.class),
+                runtimeForms, mutations, submission, traces, mapper,
+                mock(ProcessEntityVariableService.class), entityRecords);
+
+        var nodeForm = nodeForm("form-1", "release-1", 1);
+        var field = field("documents", 1);
+        field.setFieldType("FILE");
+        field.setComponentProps("""
+                {"fileItems":[{"itemKey":"requirements","itemName":"需求说明书","required":true}]}
+                """);
+        var form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        form.setFields(List.of(field));
+        when(snapshots.getNodeFormsContextByProcessDefinitionId("definition-1", "Task_Review"))
+                .thenReturn(published(nodeForm));
+        when(runtimeForms.getByBinding(nodeForm, "history-1", UiRuntimePurpose.ACTIVE_TASK)).thenReturn(form);
+        when(releases.resolveRuntimeFormRelease(eq("form-1"), eq("release-1"), eq(1),
+                any(UiRuntimeResolutionContext.class)))
+                .thenReturn(new ResolvedEntityFormRelease(form, "release-1", 1));
+        when(traces.current(eq("PROCESS_APPROVAL_SUBMIT"), eq("task:task-1"),
+                org.mockito.ArgumentMatchers.anyMap())).thenReturn(executionContext());
+        when(runtime.getVariable("instance-1", "entityCode")).thenReturn("expense");
+        when(runtime.getVariable("instance-1", "entityDataId")).thenReturn("data-1");
+        when(runtime.getVariables("instance-1")).thenReturn(Map.of("documents",
+                Map.of("需求说明书", List.of(Map.of("url", "/legacy/requirements.pdf")))));
+
+        Map<String, Object> currentData = Map.of("documents",
+                Map.of("需求说明书", List.of(Map.of("fileId", "requirements-file"))));
+        var entityRecord = new EntityRecordData();
+        entityRecord.setData(currentData);
+        when(entityRecords.findById("expense", "data-1")).thenReturn(entityRecord);
+        var saved = new EntityDataDTO();
+        saved.setData(currentData);
+        when(records.findById("expense", "data-1")).thenReturn(saved);
+        Task task = task();
+
+        Map<String, Object> cleared = Map.of("documents", Map.of("需求说明书", List.of()));
+        assertEquals(Map.of(), service.projectEditableData(task, cleared));
+        assertDoesNotThrow(() -> service.applyEditableData(task, cleared));
+
+        field.setIsReadonly(0);
+        assertEquals(PublishedFormRequiredValidator.ERROR_CODE,
+                assertThrows(BusinessConflictException.class,
+                        () -> service.projectEditableData(task, cleared)).getErrorCode());
+        assertEquals(PublishedFormRequiredValidator.ERROR_CODE,
+                assertThrows(BusinessConflictException.class,
+                        () -> service.applyEditableData(task, cleared)).getErrorCode());
+
+        // 实体里删除的附件不能通过旧流程变量里的有效引用重新满足必填规则。
+        when(runtime.getVariables("instance-1")).thenReturn(currentData);
+        entityRecord.setData(Map.of());
+        saved.setData(Map.of());
+        assertEquals(PublishedFormRequiredValidator.ERROR_CODE,
+                assertThrows(BusinessConflictException.class,
+                        () -> service.applyEditableData(task, Map.of())).getErrorCode());
+        verify(mutations, never()).execute(any());
+    }
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"MISSING_ENTITY", "MISSING_RECORD", "REJECT"})

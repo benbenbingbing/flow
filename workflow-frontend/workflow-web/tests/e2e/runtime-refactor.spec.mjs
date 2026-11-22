@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 const xml = `<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Defs" targetNamespace="http://test"><bpmn:process id="process" isExecutable="true"><bpmn:userTask id="review" name="再次审批"/></bpmn:process><bpmndi:BPMNDiagram id="diagram"><bpmndi:BPMNPlane id="plane" bpmnElement="process"><bpmndi:BPMNShape id="shape" bpmnElement="review"><dc:Bounds x="100" y="100" width="100" height="80"/></bpmndi:BPMNShape></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></bpmn:definitions>`
 const form = { id: 'form-test', formKey: 'test', configHash: 'graph-test', fields: [{ id: 'amount-field', fieldId: 'amount-field', fieldCode: 'amount', fieldLabel: '金额', fieldName: '金额', fieldType: 'DECIMAL', componentType: 'number', isReadonly: 0 }], nodes: [] }
 const action = { key: 'calculate', label: '计算并回填', type: 'custom', ownerFormId: 'form-test', placement: 'FOOTER', visible: true, enabled: true, confirm: { enabled: true, message: '确认执行这次回填？' } }
-async function fixture(page, { result, done } = {}) {
+async function fixture(page, { result, done, formActions = [action], taskOps = {}, instanceOps = {} } = {}) {
   const errors = [], unexpected = [], writes = [], reads = []
   page.on('pageerror', error => errors.push(error.message))
   await page.route('**/api/**', async route => {
@@ -10,7 +10,11 @@ async function fixture(page, { result, done } = {}) {
     const request = route.request(), url = new URL(request.url()), endpoint = url.pathname.slice(4), body = request.method() === 'POST' ? request.postDataJSON() : null
     reads.push({ endpoint, taskId: url.searchParams.get('taskId') })
     let data
-    if (endpoint === '/ui-runtime/form-actions/resolve') data = [action]
+    if (endpoint === '/ui-runtime/form-actions/resolve') data = formActions
+    else if (endpoint === '/tasks/task-test/operations') data = taskOps
+    else if (endpoint === '/process-instance/instance-test/operations') data = instanceOps
+    else if (endpoint === '/tasks/task-test/return-targets') data = [{ activityInstanceId: 'prior-check', nodeId: 'check', nodeName: '初审' }]
+    else if (endpoint === '/tasks/task-test/return') { writes.push(body); data = {} }
     else if (endpoint.includes('/FORM_BUTTON_CLICK/')) { writes.push(body); data = result || { effects: [{ type: 'FIELD_MAPPING', data: { form: { amount: 100 } }, mappings: [{ targetPath: 'form.amount', overwrite: 'ALWAYS' }] }] } }
     else if (endpoint.startsWith('/ui-runtime/events/')) data = { effects: [] }
     else if (endpoint === '/entity-data/entity/test/detail/record-test/load') data = { id: 'record-test', name: '测试记录', data: { amount: 7 } }
@@ -68,6 +72,28 @@ test('PC 进度页面复用查看器：回退节点显示进行中且保留历�
   await expect(page.locator('.node-tooltip')).toContainText('1分钟0秒')
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
   await page.screenshot({ path: '../../.codex-artifacts/frontend-refactor/pc-progress.png', fullPage: true, animations: 'disabled' })
+})
+test('PC 左下角只显示有权限的操作，退回使用历史活动且关闭当前详情', async ({ page }) => {
+  const state = await fixture(page, {
+    formActions: [{ key: 'submitApproval', label: '提交审批', type: 'built-in', placement: 'FOOTER', visible: true, enabled: true }],
+    taskOps: { approve: true, return: true, transfer: true, addSign: true, addSignTypes: [] },
+    instanceOps: { terminate: true }
+  })
+  await page.goto('/tests/e2e/fixture.html')
+  await page.getByRole('button', { name: '打开审批', exact: true }).click()
+  await page.locator('.approval-dialog-footer').getByRole('button', { name: '更多操作', exact: true }).click()
+  await expect(page.getByRole('menuitem')).toHaveText(['退回', '终止', '转办'])
+  await page.getByRole('menuitem', { name: '退回', exact: true }).click()
+  await page.getByText('请选择回退节点', { exact: true }).click()
+  await page.getByRole('option', { name: '初审', exact: true }).click()
+  await page.getByRole('dialog', { name: '退回', exact: true }).getByRole('textbox', { name: /意见/ }).fill('请补金额')
+  await page.getByRole('button', { name: '确认退回', exact: true }).click()
+  await expect(page.getByTestId('refresh-count')).toHaveText('1')
+  expect(state.writes).toEqual([{
+    targetActivityInstanceId: 'prior-check', comment: '请补金额',
+    formId: 'form-test', formConfigHash: 'graph-test', requestId: expect.any(String)
+  }])
+  expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
 })
 test('PC 已办列表连续筛选：旧响应迟到不能覆盖最新结果', async ({ page }) => {
   let releaseOld, requestedOld

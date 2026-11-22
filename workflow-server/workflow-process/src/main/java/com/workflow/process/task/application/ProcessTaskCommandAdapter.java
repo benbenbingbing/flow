@@ -64,8 +64,11 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
             form.setFormId(request.getFormId()); form.setConfigHash(request.getFormConfigHash());
             form.setEntityCode(request.getEntityCode()); form.setRecordId(request.getRecordId());
             form.setListKey(request.getListKey());
-            formActions.requireBuiltInMutationAction(form, "submitApproval");
-            if ("resubmit".equals(action)) requireResubmit(request.getTaskId());
+            Task resubmit = "resubmit".equals(action) ? requireResubmit(request.getTaskId()) : null;
+            if (resubmit == null || !isHistoryResubmission(resubmit.getId())
+                    || !isUnboundTask(resubmit, submission.formReference())) {
+                formActions.requireBuiltInMutationAction(form, "submitApproval");
+            }
             return completeWork(request.getTaskId(), action, request.getTransferTo(), submission);
         });
     }
@@ -135,7 +138,7 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
     }
 
     /** 发起人身份与退回状态必须同时满足；不允许把任意待办当作重提入口。 */
-    private void requireResubmit(String taskId) {
+    private Task requireResubmit(String taskId) {
             Task source = requireEngineTask(taskId);
             var actor = access.requireActor();
             var instance = history.createHistoricProcessInstanceQuery()
@@ -145,9 +148,11 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
                 throw new ProcessOperationException("PROCESS_ACCESS_DENIED", "只有发起人可以重新提交", taskId);
             }
             Object approved = runtime.getVariable(source.getProcessInstanceId(), "approved");
-            if (!Boolean.TRUE.equals(runtime.getVariable(source.getProcessInstanceId(), "_rejected_"))
+            if (!isHistoryResubmission(taskId)
+                    && !Boolean.TRUE.equals(runtime.getVariable(source.getProcessInstanceId(), "_rejected_"))
                     && !"reject".equals(approved)) throw denied(taskId, "当前任务不是退回重提状态");
             if (addSigns.isAddSignSourceTask(taskId)) throw denied(taskId, "加签编排中不能重新提交");
+            return source;
     }
 
     @Override
@@ -221,8 +226,15 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
         Task source;
         if (local) source = localAccess.requireCurrentUserAccess(taskId, null).sourceTask();
         else { source = requireEngineTask(taskId); actions.requireTaskAccess(taskId); }
-        forms.require(taskId, source, submission.formReference());
         String normalized = outcomes.normalizeAction(action);
+        // 发起人重提使用专用的审批结果，不能从通用完成接口转交或伪造其他办理结果。
+        boolean historyResubmit = !local && isHistoryResubmission(taskId);
+        if (historyResubmit && !"resubmit".equals(normalized)) {
+            throw denied(taskId, "当前待办需由发起人重新提交");
+        }
+        if (!historyResubmit || !isUnboundTask(source, submission.formReference())) {
+            forms.require(taskId, source, submission.formReference());
+        }
         requirePublishedAction(source, normalized);
         boolean selected = submission.nextApprovers() != null && !submission.nextApprovers().nodes().isEmpty();
         if ((local || addSigns.isAddSignSourceTask(taskId) || "transfer".equals(normalized)) && selected) {
@@ -258,6 +270,17 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
                     submission.formData(), next == null ? null : next.scopeKey(), selections, returnTargetNodeId);
         }
         return outcome(source, taskId, "transfer".equals(normalized) ? "TRANSFERRED" : "COMPLETED", true);
+    }
+
+    private boolean isHistoryResubmission(String taskId) {
+        return Boolean.TRUE.equals(tasks.getVariableLocal(taskId, TaskHistoryReturnService.RESUBMIT_MARKER));
+    }
+
+    /** 纯 BPMN 流程能重提，关联实体或声明表单引用时仍校验发布表单。 */
+    private boolean isUnboundTask(Task source, TaskFormReference reference) {
+        return (reference == null || reference.formId() == null && reference.configHash() == null)
+                && runtime.getVariable(source.getProcessInstanceId(), "entityCode") == null
+                && runtime.getVariable(source.getProcessInstanceId(), "entityDataId") == null;
     }
 
     /** 仅已发布自定义按钮值可作为审批动作；显示文本不参与授权或路由。 */

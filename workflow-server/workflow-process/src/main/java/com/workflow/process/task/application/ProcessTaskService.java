@@ -324,8 +324,25 @@ public class ProcessTaskService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void completeTask(String taskId, String action, String comment, String actionLabel) {
+        completeTask(taskId, action, comment, actionLabel, false);
+    }
+
+    /** 回退的源待办必须关闭并保留办理记录，否则同步失败需要回滚引擎移动。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void completeTaskAfterHistoryReturn(String taskId, String comment) {
+        completeTask(taskId, "return", comment, "退回", true);
+    }
+
+    /** 写事务中锁定源待办，与加签和认领串行更新任务投影。 */
+    public boolean lockPendingHistoryReturnSource(String taskId) {
+        ProcessTask source = taskMapper.selectByTaskIdForUpdate(taskId);
+        return source != null && ProcessTask.STATUS_TODO.equals(source.getStatus());
+    }
+
+    private void completeTask(String taskId, String action, String comment, String actionLabel, boolean requireMirror) {
         ProcessTask task = taskMapper.selectByTaskId(taskId);
         if (task == null) {
+            if (requireMirror) throw new IllegalStateException("回退源任务镜像不存在");
             log.warn("待办任务不存在: taskId={}", LogValue.safe(taskId));
             return;
         }
@@ -354,7 +371,8 @@ public class ProcessTaskService {
         task.setDuration(duration);
         task.setUpdateTime(LocalDateTime.now());
 
-        taskMapper.updateById(task);
+        int updated = taskMapper.updateById(task);
+        if (requireMirror && updated != 1) throw new IllegalStateException("回退源任务镜像更新失败");
         if (taskSlaRuntimeService != null) {
             taskSlaRuntimeService.complete(taskId);
         }
@@ -444,6 +462,16 @@ public class ProcessTaskService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void syncTasksFromFlowable(String processInstanceId) {
+        synchronizeFlowableTasks(processInstanceId, false);
+    }
+
+    /** 回退成功必须同时刷新实体任务摘要，失败时由外层命令回滚引擎和投影。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void syncTasksAfterHistoryReturn(String processInstanceId) {
+        synchronizeFlowableTasks(processInstanceId, true);
+    }
+
+    private void synchronizeFlowableTasks(String processInstanceId, boolean requireSummary) {
         if (processInstanceId == null || processInstanceId.isEmpty()) {
             log.warn("流程实例ID为空，无法同步任务");
             return;
@@ -484,6 +512,11 @@ public class ProcessTaskService {
             }
         }
         
+        // 回退必须让摘要失败传播，旧入口继续保留既有容错约定。
+        if (requireSummary) {
+            updateEntityCurrentTask(processInstanceId);
+            return;
+        }
         // 同步更新实体数据表的当前任务信息
         try {
             updateEntityCurrentTask(processInstanceId);

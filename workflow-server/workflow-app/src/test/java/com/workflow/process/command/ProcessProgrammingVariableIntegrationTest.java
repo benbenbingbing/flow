@@ -967,4 +967,117 @@ class ProcessProgrammingVariableIntegrationTest {
                 .processInstanceId(returned).variableName("_rejected_").singleResult().getValue());
     }
 
+    @Test
+    void historyReturnReopensTaskAndDispatchesOnlyOnSourceWithIdempotentReplay() {
+        var xml = """
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:flowable="http://flowable.org/bpmn" targetNamespace="return-selection">
+                  <process id="returnSelection" isExecutable="true">
+                    <startEvent id="start"/><sequenceFlow id="first" sourceRef="start" targetRef="prepare"/>
+                    <userTask id="prepare" flowable:assignee="alice"/>
+                    <sequenceFlow id="editLine" sourceRef="prepare" targetRef="edit"/>
+                    <userTask id="edit" name="填写" flowable:assignee="alice">
+                      <extensionElements><flowable:properties><flowable:property name="taskReturnConfig"
+                        value='{"mode":"HISTORY"}'/></flowable:properties></extensionElements>
+                    </userTask>
+                    <sequenceFlow id="next" sourceRef="edit" targetRef="choice"/>
+                    <userTask id="alternate" flowable:assignee="alice"/>
+                    <sequenceFlow id="alternateLine" sourceRef="alternate" targetRef="choice"/>
+                    <exclusiveGateway id="choice"/><sequenceFlow id="reviewLine" sourceRef="choice" targetRef="review"/>
+                    <userTask id="review" flowable:assignee="alice">
+                      <extensionElements><flowable:properties><flowable:property name="taskReturnConfig"
+                        value='{"mode":"FIXED","targetNodeIds":["edit","alternate"],"resubmitNodeId":"edit"}'/></flowable:properties></extensionElements>
+                    </userTask>
+                    <sequenceFlow id="exit" sourceRef="review" targetRef="end"/><endEvent id="end"/>
+                  </process>
+                </definitions>
+                """;
+        var policy = new com.workflow.process.task.application.operation.NodeHistoryReturnPolicy(new ObjectMapper());
+        policy.validate(xml);
+        assertThrows(IllegalArgumentException.class, () -> policy.validate(xml.replace("exclusiveGateway", "parallelGateway")));
+        engine.getRepositoryService().createDeployment().addString("selection.bpmn20.xml", xml).deploy();
+        var taskService = engine.getTaskService();
+        var runtime = engine.getRuntimeService();
+        engine.getIdentityService().setAuthenticatedUserId("alice");
+        String id;
+        try { id = runtime.startProcessInstanceByKey("returnSelection", Map.of("businessValue", "keep")).getId(); }
+        finally { engine.getIdentityService().setAuthenticatedUserId(null); }
+        var prepare = taskService.createTaskQuery().processInstanceId(id).singleResult();
+        taskService.complete(prepare.getId());
+        var edit = taskService.createTaskQuery().processInstanceId(id).singleResult();
+        taskService.complete(edit.getId());
+        var review = taskService.createTaskQuery().processInstanceId(id).singleResult();
+        var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var handled = new com.workflow.process.task.infrastructure.persistence.record.ProcessTask();
+        handled.setTaskId(edit.getId());
+        handled.setStatus("done");
+        handled.setAction("approve");
+        var earlier = new com.workflow.process.task.infrastructure.persistence.record.ProcessTask();
+        earlier.setTaskId(prepare.getId());
+        earlier.setStatus("done");
+        earlier.setAction("approve");
+        when(mirrors.getTasksByProcessInstance(id)).thenReturn(List.of(handled, earlier));
+        when(mirrors.lockPendingHistoryReturnSource(review.getId())).thenReturn(true);
+        var logs = mock(ProcessOperationLogMapper.class);
+        var records = new java.util.ArrayList<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog>();
+        var failPostAction = new java.util.concurrent.atomic.AtomicBoolean(true);
+        when(logs.selectList(any())).thenReturn(records);
+        when(logs.insert(any(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog.class)))
+                .thenAnswer(call -> { if (!failPostAction.get()) records.add(call.getArgument(0)); return 1; });
+        var returns = new com.workflow.process.task.application.TaskHistoryReturnService(taskService, runtime,
+                engine.getHistoryService(), engine.getRepositoryService(), businessCore,
+                mock(com.workflow.process.task.application.TaskAddSignService.class),
+                mock(com.workflow.process.task.application.TaskSubmissionGuard.class), mirrors, policy, access,
+                commands, operationActions, logs, new ObjectMapper(),
+                mock(com.workflow.contracts.identity.port.IdentityDirectoryPort.class));
+
+        var targets = returns.targets(review.getId());
+        assertEquals(List.of("edit"), targets.stream().map(target -> target.nodeId()).toList());
+        assertTrue(targets.get(0).resubmit());
+        var request = new com.workflow.process.task.application.TaskHistoryReturnService.Request(
+                "history-selection", targets.get(0).activityInstanceId(), "请补充材料", null, null);
+        var stages = new java.util.ArrayList<String>();
+        org.mockito.Mockito.doAnswer(call -> {
+            var event = (com.workflow.process.action.domain.FlowActionTriggerEvent) call.getArgument(0);
+            if (event.getTriggerTiming().startsWith("TASK_RETURN")) {
+                stages.add(event.getTriggerTiming());
+                assertEquals("review", event.getElementId());
+                assertEquals(review.getId(), event.getTaskId());
+                assertEquals("edit", event.getOperationParameters().get("targetNodeId"));
+                if ("TASK_RETURNED".equals(event.getTriggerTiming())) {
+                    assertEquals(taskService.createTaskQuery().processInstanceId(id).singleResult().getId(),
+                            event.getOperationParameters().get("targetTaskId"));
+                    if (failPostAction.get()) throw new IllegalArgumentException("阻断回退");
+                }
+            }
+            return null;
+        }).when(businessActions).dispatch(any());
+        assertThrows(ProcessOperationException.class, () -> returns.execute(review.getId(), request));
+        assertEquals(review.getId(), taskService.createTaskQuery().processInstanceId(id).singleResult().getId());
+        assertEquals(0, receiptCount());
+        failPostAction.set(false);
+        stages.clear();
+        assertEquals("edit", returns.execute(review.getId(), request).targetNodeId());
+        assertEquals("edit", returns.execute(review.getId(), request).targetNodeId());
+        assertEquals(List.of("TASK_RETURNING", "TASK_RETURNED"), stages);
+        var reopened = taskService.createTaskQuery().processInstanceId(id).singleResult();
+        assertEquals("edit", reopened.getTaskDefinitionKey());
+        org.junit.jupiter.api.Assertions.assertNotEquals(edit.getId(), reopened.getId());
+        assertTrue(returns.canResubmit(reopened.getId()));
+        assertEquals(List.of("prepare"), returns.targets(reopened.getId()).stream().map(target -> target.nodeId()).toList());
+        assertEquals("keep", runtime.getVariable(id, "businessValue"));
+        assertCode("TASK_ACTION_NOT_ALLOWED", () -> port.complete(new com.workflow.contracts.process.task.model.CompleteTaskCommand(
+                new CommandMeta("invalid-reopen-completion"), reopened.getId(), "approve", null)));
+        var submission = new com.workflow.process.task.api.request.TaskCompleteRequest();
+        submission.setRequestId("history-selection-resubmit");
+        submission.setTaskId(reopened.getId());
+        submission.setAction("resubmit");
+        port.completeHttp(submission);
+        assertEquals("approve", runtime.getVariable(id, "approved"));
+        var nextReview = taskService.createTaskQuery().processInstanceId(id).singleResult();
+        assertEquals("review", nextReview.getTaskDefinitionKey());
+        taskService.complete(nextReview.getId());
+        assertEquals(0, runtime.createProcessInstanceQuery().processInstanceId(id).count());
+    }
+
 }
