@@ -10,10 +10,12 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityMutationSystemFields;
+import com.workflow.entity.data.application.mapping.EntityRecordRevision;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.Preparation;
@@ -71,10 +73,7 @@ public class EntityMutationTransactionExecutor {
             return replayed;
         }
         if (currentTaskSync) return executeCurrentTaskSync(command);
-        Map<String, Object> before = command.operationType()
-                == EntityMutationOperationType.CREATE
-                ? Map.of()
-                : load(command.entityCode(), command.recordId());
+        Map<String, Object> before = loadBefore(command);
         PreparedUniqueClaims prepared =
                 formUniqueClaimService.prepare(command, before);
         return executeInternal(command, null, prepared);
@@ -174,11 +173,7 @@ public class EntityMutationTransactionExecutor {
                 .filter(item -> !EntityMutationSystemFields.isCurrentTaskSync(item.command()))
                 .toList();
         List<Map<String, Object>> snapshots = businessWrites.stream()
-                .map(item -> item.command().operationType()
-                        == EntityMutationOperationType.CREATE
-                        ? Map.<String, Object>of()
-                        : load(item.command().entityCode(),
-                                item.command().recordId()))
+                .map(item -> loadBefore(item.command()))
                 .toList();
         List<PreparedUniqueClaims> prepared = businessWrites.isEmpty() ? List.of() :
                 formUniqueClaimService.prepareAll(
@@ -210,6 +205,9 @@ public class EntityMutationTransactionExecutor {
      * 交接不修改业务数据，历史子表问题不能阻止责任移交；实际写入失败仍向外抛出。
      */
     private EntityMutationResult executeCurrentTaskSync(EntityMutationCommand command) {
+        if (command.expectedRevision() != null) {
+            throw new IllegalArgumentException("流程当前任务的投影同步不支持业务版本条件");
+        }
         var summary = writer.synchronizeCurrentTask(command);
         var result = new EntityMutationResult(command.operationId(), command.entityCode(), command.recordId(),
                 command.operationType(), summary.record(), null, null, summary.changed(), false);
@@ -234,21 +232,26 @@ public class EntityMutationTransactionExecutor {
         Set<RootKey> lockedRelatedRoots;
         if (original.operationType()
                 != EntityMutationOperationType.CREATE) {
-            beforeRecord = load(
-                    original.entityCode(),
-                    original.recordId());
+            beforeRecord = loadBefore(original);
             if (batchLockedRoots == null) {
                 lockedRelatedRoots =
                         relatedVersionCaptureService.lockRelatedRoots(
                                 original, beforeRecord);
-                writer.lock(
-                        original.entityCode(),
-                        original.recordId());
-                beforeRecord = load(
-                        original.entityCode(),
-                        original.recordId());
+                if (original.operationType() == EntityMutationOperationType.UPSERT) {
+                    // 若锁定时仍不存在，直接 INSERT；并发首次写入由主键判定，禁止无锁改成 UPDATE。
+                    beforeRecord = writer.lockIfPresent(original.entityCode(), original.recordId())
+                            ? load(original.entityCode(), original.recordId()) : Map.of();
+                } else {
+                    writer.lock(original.entityCode(), original.recordId());
+                    beforeRecord = load(original.entityCode(), original.recordId());
+                }
             } else {
                 lockedRelatedRoots = batchLockedRoots;
+                if (original.operationType() == EntityMutationOperationType.UPSERT) {
+                    // 可选记录在批次预锁时可能不存在；插入分支只能由此处的锁定读取决定。
+                    beforeRecord = writer.lockIfPresent(original.entityCode(), original.recordId())
+                            ? load(original.entityCode(), original.recordId()) : Map.of();
+                }
             }
             relatedVersionCaptureService.requireRootsLocked(
                     original, lockedRelatedRoots, beforeRecord);
@@ -261,14 +264,15 @@ public class EntityMutationTransactionExecutor {
                     original, lockedRelatedRoots, Map.of());
         }
         EntityMutationCommand command = original;
+        requireExpectedVersion(command, beforeRecord);
         relatedVersionCaptureService.requireRootsLocked(
                 command, lockedRelatedRoots, beforeRecord);
         formUniqueClaimService.verifyPrepared(
                 command,
                 beforeRecord,
                 prepared);
-        EntityAggregateWriter.WriteResult writeResult =
-                writer.apply(command, prepared);
+        EntityAggregateWriter.WriteResult writeResult = command.operationType() == EntityMutationOperationType.UPSERT
+                ? writer.apply(command, prepared, beforeRecord.isEmpty()) : writer.apply(command, prepared);
         String recordId = writeResult.recordId();
         EntityMutationCommand effectiveCommand =
                 Objects.equals(recordId, command.recordId())
@@ -279,7 +283,8 @@ public class EntityMutationTransactionExecutor {
                                 recordId,
                                 command.operationType(),
                                 command.payload(),
-                                command.context());
+                                command.context(),
+                                command.expectedRevision());
         Map<String, Object> afterRecord =
                 command.operationType()
                         == EntityMutationOperationType.DELETE
@@ -349,20 +354,19 @@ public class EntityMutationTransactionExecutor {
     private Set<RootKey> lockBatch(List<IndexedCommand> pending) {
         Set<RootKey> roots = new LinkedHashSet<>();
         Set<RootKey> records = new LinkedHashSet<>();
+        Set<RootKey> optionalRecords = new LinkedHashSet<>();
         for (IndexedCommand item : pending) {
             EntityMutationCommand command = item.command();
             if (EntityMutationSystemFields.isCurrentTaskSync(command)) {
                 records.add(new RootKey(command.entityCode(), command.recordId()));
                 continue;
             }
-            Map<String, Object> before = command.operationType()
-                    == EntityMutationOperationType.CREATE
-                    ? Map.of()
-                    : load(command.entityCode(), command.recordId());
+            Map<String, Object> before = loadBefore(command);
             roots.addAll(relatedVersionCaptureService.requiredRootKeys(
                     command, before));
-            if (command.operationType()
-                    != EntityMutationOperationType.CREATE) {
+            if (command.operationType() == EntityMutationOperationType.UPSERT) {
+                optionalRecords.add(new RootKey(command.entityCode(), command.recordId()));
+            } else if (command.operationType() != EntityMutationOperationType.CREATE) {
                 records.add(new RootKey(
                         command.entityCode(), command.recordId()));
             }
@@ -372,11 +376,13 @@ public class EntityMutationTransactionExecutor {
                 .thenComparing(RootKey::recordId);
         roots.stream().sorted(order).forEach(key ->
                 writer.lock(key.entityCode(), key.recordId()));
-        records.stream()
+        java.util.stream.Stream.concat(records.stream(), optionalRecords.stream()).distinct()
                 .filter(key -> !roots.contains(key))
                 .sorted(order)
-                .forEach(key -> writer.lock(
-                        key.entityCode(), key.recordId()));
+                .forEach(key -> {
+                    if (records.contains(key)) writer.lock(key.entityCode(), key.recordId());
+                    else writer.lockIfPresent(key.entityCode(), key.recordId());
+                });
         return Set.copyOf(roots);
     }
 
@@ -422,6 +428,27 @@ public class EntityMutationTransactionExecutor {
      * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      * @return 实体变更事务执行器键值结果，供调用方继续处理
      */
+    /** 只有 UPSERT 允许没有写前记录，查询故障与其他写操作的缺失继续向上传递。 */
+    private Map<String, Object> loadBefore(EntityMutationCommand command) {
+        if (command.operationType() == EntityMutationOperationType.CREATE) return Map.of();
+        try {
+            return load(command.entityCode(), command.recordId());
+        } catch (EntityMutationTargetNotFoundException error) {
+            if (command.operationType() != EntityMutationOperationType.UPSERT) throw error;
+            return Map.of();
+        }
+    }
+
+    /** 必须在取得记录锁并复读之后校验，缺失记录也不能满足已读版本。 */
+    private void requireExpectedVersion(EntityMutationCommand command, Map<String, Object> beforeRecord) {
+        if (command.expectedRevision() == null) return;
+        if (beforeRecord.isEmpty()
+                || !command.expectedRevision().equals(EntityRecordRevision.calculate(objectMapper, beforeRecord))) {
+            throw new com.workflow.core.error.BusinessConflictException(
+                    "ENTITY_RECORD_VERSION_CHANGED", "业务记录已变化，请刷新后重试");
+        }
+    }
+
     private Map<String, Object> load(
             String entityCode,
             String recordId) {

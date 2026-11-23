@@ -12,6 +12,8 @@ import com.workflow.contracts.process.variable.model.ProcessVariablePatch;
 import com.workflow.contracts.process.variable.model.VariableReadMode;
 import com.workflow.contracts.process.variable.port.ProcessVariablePort;
 import com.workflow.process.command.application.ProcessInvocationScope;
+import com.workflow.process.action.application.PublishedFlowActionInvocation;
+import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.process.variable.application.ProcessVariableReader;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -30,14 +32,17 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimePort {
     private final ProcessVariablePort variables;
     private final ProcessVariableReader reader;
     private final EntityRecordQueryPort entityDataDynamicService;
+    private final ProcessEntityRecordReader processRecords;
     private final ObjectMapper objectMapper;
 
     /** 引擎监听器在引擎装配期间依赖此适配器，延迟取得端口以避免反向初始化流程引擎。 */
     public FlowActionRuntimeAdapter(@Lazy ProcessQueryPort queries, @Lazy ProcessVariablePort variables,
                                    @Lazy ProcessVariableReader reader, EntityRecordQueryPort entityDataDynamicService,
+                                   ProcessEntityRecordReader processRecords,
                                    ObjectMapper objectMapper) {
         this.queries = queries; this.variables = variables; this.reader = reader;
         this.entityDataDynamicService = entityDataDynamicService; this.objectMapper = objectMapper;
+        this.processRecords = processRecords;
     }
 
     /** 空运行态仍是有效结果；仅实例结束时才允许公共变量读取回退历史。 */
@@ -109,6 +114,9 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimePort {
      */
     @Override
     public EntityRecordData getEntityData(String entityCode, String entityDataId) {
+        if (PublishedFlowActionInvocation.matchesRecord(entityCode, entityDataId)) {
+            return processRecords.findById(entityCode, entityDataId);
+        }
         return entityDataDynamicService.findById(entityCode, entityDataId);
     }
 

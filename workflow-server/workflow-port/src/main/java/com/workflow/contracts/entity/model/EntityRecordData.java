@@ -1,6 +1,7 @@
 package com.workflow.contracts.entity.model;
 
 import lombok.Data;
+import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
@@ -26,6 +27,10 @@ public class EntityRecordData {
     private String deptId;
     /** 创建者标识供规则求值使用；不包含认证凭据。 */
     private String createBy;
+    /** 最近一次落库时间，用于展示及排序。 */
+    private LocalDateTime updateTime;
+    /** 详情查询返回的聚合修订标记，可原样用于下一次条件变更。 */
+    private String revision;
     /** 自定义列表字段的计算结果，与实际业务字段 data 隔离。 */
     private Map<String, Object> extData;
 }

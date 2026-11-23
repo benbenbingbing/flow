@@ -156,6 +156,10 @@ public class EntityMutationReceiptService {
         material.put("operationType",
                 command.operationType().name());
         material.put("payload", command.payload());
+        // 保持既有无条件命令的回执指纹，条件命令必须对读取版本也做重放校验。
+        if (command.expectedRevision() != null) {
+            material.put("expectedRevision", command.expectedRevision());
+        }
         material.put("sourceType",
                 command.context().sourceType().name());
         material.put("sourceId",

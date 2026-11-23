@@ -116,6 +116,18 @@ public class ProcessInstanceService {
     public String triggerReceiveTask(
             String processInstanceId,
             ReceiveTaskTriggerRequest request) {
+        Execution execution = requireWaitingReceiveTask(processInstanceId, request);
+        Map<String, Object> variables = WorkflowReservedVariables
+                .sanitizeRuntimeMutation(request.getVariables());
+        // 业务变量属于根流程，不能随接收任务落在某个并行分支/子流程执行的本地作用域。
+        // 变量写入和 trigger 共用事务；后继节点或监听器失败时必须一起回滚。
+        if (!variables.isEmpty()) runtimeService.setVariablesLocal(processInstanceId, variables);
+        runtimeService.trigger(execution.getId());
+        return execution.getId();
+    }
+
+    /** 预检与实际触发共用接收节点与消息校验，只在命令入口写变量和推进流程。 */
+    Execution requireWaitingReceiveTask(String processInstanceId, ReceiveTaskTriggerRequest request) {
         processInstanceAccessService.requireSignalAccess(processInstanceId);
         if (request == null) {
             throw new IllegalArgumentException("接收任务触发参数不能为空");
@@ -135,13 +147,7 @@ public class ProcessInstanceService {
             throw new IllegalArgumentException("当前执行不在接收任务节点: " + execution.getActivityId());
         }
         validateReceiveMessage(flowElement, request.getMessageRef());
-        Map<String, Object> variables = WorkflowReservedVariables
-                .sanitizeRuntimeMutation(request.getVariables());
-        // 业务变量属于根流程，不能随接收任务落在某个并行分支/子流程执行的本地作用域。
-        // 变量写入和 trigger 共用事务；后继节点或监听器失败时必须一起回滚。
-        if (!variables.isEmpty()) runtimeService.setVariablesLocal(processInstanceId, variables);
-        runtimeService.trigger(execution.getId());
-        return execution.getId();
+        return execution;
     }
 
     /**

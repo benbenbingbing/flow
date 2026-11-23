@@ -94,6 +94,15 @@ public class EntityDataMutationService {
     public EntityDataDTO save(
             EntityDataDTO dto,
             PreparedUniqueClaims prepared) {
+        return save(dto, prepared, null);
+    }
+
+    /** UPSERT 新增时使用命令主键；普通新增仍使用平台生成的 ID。主键冲突随事务回滚。 */
+    EntityDataDTO insertForUpsert(EntityDataDTO dto, PreparedUniqueClaims prepared, String recordId) {
+        return save(dto, prepared, recordId);
+    }
+
+    private EntityDataDTO save(EntityDataDTO dto, PreparedUniqueClaims prepared, String newRecordId) {
         log.info(
                 "保存数据: entityCode={}, id={}, fieldCount={}",
                 LogValue.safe(dto.getEntityCode()),
@@ -143,10 +152,10 @@ public class EntityDataMutationService {
         // 创建/编辑身份只能来自可信上下文，不能借用请求中的提交人冒充操作者。
         String currentUserId = getCurrentUserId();
 
-        boolean creating = !StringUtils.hasText(dto.getId());
+        boolean creating = newRecordId != null || !StringUtils.hasText(dto.getId());
         // 创建场景必须在唯一值预留前生成稳定ID，确保预留和业务写入属于同一事务主体。
         if (creating) {
-            dto.setId(generateId());
+            dto.setId(newRecordId == null ? generateId() : newRecordId);
         }
         dto.setData(parentData);
         Map<String, Object> data =
@@ -288,17 +297,22 @@ public class EntityDataMutationService {
 
         boolean restart = formData != null
                 && Boolean.parseBoolean(String.valueOf(formData.get("restartProcess")));
+        boolean requireUnstarted = formData != null
+                && Boolean.TRUE.equals(formData.get(EntityMutationSystemFields.REQUIRE_UNSTARTED));
         String previousInstanceId = formData == null ? null : asText(formData.get("previousProcessInstanceId"));
         if (restart) {
             EntityProcessRestartContext.require(entityCode, id, previousInstanceId);
         }
-        // 重新发起和表单修改必须在同一记录锁及事务内，避免并发保存覆盖新一轮流程。
-        Map<String, Object> existingData = restart
+        // 启动意图和表单修改必须在同一记录锁及事务内，避免并发发起或覆盖新一轮流程。
+        Map<String, Object> existingData = restart || requireUnstarted
                 ? dynamicMapper.selectByIdForUpdate(tableName, id)
                 : dynamicMapper.selectById(tableName, id);
         if (existingData == null) {
             throw new RuntimeException(
                     "数据不存在: " + id);
+        }
+        if (requireUnstarted && StringUtils.hasText(asText(existingData.get("process_instance_id")))) {
+            throw new BusinessConflictException("ENTITY_PROCESS_ALREADY_STARTED", "业务记录已经发起流程");
         }
         if (restart) {
             EntityStatus status = entityStatusMapper.findByEntityAndCode(entityCode, asText(existingData.get("status")));

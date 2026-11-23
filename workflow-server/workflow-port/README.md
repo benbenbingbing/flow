@@ -52,6 +52,26 @@ Outbox 的主题和幂等键、外层事务参与规则均保持不变，实际�
 
 ## 验证与兼容性
 
+### 业务模块调用
+
+| 场景 | Java 入口 |
+| --- | --- |
+| 用户目录、组织树和角色 | `IdentityDirectoryQueryPort`、`CurrentAuthorizationPort` |
+| 角色、用户组和职务成员 | `IdentityMembershipManagementPort` |
+| 字典、公开设置和系统实体 | `DictionaryReadPort`、`GlobalSettingReadPort`、`SystemEntityQueryPort` |
+| 实体分页、批量、发布元数据、关联记录和历史版本 | `EntityRecordQueryPort`、`EntityMetadataPort`、`EntityRelationQueryPort`、`EntityRecordHistoryPort` |
+| 实体草稿、提交和重新发起 | `EntitySubmissionPort` |
+| 流程进度、实例操作预检和精确历史回退 | `ProcessInstanceInspectionPort`、`ProcessTaskInterventionPort` |
+| 异常处置、交接、知会和 SLA | `ProcessInterventionAdminPort`、`ProcessCcPort`、`ProcessTaskSlaPort` |
+| 已发布动作内的跨实体流程协调 | `RelatedProcessCoordinationPort` |
+
+- 提交重试复用同一 `requestId` 和意图。回执按当前登录人隔离，流程启动失败时与实体写入一同回滚。
+- `EntityMutationPort` 的 UPSERT 使用命令的 `recordId` 做精确定位；条件变更将 `findById` 返回的 `revision` 原样传入 `expectedRevision`。
+- 关系查询要求 `entity:relation-graph:read`，并按每一跳的 `__relation_graph_internal__` 入口计算显式数据范围。
+- 业务动作调用协调端口时，将当前动作的协调配置发布在 `relatedProcessCoordination` 参数中。预览和执行按当前操作人、动作发布快照和已固定的关系路径校验，写操作随宿主事务写入 Outbox。
+
+### 回归检查
+
 `ContractModuleBoundaryTest` 按类型源码归属检查两制品无重复类型、Port 不依赖 SPI。
 `ContractPackageArchitectureTest` 检查角色后缀、纯模型依赖以及不再引入旧包或废弃桥接类型。
 变更后执行 `mvn -pl workflow-app -am clean test`，避免旧 class 掩盖迁移遗漏。

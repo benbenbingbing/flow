@@ -457,7 +457,8 @@ class ProcessProgrammingVariableIntegrationTest {
         when(actors.current()).thenReturn(null);
         var adapter = new com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter(queries, variables,
                 new ProcessVariableReader(engine.getRuntimeService(), engine.getTaskService(), engine.getHistoryService(), addSignUsers),
-                mock(com.workflow.contracts.entity.port.EntityRecordQueryPort.class), new ObjectMapper());
+                mock(com.workflow.contracts.entity.port.EntityRecordQueryPort.class),
+                mock(com.workflow.process.instance.application.ProcessEntityRecordReader.class), new ObjectMapper());
         var beans = mock(org.springframework.context.ApplicationContext.class);
         when(beans.getBean("testAction")).thenReturn((com.workflow.contracts.process.action.spi.FlowActionProvider) context -> {
             assertEquals("LOW", context.getVariable("risk"), "重试仍使用触发快照，不应漂移为实时值");

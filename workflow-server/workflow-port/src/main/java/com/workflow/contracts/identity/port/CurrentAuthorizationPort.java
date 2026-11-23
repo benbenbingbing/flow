@@ -8,4 +8,9 @@ public interface CurrentAuthorizationPort {
      * @return 当前调用者是否为管理员
      */
     boolean isAdministrator();
+
+    /** 判断当前身份是否拥有明确的业务权限码。调用方仍须校验目标对象的数据范围。 */
+    default boolean hasPermission(String permissionCode) {
+        return false;
+    }
 }

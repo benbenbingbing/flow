@@ -1,7 +1,6 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -13,7 +12,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProcessEntityVariableService {
 
-    private final EntityRecordQueryPort records;
+    private final ProcessEntityRecordReader records;
 
     /**
      * 从可信实体记录读取缺失的名称变量，兼容已发起但未保存 name 的旧实例。

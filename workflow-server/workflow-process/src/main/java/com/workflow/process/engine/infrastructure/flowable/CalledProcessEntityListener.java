@@ -3,7 +3,7 @@ package com.workflow.process.engine.infrastructure.flowable;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.process.assignment.application.InitiatorOrganizationSnapshotService;
 import com.workflow.process.assignment.application.RelativeOrgPositionProcessInspector;
@@ -36,7 +36,7 @@ public class CalledProcessEntityListener implements FlowableEventListener {
     private final ProcessDefinitionConfigMapper configs;
     private final EntityDefinitionMapper entities;
     private final EntityRecordPort records;
-    private final EntityRecordQueryPort queries;
+    private final ProcessEntityRecordReader queries;
     private final EntityProcessLinkMapper links;
     private final ProcessEntityStatusPolicy statusPolicy;
     private final RelativeOrgPositionProcessInspector relativePositions;

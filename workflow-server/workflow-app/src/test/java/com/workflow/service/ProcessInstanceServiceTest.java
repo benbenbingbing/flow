@@ -229,6 +229,14 @@ public class ProcessInstanceServiceTest {
         request.setMessageRef("paymentCallback");
         request.setVariables(Map.of("paymentStatus", "SUCCESS"));
 
+        var inspection = new com.workflow.process.instance.application.ProcessInstanceInspectionAdapter(
+                processInstanceService, processInstanceAccessService, null, null, nodeOperationCapabilityService);
+        assertTrue(inspection.previewReceive("instance-1", null, "receive-payment", "paymentCallback").allowed());
+        assertEquals("RECEIVE_TASK_UNAVAILABLE",
+                inspection.previewReceive("instance-1", null, "receive-payment", "wrongMessage").reasonCode());
+        verify(runtimeService, never()).trigger(anyString());
+        verify(runtimeService, never()).setVariablesLocal(anyString(), anyMap());
+
         String executionId = processInstanceService.triggerReceiveTask(
                 "instance-1",
                 request);

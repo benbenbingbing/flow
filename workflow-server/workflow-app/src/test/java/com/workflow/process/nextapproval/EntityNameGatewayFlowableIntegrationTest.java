@@ -1,7 +1,7 @@
 package com.workflow.process.nextapproval;
 
 import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.process.instance.application.ProcessEntityVariableService;
 import com.workflow.process.task.infrastructure.flowable.FlowableConditionEvaluator;
 import org.flowable.common.engine.api.FlowableException;
@@ -61,7 +61,7 @@ class EntityNameGatewayFlowableIntegrationTest {
         EntityRecordData record = new EntityRecordData();
         record.setName(name);
         record.setData(Map.of());
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         when(records.findById("expense", "record-1")).thenReturn(record);
         Map<String, Object> preview = new LinkedHashMap<>(engine.getRuntimeService().getVariables(instance.getId()));
         Map<String, Object> missing = new ProcessEntityVariableService(records).missingRecordVariables(preview);

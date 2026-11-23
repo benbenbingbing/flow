@@ -305,6 +305,7 @@ public class EntityMutationPipeline
                 command.recordId(),
                 command.operationType(),
                 command.payload(),
-                enriched);
+                enriched,
+                command.expectedRevision());
     }
 }

@@ -369,7 +369,13 @@ public class EntityDataActionService {
     public EntityDataDTO create(
             EntityDataDTO dto,
             EntityListRuntimeContext runtimeContext) {
-        return createInternal(dto, runtimeContext, null);
+        return createInternal(dto, runtimeContext, null, null);
+    }
+
+    /** Java 入口已登记本次请求的回执；以服务端追踪键运行同一已发布表单和列表规则。 */
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public EntityDataDTO createFromPort(EntityDataDTO dto, String traceKey) {
+        return createInternal(dto, null, null, traceKey);
     }
 
     /**
@@ -399,12 +405,12 @@ public class EntityDataActionService {
         dto.setCompositionContext(null);
         try (var ignored = ExcelAtomicExecutionContext.open()) {
             return createInternal(dto, null, new FormSubmissionExecutionContext(rowTraceKey,
-                    "EXCEL_CREATE", Map.of("entityCode", dto.getEntityCode(), "mode", "create")));
+                    "EXCEL_CREATE", Map.of("entityCode", dto.getEntityCode(), "mode", "create")), null);
         }
     }
 
     private EntityDataDTO createInternal(EntityDataDTO dto, EntityListRuntimeContext runtimeContext,
-            FormSubmissionExecutionContext excelContext) {
+            FormSubmissionExecutionContext excelContext, String portTraceKey) {
         if (dto == null || !StringUtils.hasText(dto.getEntityCode())) {
             throw new IllegalArgumentException("实体编码不能为空");
         }
@@ -432,9 +438,9 @@ public class EntityDataActionService {
             capabilityService.requireToolbarActionForConfig(dto.getEntityCode(), config, "create");
         }
         FormSubmissionExecutionContext executionContext =
-                excelContext != null ? excelContext : formSubmissionTraceService.current(
+                excelContext != null ? excelContext : submissionContext(
                         "ENTITY_CREATE",
-                        null,
+                        portTraceKey,
                         Map.of(
                                 "entityCode",
                                 dto.getEntityCode(),
@@ -478,18 +484,23 @@ public class EntityDataActionService {
         event.setServerIdempotencyKey(
                 executionContext.businessTraceKey());
         // 以平台新增结果作为唯一权威结果；AFTER 不能用另一条记录冒充本行已保存。
-        java.util.concurrent.atomic.AtomicReference<EntityDataDTO> excelSaved = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<EntityDataDTO> defaultSaved = new java.util.concurrent.atomic.AtomicReference<>();
         var eventResult = eventRuntimeService.execute(
                 event,
                 input -> {
                     if (excelContext != null) {
-                        if (excelSaved.get() != null) throw new IllegalArgumentException("Excel行新增不能重复执行");
+                        if (defaultSaved.get() != null) throw new IllegalArgumentException("Excel行新增不能重复执行");
                         requireExcelDataIdentity(input, dto.getEntityCode());
                         if (input.containsKey("startProcess") && input.get("startProcess") != null
                                 && !"false".equalsIgnoreCase(String.valueOf(input.get("startProcess")))) {
                             throw new IllegalArgumentException("Excel导入不允许事件改变流程启动意图");
                         }
                         requireExcelDataIdentity(map(input.get("data")), dto.getEntityCode());
+                    }
+                    if (portTraceKey != null && input.containsKey("startProcess")
+                            && Boolean.TRUE.equals(dto.getStartProcess()) != portStartRequested(input)) {
+                        throw new com.workflow.core.error.BusinessConflictException(
+                                "ENTITY_SUBMISSION_INTENT_CHANGED", "发布事件不能改变 Java 新增的流程启动意图");
                     }
                     AppliedSubmissionForm applied = applySubmissionForm(
                             origin,
@@ -524,19 +535,20 @@ public class EntityDataActionService {
                             dto,
                             applied.origin(),
                             executionContext.businessTraceKey());
-                    if (excelContext != null) excelSaved.set(saved);
+                    if (excelContext != null || portTraceKey != null) defaultSaved.set(saved);
                     return saved;
                 });
         if (excelContext != null) {
-            if (!eventResult.isDefaultExecuted() || eventResult.isReplaced() || excelSaved.get() == null) {
+            if (!eventResult.isDefaultExecuted() || eventResult.isReplaced() || defaultSaved.get() == null) {
                 throw new IllegalArgumentException("Excel导入必须保留标准新增及其真实保存结果");
             }
-            EntityDataDTO saved = excelSaved.get();
+            EntityDataDTO saved = defaultSaved.get();
             if (!Objects.equals(dto.getEntityCode(), saved.getEntityCode()) || !StringUtils.hasText(saved.getId())) {
                 throw new IllegalArgumentException("Excel新增返回的实体或主键无效");
             }
             return saved;
         }
+        if (portTraceKey != null) return requireJavaSubmissionResult(eventResult.isDefaultExecuted(), defaultSaved.get());
         return entityData(eventResult.getData(), dto.getEntityCode(), null);
     }
 
@@ -604,6 +616,18 @@ public class EntityDataActionService {
             String listKey,
             Map<String, Object> formData,
             EntityListRuntimeContext runtimeContext) {
+        return updateInternal(entityCode, id, listKey, formData, runtimeContext, null);
+    }
+
+    /** Java 编辑仍经过行级权限、提交按钮校验和重新发起版本校验。 */
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public EntityDataDTO updateFromPort(String entityCode, String id, String listKey,
+            Map<String, Object> formData, String traceKey) {
+        return updateInternal(entityCode, id, listKey, formData, null, traceKey);
+    }
+
+    private EntityDataDTO updateInternal(String entityCode, String id, String listKey,
+            Map<String, Object> formData, EntityListRuntimeContext runtimeContext, String portTraceKey) {
         requireDynamicRuntime(entityCode);
         var compositionContext = com.workflow.entity.ui.application.RuntimeRequestContext.composition(formData == null
                 ? null : formData.get(
@@ -630,9 +654,9 @@ public class EntityDataActionService {
                 entityCode,
                 EntityPermissionAction.UPDATE);
         FormSubmissionExecutionContext executionContext =
-                formSubmissionTraceService.current(
+                submissionContext(
                         "ENTITY_UPDATE",
-                        null,
+                        portTraceKey,
                         Map.of(
                                 "entityCode",
                                 entityCode,
@@ -662,7 +686,8 @@ public class EntityDataActionService {
                     id,
                     config,
                     formData,
-                    executionContext);
+                    executionContext,
+                    portTraceKey != null);
         }
         UiEventExecuteRequest event = event(
                 UiDataSourceUsages.DATA_UPDATE,
@@ -673,7 +698,8 @@ public class EntityDataActionService {
                 updateInput(formData));
         event.setServerIdempotencyKey(
                 executionContext.businessTraceKey());
-        Object value = eventRuntimeService.execute(
+        var defaultSaved = new java.util.concurrent.atomic.AtomicReference<EntityDataDTO>();
+        var result = eventRuntimeService.execute(
                 event,
                 input -> {
                     EntityDataDTO row =
@@ -697,6 +723,14 @@ public class EntityDataActionService {
                                 input.get("startProcess"));
                     }
                     copyRestartIntent(input, updateRequest);
+                    if (portTraceKey != null && (portStartRequested(formData) != portStartRequested(updateRequest)
+                            || isRestart(formData) != isRestart(updateRequest)
+                            || !Objects.equals(text(formData == null ? null : formData.get("previousProcessInstanceId")),
+                                    text(updateRequest.get("previousProcessInstanceId"))))) {
+                        throw new com.workflow.core.error.BusinessConflictException(
+                                "ENTITY_SUBMISSION_INTENT_CHANGED", "发布事件不能改变 Java 更新的流程启动意图");
+                    }
+                    enforceFirstStart(updateRequest, portTraceKey != null);
                     requireRestartAction(entityCode, config, row, updateRequest);
                     // 发布事件可调整最终动作，不能沿用事件执行前的按钮判断。
                     requireFormMutationAction(
@@ -706,14 +740,43 @@ public class EntityDataActionService {
                             id,
                             "edit",
                             updateActionKey(updateRequest));
-                    return mutateUpdate(
+                    var saved = mutateUpdate(
                             entityCode,
                             id,
                             updateRequest,
                             applied.origin(),
                             executionContext.businessTraceKey());
-                }).getData();
-        return entityData(value, entityCode, id);
+                    if (portTraceKey != null) defaultSaved.set(saved);
+                    return saved;
+                });
+        if (portTraceKey != null) return requireJavaSubmissionResult(result.isDefaultExecuted(), defaultSaved.get());
+        return entityData(result.getData(), entityCode, id);
+    }
+
+    private boolean portStartRequested(Map<String, Object> values) {
+        return values != null && Boolean.parseBoolean(String.valueOf(values.get("startProcess")));
+    }
+
+    private void enforceFirstStart(Map<String, Object> updateRequest, boolean javaSubmission) {
+        if (javaSubmission && portStartRequested(updateRequest)) {
+            updateRequest.put(EntityMutationSystemFields.REQUIRE_UNSTARTED, true);
+        }
+    }
+
+    /** Java 调用的幂等回执只能记录默认写入步骤真正保存的结果。 */
+    private EntityDataDTO requireJavaSubmissionResult(boolean executed, EntityDataDTO saved) {
+        if (!executed || saved == null) {
+            throw new com.workflow.core.error.BusinessConflictException(
+                    "ENTITY_SUBMISSION_DEFAULT_WRITE_REQUIRED", "Java 实体提交必须执行标准写入步骤");
+        }
+        return saved;
+    }
+
+    /** Java 幂等键来自命令与当前操作人，浏览器追踪头不能覆盖。 */
+    private FormSubmissionExecutionContext submissionContext(String operation, String traceKey,
+            Map<String, Object> attributes) {
+        return traceKey == null ? formSubmissionTraceService.current(operation, null, attributes)
+                : new FormSubmissionExecutionContext(traceKey, operation, attributes);
     }
 
     /**
@@ -731,7 +794,8 @@ public class EntityDataActionService {
             String id,
             EntityListConfig config,
             Map<String, Object> formData,
-            FormSubmissionExecutionContext executionContext) {
+            FormSubmissionExecutionContext executionContext,
+            boolean javaSubmission) {
         EntityDataDTO row = findAccessible(entityCode, id, config);
         capabilityService.requireRowActionForConfig(
                 entityCode, config, "edit", row);
@@ -751,6 +815,7 @@ public class EntityDataActionService {
                     formData.get("startProcess"));
         }
         copyRestartIntent(formData, updateRequest);
+        enforceFirstStart(updateRequest, javaSubmission);
         requireRestartAction(entityCode, config, row, updateRequest);
         return mutateUpdate(
                 entityCode,
@@ -1354,6 +1419,20 @@ public class EntityDataActionService {
             throw new ForbiddenException(
                     "没有权限访问列表："
                             + config.getListName());
+        }
+    }
+
+    /** Java 列表范围查询也必须通过已发布列表的入口权限；列表键本身不是授权依据。 */
+    public void requirePublishedQueryPermission(String entityCode, String listKey, boolean detail) {
+        if (detail) capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);
+        if (StringUtils.hasText(listKey)) {
+            var config = resolveListConfig(entityCode, listKey, EntityListRuntimeContext.current());
+            requireConfiguredListPermission(config);
+            if (!detail && !StringUtils.hasText(config.getAccessPermissionCode())) {
+                capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.LIST);
+            }
+        } else if (!detail) {
+            capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.LIST);
         }
     }
 

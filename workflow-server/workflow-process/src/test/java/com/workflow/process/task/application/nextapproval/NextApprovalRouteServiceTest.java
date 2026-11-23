@@ -7,7 +7,7 @@ import com.workflow.process.task.infrastructure.flowable.FlowableConditionEvalua
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.entity.form.application.error.FormSubmissionPreviewDeferredException;
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.instance.application.ProcessEntityVariableService;
@@ -313,7 +313,7 @@ class NextApprovalRouteServiceTest {
 
     @Test
     void legacyMissingEntityNameUsesPersistedValueForPreviewWithoutWritingRuntime() {
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         EntityRecordData record = new EntityRecordData();
         record.setName("2");
         when(records.findById("expense", "record-1")).thenReturn(record);

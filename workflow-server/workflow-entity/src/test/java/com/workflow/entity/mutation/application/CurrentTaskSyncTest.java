@@ -33,7 +33,7 @@ class CurrentTaskSyncTest {
     private final EntityFormUniqueClaimService unique = mock(EntityFormUniqueClaimService.class);
     private final PublishedFormCrossFieldMutationValidator crossFields = mock(PublishedFormCrossFieldMutationValidator.class);
     private final EntityMutationTransactionExecutor executor = new EntityMutationTransactionExecutor(
-            new EntityAggregateWriter(query, mutation, tables, rows, relations, new ObjectMapper()),
+            new EntityAggregateWriter(mutation, tables, rows, relations, new ObjectMapper()),
             query, policies, versions, relatedVersions, receipts, unique, crossFields, new ObjectMapper());
 
     CurrentTaskSyncTest() {

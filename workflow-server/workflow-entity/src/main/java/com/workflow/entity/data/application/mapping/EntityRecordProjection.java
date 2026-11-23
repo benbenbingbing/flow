@@ -23,6 +23,7 @@ public final class EntityRecordProjection {
         result.setSubmitterName(source.getSubmitterName());
         result.setDeptId(source.getDeptId());
         result.setCreateBy(source.getCreateBy());
+        result.setUpdateTime(source.getUpdateTime());
         result.setExtData(source.getExtData() == null ? null : new LinkedHashMap<>(source.getExtData()));
         return result;
     }

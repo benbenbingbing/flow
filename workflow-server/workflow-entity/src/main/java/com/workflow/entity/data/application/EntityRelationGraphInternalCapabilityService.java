@@ -25,6 +25,8 @@ public class EntityRelationGraphInternalCapabilityService {
             throw new IllegalArgumentException("关系图内部授权用途不能为空");
         }
         String permission = switch (purpose) {
+            case BUSINESS_QUERY ->
+                    "entity:relation-graph:read";
             case PROCESS_COORDINATION ->
                     "entity:relation-graph:process-coordinate";
             case VERSION_GRAPH ->

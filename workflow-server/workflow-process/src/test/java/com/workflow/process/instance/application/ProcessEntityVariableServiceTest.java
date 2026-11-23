@@ -1,7 +1,6 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
@@ -26,7 +25,7 @@ class ProcessEntityVariableServiceTest {
     @NullSource
     @ValueSource(strings = {"1", "2", ""})
     void readsPersistedSystemNameWithoutChangingInput(String name) {
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         EntityRecordData record = new EntityRecordData();
         record.setName(name);
         record.setData(Map.of("name", "custom-field-must-not-shadow-system-name", "amount", 100));
@@ -48,7 +47,7 @@ class ProcessEntityVariableServiceTest {
     @NullSource
     @ValueSource(strings = {"explicit-name", ""})
     void preservesExistingNameIncludingExplicitNullWithoutReadingRecord(String name) {
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         Map<String, Object> variables = coordinates();
         variables.put("name", name);
 
@@ -60,7 +59,7 @@ class ProcessEntityVariableServiceTest {
 
     @Test
     void skipsInstancesWithoutCompleteStringEntityCoordinates() {
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         ProcessEntityVariableService service = new ProcessEntityVariableService(records);
         assertTrue(service.missingRecordVariables(null).isEmpty());
         for (Map<String, Object> variables : List.<Map<String, Object>>of(
@@ -76,7 +75,7 @@ class ProcessEntityVariableServiceTest {
 
     @Test
     void missingRecordFailsInsteadOfInventingANullName() {
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> new ProcessEntityVariableService(records).missingRecordVariables(coordinates()));
         assertTrue(error.getMessage().contains("实体记录不存在"));
@@ -84,7 +83,7 @@ class ProcessEntityVariableServiceTest {
 
     @Test
     void recordReadFailureIsNotConvertedToAConditionValue() {
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         when(records.findById("expense", "record-1")).thenThrow(new IllegalStateException("read failed"));
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> new ProcessEntityVariableService(records).missingRecordVariables(coordinates()));

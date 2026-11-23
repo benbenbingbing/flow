@@ -98,7 +98,7 @@ public class RelatedProcessCoordinationFlowActionHandler
      * @param command 本次命令，后续经校验后用于校验并获取{@code blocking}策略
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
-    private void requireBlockingPolicy(
+    void requireBlockingPolicy(
             FlowActionContext context,
             Command command) {
         if (command == null || command.operation() == null) {

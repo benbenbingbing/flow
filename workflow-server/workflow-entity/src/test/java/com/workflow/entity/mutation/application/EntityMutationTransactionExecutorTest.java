@@ -11,9 +11,12 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.infrastructure.adapter.EntityRecordQueryAdapter;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
@@ -30,7 +33,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.apache.ibatis.annotations.Options;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -93,7 +98,7 @@ class EntityMutationTransactionExecutorTest {
                 receiptService,
                 formUniqueClaimService,
                 crossFieldValidator,
-                new ObjectMapper());
+                new ObjectMapper().findAndRegisterModules());
     }
 
     @Test
@@ -250,6 +255,64 @@ class EntityMutationTransactionExecutorTest {
         order.verify(formUniqueClaimService).verifyPrepared(
                 eq(command), eq(Map.of()), eq(prepared));
         order.verify(writer).apply(command, prepared);
+    }
+
+    @Test
+    void missingUpsertWritesUsingTheRequestedIdAndCompletesReceipt() {
+        var base = command(Map.of("data", Map.of("name", "new asset")), Map.of());
+        var upsert = new EntityMutationCommand(base.operationId(), base.entityCode(), base.recordId(),
+                EntityMutationOperationType.UPSERT, base.payload(), base.context());
+        var saved = record("new asset");
+        var missing = new EntityMutationTargetNotFoundException("asset", "record-1");
+        when(queryService.findById("asset", "record-1")).thenThrow(missing).thenThrow(missing).thenReturn(saved);
+        when(writer.apply(upsert, prepared, true)).thenReturn(new EntityAggregateWriter.WriteResult("record-1", saved));
+
+        var result = executor.execute(upsert);
+
+        assertEquals("record-1", result.recordId());
+        var order = inOrder(writer, receiptService);
+        order.verify(receiptService).acquire(upsert);
+        order.verify(writer).lockIfPresent("asset", "record-1");
+        order.verify(writer).apply(upsert, prepared, true);
+        order.verify(receiptService).complete(upsert, result);
+    }
+
+    @Test
+    void upsertPropagatesTechnicalReadFailureWithoutWriting() {
+        var base = command(Map.of(), Map.of());
+        var upsert = new EntityMutationCommand(base.operationId(), base.entityCode(), base.recordId(),
+                EntityMutationOperationType.UPSERT, base.payload(), base.context());
+        var failure = new IllegalStateException("storage unavailable");
+        when(queryService.findById("asset", "record-1")).thenThrow(failure);
+
+        assertEquals(failure, assertThrows(IllegalStateException.class, () -> executor.execute(upsert)));
+        verifyNoInteractions(writer);
+        verify(receiptService, never()).complete(any(), any());
+    }
+
+    @Test
+    void rejectsAnUpdateWhenTheVersionChangesBeforeTheLock() {
+        var base = command(Map.of(), Map.of());
+        var timestamp = LocalDateTime.of(2026, 11, 23, 13, 0);
+        var before = record("version read");
+        before.setUpdateTime(timestamp);
+        var locked = record("concurrent edit");
+        locked.setUpdateTime(timestamp);
+        when(queryService.findVisibleById("asset", "record-1")).thenReturn(before);
+        var actions = mock(EntityDataActionService.class);
+        var queryPort = new EntityRecordQueryAdapter(queryService, new ObjectMapper().findAndRegisterModules(),
+                new StaticListableBeanFactory(Map.of("actions", actions)).getBeanProvider(EntityDataActionService.class));
+        var expected = queryPort.findById("asset", "record-1").getRevision();
+        var command = new EntityMutationCommand(base.operationId(), base.entityCode(), base.recordId(),
+                EntityMutationOperationType.UPDATE, base.payload(), base.context(), expected);
+        when(queryService.findById("asset", "record-1")).thenReturn(before, before, locked);
+
+        var conflict = assertThrows(BusinessConflictException.class, () -> executor.execute(command));
+
+        assertEquals("ENTITY_RECORD_VERSION_CHANGED", conflict.getErrorCode());
+        verify(writer).lock("asset", "record-1");
+        verify(writer, never()).apply(any(), any());
+        verify(receiptService, never()).complete(any(), any());
     }
 
     @Test

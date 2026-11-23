@@ -14,6 +14,7 @@ import java.util.UUID;
  * @param operationType 操作类型标识，决定后续实体变更命令采用的处理分支
  * @param payload 载荷，后续用于处理实体变更命令并传递处理结果
  * @param context 执行上下文，向后续实体变更命令步骤传递身份、配置或状态
+ * @param expectedRevision 可选的详情修订标记；在写锁下比较，防止旧数据覆盖后续更新
  */
 public record EntityMutationCommand(
         String operationId,
@@ -21,7 +22,14 @@ public record EntityMutationCommand(
         String recordId,
         EntityMutationOperationType operationType,
         Map<String, Object> payload,
-        EntityMutationContext context) {
+        EntityMutationContext context,
+        String expectedRevision) {
+
+    /** 兼容无需根据已读版本进行条件写入的调用。 */
+    public EntityMutationCommand(String operationId, String entityCode, String recordId,
+            EntityMutationOperationType operationType, Map<String, Object> payload, EntityMutationContext context) {
+        this(operationId, entityCode, recordId, operationType, payload, context, null);
+    }
 
     /**
      * 初始化实体变更命令，保存构造参数供后续方法使用。
@@ -47,6 +55,10 @@ public record EntityMutationCommand(
                 && (recordId == null || recordId.isBlank())) {
             throw new IllegalArgumentException(
                     "非新增操作的实体记录ID不能为空");
+        }
+        if (expectedRevision != null && (operationType == EntityMutationOperationType.CREATE
+                || !expectedRevision.matches("[0-9a-f]{64}"))) {
+            throw new IllegalArgumentException("实体记录修订标记无效");
         }
         operationId = operationId == null
                 || operationId.isBlank()

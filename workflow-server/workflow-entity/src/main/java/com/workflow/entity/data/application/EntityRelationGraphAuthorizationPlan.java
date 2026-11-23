@@ -49,6 +49,7 @@ public sealed interface EntityRelationGraphAuthorizationPlan
      * 身份另行签发逐跳授权，不能复用内部入口。</p>
      */
     enum InternalPurpose {
+        BUSINESS_QUERY,
         PROCESS_COORDINATION,
         VERSION_GRAPH,
         AUDIT_PROJECTION

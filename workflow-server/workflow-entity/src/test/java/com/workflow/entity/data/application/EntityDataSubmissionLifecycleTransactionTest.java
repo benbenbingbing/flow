@@ -1,17 +1,24 @@
 package com.workflow.entity.data.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntitySubmissionCommand;
+import com.workflow.contracts.entity.mutation.port.EntitySubmissionPort;
+import com.workflow.contracts.identity.model.CurrentActor;
 import com.workflow.contracts.process.model.ProcessStartRequest;
 import com.workflow.contracts.process.model.ProcessStartResult;
 import com.workflow.contracts.process.port.ProcessRuntimePort;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
+import com.workflow.entity.data.infrastructure.adapter.EntitySubmissionAdapter;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
@@ -21,6 +28,10 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
+import com.workflow.entity.mutation.application.EntityMutationReceiptService;
+import com.workflow.entity.mutation.infrastructure.persistence.mapper.EntityMutationReceiptMapper;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.DatabaseVendor;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.LocalCacheScope;
@@ -243,6 +254,22 @@ class EntityDataSubmissionLifecycleTransactionTest {
     }
 
     @Test
+    void strictFirstStartRejectsAnAlreadyStartedRecordInTheWriteTransaction() {
+        var f = new Fixture();
+        UserContext.setCurrentUser("submitter", "提交人");
+        var first = f.service.save(f.newRecord(true));
+        var request = f.submitRequest();
+        request.put(EntityMutationSystemFields.REQUIRE_UNSTARTED, true);
+
+        assertEquals("ENTITY_PROCESS_ALREADY_STARTED",
+                assertThrows(BusinessConflictException.class,
+                        () -> f.service.update("asset", first.getId(), request)).getErrorCode());
+        assertEquals(first.getName(), f.read(first.getId()).getName());
+        assertEquals(1, f.processCount());
+        verify(f.processes, times(1)).start(any());
+    }
+
+    @Test
     void legacyWorkflowWithoutSubmissionTimeStaysUnknownOnRestart() {
         var f = new Fixture();
         UserContext.setCurrentUser("submitter", "当前提交人");
@@ -301,6 +328,32 @@ class EntityDataSubmissionLifecycleTransactionTest {
 
         assertEquals(0, f.recordCount());
         assertEquals(0, f.processCount());
+    }
+
+    @Test
+    void javaSubmissionRollsBackReceiptAndProcessThenReplaysSuccessfulRetry() {
+        var f = new Fixture();
+        var port = f.submissionPort();
+        UserContext.setCurrentUser("submitter", "提交人");
+        var command = new EntitySubmissionCommand("request-1", EntitySubmissionCommand.Intent.CREATE_AND_START,
+                "asset", null, null, null, null, null, Map.of("name", "提交"));
+        f.failStart = true;
+
+        assertThrows(IllegalStateException.class, () -> port.submit(command));
+        assertEquals(0, f.recordCount());
+        assertEquals(0, f.processCount());
+        assertEquals(0, f.receiptCount());
+
+        f.failStart = false;
+        var created = port.submit(command);
+        assertEquals(created, port.submit(command));
+        var changed = new EntitySubmissionCommand(command.requestId(), command.intent(), command.entityCode(),
+                null, null, null, null, null, Map.of("name", "其他提交"));
+        assertEquals("ENTITY_MUTATION_IDEMPOTENCY_CONFLICT",
+                assertThrows(BusinessConflictException.class, () -> port.submit(changed)).getErrorCode());
+        assertEquals(1, f.recordCount());
+        assertEquals(1, f.processCount());
+        assertEquals(1, f.receiptCount());
     }
 
     @Test
@@ -375,6 +428,8 @@ class EntityDataSubmissionLifecycleTransactionTest {
     /** JDBC/MyBatis 与生产事务注解共同参与测试，流程端口仅用探针模拟同一数据库内的流程写入。 */
     private static final class Fixture {
         private final JdbcTemplate jdbc;
+        private final JdbcDataSource source;
+        private final TransactionInterceptor transactions;
         private final EntityDataDynamicMapper rows;
         private final EntityRuntimeRecordMapper records = new EntityRuntimeRecordMapper(new ObjectMapper());
         private final ProcessRuntimePort processes = mock(ProcessRuntimePort.class);
@@ -387,7 +442,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
         private boolean failStart;
 
         private Fixture() {
-            var source = new JdbcDataSource();
+            source = new JdbcDataSource();
             source.setURL("jdbc:h2:mem:submission_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
             jdbc = new JdbcTemplate(source);
             jdbc.execute("""
@@ -458,13 +513,46 @@ class EntityDataSubmissionLifecycleTransactionTest {
             });
             var target = new EntityDataMutationService(rows, definitions, statuses, tables, codes, records,
                     relations, multiValues, processes, users, snapshots, teams, validator, payloads);
-            var transactions = new TransactionInterceptor();
+            transactions = new TransactionInterceptor();
             transactions.setTransactionManager(new DataSourceTransactionManager(source));
             transactions.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
             var proxy = new ProxyFactory(target);
             proxy.setProxyTargetClass(true);
             proxy.addAdvice(transactions);
             service = (EntityDataMutationService) proxy.getProxy();
+        }
+
+        /** 使用实际回执表、Mapper 和提交代理；表单测试在独立用例中覆盖。 */
+        private EntitySubmissionPort submissionPort() {
+            jdbc.execute("""
+                    CREATE TABLE entity_mutation_receipt (
+                        id VARCHAR(64) PRIMARY KEY, idempotency_key VARCHAR(200) UNIQUE, command_hash VARCHAR(64),
+                        operation_id VARCHAR(200), entity_code VARCHAR(100), record_id VARCHAR(64),
+                        operation_type VARCHAR(30), status VARCHAR(20), result_document CLOB,
+                        version_no INT, version_scenario_code VARCHAR(100), changed BOOLEAN,
+                        create_time TIMESTAMP, update_time TIMESTAMP)
+                    """);
+            var configuration = new MybatisConfiguration();
+            configuration.setEnvironment(new Environment("receipt-test", new SpringManagedTransactionFactory(), source));
+            configuration.setDatabaseId("MYSQL");
+            configuration.setMapUnderscoreToCamelCase(true);
+            configuration.addMapper(EntityMutationReceiptMapper.class);
+            var factory = new MybatisSqlSessionFactoryBuilder().build(configuration);
+            var mapper = new SqlSessionTemplate(factory).getMapper(EntityMutationReceiptMapper.class);
+            var json = new ObjectMapper().findAndRegisterModules();
+            var receipts = new EntityMutationReceiptService(mapper, json,
+                    new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+            var actions = mock(EntityDataActionService.class);
+            when(actions.createFromPort(any(), anyString())).thenAnswer(call -> service.save(call.getArgument(0)));
+            var adapter = new EntitySubmissionAdapter(actions, receipts,
+                    () -> new CurrentActor(UserContext.getUserId(), UserContext.getUsername()), json);
+            var proxy = new ProxyFactory(adapter);
+            proxy.addAdvice(transactions);
+            return (EntitySubmissionPort) proxy.getProxy();
+        }
+
+        private int receiptCount() {
+            return jdbc.queryForObject("SELECT COUNT(*) FROM entity_mutation_receipt", Integer.class);
         }
 
         private EntityDataDTO newRecord(boolean start) {

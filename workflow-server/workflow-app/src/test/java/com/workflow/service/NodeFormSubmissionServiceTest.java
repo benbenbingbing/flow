@@ -29,7 +29,7 @@ import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.instance.application.ProcessEntityVariableService;
 import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.process.instance.application.ProcessEntityRecordReader;
 
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
@@ -68,7 +68,7 @@ import static org.mockito.Mockito.when;
  */
 class NodeFormSubmissionServiceTest {
 
-    private final EntityRecordQueryPort entityRecords = mock(EntityRecordQueryPort.class);
+    private final ProcessEntityRecordReader entityRecords = mock(ProcessEntityRecordReader.class);
 
     /** 旧 URL 快照不能覆盖已登记附件，可编辑字段的本次清空仍要经过必填校验。 */
     @Test
@@ -181,7 +181,7 @@ class NodeFormSubmissionServiceTest {
         PublishedFormSubmissionService submissionService = mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService = mock(FormSubmissionTraceService.class);
         EntityMutationPort mutationPort = mock(EntityMutationPort.class);
-        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         EntityRecordData record = new EntityRecordData();
         record.setName("2");
         when(records.findById("expense", "data-1")).thenReturn(record);

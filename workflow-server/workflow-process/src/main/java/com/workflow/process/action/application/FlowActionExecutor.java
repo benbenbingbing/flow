@@ -301,7 +301,8 @@ public class FlowActionExecutor {
      * @throws RuntimeException 处理器 Bean 不存在或未实现 FlowActionProvider 接口时抛出
      */
     private void invoke(FlowAction action, FlowActionContext ctx) {
-        resolveHandler(action).execute(ctx);
+        var handler = resolveHandler(action);
+        PublishedFlowActionInvocation.run(ctx, action.getParamsJson(), () -> handler.execute(ctx));
     }
 
     /**

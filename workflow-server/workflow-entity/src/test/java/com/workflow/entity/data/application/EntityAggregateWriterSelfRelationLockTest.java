@@ -26,8 +26,6 @@ class EntityAggregateWriterSelfRelationLockTest {
 
     @Test
     void locksSelfRelationGuardBeforeBusinessRecord() {
-        EntityDataDynamicService queryService =
-                mock(EntityDataDynamicService.class);
         EntityDataMutationService mutationService =
                 mock(EntityDataMutationService.class);
         DynamicTableService tableService =
@@ -42,7 +40,6 @@ class EntityAggregateWriterSelfRelationLockTest {
                 "wf_node", "record-1"))
                 .thenReturn(Map.of("id", "record-1"));
         EntityAggregateWriter writer = new EntityAggregateWriter(
-                queryService,
                 mutationService,
                 tableService,
                 dynamicMapper,
@@ -62,8 +59,6 @@ class EntityAggregateWriterSelfRelationLockTest {
 
     @Test
     void createPreservesTrustedSubFormMarkerAcrossDtoConversion() {
-        EntityDataDynamicService queryService =
-                mock(EntityDataDynamicService.class);
         EntityDataMutationService mutationService =
                 mock(EntityDataMutationService.class);
         DynamicTableService tableService =
@@ -73,7 +68,6 @@ class EntityAggregateWriterSelfRelationLockTest {
         EntityRelationRuntimeService relationRuntimeService =
                 mock(EntityRelationRuntimeService.class);
         EntityAggregateWriter writer = new EntityAggregateWriter(
-                queryService,
                 mutationService,
                 tableService,
                 dynamicMapper,

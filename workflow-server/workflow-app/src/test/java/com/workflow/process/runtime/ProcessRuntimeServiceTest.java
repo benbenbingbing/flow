@@ -3,7 +3,7 @@ package com.workflow.process.runtime;
 import com.workflow.process.instance.application.ProcessRuntimeService;
 import com.workflow.process.instance.application.ProcessEntityVariableService;
 import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
@@ -175,7 +175,7 @@ class ProcessRuntimeServiceTest {
         @Test
         void initializesNameFromSavedEntityWhenRequestOnlyContainsCustomFields() {
                 Fixture fixture = new Fixture();
-                EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+                ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
                 EntityRecordData record = new EntityRecordData();
                 record.setName("2");
                 when(records.findById("expense", "data-1")).thenReturn(record);

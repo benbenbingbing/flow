@@ -22,7 +22,7 @@ flowchart LR
 | --- | --- |
 | workflow-port | 公共写入/查询 Port、基础快照、扩展基类、注解、保存结果及异常 |
 | workflow-admin | 来源授权、身份映射、事务写入、组织规则、扩展注册及通用持久化、管理 API |
-| biz-project | 仅写基础用户/组织数据的主动调用示例 ProjectIdentityImporter |
+| biz-project | 转换基础资料和可选主表字段的主动调用示例 ProjectIdentityImporter |
 | workflow-db-migrator | V126 框架迁移、V127/V128 历史示例表迁移、V129 乱序组织父链支持 |
 | workflow-web | 通用扩展表单和用户、组织管理页接入 |
 
@@ -148,7 +148,9 @@ identities.saveUser(UserSaveModel.builder()
         .build());
 ```
 
-组织使用相同 `mainFields` 模型。`ProjectIdentityImporter` 的三参数重载接受显式映射的这组值。4/5 参数保存模型构造方法和旧 Builder 调用继续可用。
+`UserSaveModel` 和 `OrganizationSaveModel` 的构造方法也支持在 `rawDataJson` 后依次传入 `ext1`～`ext5`，模型会将五个值封装成 `mainFields`。使用这个重载时，五个值均为 `null` 表示清空整组。
+
+调用 `ProjectIdentityImporter` 时，可以把映射结果放入 `DirectoryUser` 或 `DirectoryOrganization` 快照，由常用保存入口随基础资料提交。三参数重载也可显式指定本次提交的字段组。旧快照构造方法默认省略该组，旧保存模型构造方法和 Builder 调用继续可用。
 
 - `mainFields == null` 表示未提供，保留已有五列；新对象默认五列均为 NULL。
 - 携带本组时完整替换五列，组内 null 真实清空对应列，不能只填 ext1 而期望其他四列自动保留。五项均为 null 表示清空整组。

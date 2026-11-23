@@ -18,7 +18,7 @@ class HistoryWriteGuardTest {
         when(sources.readonlyCount("expense", "historic")).thenReturn(1);
         var guard = new EntityHistoryWriteGuard(sources);
         var mutation = mock(EntityDataMutationService.class);
-        var writer = new EntityAggregateWriter(mock(EntityDataDynamicService.class), mutation, mock(DynamicTableService.class),
+        var writer = new EntityAggregateWriter(mutation, mock(DynamicTableService.class),
                 mock(EntityDataDynamicMapper.class), mock(EntityRelationRuntimeService.class), new ObjectMapper());
         ReflectionTestUtils.setField(writer, "historyWriteGuard", guard);
         var context = EntityMutationContext.builder(EntityMutationSourceType.IMPORT, "TEST", "测试").build();

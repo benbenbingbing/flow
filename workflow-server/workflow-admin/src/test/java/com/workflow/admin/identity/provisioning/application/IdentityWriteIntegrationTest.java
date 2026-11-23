@@ -875,7 +875,9 @@ class IdentityWriteIntegrationTest {
     @Test
     void userMainFieldsAreQueryableAndPreserveOmissionWhileAllowingExplicitClear() throws Exception {
         var fields = new IdentityMainFields(" 0007 ", "合同工", "CC001", "零".repeat(500), "5");
-        var first = save(main(user("E1", 1L, "alice", null, List.of()), fields));
+        var input = user("E1", 1L, "alice", null, List.of());
+        var first = save(new UserSaveModel(input.key(), input.sourceVersion(), input.base(), input.extensions(), null,
+                fields.ext1(), fields.ext2(), fields.ext3(), fields.ext4(), fields.ext5()));
         var stored = actualUserMapper.selectById(first.localId());
         assertEquals(fields.ext1(), stored.getExt1()); assertEquals(fields.ext2(), stored.getExt2());
         assertEquals(fields.ext3(), stored.getExt3()); assertEquals(fields.ext4(), stored.getExt4());
@@ -914,7 +916,8 @@ class IdentityWriteIntegrationTest {
     void organizationMainFieldsSurviveHierarchyReconciliationAndCanBeCleared() throws Exception {
         var fields = new IdentityMainFields("华东", "制造", "003", "4", "5");
         var child = organization("child", "parent");
-        var input = new OrganizationSaveModel(child.key(), 1L, child.base(), List.of(), "{}", fields);
+        var input = new OrganizationSaveModel(child.key(), 1L, child.base(), List.of(), "{}",
+                fields.ext1(), fields.ext2(), fields.ext3(), fields.ext4(), fields.ext5());
         var saved = tx.execute(s -> service.saveOrganization(input));
         assertEquals(IdentitySaveOutcome.UNCHANGED, tx.execute(s -> service.saveOrganization(input)).outcome());
         tx.execute(s -> service.saveOrganization(organization("parent", null)));
@@ -930,7 +933,7 @@ class IdentityWriteIntegrationTest {
         tx.execute(s -> service.saveOrganization(new OrganizationSaveModel(child.key(), 2L, child.base(), List.of())));
         assertEquals("华东", actualOrganizationMapper.selectById(saved.localId()).getExt1());
         tx.execute(s -> service.saveOrganization(new OrganizationSaveModel(child.key(), 3L, child.base(), List.of(), null,
-                new IdentityMainFields(null, null, null, null, null))));
+                null, null, null, null, null)));
         var cleared = actualOrganizationMapper.selectById(saved.localId());
         assertNull(cleared.getExt1()); assertNull(cleared.getExt2()); assertNull(cleared.getExt3());
         assertNull(cleared.getExt4()); assertNull(cleared.getExt5());

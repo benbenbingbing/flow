@@ -17,6 +17,8 @@ public final class EntityMutationSystemFields {
     public static final String CURRENT_TASK = "CURRENT_TASK";
     /** 只由实体端口创建，关联引擎已经建立的子流程，不再次启动流程引擎。 */
     public static final String CALL_PROCESS_START = "CALL_PROCESS_START";
+    /** Java 首次发起在业务写锁下要求记录尚未绑定流程，不被当作普通编辑。 */
+    static final String REQUIRE_UNSTARTED = "_entityRequireUnstarted";
 
     /**
      * 仅受信流程运行态的任务摘要命令可走局部同步；禁止夹带业务字段绕过聚合校验。

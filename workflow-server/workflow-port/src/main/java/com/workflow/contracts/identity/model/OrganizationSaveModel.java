@@ -9,6 +9,16 @@ import java.util.List;
  */
 @Builder
 public record OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions, String rawDataJson, IdentityMainFields mainFields) {
+    /**
+     * 直接提交五个主表字段，供后续按来源文本查询和关联组织。
+     * 五列按本次快照整体替换，单项 null 清空对应列。无需留存来源原文时 rawDataJson 可传 null。
+     */
+    public OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base,
+            List<OrganizationExtension> extensions, String rawDataJson,
+            String ext1, String ext2, String ext3, String ext4, String ext5) {
+        this(key, sourceVersion, base, extensions, rawDataJson, new IdentityMainFields(ext1, ext2, ext3, ext4, ext5));
+    }
+
     /** 兼容已接入原文留存的调用；不携带主表扩展列，保留原有值和摘要规则。 */
     public OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions, String rawDataJson) {
         this(key, sourceVersion, base, extensions, rawDataJson, null);

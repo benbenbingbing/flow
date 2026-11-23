@@ -1,0 +1,96 @@
+package com.workflow.process.instance.application;
+
+import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
+import com.workflow.contracts.process.instance.model.ProcessInterventionModels.*;
+import com.workflow.contracts.process.instance.port.ProcessInterventionAdminPort;
+import com.workflow.contracts.process.model.ProcessPage;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.process.action.application.FlowActionExecutionService;
+import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
+import com.workflow.process.assignment.application.AssigneeIncidentService;
+import com.workflow.process.task.api.request.TaskHandoverRequest;
+import com.workflow.process.task.application.TaskHandoverService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+
+/** 对其他模块复用事件处置、动作重放与管理员交接的原有规则和事务。 */
+@Component
+@RequiredArgsConstructor
+public class ProcessInterventionAdminAdapter implements ProcessInterventionAdminPort {
+    private final CurrentAuthorizationPort authorization;
+    private final CurrentUserRoleService roles;
+    private final AssigneeIncidentService incidents;
+    private final FlowActionExecutionService executions;
+    private final TaskHandoverService handovers;
+
+    @Override
+    public ProcessPage<Map<String, Object>> pageAssigneeIncidents(String status, int pageNumber, int pageSize) {
+        require("process:assignee-incident:list");
+        var result = incidents.list(status, pageNumber, pageSize);
+        return new ProcessPage<>(result.getRecords(), result.getTotal(), (int) result.getPageNum(), (int) result.getPageSize());
+    }
+
+    @Override
+    public Map<String, Object> readAssigneeIncident(String incidentId) {
+        require("process:assignee-incident:list");
+        return incidents.detail(incidentId);
+    }
+
+    @Override
+    public Map<String, Object> handleAssigneeIncident(HandleAssigneeIncident command) {
+        require("process:assignee-incident:handle");
+        var request = new AssigneeIncidentHandleRequest();
+        request.setRequestId(command.requestId());
+        request.setAction(command.action().name());
+        request.setUserId(command.userId());
+        request.setGroupCode(command.groupCode());
+        request.setReason(command.reason());
+        return incidents.handle(command.incidentId(), request);
+    }
+
+    @Override
+    public List<ActionExecution> listActionExecutions(String processInstanceId) {
+        roles.requireSuperAdmin();
+        return executions.findDetailsByProcessInstanceId(processInstanceId).stream().map(item -> new ActionExecution(
+                item.getId(), item.getActionName(), item.getTaskId(), item.getVersionId(), item.getStatus(),
+                item.getResolutionStatus(), item.getAttemptNo(), item.getTerminationReason(), item.getErrorMessage(),
+                item.getCreatedAt())).toList();
+    }
+
+    @Override
+    public void retryActionExecution(String executionId) {
+        roles.requireSuperAdmin();
+        executions.retry(executionId);
+    }
+
+    @Override
+    public void resolveActionExecution(String executionId, String note) {
+        roles.requireSuperAdmin();
+        executions.resolve(executionId, note);
+    }
+
+    @Override
+    public ProcessPage<HandoverTask> pageHandoverTasks(String sourceUserId, int pageNumber, int pageSize) {
+        require("system:task-handover:view");
+        var result = handovers.findPage(sourceUserId, pageNumber, pageSize);
+        return new ProcessPage<>(result.getRecords().stream().map(item -> new HandoverTask(item.getTaskId(),
+                item.getTaskName(), item.getProcessInstanceId(), item.getEntityCode(), item.getEntityDataId(),
+                item.getAssignmentType(), item.getStatus(), item.getCreateTime())).toList(), result.getTotal(),
+                (int) result.getPageNum(), (int) result.getPageSize());
+    }
+
+    @Override
+    public int handover(HandoverCommand command) {
+        require("system:task-handover:transfer");
+        return handovers.transfer(new TaskHandoverRequest(command.sourceUserId(), command.targetUserId(),
+                command.taskIds(), command.all(), command.reason()));
+    }
+
+    private void require(String permission) {
+        if (!authorization.hasPermission(permission)) throw new ForbiddenException("缺少流程干预权限");
+    }
+}

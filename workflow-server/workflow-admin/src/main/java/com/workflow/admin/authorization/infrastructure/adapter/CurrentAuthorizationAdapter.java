@@ -1,6 +1,7 @@
 package com.workflow.admin.authorization.infrastructure.adapter;
 
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -15,5 +16,10 @@ public class CurrentAuthorizationAdapter implements CurrentAuthorizationPort {
     @Override
     public boolean isAdministrator() {
         return roles.isAdministrator();
+    }
+
+    @Override
+    public boolean hasPermission(String permissionCode) {
+        return permissionCode != null && !permissionCode.isBlank() && PermissionUtil.hasPermission(permissionCode);
     }
 }

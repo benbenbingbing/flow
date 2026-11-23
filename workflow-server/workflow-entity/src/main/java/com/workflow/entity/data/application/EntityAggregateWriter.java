@@ -29,7 +29,6 @@ public class EntityAggregateWriter {
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.entity.history.EntityHistoryWriteGuard historyWriteGuard;
 
-    private final EntityDataDynamicService queryService;
     private final EntityDataMutationService mutationService;
     private final DynamicTableService dynamicTableService;
     private final EntityDataDynamicMapper dynamicMapper;
@@ -45,17 +44,20 @@ public class EntityAggregateWriter {
      * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      */
     public void lock(String entityCode, String recordId) {
+        if (!lockIfPresent(entityCode, recordId)) {
+            throw new EntityMutationTargetNotFoundException(entityCode, recordId);
+        }
+    }
+
+    /** UPSERT 可以在目标尚未创建时继续，首次新增仍受主键约束保护。 */
+    public boolean lockIfPresent(String entityCode, String recordId) {
         relationRuntimeService.lockSelfRelationGuard(entityCode);
         Map<String, Object> value =
                 dynamicMapper.selectByIdForUpdate(
                         dynamicTableService.getTableName(
                                 entityCode),
                         recordId);
-        if (value == null) {
-            throw new EntityMutationTargetNotFoundException(
-                    entityCode,
-                    recordId);
-        }
+        return value != null;
     }
 
     /**
@@ -116,6 +118,12 @@ public class EntityAggregateWriter {
     public WriteResult apply(
             EntityMutationCommand command,
             PreparedUniqueClaims prepared) {
+        return apply(command, prepared, command.operationType() == EntityMutationOperationType.UPSERT
+                && !lockIfPresent(command.entityCode(), command.recordId()));
+    }
+
+    /** 写入事务明确提供 UPSERT 新增决策，避免写入异常被解释成新增。 */
+    public WriteResult apply(EntityMutationCommand command, PreparedUniqueClaims prepared, boolean insertUpsert) {
         // 保护覆盖 Java Port 和批量写入，不能仅靠前端隐藏编辑按钮。
         if (historyWriteGuard != null && command.operationType() != EntityMutationOperationType.CREATE)
             historyWriteGuard.requireWritable(command.entityCode(), command.recordId());
@@ -127,13 +135,13 @@ public class EntityAggregateWriter {
         // 作用域只来自可信变更命令，嵌套取号使用同一身份；异常路径也必须恢复线程状态。
         try (var ignored = com.workflow.entity.definition.application.code.EntityCodeGenerationScope.open(command.context())) {
             return switch (command.operationType()) {
-                case CREATE -> create(command, prepared);
+                case CREATE -> create(command, prepared, null);
                 case UPDATE, APPLY_CHANGE ->
                         update(command, prepared);
                 case DELETE -> delete(command);
                 case STATUS_CHANGE ->
                         statusChange(command, prepared);
-                case UPSERT -> upsert(command, prepared);
+                case UPSERT -> insertUpsert ? create(command, prepared, command.recordId()) : update(command, prepared);
             };
         }
     }
@@ -147,13 +155,16 @@ public class EntityAggregateWriter {
      */
     private WriteResult create(
             EntityMutationCommand command,
-            PreparedUniqueClaims prepared) {
+            PreparedUniqueClaims prepared,
+            String newRecordId) {
         EntityDataDTO dto = objectMapper.convertValue(
                 command.payload(),
                 EntityDataDTO.class);
         dto.setEntityCode(command.entityCode());
         // CREATE 命令的 DTO 若携带已有 ID，底层兼容路径会按更新处理，也必须受历史写保护。
-        if (historyWriteGuard != null) historyWriteGuard.requireWritable(command.entityCode(), dto.getId());
+        if (historyWriteGuard != null && newRecordId == null) {
+            historyWriteGuard.requireWritable(command.entityCode(), dto.getId());
+        }
         Object rawData = command.payload().get("data");
         if (rawData instanceof Map<?, ?> map) {
             // 子表单发布引用使用不可伪造的 JVM 私有 Marker 跨越聚合
@@ -167,7 +178,8 @@ public class EntityAggregateWriter {
         } else if (dto.getData() == null) {
             dto.setData(customPayload(command.payload()));
         }
-        EntityDataDTO saved = mutationService.save(dto, prepared);
+        EntityDataDTO saved = newRecordId == null ? mutationService.save(dto, prepared)
+                : mutationService.insertForUpsert(dto, prepared, newRecordId);
         return new WriteResult(saved.getId(), saved);
     }
 
@@ -255,35 +267,6 @@ public class EntityAggregateWriter {
         return new WriteResult(
                 command.recordId(),
                 null);
-    }
-
-    /**
-     * 处理新增或更新，并将结果传给后续步骤。
-     *
-     * @param command 本次命令，后续经校验后用于处理新增或更新
-     * @param prepared 已准备，作为 {@code update} 的输入影响后续处理
-     * @return 处理后的新增或更新结果，供调用方继续处理
-     */
-    private WriteResult upsert(
-            EntityMutationCommand command,
-            PreparedUniqueClaims prepared) {
-        try {
-            queryService.findById(
-                    command.entityCode(),
-                    command.recordId());
-            return update(command, prepared);
-        } catch (RuntimeException ignored) {
-            Map<String, Object> payload =
-                    new LinkedHashMap<>(command.payload());
-            payload.remove("id");
-            return create(new EntityMutationCommand(
-                    command.operationId(),
-                    command.entityCode(),
-                    null,
-                    EntityMutationOperationType.CREATE,
-                    payload,
-                    command.context()), prepared);
-        }
     }
 
     /**

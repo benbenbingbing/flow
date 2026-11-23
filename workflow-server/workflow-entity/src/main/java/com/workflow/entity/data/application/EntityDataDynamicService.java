@@ -473,7 +473,7 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
                 dynamicTableService.getTableName(entityCode),
                 id);
         if (data == null) {
-            throw new RuntimeException("数据不存在: " + id);
+            throw new com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException(entityCode, id);
         }
         return assembleAggregate(data, entityCode);
     }
@@ -520,6 +520,19 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
         return assembleAggregate(findAccessibleRecord(entityCode, id, listKey), entityCode);
     }
 
+    /** Java 目录查询区分访问被拒绝与可见范围内未命中，避免透露范围外记录是否存在。 */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findVisibleById(String entityCode, String id) {
+        return findVisibleById(entityCode, id, null);
+    }
+
+    /** 在调用方已校验列表入口权限后，按该列表的发布范围读取详情。 */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findVisibleById(String entityCode, String id, String listKey) {
+        Map<String, Object> row = findAccessibleRecord(entityCode, id, listKey, true);
+        return row == null ? null : assembleAggregate(row, entityCode);
+    }
+
     /**
      * 为仅依赖主记录系统字段的按钮规则读取摘要，沿用详情相同的数据范围 SQL。
      * 不展开多值字段或关系子树；含业务字段/扩展规则的调用方必须使用完整聚合读取。
@@ -541,6 +554,10 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
 
     /** 授权查询共用同一行过滤条件，避免轻量路径与实体详情的数据范围发生偏差。 */
     private Map<String, Object> findAccessibleRecord(String entityCode, String id, String listKey) {
+        return findAccessibleRecord(entityCode, id, listKey, false);
+    }
+
+    private Map<String, Object> findAccessibleRecord(String entityCode, String id, String listKey, boolean allowMissing) {
         String tableName =
                 dynamicTableService.getTableName(entityCode);
         DataPermissionResult permission =
@@ -559,7 +576,7 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
                         : dynamicMapper.selectById(
                                 tableName,
                                 id);
-        if (data == null) {
+        if (data == null && !allowMissing) {
             throw new ForbiddenException(
                     "数据不存在或不在当前数据权限范围内");
         }
@@ -722,6 +739,21 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
     @Transactional(readOnly = true)
     public long count(String entityCode) {
         return count(entityCode, null);
+    }
+
+    /** 计数复用发布字段和多值条件的同一解析路径，避免分页与统计的数据范围发生偏差。 */
+    @Transactional(readOnly = true)
+    public long countMatching(String entityCode, Map<String, Object> condition) {
+        var permission = getDataPermission(entityCode, null);
+        var prepared = multiValueRuntimeService.prepareConditions(requireDefinition(entityCode), condition);
+        permission.intersect(prepared.sqlCondition());
+        if (!permission.isHasPermission()) return 0;
+        String tableName = dynamicTableService.getTableName(entityCode);
+        var filters = EntityQueryConditions.fromPublishedFields(prepared.condition(), getRuntimeFields(entityCode));
+        return permission.isNeedFilter()
+                ? dynamicMapper.countByConditionWithPermission(tableName, filters,
+                        permission.getSqlCondition(), permission.getSqlParameters())
+                : dynamicMapper.countByCondition(tableName, filters);
     }
 
     /**

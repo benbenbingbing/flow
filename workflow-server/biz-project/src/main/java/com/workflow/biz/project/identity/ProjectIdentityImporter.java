@@ -27,10 +27,10 @@ public class ProjectIdentityImporter {
      * @return 基础资料写入结果，原文单独变化时仍返回 UNCHANGED
      */
     public IdentitySaveResult saveUser(DirectoryUser user, String rawDataJson) {
-        return saveUser(user, rawDataJson, null);
+        return saveUser(user, rawDataJson, user.mainFields());
     }
 
-    /** 业务显式映射最多五个可查询文本字段；省略 mainFields 保留现值，携带时整组替换。 */
+    /** 显式指定本次提交的主表字段组，传 null 保留现值，携带时整组替换。 */
     public IdentitySaveResult saveUser(DirectoryUser user, String rawDataJson, IdentityMainFields mainFields) {
         // 零散可查询资料写主表槽位；独立业务扩展仍按原注册及建表约定接入。
         return identities.saveUser(new UserSaveModel(new ExternalIdentityKey(SOURCE, user.externalId()), user.version(),
@@ -45,19 +45,35 @@ public class ProjectIdentityImporter {
 
     /** 提交组织及转换前的单条原文；乱序父级关联只更新派生结构，不改写此前留存的子级原文。 */
     public IdentitySaveResult saveOrganization(DirectoryOrganization unit, String rawDataJson) {
-        return saveOrganization(unit, rawDataJson, null);
+        return saveOrganization(unit, rawDataJson, unit.mainFields());
     }
 
-    /** 同步组织的主表查询字段，字段用途由业务约定，不解析留存原文来猜测映射。 */
+    /** 显式指定本次提交的主表字段组，字段用途由业务约定，传 null 保留现值。 */
     public IdentitySaveResult saveOrganization(DirectoryOrganization unit, String rawDataJson, IdentityMainFields mainFields) {
         return identities.saveOrganization(new OrganizationSaveModel(new ExternalIdentityKey(SOURCE, unit.externalId()), unit.version(),
                 new OrganizationBaseData(unit.code(), unit.name(), unit.type(), unit.parentId(), null,
                         null, null, null, null, 0, unit.enabled()), List.of(), rawDataJson, mainFields));
     }
 
-    /** organizationId/departmentId 是同来源的外部 ID，不能传产品本地 ID。 */
+    /**
+     * organizationId/departmentId 是同来源的外部 ID，不能传产品本地 ID。
+     * mainFields 由取数方显式映射，用于将来源资料同步到用户主表供查询和关联。
+     */
     public record DirectoryUser(String externalId, long version, String account, String displayName,
-            String email, String phone, String organizationId, String departmentId, boolean enabled) { }
+            String email, String phone, String organizationId, String departmentId, boolean enabled,
+            IdentityMainFields mainFields) {
+        public DirectoryUser(String externalId, long version, String account, String displayName,
+                String email, String phone, String organizationId, String departmentId, boolean enabled) {
+            this(externalId, version, account, displayName, email, phone, organizationId, departmentId, enabled, null);
+        }
+    }
+
+    /** mainFields 由取数方显式映射，用于将来源资料同步到组织主表供查询和关联。 */
     public record DirectoryOrganization(String externalId, long version, String code, String name,
-            OrganizationUnitType type, String parentId, boolean enabled) { }
+            OrganizationUnitType type, String parentId, boolean enabled, IdentityMainFields mainFields) {
+        public DirectoryOrganization(String externalId, long version, String code, String name,
+                OrganizationUnitType type, String parentId, boolean enabled) {
+            this(externalId, version, code, name, type, parentId, enabled, null);
+        }
+    }
 }

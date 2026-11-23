@@ -1,5 +1,9 @@
 package com.workflow.process.task.application;
 
+import com.workflow.contracts.process.task.model.AddSignType;
+import com.workflow.contracts.process.task.model.TaskInterventionModels.AddSignPreview;
+import com.workflow.contracts.process.task.model.TaskInterventionModels.AddSignUser;
+
 import com.workflow.process.action.application.FlowActionOperationDispatcher;
 import static com.workflow.contracts.process.action.model.FlowActionTriggerTiming.*;
 
@@ -107,19 +111,26 @@ public class TaskAddSignService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> preview(String taskId, List<String> requestedUserIds, String requestedType) {
+        AddSignPreview preview = previewForCaller(taskId, requestedUserIds, requestedType);
+        return Map.of(
+                "users", preview.users().stream().map(user -> Map.of(
+                        "id", user.id(), "username", user.username(), "name", user.displayName())).toList(),
+                "duplicates", preview.duplicates(), "disabled", preview.disabled(), "invalid", preview.invalid(),
+                "taskCount", preview.taskCount(), "type", preview.type().name(), "structure", preview.structure());
+    }
+
+    /** 预检与办理复用同一任务权限和人员解析。旧页面由 preview 继续返回原有结构。 */
+    @Transactional(readOnly = true)
+    public AddSignPreview previewForCaller(String taskId, List<String> requestedUserIds, String requestedType) {
         Task task = requireSourceTask(taskId);
         requireTaskOperator(task);
         requireTaskSupportsAddSign(taskId);
         String type = normalizeType(requestedType);
         Resolution resolution = resolveUsers(requestedUserIds, task.getAssignee());
-        return Map.of(
-                "users", resolution.users().stream().map(this::userView).toList(),
-                "duplicates", resolution.duplicates(),
-                "disabled", resolution.disabled(),
-                "invalid", resolution.invalid(),
-                "taskCount", resolution.users().size(),
-                "type", type,
-                "structure", structureSummary(type));
+        return new AddSignPreview(AddSignType.valueOf(type), resolution.users().stream()
+                .map(user -> new AddSignUser(user.getId(), user.getUsername(), displayName(user))).toList(),
+                resolution.duplicates(), resolution.disabled(), resolution.invalid(), resolution.users().size(),
+                structureSummary(type));
     }
 
     /**
@@ -953,12 +964,7 @@ public class TaskAddSignService {
                 "sourceCompleted", Boolean.TRUE.equals(addSign.getSourceCompleted()));
     }
 
-    /**
-     * 整理用户视图数据，供调用方遍历或继续处理。
-     *
-     * @param user 目标用户信息，后续用于权限计算或业务规则判断
-     * @return 用户视图键值结果，供调用方继续处理
-     */
+    /** 审计与流程动作使用加签人员的原有展示结构。 */
     private Map<String, Object> userView(SysUser user) {
         return Map.of("id", user.getId(), "username", user.getUsername(), "name", displayName(user));
     }

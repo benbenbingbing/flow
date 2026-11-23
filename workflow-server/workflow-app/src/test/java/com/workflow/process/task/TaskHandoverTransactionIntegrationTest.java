@@ -323,7 +323,7 @@ class TaskHandoverTransactionIntegrationTest {
                 });
         var mutations = new EntityDataMutationService(mapper, definitions, null, tables,
                 null, null, relations, null, null, null, null, null, null, null);
-        var writer = new EntityAggregateWriter(aggregateQuery, mutations, tables, mapper, relations, json);
+        var writer = new EntityAggregateWriter(mutations, tables, mapper, relations, json);
         var receipts = new EntityMutationReceiptService(session.getMapper(EntityMutationReceiptMapper.class), json,
                 new JdbcWriteAttempt(jdbc, mock(DatabaseInsertDialect.class)));
         var executor = transactional(new EntityMutationTransactionExecutor(writer, aggregateQuery,

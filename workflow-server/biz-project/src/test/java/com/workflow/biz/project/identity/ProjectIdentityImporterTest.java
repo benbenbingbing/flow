@@ -21,6 +21,7 @@ class ProjectIdentityImporterTest {
         assertEquals("external-org", input.getValue().base().organizationExternalId());
         assertTrue(input.getValue().extensions().isEmpty());
         assertNull(input.getValue().rawDataJson());
+        assertNull(input.getValue().mainFields());
     }
 
     @Test void passesOriginalBeforeMappingWithoutLosingExtraFieldsOrNumbers() {
@@ -32,6 +33,28 @@ class ProjectIdentityImporterTest {
         var input = ArgumentCaptor.forClass(OrganizationSaveModel.class);
         verify(port).saveOrganization(input.capture());
         assertEquals(original, input.getValue().rawDataJson());
+        assertNull(input.getValue().mainFields());
+    }
+
+    @Test
+    void standardSyncPassesMappedMainFieldsFromBothSnapshots() {
+        var port = mock(IdentityWritePort.class);
+        var importer = new ProjectIdentityImporter(port);
+        var userFields = new IdentityMainFields("0007", "员工类别", "成本中心", null, "华东");
+        var orgFields = new IdentityMainFields("0012", "分公司", null, "区域编码", "华南");
+        String original = "{\"region\":\"华南\"}";
+        importer.saveUser(new ProjectIdentityImporter.DirectoryUser("E1", 1, "alice", "张三",
+                null, null, null, null, true, userFields));
+        importer.saveOrganization(new ProjectIdentityImporter.DirectoryOrganization("O1", 1, "HQ", "总部",
+                OrganizationUnitType.ORGANIZATION, null, true, orgFields), original);
+
+        var user = ArgumentCaptor.forClass(UserSaveModel.class);
+        var org = ArgumentCaptor.forClass(OrganizationSaveModel.class);
+        verify(port).saveUser(user.capture());
+        verify(port).saveOrganization(org.capture());
+        assertEquals(userFields, user.getValue().mainFields());
+        assertEquals(orgFields, org.getValue().mainFields());
+        assertEquals(original, org.getValue().rawDataJson());
     }
 
     @Test void passesExplicitMainTableFieldsForBothIdentityTypes() {

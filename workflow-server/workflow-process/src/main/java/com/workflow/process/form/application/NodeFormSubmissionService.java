@@ -3,7 +3,7 @@ package com.workflow.process.form.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
@@ -66,7 +66,7 @@ public class NodeFormSubmissionService {
     /** 让旧实例的只读表单预览与正式办理使用相同的实体系统字段。 */
     private final ProcessEntityVariableService entityVariableService;
     /** 读取审批表单当前保存的附件引用，避免沿用发起时的流程快照。 */
-    private final EntityRecordQueryPort entityRecords;
+    private final ProcessEntityRecordReader entityRecords;
 
     /**
      * 只读投影审批表单中允许当前节点编辑的提交值。
