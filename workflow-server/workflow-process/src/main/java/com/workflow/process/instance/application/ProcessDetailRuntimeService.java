@@ -21,6 +21,7 @@ import org.flowable.task.api.Task;
 import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
 import com.workflow.process.status.application.ProcessEndReason;
+import com.workflow.process.task.application.TaskHistoryReturnService;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -245,6 +246,14 @@ public class ProcessDetailRuntimeService {
             historyList.add(startHistory);
         }
 
+        // 引擎将回退源任务记为取消，按原任务 ID 关联业务操作日志还原退回人和退回意见。
+        Map<String, ProcessOperationLog> returnsByTask = new HashMap<>();
+        if (historicTasks.stream().anyMatch(task -> ProcessEndReason.isCancelled(task.getDeleteReason()))) {
+            operationLogMapper.selectList(Wrappers.<ProcessOperationLog>lambdaQuery()
+                    .eq(ProcessOperationLog::getProcessInstanceId, instanceId)
+                    .eq(ProcessOperationLog::getOperationType, TaskHistoryReturnService.OPERATION))
+                    .forEach(log -> returnsByTask.put(log.getTaskId(), log));
+        }
         for (HistoricTaskInstance task : historicTasks) {
             ProcessDetailVO.HistoryVO history = new ProcessDetailVO.HistoryVO();
             history.setTaskName(task.getName());
@@ -265,6 +274,13 @@ public class ProcessDetailRuntimeService {
             if (!cancelled && history.getVariables() != null) {
                 Object action = history.getVariables().get("action");
                 history.setAction("approve".equals(action) ? "通过" : "reject".equals(action) ? "驳回" : "完成");
+            }
+            ProcessOperationLog returnAction = returnsByTask.get(task.getId());
+            if (returnAction != null) {
+                history.setAction("退回");
+                history.setAssignee(returnAction.getOperatorId());
+                history.setAssigneeName(returnAction.getOperatorName());
+                history.setComment(returnAction.getOperationComment());
             }
             historyList.add(history);
         }
