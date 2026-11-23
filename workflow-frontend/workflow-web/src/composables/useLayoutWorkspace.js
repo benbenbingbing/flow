@@ -66,13 +66,10 @@ export function useLayoutWorkspace(menuTree) {
   }
 
   onMounted(() => {
-    void preference.refresh()
-    window.addEventListener('focus', preference.refresh)
     window.addEventListener('beforeunload', beforeUnload)
   })
   onBeforeUnmount(() => {
     removeGuard()
-    window.removeEventListener('focus', preference.refresh)
     window.removeEventListener('beforeunload', beforeUnload)
     workspace.clear()
   })

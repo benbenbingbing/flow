@@ -118,8 +118,16 @@ export function createUserInterfacePreferences({ read, write, remove, onChange }
     return drain()
   }
 
+  /** 系统默认值保存后重新读取，避免沿用保存前发出的读取或个人写入响应。 */
+  async function refreshAfterSystemChange() {
+    if (loading) await loading
+    while (running) await running
+    return load()
+  }
+
   return {
     refresh: () => active && !running ? load() : Promise.resolve(false),
+    refreshAfterSystemChange,
     setValue: (key, value) => typeof value === 'boolean' ? update(key, { kind: 'save', value }) : Promise.resolve(),
     reset: key => update(key, { kind: 'reset', value: state.value[key] }),
     // 账号切换后停止旧队列；已发请求可以完成，但其响应不得进入新账号状态。

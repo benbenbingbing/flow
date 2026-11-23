@@ -16,9 +16,8 @@ export const useSidebarBrandingStore = defineStore('sidebarBranding', () => {
     value.value = normalizeSidebarBranding(setting?.value)
   }
 
-  /** 读取失败保留最近一次成功值；账号切换与保存均能使旧响应失效。 */
-  async function refresh() {
-    if (!(user.userInfo?.userId ?? user.userInfo?.id)) return
+  /** 在账号初始化时读取标识；账号切换与管理员保存均能使旧响应失效。 */
+  async function load() {
     const requestRevision = ++revision
     try {
       const setting = await readMySetting(SIDEBAR_BRANDING_SETTING_KEY)
@@ -28,10 +27,10 @@ export const useSidebarBrandingStore = defineStore('sidebarBranding', () => {
     }
   }
 
-  watch(() => user.userInfo?.userId ?? user.userInfo?.id, () => {
+  watch(() => user.userInfo?.userId ?? user.userInfo?.id, userId => {
     applySetting({ value: DEFAULT_SIDEBAR_BRANDING })
-    void refresh()
+    if (userId) void load()
   }, { immediate: true, flush: 'sync' })
 
-  return { value, applySetting, refresh }
+  return { value, applySetting }
 })

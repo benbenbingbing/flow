@@ -340,7 +340,7 @@ const handleStorageChange = event => {
   if (event.key === SIDEBAR_MENU_REVISION_KEY) {
     loadMenus()
   } else if (event.key === SIDEBAR_WIDTH_STORAGE_KEY) {
-    // 宽度仍按设备同步；折叠必须重新读取当前账号的有效设置。
+    // 宽度按设备同步，折叠状态由当前账号的偏好 Store 维护。
     const savedLayout = readSidebarLayout()
     sidebarWidth.value = savedLayout.width
   }
@@ -348,19 +348,14 @@ const handleStorageChange = event => {
 
 onMounted(() => {
   loadMenus()
-  void sidebarPreference.refresh()
   window.addEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
   window.addEventListener('storage', handleStorageChange)
-  window.addEventListener('focus', sidebarPreference.refresh)
-  window.addEventListener('focus', sidebarBranding.refresh)
 })
 
 onBeforeUnmount(() => {
   stopSidebarResize()
   window.removeEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
   window.removeEventListener('storage', handleStorageChange)
-  window.removeEventListener('focus', sidebarPreference.refresh)
-  window.removeEventListener('focus', sidebarBranding.refresh)
 })
 
 // 系统默认值刷新也可能收起菜单，此时必须结束尚未完成的宽度拖拽。

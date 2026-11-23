@@ -4,7 +4,7 @@ import { useUserStore } from '@/stores/user'
 import { readMySetting, saveMySetting, resetMySetting } from '@/api/system/settings'
 import { USER_INTERFACE_PREFERENCES_KEY, createUserInterfacePreferences, initialUserInterfacePreferencesState } from '@/shared/user-interface-preferences'
 
-/** 一个账号只有一个偏好对象和保存队列，各界面通过字段访问，避免多份记录版本相互覆盖。 */
+/** 账号初始化时统一读取偏好，各界面共享有效值和保存队列，避免多份记录版本相互覆盖。 */
 export const useUserInterfacePreferencesStore = defineStore('userInterfacePreferences', () => {
   const user = useUserStore()
   const state = ref(initialUserInterfacePreferencesState())
@@ -23,5 +23,6 @@ export const useUserInterfacePreferencesStore = defineStore('userInterfacePrefer
     void runtime.refresh()
   }, { immediate: true, flush: 'sync' })
   return { state, refresh: () => runtime?.refresh(),
+    refreshAfterSystemChange: () => runtime?.refreshAfterSystemChange(),
     setValue: (key, value) => runtime?.setValue(key, value), reset: key => runtime?.reset(key) }
 })

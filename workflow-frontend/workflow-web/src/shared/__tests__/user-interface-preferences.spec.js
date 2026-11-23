@@ -109,6 +109,31 @@ test('持续读取失败不写入，后台恢复读取不撤销未保存选择',
   assert.match(state.error, /未保存/)
 })
 
+test('系统默认值更新后等待旧读写结束，再获取最新有效值', async () => {
+  const initialRead = deferred(), personalWrite = deferred()
+  let reads = 0, writes = 0, state
+  const runtime = createUserInterfacePreferences({
+    read: async () => ++reads === 1 ? initialRead.promise : view({ sidebarCollapsed: true }, 1, { tabsEnabled: true }),
+    write: async () => { writes++; return personalWrite.promise },
+    onChange: next => { state = next }
+  })
+
+  const initializing = runtime.refresh()
+  const saving = runtime.setValue('sidebarCollapsed', true)
+  const refreshing = runtime.refreshAfterSystemChange()
+  initialRead.resolve(view())
+  await initializing
+  assert.equal(reads, 1)
+  assert.equal(writes, 1)
+
+  personalWrite.resolve(view({ sidebarCollapsed: true }, 1))
+  await saving
+  await refreshing
+  assert.equal(reads, 2)
+  assert.equal(state.value.tabsEnabled, true)
+  assert.deepEqual(state.overrideValue, { sidebarCollapsed: true })
+})
+
 test('冲突后保留当前选择，下次操作重新合并服务端其他字段', async () => {
   let reads = 0, writes = 0, state, payload
   const runtime = createUserInterfacePreferences({

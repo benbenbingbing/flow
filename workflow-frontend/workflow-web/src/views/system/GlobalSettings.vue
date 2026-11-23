@@ -107,7 +107,7 @@ async function mutate(item, operation) {
     drafts.value[item.settingKey] = settingInputText(updated)
     if (item.settingKey === SIDEBAR_BRANDING_SETTING_KEY) sidebarBranding.applySetting(updated)
     // 后台刷新当前账号的有效值；偏好读取变慢或失败不阻塞设置页面继续操作。
-    if (item.settingKey === USER_INTERFACE_PREFERENCES_KEY) void preferences.refresh()
+    if (item.settingKey === USER_INTERFACE_PREFERENCES_KEY) void preferences.refreshAfterSystemChange()
     ElMessage.success('系统设置已保存')
   } catch (error) {
     ElMessage.error(error?.message || '保存失败，请重试')
