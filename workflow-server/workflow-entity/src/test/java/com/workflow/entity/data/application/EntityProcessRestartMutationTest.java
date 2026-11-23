@@ -2,9 +2,9 @@ package com.workflow.entity.data.application;
 
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.process.model.ProcessStartRequest;
-import com.workflow.contracts.process.model.ProcessStartResult;
-import com.workflow.contracts.process.port.ProcessRuntimePort;
+import com.workflow.port.process.model.ProcessStartRequest;
+import com.workflow.port.process.model.ProcessStartResult;
+import com.workflow.port.process.EntityBoundProcessPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -41,7 +41,7 @@ class EntityProcessRestartMutationTest {
     @Mock EntityRuntimeRecordMapper records;
     @Mock EntityRelationRuntimeService relations;
     @Mock EntityMultiValueRuntimeService multi;
-    @Mock ProcessRuntimePort processes;
+    @Mock EntityBoundProcessPort processes;
     @Mock SysUserService users;
     @Mock EntityPublishedSnapshotService snapshots;
     @Mock EntityRecordTeamService team;

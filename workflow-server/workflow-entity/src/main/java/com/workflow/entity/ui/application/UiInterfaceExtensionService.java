@@ -577,7 +577,7 @@ public class UiInterfaceExtensionService {
                         var context = releases.authorizeRuntimeContext(bindingPoint.ownerId(), request.getRuntimeContext());
                         releases.resolveAuthorizedRuntimeFormRelease(bindingPoint.ownerId(), request.getConfigHash(), request.getRuntimeContext());
                         internal.setServerReadOnly(context != null && context.purpose()
-                                == com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL);
+                                == com.workflow.port.entity.ui.model.UiRuntimePurpose.HISTORICAL);
                         if (context != null && StringUtils.hasText(context.processInstanceId())) {
                                 Map<String, Object> source = request.getRuntimeContext();
                                 boolean nested = source.containsKey("rootFormId")
@@ -1184,7 +1184,7 @@ public class UiInterfaceExtensionService {
          * 从宿主发布快照生成本地 WRITE 的强类型计划。
          *
          * <p>此方法只负责验证钉版绑定、Schema 和调用上下文并调用计划 Provider；
-         * 不执行实体写入。调用方必须再通过平台权限和 EntityMutationPort。</p>
+         * 不执行实体写入。调用方必须再通过平台权限和 TrustedEntityRecordMutationPort。</p>
          *
          * @param snapshotDocument 快照文档，作为 {@code readPinnedOperation} 的输入影响后续处理
          * @param expectedHash 预期哈希，作为 {@code readPinnedOperation} 的输入影响后续处理

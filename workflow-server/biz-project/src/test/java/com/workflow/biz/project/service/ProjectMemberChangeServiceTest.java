@@ -1,13 +1,13 @@
 package com.workflow.biz.project.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.EntityRecordPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,15 +33,15 @@ import static org.mockito.Mockito.when;
 
 class ProjectMemberChangeServiceTest {
 
-    private EntityRecordQueryPort entityDataService;
-    private EntityMutationPort entityMutationPort;
+    private EntityRecordPort entityDataService;
+    private TrustedEntityRecordMutationPort entityMutationPort;
     private ProjectMemberChangeService service;
     private AtomicInteger roleIndex;
 
     @BeforeEach
     void setUp() {
-        entityDataService = mock(EntityRecordQueryPort.class);
-        entityMutationPort = mock(EntityMutationPort.class);
+        entityDataService = mock(EntityRecordPort.class);
+        entityMutationPort = mock(TrustedEntityRecordMutationPort.class);
         roleIndex = new AtomicInteger();
         ObjectMapper objectMapper =
                 new ObjectMapper().findAndRegisterModules();

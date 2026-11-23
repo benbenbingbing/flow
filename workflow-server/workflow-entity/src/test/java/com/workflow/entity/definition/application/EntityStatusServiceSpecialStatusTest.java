@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.application;
 
-import com.workflow.contracts.process.port.ProcessCatalogPort;
+import com.workflow.port.process.ProcessDefinitionConfigPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -15,7 +15,7 @@ class EntityStatusServiceSpecialStatusTest {
     @Test void invalidReplacementNeverDeletesOldConfigurationAndEnabledActionCannotLoseItsTarget() {
         var mapper = mock(EntityStatusMapper.class);
         var access = mock(EntityDefinitionAccessPolicy.class);
-        var catalog = mock(ProcessCatalogPort.class);
+        var catalog = mock(ProcessDefinitionConfigPort.class);
         var service = new EntityStatusService(mapper, access, catalog);
         var entity = new EntityDefinition(); entity.setEntityCode("expense");
         entity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW); entity.setProcessDefinitionId("process");

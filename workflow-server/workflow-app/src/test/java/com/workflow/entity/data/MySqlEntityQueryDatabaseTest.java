@@ -5,7 +5,7 @@ import com.workflow.core.database.jdbc.InitializedDriverDataSource;
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.integration.database.api.DatabaseVendor;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
@@ -119,7 +119,7 @@ class MySqlEntityQueryDatabaseTest {
                     special, LocalDateTime.of(2026, 1, 2, 0, 0));
             var resolver = mock(EntityPhysicalTableResolver.class);
             when(resolver.resolve("expense")).thenReturn(f.table);
-            var tasks = mock(ProcessTaskAccessPort.class);
+            var tasks = mock(ProcessTaskPermissionPort.class);
             when(tasks.findActionableEntityDataIds("reader", "expense")).thenReturn(List.of("r01", special, "r06"));
             var builder = new PermissionSqlBuilder(null, null, null, List.of(), null, resolver, null, tasks,
                 com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(

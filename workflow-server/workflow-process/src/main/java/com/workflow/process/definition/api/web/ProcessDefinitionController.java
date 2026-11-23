@@ -10,7 +10,7 @@ import com.workflow.process.definition.api.request.ProcessPublishRequest;
 import com.workflow.process.definition.api.response.ProcessDefinitionDiffDTO;
 import com.workflow.process.definition.api.response.ProcessPublishPreviewDTO;
 import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import lombok.RequiredArgsConstructor;

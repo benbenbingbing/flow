@@ -1,10 +1,10 @@
 package com.workflow.entity.permission.application;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.TaskCapability;
+import com.workflow.port.process.ProcessTaskPermissionPort;
+import com.workflow.port.process.ProcessTaskPermissionPort.ActionableTaskContext;
+import com.workflow.port.process.ProcessTaskPermissionPort.RecordCoordinates;
+import com.workflow.port.process.ProcessTaskPermissionPort.TaskCapability;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -20,7 +20,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CurrentProcessTaskAssigneeLookup {
 
-    private final ProcessTaskAccessPort taskAccessPort;
+    private final ProcessTaskPermissionPort taskAccessPort;
     private final ThreadLocal<DisplayBatch> displayBatch = new ThreadLocal<>();
 
     /**

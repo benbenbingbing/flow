@@ -1,6 +1,6 @@
 package com.workflow.openapi.api.response;
 
-import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.port.embed.launch.model.EmbedLaunchIssued;
 import java.time.Instant;
 
 /**

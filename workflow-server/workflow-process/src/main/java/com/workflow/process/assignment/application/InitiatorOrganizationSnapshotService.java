@@ -2,10 +2,10 @@ package com.workflow.process.assignment.application;
 
 import com.workflow.process.assignment.domain.RelativeOrgPositionConfig;
 
-import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.SysOrganizationPort;
+import com.workflow.port.system.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -26,7 +26,7 @@ public class InitiatorOrganizationSnapshotService {
     public static final String VARIABLE_NAME =
             "_wfInitiatorOrgSnapshotV1";
 
-    private final OrganizationPositionDirectoryPort directoryPort;
+    private final SysOrganizationPort directoryPort;
 
     /**
      * 初始化{@code initiator}组织快照服务，保存构造参数供后续方法使用。
@@ -34,7 +34,7 @@ public class InitiatorOrganizationSnapshotService {
      * @param directoryPort 目录端口依赖，保存到当前对象供后续业务方法调用
      */
     public InitiatorOrganizationSnapshotService(
-            OrganizationPositionDirectoryPort directoryPort) {
+            SysOrganizationPort directoryPort) {
         this.directoryPort = directoryPort;
     }
 

@@ -1,8 +1,8 @@
 package com.workflow.listener;
 
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
 
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
@@ -48,7 +48,7 @@ class EntityStatusUpdateListenerTest {
     @Test
     void taskCompletionUpdatesDynamicEntityTable() {
         RuntimeService runtimeService = mock(RuntimeService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         EntityFlowStatusMappingMapper statusMapper = mock(EntityFlowStatusMappingMapper.class);
         ProcessDefinitionConfigMapper processMapper = mock(ProcessDefinitionConfigMapper.class);
         ProcessStatusSyncPublisher statusSyncPublisher =
@@ -109,7 +109,7 @@ class EntityStatusUpdateListenerTest {
     @Test
     void taskCreationDoesNotUpdateEntityStatus() {
         RuntimeService runtimeService = mock(RuntimeService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         EntityFlowStatusMappingMapper statusMapper = mock(EntityFlowStatusMappingMapper.class);
         ProcessDefinitionConfigMapper processMapper = mock(ProcessDefinitionConfigMapper.class);
         ProcessStatusSyncPublisher statusSyncPublisher =

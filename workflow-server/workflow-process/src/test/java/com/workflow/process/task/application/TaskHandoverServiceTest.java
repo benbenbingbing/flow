@@ -1,8 +1,9 @@
 package com.workflow.process.task.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.model.IdentityHandoverUser;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.system.identity.model.IdentityHandoverUser;
+import com.workflow.port.system.SysUserHandoverPort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -23,7 +24,8 @@ import static org.mockito.Mockito.*;
 
 /** 覆盖管理员交接的身份边界、跨页全量、加签和批量预检，不以普通转办替代交接。 */
 class TaskHandoverServiceTest {
-    private final IdentityDirectoryPort directory = mock(IdentityDirectoryPort.class);
+    private final SysUserHandoverPort directory = mock(SysUserHandoverPort.class);
+    private final SysUserLookupPort users = mock(SysUserLookupPort.class);
     private final TaskHandoverMapper handover = mock(TaskHandoverMapper.class);
     private final ProcessTaskMapper tasks = mock(ProcessTaskMapper.class);
     private final ProcessTaskAddSignMapper parents = mock(ProcessTaskAddSignMapper.class);
@@ -34,14 +36,14 @@ class TaskHandoverServiceTest {
     private final ProcessTaskService processTasks = mock(ProcessTaskService.class);
     private final TaskSlaRuntimeService sla = mock(TaskSlaRuntimeService.class);
     private final ProcessOperationLogMapper logs = mock(ProcessOperationLogMapper.class);
-    private final TaskHandoverService service = new TaskHandoverService(directory, handover, tasks,
+    private final TaskHandoverService service = new TaskHandoverService(directory, users, handover, tasks,
             parents, children, projection, inbox, engine, processTasks, sla, logs);
 
     @BeforeEach void setup() {
         UserContext.setCurrentUser("admin-id", "admin");
         source("1", true);
         when(directory.lockHandoverUser("target-id")).thenReturn(Optional.of(user("target", "0", false)));
-        when(directory.getDisplayName("admin-id")).thenReturn("管理员");
+        when(users.getDisplayName("admin-id")).thenReturn("管理员");
         when(projection.lockEngineTask(anyString())).thenAnswer(call -> call.getArgument(0));
         when(projection.updateIdentity(anyLong(), anyString(), anyString(), eq("user"))).thenReturn(1);
         when(logs.insert(any(ProcessOperationLog.class))).thenReturn(1);

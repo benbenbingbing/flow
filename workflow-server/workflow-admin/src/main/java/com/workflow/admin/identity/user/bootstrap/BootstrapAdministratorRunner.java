@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.user.bootstrap;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
+import com.workflow.port.platform.WorkflowBootstrapJobPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +33,7 @@ public class BootstrapAdministratorRunner implements ApplicationRunner {
             "$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6";
 
     private final SysUserMapper userMapper;
-    private final BootstrapJobPort bootstrapJobCoordinator;
+    private final WorkflowBootstrapJobPort bootstrapJobCoordinator;
 
     @Value("${workflow.bootstrap.admin.password:}")
     private String bootstrapPassword;

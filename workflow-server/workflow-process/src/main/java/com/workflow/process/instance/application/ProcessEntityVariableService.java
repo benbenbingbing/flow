@@ -1,6 +1,6 @@
 package com.workflow.process.instance.application;
 
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

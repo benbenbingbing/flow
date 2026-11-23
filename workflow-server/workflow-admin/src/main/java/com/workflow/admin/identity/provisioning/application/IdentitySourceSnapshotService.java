@@ -4,10 +4,10 @@ import com.fasterxml.jackson.core.*;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentitySourceSnapshotMapper;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.record.IdentitySourceSnapshot;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.*;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.error.IdentityWriteException;
-import com.workflow.contracts.identity.model.*;
+import com.workflow.port.platform.audit.model.*;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.identity.model.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +20,7 @@ public class IdentitySourceSnapshotService {
     private final IdentitySourceSnapshotMapper snapshots;
     private final IdentityWriteProperties properties;
     private final IdentityAccessService access;
-    private final SystemAuditPort audit;
+    private final SystemOperationLogPort audit;
     // 独立严格解析器，不继承业务 ObjectMapper 的宽松 JSON 配置，也不把原文转换成可能丢精度的对象。
     private static final JsonFactory JSON = JsonFactory.builder()
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();

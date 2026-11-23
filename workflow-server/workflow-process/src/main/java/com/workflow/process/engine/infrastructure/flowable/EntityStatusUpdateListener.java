@@ -2,11 +2,11 @@ package com.workflow.process.engine.infrastructure.flowable;
 
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import lombok.RequiredArgsConstructor;
@@ -38,7 +38,7 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
         /** Flowable 运行时服务，查询流程实例与变量 */
         private final RuntimeService runtimeService;
         /** 实体统一变更端口 */
-        private final EntityMutationPort entityMutationPort;
+        private final TrustedEntityRecordMutationPort entityMutationPort;
         /** 流程状态映射 Mapper，查询节点到实体状态的映射 */
         private final EntityFlowStatusMappingMapper statusMappingMapper;
         /** 流程定义配置 Mapper，查询流程配置 */

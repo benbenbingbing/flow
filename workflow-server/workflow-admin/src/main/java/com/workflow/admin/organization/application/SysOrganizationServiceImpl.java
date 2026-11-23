@@ -6,16 +6,16 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.identity.position.api.error.PositionErrorCode;
 import com.workflow.admin.identity.position.api.error.PositionManagementException;
-import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -297,12 +297,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             SysOrganization existing = org.getId() == null ? null : orgMapper.selectById(org.getId());
             identityManagement.protectOrganization(org, existing);
             if (existing != null && org.getStatus() != null) org.setStatus(identityManagement.status(
-                    com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, org.getId(), org.getStatus()));
+                    com.workflow.port.system.identity.model.IdentityObjectType.ORGANIZATION, org.getId(), org.getStatus()));
             else if (existing != null) org.setStatus(existing.getStatus());
         }
         SysOrganization result = saveCore(org, false);
         if (identityManagement != null) identityManagement.saveExtensions(
-                com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, result.getId(), org.getExtensions());
+                com.workflow.port.system.identity.model.IdentityObjectType.ORGANIZATION, result.getId(), org.getExtensions());
         return result;
     }
 
@@ -447,7 +447,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         }
         
         orgMapper.deleteById(id);
-        if (identityManagement != null) identityManagement.retire(com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, id);
+        if (identityManagement != null) identityManagement.retire(com.workflow.port.system.identity.model.IdentityObjectType.ORGANIZATION, id);
         log.info("删除组织部门：{} ({})", org.getOrgName(), org.getOrgCode());
     }
     
@@ -470,7 +470,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     public void updateStatus(String id, String status) {
         if (identityManagement != null) {
             identityManagement.lock();
-            status = identityManagement.status(com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, id, status);
+            status = identityManagement.status(com.workflow.port.system.identity.model.IdentityObjectType.ORGANIZATION, id, status);
         }
         SysOrganization org = new SysOrganization();
         org.setId(id);

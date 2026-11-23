@@ -32,10 +32,10 @@ public class ContractPermissionProvider implements EntityPermissionOptionProvide
 输入使用契约中的业务投影，不引用实体 HTTP DTO 或管理模块的持久化用户对象：
 
 ```java
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider;
-import com.workflow.contracts.identity.model.IdentityUser;
+import com.workflow.port.system.identity.model.IdentityUser;
 
 @Component
 public class CustomerLevelConditionProvider implements EntityActionRuleConditionProvider {

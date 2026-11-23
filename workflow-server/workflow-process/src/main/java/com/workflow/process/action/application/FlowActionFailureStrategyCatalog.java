@@ -2,7 +2,7 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.process.action.model.*;
 import com.workflow.contracts.process.action.spi.FlowActionFailureStrategyProvider;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;

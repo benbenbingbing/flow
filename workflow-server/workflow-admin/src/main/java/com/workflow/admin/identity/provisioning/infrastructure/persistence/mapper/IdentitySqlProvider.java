@@ -1,6 +1,6 @@
 package com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper;
 
-import com.workflow.contracts.identity.model.IdentityObjectType;
+import com.workflow.port.system.identity.model.IdentityObjectType;
 import java.util.*;
 
 /** Mapper SQL 生成器：只插入服务端白名单标识符，所有业务值仍使用 MyBatis 参数绑定。 */

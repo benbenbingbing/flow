@@ -1,8 +1,8 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.form.application.EntityFormActionService;
@@ -81,7 +81,7 @@ class UiEventRuntimeServiceTest {
     @Mock
     private EntitySelectionRuntimeService selectionRuntimeService;
     @Mock
-    private SystemAuditPort auditPort;
+    private SystemOperationLogPort auditPort;
     @Mock
     private EntityActionCapabilityService actionCapabilityService;
     @Mock

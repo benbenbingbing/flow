@@ -1,8 +1,8 @@
 package com.workflow.process.form.infrastructure.adapter;
 
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.port.UiRuntimeAccessPort;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.UiFormContextPort;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
@@ -23,7 +23,7 @@ import java.util.Objects;
 /** 每次请求按真实待办和流程发布快照恢复授权，页面上的 taskId 或 mode 本身不授予权限。 */
 @Component
 @RequiredArgsConstructor
-public class UiRuntimeAccessAdapter implements UiRuntimeAccessPort {
+public class UiRuntimeAccessAdapter implements UiFormContextPort {
     private final TaskService taskService;
     private final HistoryService historyService;
     private final ProcessTaskMapper taskMapper;

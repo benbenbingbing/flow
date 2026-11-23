@@ -6,8 +6,8 @@ import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGr
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -108,7 +108,7 @@ class TaskCandidateApprovalTransactionIntegrationTest {
         when(groupMapper.selectGroupsByUserId("bob-id")).thenReturn(List.of(reviewers));
         taskIdentityAccessService = spy(new TaskIdentityAccessService(
                 engine.getTaskService(), groupMapper, mock(SysRoleMapper.class),
-                mock(IdentityDirectoryPort.class)));
+                mock(SysUserLookupPort.class)));
 
         // 测试适配器保留真实 JDBC 副作用，与引擎共享数据源；省略实体表等无关依赖。
         // 如果引擎 claim/complete 提前提交，后续的回滚和外部连接快照断言会真实失败。
@@ -151,7 +151,7 @@ class TaskCandidateApprovalTransactionIntegrationTest {
                 completingTasks, engine.getRuntimeService(), engine.getHistoryService(),
                 projectionService, engine.getRepositoryService(), operationLogMapper, userService,
                 formSubmission,
-                mock(EntityRecordPort.class), mock(ProcessCcService.class),
+                mock(EntityProcessStatePort.class), mock(ProcessCcService.class),
                 mock(NextApproverOverrideService.class),
                 new MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(),
                         engine.getTaskService(), new ObjectMapper()),

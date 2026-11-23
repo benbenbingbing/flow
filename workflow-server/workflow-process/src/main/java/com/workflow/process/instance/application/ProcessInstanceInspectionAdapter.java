@@ -1,10 +1,9 @@
 package com.workflow.process.instance.application;
 
-import com.workflow.contracts.process.instance.model.ProcessRuntimeViews.InstanceCapabilities;
-import com.workflow.contracts.process.instance.model.ProcessRuntimeViews.Progress;
-import com.workflow.contracts.process.instance.port.ProcessInstanceInspectionPort;
-import com.workflow.contracts.process.query.model.ActionCapability;
-import com.workflow.contracts.process.query.port.ProcessQueryPort;
+import com.workflow.port.process.instance.model.ProcessRuntimeViews.InstanceCapabilities;
+import com.workflow.port.process.instance.model.ProcessRuntimeViews.Progress;
+import com.workflow.port.process.query.model.ActionCapability;
+import com.workflow.process.query.application.ProcessQueryAdapter;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.command.application.ProcessInvocationAccess;
 import com.workflow.process.task.api.request.ReceiveTaskTriggerRequest;
@@ -18,15 +17,14 @@ import java.util.Objects;
 /** 沿用流程读取范围与当前节点权限，预检不产生运行状态变更。 */
 @Component
 @RequiredArgsConstructor
-public class ProcessInstanceInspectionAdapter implements ProcessInstanceInspectionPort {
+public class ProcessInstanceInspectionAdapter {
     private final ProcessInstanceService instances;
     private final ProcessInstanceAccessService instanceAccess;
     private final ProcessInvocationAccess callers;
-    private final ProcessQueryPort queries;
+    private final ProcessQueryAdapter queries;
     private final NodeOperationCapabilityService operations;
 
-    @Override
-    public Progress readProgress(String processInstanceId) {
+    public Progress getProgress(String processInstanceId) {
         var progress = instances.getProcessProgress(processInstanceId);
         return new Progress(progress.getProcessInstanceId(), progress.getProcessDefinitionId(), progress.getProcessVersion(),
                 progress.getStatus(), progress.getEndType(), progress.getEndReason(), progress.getActiveNodes(),
@@ -34,8 +32,7 @@ public class ProcessInstanceInspectionAdapter implements ProcessInstanceInspecti
                 progress.getExecutedSequenceFlows());
     }
 
-    @Override
-    public InstanceCapabilities capabilities(String processInstanceId) {
+    public InstanceCapabilities getInstanceCapabilities(String processInstanceId) {
         var caller = callers.requireActor();
         var instance = queries.requireInstance(processInstanceId);
         String starter = instance.startUserId();
@@ -56,7 +53,6 @@ public class ProcessInstanceInspectionAdapter implements ProcessInstanceInspecti
         return new ActionCapability(allowed, allowed ? null : failureCode, null);
     }
 
-    @Override
     public ActionCapability previewReceive(String processInstanceId, String executionId, String activityId,
             String messageRef) {
         var request = new ReceiveTaskTriggerRequest();

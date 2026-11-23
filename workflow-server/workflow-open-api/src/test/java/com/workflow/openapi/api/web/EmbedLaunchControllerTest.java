@@ -6,11 +6,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.embed.launch.model.EmbedApplicationActor;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchCommand;
-import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchView;
+import com.workflow.port.embed.launch.model.EmbedApplicationActor;
+import com.workflow.port.embed.launch.model.EmbedLaunchCommand;
+import com.workflow.port.embed.EmbedLaunchPort;
+import com.workflow.port.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.port.embed.launch.model.EmbedLaunchView;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.response.OpenEmbedLaunchResponse;
 import com.workflow.openapi.application.security.OpenApplicationActorResolver;
@@ -28,7 +28,7 @@ class EmbedLaunchControllerTest {
     @Test
     void mapsAuthenticatedApplicationAndReturnsOneTimeLaunch()
             throws Exception {
-        EmbedLaunchIssuePort launchIssuePort = mock(EmbedLaunchIssuePort.class);
+        EmbedLaunchPort launchIssuePort = mock(EmbedLaunchPort.class);
         OpenApplicationActorResolver actorResolver =
                 mock(OpenApplicationActorResolver.class);
         EmbedLaunchController controller = new EmbedLaunchController(

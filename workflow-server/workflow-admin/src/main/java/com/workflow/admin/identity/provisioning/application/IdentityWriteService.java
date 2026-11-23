@@ -10,11 +10,10 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.application.SysOrganizationService;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.audit.model.*;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.error.IdentityWriteException;
-import com.workflow.contracts.identity.model.*;
-import com.workflow.contracts.identity.port.IdentityWritePort;
+import com.workflow.port.platform.audit.model.*;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.identity.model.*;
 import com.fasterxml.jackson.databind.*;
 import lombok.RequiredArgsConstructor;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
@@ -28,7 +27,7 @@ import java.util.*;
 /** 被动的标准身份写入能力；不访问外部系统，不注册调度和后台重试。 */
 @Service
 @RequiredArgsConstructor
-public class IdentityWriteService implements IdentityWritePort {
+public class IdentityWriteService {
     private final IdentitySourceStore store;
     private final IdentityAccessService access;
     private final IdentityExtensionService extensions;
@@ -39,10 +38,9 @@ public class IdentityWriteService implements IdentityWritePort {
     private final SysRoleMapper roleMapper;
     private final SysOrganizationService organizations;
     private final IdentityOrganizationHierarchyService organizationHierarchy;
-    private final SystemAuditPort audit;
+    private final SystemOperationLogPort audit;
     private final IdentitySourceSnapshotService snapshots;
 
-    @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public IdentitySaveResult saveUser(UserSaveModel model) {
         if (model == null) fail("INVALID_MODEL", "model", "用户模型不能为空");
@@ -95,7 +93,6 @@ public class IdentityWriteService implements IdentityWritePort {
                 previous == null ? IdentitySaveOutcome.CREATED : IdentitySaveOutcome.UPDATED, model.sourceVersion());
     }
 
-    @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public IdentitySaveResult saveOrganization(OrganizationSaveModel model) {
         if (model == null) fail("INVALID_MODEL", "model", "组织模型不能为空");
@@ -149,7 +146,6 @@ public class IdentityWriteService implements IdentityWritePort {
                 previous == null ? IdentitySaveOutcome.CREATED : IdentitySaveOutcome.UPDATED, model.sourceVersion());
     }
 
-    @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public List<IdentitySaveResult> saveUsers(List<UserSaveModel> models) {
         lockDirectory();
@@ -163,7 +159,6 @@ public class IdentityWriteService implements IdentityWritePort {
         return results;
     }
 
-    @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public List<IdentitySaveResult> saveOrganizations(List<OrganizationSaveModel> models) {
         lockDirectory();

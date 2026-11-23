@@ -3,13 +3,13 @@ package com.workflow.contracts.process.action.context;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
 import com.workflow.contracts.process.action.model.FlowActionTraceFields;
 import com.workflow.contracts.process.action.model.FlowActionScopeType;
-import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
+import com.workflow.port.process.FlowActionContextPort;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
-import com.workflow.contracts.process.query.model.ProcessInstanceView;
-import com.workflow.contracts.process.query.model.ProcessTaskView;
+import com.workflow.port.process.query.model.ProcessInstanceView;
+import com.workflow.port.process.query.model.ProcessTaskView;
 import lombok.Data;
 
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -137,7 +137,7 @@ public class FlowActionContext {
     /**
      * 内部查询辅助器，不对外序列化
      */
-    private transient FlowActionRuntimePort runtimeAccess;
+    private transient FlowActionContextPort runtimeAccess;
 
     /**
      * 兼容旧版扩展处理器读取顺序流 ID；实际值由规范的作用域与元素 ID 推导，

@@ -16,10 +16,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.openapi.api.request.CreateIntegrationApplicationRequest;
 import com.workflow.openapi.api.request.RevokeIntegrationCredentialRequest;
@@ -48,7 +48,7 @@ class IntegrationApplicationServiceTest {
     private IntegrationApplicationMapper applicationMapper;
     private IntegrationCredentialMapper credentialMapper;
     private CurrentActorPort actorProvider;
-    private SystemAuditPort auditPort;
+    private SystemOperationLogPort auditPort;
     private IntegrationSecretHasher secretHasher;
     private ObjectMapper objectMapper;
     private IntegrationApplicationService service;
@@ -58,7 +58,7 @@ class IntegrationApplicationServiceTest {
         applicationMapper = mock(IntegrationApplicationMapper.class);
         credentialMapper = mock(IntegrationCredentialMapper.class);
         actorProvider = mock(CurrentActorPort.class);
-        auditPort = mock(SystemAuditPort.class);
+        auditPort = mock(SystemOperationLogPort.class);
         secretHasher = new IntegrationSecretHasher();
         objectMapper = new ObjectMapper().findAndRegisterModules();
         when(actorProvider.current())

@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit.Operation;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit.RequestOperation;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
@@ -181,7 +181,7 @@ class EmbedRuntimeAuditTest {
         assertFalse(rendered.contains("PartnerBrowser/1.0"));
     }
 
-    private static EmbedRuntimeAudit audit(SystemAuditPort port) {
+    private static EmbedRuntimeAudit audit(SystemOperationLogPort port) {
         return new EmbedRuntimeAudit(
                 port, Clock.fixed(NOW, ZoneOffset.UTC));
     }

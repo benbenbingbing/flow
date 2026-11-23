@@ -1,8 +1,8 @@
 package com.workflow.process.assignment.infrastructure.flowable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.port.*;
-import com.workflow.contracts.process.assignment.port.PersonResolverRegistrationPort;
+import com.workflow.port.system.*;
+import com.workflow.port.process.ProcessAssigneeResolverPort;
 import com.workflow.process.assignment.application.*;
 import com.workflow.process.assignment.extension.GroupMembersByTagPersonResolver;
 import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
@@ -24,11 +24,11 @@ class GroupMemberTagsFlowableIntegrationTest {
     @ParameterizedTest @ValueSource(booleans={false,true})
     void publishedGroupTagAssignmentUsesOneResolverAndNeverLeavesWholeGroupAccess(boolean multi) {
         ObjectMapper json = new ObjectMapper();
-        var directory = mock(GroupMemberTagPort.class);
+        var directory = mock(SysUserGroupTagPort.class);
         AtomicReference<List<String>> users = new AtomicReference<>(List.of("old-user"));
-        when(directory.resolve(any())).thenAnswer(call -> users.get());
+        when(directory.resolveMembersByTags(any())).thenAnswer(call -> users.get());
         var resolver = new GroupMembersByTagPersonResolver(directory);
-        var membership = mock(IdentityMembershipPort.class);
+        var membership = mock(ProcessCandidateMemberPort.class);
         when(membership.users(any())).thenAnswer(call -> call.getArgument(0));
         var runtime = new PersonResolverRuntimeService(List.of(resolver),membership,code->true);
         var sanitizer = new ProcessBpmnPublishSanitizer(json);

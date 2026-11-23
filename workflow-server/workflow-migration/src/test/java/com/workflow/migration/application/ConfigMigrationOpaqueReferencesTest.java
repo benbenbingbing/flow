@@ -7,7 +7,7 @@ import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGr
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -27,7 +27,7 @@ class ConfigMigrationOpaqueReferencesTest {
     private final SysUserMapper users = mock(SysUserMapper.class);
     private final ConfigMigrationReferenceService references = new ConfigMigrationReferenceService(users,
             mock(SysRoleMapper.class), mock(SysGroupMapper.class), mock(SysOrganizationMapper.class),
-            mock(FlowActionDefinitionMapper.class), mock(FlowActionCatalogPort.class));
+            mock(FlowActionDefinitionMapper.class), mock(ProcessActionDefinitionPort.class));
 
     @Test
     void declaredNestedParametersResolveOnTargetWithoutInstallingTheSourceProvider() throws Exception {

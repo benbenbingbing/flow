@@ -4,10 +4,10 @@ import com.workflow.process.status.application.ProcessEndReason;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;

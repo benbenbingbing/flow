@@ -2,9 +2,9 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
@@ -28,7 +28,7 @@ class EntityFieldAssignmentFlowActionHandlerTest {
     final ObjectMapper json = new ObjectMapper();
     final EntityCodeCatalogPort catalog = mock(EntityCodeCatalogPort.class);
     final EntityPublishedSnapshotService snapshots = mock(EntityPublishedSnapshotService.class);
-    final EntityMutationPort mutations = mock(EntityMutationPort.class);
+    final TrustedEntityRecordMutationPort mutations = mock(TrustedEntityRecordMutationPort.class);
     final SysDictItemService dictionaries = mock(SysDictItemService.class);
     final EntityFieldAssignmentFlowActionHandler handler = new EntityFieldAssignmentFlowActionHandler(catalog, snapshots,
             new EntityFieldValidationRuleService(json), dictionaries, mutations, json);

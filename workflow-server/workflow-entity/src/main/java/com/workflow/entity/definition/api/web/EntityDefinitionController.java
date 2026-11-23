@@ -13,7 +13,7 @@ import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.api.request.EntityLifecycleModeRequest;
 import com.workflow.entity.definition.api.request.EntityWorkflowBindingRequest;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.application.EntityDefinitionOptionService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldDefinitionService;

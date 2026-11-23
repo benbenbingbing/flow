@@ -2,6 +2,8 @@
 
 后端业务/插件扩展契约，与 `workflow-port` 共同替代原 `workflow-contracts`。
 保留 `com.workflow.contracts.<domain>[.<feature>].spi` 命名空间，公开扩展接口统一以 Provider 结尾。
+平台能力类型从 `com.workflow.port` 导入。UI 数据源的 `UiDataSourceUsages` 与列表查询的
+`EntityListQueryFields` 归入本制品的模型包，沿用原 Java 类名以兼容已发布 Provider。
 
 ## 职责与依赖
 
@@ -9,7 +11,7 @@
 - 本模块只依赖 workflow-port 和编译期 Lombok，不引用 Spring、MyBatis、Jackson 或领域实现。
 - 扩展需要使用平台能力时调用明确暴露的 Port；workflow-port 禁止反向依赖本模块。
 - Provider 专用描述符、请求和结果放所属 model 包；携带运行时访问能力的上下文放 context。
-- 模型不依赖 port/spi；上下文可以使用 Port，例如 FlowActionContext 持有 FlowActionRuntimePort。
+- 模型不依赖 port/spi；上下文可以使用 Port，例如 FlowActionContext 持有 FlowActionContextPort。
 - Registry、Bean 实现、持久化对象和 Controller DTO 仍留在各宿主模块。
 - 前端 props/emits、校验器和 JSON 清单继续在 workflow-web 的扩展契约体系中维护。
 
@@ -49,7 +51,7 @@ Provider 只能补充当前页展示值，不允许扩展列参与查询和排�
 存储上传使用框架无关的 FileUpload：内容延迟打开，Provider 必须关闭其打开的流，不能在
 HTTP 请求结束后异步读取。StoredFile 的消费方同样需要关闭返回流。
 OutboxEventHandlerProvider 仍按 topic 唯一路由，业务处理按 eventKey 幂等；异常、retryable
-以及重试规则由宿主保持。扩展通过 workflow-port 的 OutboxPublishPort 发布事件。
+以及重试规则由宿主保持。扩展通过 workflow-port 的 WorkflowOutboxEventPort 发布事件。
 
 权限和知会 SPI 使用独立业务投影：SysUser 改为 IdentityUser，动作/条件中的 EntityDataDTO
 改为 EntityRecordData，知会渠道参数使用 CcNotification。规则树与配置包 JSON 协议保持不变。
@@ -61,8 +63,9 @@ EntityListActionProvider 与 DataScopePredicateProvider 是 incubating 预留接
 其他 Provider 的配置编码、Bean 名、topic、storageType、版本号不会因 Java 接口改名自动改变。
 
 每个 canonical 类型只保留一份定义，不提供 deprecated bridge、旧包别名或模型镜像。
-外部扩展需同步依赖、import 和参数签名并重新编译。UI Provider 继续沿用
-UiProviderArtifactIdentity 的默认制品摘要算法；纯 Maven 拆分不改变 Java 包名。
+外部扩展需同步依赖、import 和参数签名并重新编译。平台 Port 包名统见
+[能力索引](../workflow-port/README.md#能力索引)。UI Provider 继续沿用
+UiProviderArtifactIdentity 的默认制品摘要算法。
 如重新编译导致已钉定实现的 class 字节发生变化，必须核对发布快照的版本与制品摘要，
 必要时新增实现版本并保留历史版本可执行，不能改写旧摘要绕过检查。
 

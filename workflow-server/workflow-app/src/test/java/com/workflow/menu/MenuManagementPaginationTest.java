@@ -9,7 +9,7 @@ import com.workflow.admin.authorization.menu.application.SysMenuService;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

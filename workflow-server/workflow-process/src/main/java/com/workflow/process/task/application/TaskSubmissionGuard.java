@@ -1,8 +1,8 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.task.model.TaskFormReference;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.task.model.TaskFormReference;
 import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.form.application.EntityFormService;

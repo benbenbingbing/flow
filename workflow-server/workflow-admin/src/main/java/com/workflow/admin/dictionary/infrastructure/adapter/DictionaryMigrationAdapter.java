@@ -3,7 +3,7 @@ package com.workflow.admin.dictionary.infrastructure.adapter;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.dictionary.port.DictionaryMigrationPort;
+import com.workflow.port.migration.SysDictMigrationPort;
 import com.workflow.admin.dictionary.application.DictCacheService;
 import com.workflow.admin.dictionary.application.DictItemExtensionSupport;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
@@ -24,7 +24,7 @@ import java.util.Map;
 /** 字典配置落库由所属领域完成；迁移编排只传递现有便携快照协议。 */
 @Component
 @RequiredArgsConstructor
-public class DictionaryMigrationAdapter implements DictionaryMigrationPort {
+public class DictionaryMigrationAdapter implements SysDictMigrationPort {
     private final SysDictMapper dictMapper;
     private final SysDictItemMapper dictItemMapper;
     private final DictCacheService cache;

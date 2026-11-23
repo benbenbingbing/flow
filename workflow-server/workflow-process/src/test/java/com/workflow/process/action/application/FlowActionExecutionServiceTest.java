@@ -2,11 +2,11 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionTraceFields;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionExecutionMapper;
@@ -34,8 +34,8 @@ class FlowActionExecutionServiceTest {
                 executionMapper,
                 mock(FlowActionMapper.class),
                 objectMapper,
-                mock(FlowActionCatalogPort.class),
-                mock(SystemAuditPort.class),
+                mock(ProcessActionDefinitionPort.class),
+                mock(SystemOperationLogPort.class),
                 mock(com.workflow.process.action.application.FlowActionFailureStrategyCatalog.class));
         FlowActionExecution execution = new FlowActionExecution();
         FlowActionContext context = new FlowActionContext();
@@ -69,8 +69,8 @@ class FlowActionExecutionServiceTest {
                         executionMapper,
                         mock(FlowActionMapper.class),
                         objectMapper,
-                        mock(FlowActionCatalogPort.class),
-                        mock(SystemAuditPort.class),
+                        mock(ProcessActionDefinitionPort.class),
+                        mock(SystemOperationLogPort.class),
                 mock(com.workflow.process.action.application.FlowActionFailureStrategyCatalog.class));
         FlowActionExecution execution =
                 new FlowActionExecution();
@@ -112,11 +112,11 @@ class FlowActionExecutionServiceTest {
         }).when(executionMapper).insert(
                 org.mockito.ArgumentMatchers.any(
                         FlowActionExecution.class));
-        FlowActionCatalogPort catalog =
-                mock(FlowActionCatalogPort.class);
+        ProcessActionDefinitionPort catalog =
+                mock(ProcessActionDefinitionPort.class);
         when(catalog.displayName("projectHandler"))
                 .thenReturn("项目处理器");
-        SystemAuditPort auditPort = mock(SystemAuditPort.class);
+        SystemOperationLogPort auditPort = mock(SystemOperationLogPort.class);
         FlowActionExecutionService service =
                 new FlowActionExecutionService(
                         executionMapper,

@@ -1,6 +1,6 @@
 package com.workflow.entity.form.application.model;
 
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 
 /**

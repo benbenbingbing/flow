@@ -1,14 +1,16 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
+import org.springframework.beans.factory.ObjectProvider;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.form.model.EntityFormBinding;
-import com.workflow.contracts.entity.form.model.EntityFormRuntimeContext;
-import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.form.model.EntityFormBinding;
+import com.workflow.port.entity.form.model.EntityFormRuntimeContext;
+import com.workflow.port.entity.EntityFormPort;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -31,7 +33,7 @@ import java.util.Optional;
 @Component
 @Slf4j
 @RequiredArgsConstructor
-public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
+public class EntityFormRuntimeAdapter implements EntityFormPort {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
@@ -40,6 +42,7 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
     private final EntityFormMapper formMapper;
     private final UiConfigReleaseService releaseService;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<NewEntityRecordFormResolver> newRecordForms;
 
     /**
      * 查询上下文；查询结果供调用方展示或继续处理。
@@ -247,5 +250,11 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
      */
     private Map<String, Object> toMap(EntityForm form) {
         return form == null ? null : objectMapper.convertValue(form, MAP_TYPE);
+    }
+
+    /** 延迟解析由流程模块提供的回退规则，流程表单解析本身也会读取此端口的发布表单。 */
+    @Override
+    public Optional<ResolvedForm> resolveNewRecordForm(String entityCode) {
+        return newRecordForms.getObject().resolveNewRecordForm(entityCode);
     }
 }

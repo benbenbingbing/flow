@@ -2,10 +2,11 @@ package com.workflow.process.task.application;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.audit.model.*;
-import com.workflow.contracts.identity.model.IdentityHandoverUser;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.*;
+import com.workflow.port.system.identity.model.IdentityHandoverUser;
+import com.workflow.port.system.SysUserHandoverPort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
@@ -32,7 +33,8 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 public class TaskHandoverService {
-    private final IdentityDirectoryPort directory;
+    private final SysUserHandoverPort directory;
+    private final SysUserLookupPort users;
     private final TaskHandoverMapper handover;
     private final ProcessTaskMapper tasks;
     private final ProcessTaskAddSignMapper addSigns;
@@ -197,7 +199,7 @@ public class TaskHandoverService {
         log.setTaskId(context.task().getTaskId());
         log.setOperationType("TRANSFER");
         log.setOperatorId(UserContext.getUserId());
-        log.setOperatorName(directory.getDisplayName(UserContext.getUserId()));
+        log.setOperatorName(users.getDisplayName(UserContext.getUserId()));
         log.setOperationTime(LocalDateTime.now());
         log.setOperationComment("人员交接：" + reason);
         log.setOldValue(displayName(source));

@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.infrastructure.adapter;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.workflow.contracts.identity.port.IdentityMembershipPort;
+import com.workflow.port.system.ProcessCandidateMemberPort;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
@@ -21,7 +21,7 @@ import java.util.List;
 /** 身份所属模块统一展开用户、角色、用户组和组织，保留原有启用状态及软删除过滤。 */
 @Component
 @RequiredArgsConstructor
-public class IdentityMembershipAdapter implements IdentityMembershipPort {
+public class IdentityMembershipAdapter implements ProcessCandidateMemberPort {
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;
     private final SysUserRoleMapper userRoleMapper;

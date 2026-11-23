@@ -24,7 +24,7 @@ import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.*;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

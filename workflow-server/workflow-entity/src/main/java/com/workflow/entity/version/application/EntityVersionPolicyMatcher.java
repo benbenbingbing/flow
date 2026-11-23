@@ -1,10 +1,10 @@
 package com.workflow.entity.version.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.version.api.request.EntityVersionSimulationRequest;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import lombok.RequiredArgsConstructor;

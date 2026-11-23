@@ -1,10 +1,9 @@
 package com.workflow.process.task.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.model.*;
-import com.workflow.contracts.process.task.model.*;
-import com.workflow.contracts.process.task.port.ProcessTaskCommandPort;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.*;
+import com.workflow.port.process.task.model.*;
 import com.workflow.process.cc.api.request.TaskCcRequest;
 import com.workflow.process.command.application.*;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
@@ -25,7 +24,7 @@ import java.util.function.Supplier;
  */
 @Service
 @RequiredArgsConstructor
-public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
+public class ProcessTaskCommandAdapter {
     private final ProcessCommandExecutor commands;
     private final ProcessInvocationAccess access;
     private final org.flowable.engine.TaskService tasks;
@@ -73,7 +72,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
         });
     }
 
-    @Override
     public TaskCommandResult claim(ClaimTaskCommand command) {
         return taskCommand(command.meta(), "TASK_CLAIM", command, command.taskId(), () -> {
             Task task = requireEngineTask(command.taskId());
@@ -83,7 +81,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
         });
     }
 
-    @Override
     public TaskCommandResult complete(CompleteTaskCommand command) {
         return taskCommand(command.meta(), "TASK_COMPLETE", command, command.taskId(),
                 () -> {
@@ -94,7 +91,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
                 });
     }
 
-    @Override
     public TaskCommandResult transfer(TransferTaskCommand command) {
         return taskCommand(command.meta(), "TASK_TRANSFER", command, command.taskId(),
                 () -> completeWork(command.taskId(), "transfer", command.targetUserId(), command.submission()));
@@ -105,7 +101,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
      * targetNodeId 是对实际落点的约束：仅允许节点策略列出的目标，实际未到达则整笔回滚。
      * 异步、加签及未汇聚的会签应使用普通 reject，不能保证立即退到指定节点。
      */
-    @Override
     public TaskCommandResult returnToNode(ReturnTaskCommand command) {
         return taskCommand(command.meta(), "TASK_RETURN", command, command.taskId(), () -> {
             Task source = requireEngineTask(command.taskId());
@@ -129,7 +124,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
     }
 
     /** 重提限于发起人持有的退回待办，复用表单、下一审批人和实体同步路径。 */
-    @Override
     public TaskCommandResult resubmit(ResubmitTaskCommand command) {
         return taskCommand(command.meta(), "TASK_RESUBMIT", command, command.taskId(), () -> {
             requireResubmit(command.taskId());
@@ -155,7 +149,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
             return source;
     }
 
-    @Override
     public AddSignResult addSign(AddSignCommand command) {
         TaskAddSignRequest request = new TaskAddSignRequest();
         request.setType(command.type().name()); request.setUserIds(command.userIds()); request.setComment(command.comment());
@@ -182,7 +175,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
                 })));
     }
 
-    @Override
     public TaskCommandResult cancelAddSign(CancelAddSignCommand command) {
         return taskCommand(command.meta(), "TASK_CANCEL_ADD_SIGN", command, command.addSignId(), () -> {
             var sign = addSignRecords.selectById(command.addSignId());
@@ -195,7 +187,6 @@ public class ProcessTaskCommandAdapter implements ProcessTaskCommandPort {
         });
     }
 
-    @Override
     public ManualCcResult addCc(ManualCcCommand command) {
         access.requireActor();
         var execution = ProcessCommandFailures.translate(command.taskId(), () -> commands.execute(

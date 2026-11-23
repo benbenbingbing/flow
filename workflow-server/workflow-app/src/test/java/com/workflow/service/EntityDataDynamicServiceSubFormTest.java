@@ -8,9 +8,9 @@ import com.workflow.entity.data.application.EntityDataMutationValidator;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
-import com.workflow.contracts.process.port.ProcessRuntimePort;
-import com.workflow.contracts.process.model.ProcessStartResult;
-import com.workflow.contracts.process.model.ProcessStartRequest;
+import com.workflow.port.process.EntityBoundProcessPort;
+import com.workflow.port.process.model.ProcessStartResult;
+import com.workflow.port.process.model.ProcessStartRequest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -582,7 +582,7 @@ class EntityDataDynamicServiceSubFormTest {
         final EntityCodeGeneratorService codeGeneratorService = mock(EntityCodeGeneratorService.class);
         final EntityPublishedSnapshotService snapshotService = mock(EntityPublishedSnapshotService.class);
         final EntityMultiValueRuntimeService multiValueRuntimeService = mock(EntityMultiValueRuntimeService.class);
-        final ProcessRuntimePort processRuntimePort = mock(ProcessRuntimePort.class);
+        final EntityBoundProcessPort processRuntimePort = mock(EntityBoundProcessPort.class);
         final EntityRecordTeamService entityRecordTeamService = mock(EntityRecordTeamService.class);
 
         Fixture() {

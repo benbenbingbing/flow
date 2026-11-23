@@ -60,7 +60,7 @@ class ModulePackageLayoutTest {
     void productionSourcesStayInsideModuleOwnedPackages() throws Exception {
         for (ModuleLayout layout : List.of(
                 new ModuleLayout("workflow-core", "com.workflow.core"),
-                new ModuleLayout("workflow-port", "com.workflow.contracts"),
+                new ModuleLayout("workflow-port", "com.workflow.port"),
                 new ModuleLayout("workflow-spi", "com.workflow.contracts"),
                 new ModuleLayout("workflow-admin", "com.workflow.admin"),
                 new ModuleLayout("workflow-storage", "com.workflow.storage"),

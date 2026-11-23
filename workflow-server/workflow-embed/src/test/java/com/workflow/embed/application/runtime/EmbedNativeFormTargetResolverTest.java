@@ -9,7 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort;
+import com.workflow.port.embed.EmbedFormPermissionPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedException;
@@ -21,15 +21,15 @@ import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
+import com.workflow.port.embed.EmbedPublishedFormPort;
 
 class EmbedNativeFormTargetResolverTest {
 
     private final EmbedRuntimeReleasePort releasePort = mock(
             EmbedRuntimeReleasePort.class);
-    private final EmbedNativeFormAccessPort accessPort = mock(
-            EmbedNativeFormAccessPort.class);
-    private final EmbedNativeFormRuntimePort formRuntimePort = mock(EmbedNativeFormRuntimePort.class);
+    private final EmbedFormPermissionPort accessPort = mock(
+            EmbedFormPermissionPort.class);
+    private final EmbedPublishedFormPort formRuntimePort = mock(EmbedPublishedFormPort.class);
     private final EmbedNativeFormTargetResolver resolver =
             new EmbedNativeFormTargetResolver(
                     releasePort, accessPort, formRuntimePort, new ObjectMapper());
@@ -37,7 +37,7 @@ class EmbedNativeFormTargetResolverTest {
     @BeforeEach
     void currentForm() {
         when(formRuntimePort.currentFormTarget("work_order", "form-1"))
-                .thenReturn(new EmbedNativeFormRuntimePort.VerifiedTarget("work_order", "form-1", "current-form-hash", 1));
+                .thenReturn(new EmbedPublishedFormPort.VerifiedTarget("work_order", "form-1", "current-form-hash", 1));
     }
 
     @Test
@@ -46,7 +46,7 @@ class EmbedNativeFormTargetResolverTest {
         when(releasePort.find("session-1", "view-1", "view-release-1")).thenReturn(listRelease());
         assertEquals("current-form-hash", resolver.resolveRoot(session).formReleaseId());
         when(formRuntimePort.currentFormTarget("work_order", "form-1"))
-                .thenReturn(new EmbedNativeFormRuntimePort.VerifiedTarget("work_order", "form-1", "new-form-hash", 1));
+                .thenReturn(new EmbedPublishedFormPort.VerifiedTarget("work_order", "form-1", "new-form-hash", 1));
         EmbedNativeFormTarget refreshed = resolver.resolveRoot(session);
         assertEquals("new-form-hash", refreshed.formReleaseId());
         assertEquals(1, refreshed.formReleaseVersion());
@@ -76,12 +76,12 @@ class EmbedNativeFormTargetResolverTest {
                 "session-1", "view-1", "view-release-1"))
                 .thenReturn(listRelease());
         when(accessPort.authorizeView(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
+                new com.workflow.port.embed.EmbedFormPermissionPort.Target(
                         "work_order", "form-1", "current-form-hash", 1,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of()))
                 .thenReturn(Optional.of(
-                        new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.ViewAccess(
+                        new com.workflow.port.embed.EmbedFormPermissionPort.ViewAccess(
                                 "process-9")));
 
         EmbedNativeFormTarget target = resolver.authorize(
@@ -91,7 +91,7 @@ class EmbedNativeFormTargetResolverTest {
         assertEquals("record-9", target.recordId());
         assertEquals("process-9", target.processInstanceId());
         verify(accessPort).authorizeView(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
+                new com.workflow.port.embed.EmbedFormPermissionPort.Target(
                         "work_order", "form-1", "current-form-hash", 1,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of());
@@ -121,12 +121,12 @@ class EmbedNativeFormTargetResolverTest {
                 null, null, null, "VIEW", null, null,
                 Map.of(), Map.of(), Map.of());
         when(accessPort.authorizeView(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
+                new com.workflow.port.embed.EmbedFormPermissionPort.Target(
                         "customer", "child-form", "child-release", 7,
                         null, null, null),
                 "child-record", Map.of()))
                 .thenReturn(Optional.of(
-                        new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.ViewAccess(null)));
+                        new com.workflow.port.embed.EmbedFormPermissionPort.ViewAccess(null)));
 
         EmbedNativeFormTarget authorized = resolver.authorizePinnedForm(
                 session, child, "edit", "child-record");
@@ -147,12 +147,12 @@ class EmbedNativeFormTargetResolverTest {
                 "VIEW", null, null,
                 Map.of(), Map.of(), Map.of());
         when(accessPort.authorizeView(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
+                new com.workflow.port.embed.EmbedFormPermissionPort.Target(
                         "work_order", "task-form", "task-release", 3,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of()))
                 .thenReturn(Optional.of(
-                        new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.ViewAccess(
+                        new com.workflow.port.embed.EmbedFormPermissionPort.ViewAccess(
                                 "process-9")));
 
         EmbedNativeFormTarget authorized = resolver.authorizePinnedForm(
@@ -162,7 +162,7 @@ class EmbedNativeFormTargetResolverTest {
         assertEquals("record-9", authorized.recordId());
         assertEquals("process-9", authorized.processInstanceId());
         verify(accessPort).authorizeView(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
+                new com.workflow.port.embed.EmbedFormPermissionPort.Target(
                         "work_order", "task-form", "task-release", 3,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of());

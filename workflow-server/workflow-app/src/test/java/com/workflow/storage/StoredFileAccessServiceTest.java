@@ -1,5 +1,7 @@
 package com.workflow.storage;
 
+import com.workflow.port.system.identity.model.CurrentActor;
+
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
@@ -12,8 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.admin.security.context.UserContextCurrentActorProvider;
-import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.storage.application.StoredFileAccessService;
@@ -35,7 +36,7 @@ class StoredFileAccessServiceTest {
 
     private EmbeddedDatabase database;
     private StoredFileAccessService service;
-    private CurrentAuthorizationPort authorization;
+    private CurrentActorPort authorization;
 
     @BeforeEach
     void setUp() {
@@ -68,11 +69,12 @@ class StoredFileAccessServiceTest {
         org.mockito.Mockito.when(errors.isUniqueViolation("23505", 23505)).thenReturn(true);
         var queries = mock(com.workflow.integration.database.api.query.DatabaseQueryDialect.class);
         org.mockito.Mockito.when(queries.readGuardClause()).thenReturn(" FOR UPDATE");
-        authorization = mock(CurrentAuthorizationPort.class);
+        authorization = mock(CurrentActorPort.class);
+        org.mockito.Mockito.when(authorization.current()).thenAnswer(call -> new CurrentActor(UserContext.getUserId(), UserContext.getUsername()));
         service = new StoredFileAccessService(
                 com.workflow.support.BusinessMapperTestSupport.mapper(jdbcTemplate.getDataSource(), com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class),
                 authorization,
-                new UserContextCurrentActorProvider(), new JdbcWriteAttempt(jdbcTemplate, errors), queries);
+                new JdbcWriteAttempt(jdbcTemplate, errors), queries);
         UserContext.setCurrentUser("user-1", "tester");
     }
 

@@ -3,10 +3,10 @@ package com.workflow.admin.identity.group.application;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.*;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.*;
-import com.workflow.contracts.identity.model.GroupMemberFilter;
-import com.workflow.contracts.identity.port.GroupMemberTagPort;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.audit.model.*;
+import com.workflow.port.system.identity.model.GroupMemberFilter;
+import com.workflow.port.system.SysUserGroupTagPort;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +16,7 @@ import java.util.*;
 /** 维护组内标签，并作为流程人员解析的身份边界；标签变动不追溯改派已经生成的任务。 */
 @Service
 @RequiredArgsConstructor
-public class SysGroupTagService implements GroupMemberTagPort {
+public class SysGroupTagService implements SysUserGroupTagPort {
     private final SysGroupMapper groupMapper;
     private final SysUserGroupMapper memberMapper;
     private final SysGroupTagMapper tagMapper;
@@ -106,7 +106,7 @@ public class SysGroupTagService implements GroupMemberTagPort {
     }
 
     @Override
-    public void validate(List<GroupMemberFilter> filters) {
+    public void validateTags(List<GroupMemberFilter> filters) {
         if (filters == null || filters.isEmpty() || filters.size() > 100) throw new IllegalArgumentException("必须选择1到100个用户组");
         for (var filter : filters) {
             SysGroup group = groupMapper.selectByGroupCode(filter.groupCode());
@@ -118,14 +118,14 @@ public class SysGroupTagService implements GroupMemberTagPort {
     /** 运行时沿用预览的范围规则，只返回流程引擎使用的登录名。 */
     @Override
     @Transactional(readOnly = true)
-    public List<String> resolve(List<GroupMemberFilter> filters) {
+    public List<String> resolveMembersByTags(List<GroupMemberFilter> filters) {
         return preview(filters).stream().map(MemberPreview::username).toList();
     }
 
     /** 返回启用成员的登录名与昵称；沿组顺序去重，非法组或标签直接拒绝，避免扩大范围。 */
     @Transactional(readOnly = true)
     public List<MemberPreview> preview(List<GroupMemberFilter> filters) {
-        validate(filters);
+        validateTags(filters);
         Map<String, MemberPreview> users = new LinkedHashMap<>();
         for (var filter : filters) {
             SysGroup group = groupMapper.selectByGroupCode(filter.groupCode());

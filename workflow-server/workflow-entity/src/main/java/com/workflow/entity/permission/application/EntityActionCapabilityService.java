@@ -8,7 +8,7 @@ import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
+import com.workflow.port.process.ProcessTaskPermissionPort.ActionableTaskContext;
 import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
@@ -45,7 +45,7 @@ public class EntityActionCapabilityService {
     // 经任务表单适配器回到 UI 配置发布服务的 Spring 初始化环。
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
-    private com.workflow.contracts.process.port.ProcessRuntimePort processRuntimePort;
+    private com.workflow.port.process.EntityBoundProcessPort processRuntimePort;
 
     /**
      * 强制要求当前用户拥有指定标准动作权限，否则抛出禁止访问异常。

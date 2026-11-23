@@ -18,10 +18,10 @@ import com.workflow.admin.organization.application.SysOrganizationServiceImpl;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.annotation.*;
-import com.workflow.contracts.identity.error.IdentityWriteException;
-import com.workflow.contracts.identity.model.*;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.annotation.*;
+import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.identity.model.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import org.junit.jupiter.api.*;
@@ -41,6 +41,15 @@ import java.util.*;
 import java.util.concurrent.*;
 import org.springframework.transaction.TransactionDefinition;
 import static org.junit.jupiter.api.Assertions.*;
+import com.workflow.admin.identity.infrastructure.adapter.IdentityDirectoryAdapter;
+import com.workflow.admin.identity.infrastructure.adapter.IdentityDirectoryQueryAdapter;
+import com.workflow.admin.identity.infrastructure.adapter.IdentityMembershipManagementAdapter;
+import com.workflow.admin.identity.infrastructure.adapter.SystemIdentityAdapter;
+import com.workflow.admin.identity.position.infrastructure.adapter.OrganizationPositionDirectoryAdapter;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.port.system.CurrentActorPort;
+import com.workflow.port.system.SysUserPort;
+
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -53,7 +62,7 @@ class IdentityWriteIntegrationTest {
     IdentityExtensionRegistry registry;
     IdentityWriteService service;
     SysUserService users;
-    SystemAuditPort audit;
+    SystemOperationLogPort audit;
     IdentityAccessService access;
     IdentityWriteProperties.Source source;
     SysOrganizationServiceImpl organizations;
@@ -130,10 +139,25 @@ class IdentityWriteIntegrationTest {
         doNothing().when(users).validateProvisionedMembership(any());
         doNothing().when(users).revokeSessions(anyString());
         organizations = new SysOrganizationServiceImpl(organizationMapper, userMapper, mock(SysDictItemMapper.class));
-        audit = mock(SystemAuditPort.class);
+        audit = mock(SystemOperationLogPort.class);
         var hierarchy = new IdentityOrganizationHierarchyService(store, persistence, organizationMapper);
         snapshots = new IdentitySourceSnapshotService(session.getMapper(IdentitySourceSnapshotMapper.class), properties, access, audit);
         service = new IdentityWriteService(store, access, extensions, persistence, mapper, users, userMapper, roleMapper, organizations, hierarchy, audit, snapshots);
+    }
+
+    @Test
+    void userPortReadsSourceWritesAndStillChecksDirectoryPermission() {
+        var actor = mock(CurrentActorPort.class);
+        var directory = new IdentityDirectoryQueryAdapter(actor, users, actualUserMapper, null, null, null);
+        SysUserPort port = new SystemIdentityAdapter(directory, service, extensions,
+                mock(OrganizationPositionDirectoryAdapter.class), mock(IdentityMembershipManagementAdapter.class),
+                mock(IdentityDirectoryAdapter.class));
+        var saved = tx.execute(status -> port.saveUser(user("E1", 1L, "alice", null, List.of())));
+        assertThrows(ForbiddenException.class, () -> port.findUsersByIds(List.of(saved.localId())));
+        when(actor.hasPermission("system:user:view")).thenReturn(true);
+        var result = port.findUsersByIds(List.of(saved.localId()));
+        assertEquals(List.of(saved.localId()), result.stream().map(IdentityUser::id).toList());
+        assertEquals("alice", result.get(0).username());
     }
 
     @Test

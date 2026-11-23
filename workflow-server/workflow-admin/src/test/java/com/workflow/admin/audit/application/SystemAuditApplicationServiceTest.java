@@ -1,13 +1,13 @@
 package com.workflow.admin.audit.application;
 
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -37,7 +37,7 @@ class SystemAuditApplicationServiceTest {
                 .when(outboxWriter)
                 .enqueue(any(AuditLogPayload.class));
         SystemAuditApplicationService service = service(
-                mock(OutboxPublishPort.class),
+                mock(WorkflowOutboxEventPort.class),
                 outboxWriter,
                 eventPublisher);
 
@@ -50,8 +50,8 @@ class SystemAuditApplicationServiceTest {
 
     @Test
     void requiredAuditFailureBlocksBusiness() {
-        OutboxPublishPort outboxPublisher =
-                mock(OutboxPublishPort.class);
+        WorkflowOutboxEventPort outboxPublisher =
+                mock(WorkflowOutboxEventPort.class);
         doThrow(new IllegalStateException("outbox unavailable"))
                 .when(outboxPublisher)
                 .publish(any(OutboxPublishRequest.class));
@@ -70,7 +70,7 @@ class SystemAuditApplicationServiceTest {
         SystemAuditOutboxWriter outboxWriter =
                 mock(SystemAuditOutboxWriter.class);
         SystemAuditApplicationService service = service(
-                mock(OutboxPublishPort.class),
+                mock(WorkflowOutboxEventPort.class),
                 outboxWriter,
                 mock(ApplicationEventPublisher.class));
 
@@ -97,7 +97,7 @@ class SystemAuditApplicationServiceTest {
     }
 
     private SystemAuditApplicationService service(
-            OutboxPublishPort outboxPublisher,
+            WorkflowOutboxEventPort outboxPublisher,
             SystemAuditOutboxWriter outboxWriter,
             ApplicationEventPublisher eventPublisher) {
         AuditLogPayloadFactory factory =

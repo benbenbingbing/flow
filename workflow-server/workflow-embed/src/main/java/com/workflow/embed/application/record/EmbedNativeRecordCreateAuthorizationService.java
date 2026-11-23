@@ -1,7 +1,7 @@
 package com.workflow.embed.application.record;
 
-import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.Target;
-import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
+import com.workflow.port.embed.EmbedRecordCreatePort.Target;
+import com.workflow.port.embed.EmbedRecordCreatePort;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;

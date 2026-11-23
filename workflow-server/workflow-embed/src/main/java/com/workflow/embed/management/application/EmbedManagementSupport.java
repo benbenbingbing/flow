@@ -1,13 +1,13 @@
 package com.workflow.embed.management.application;
 
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -52,7 +52,7 @@ final class EmbedManagementSupport {
      * @param now 当前时间，供本方法审计嵌入式管理支持时使用
      */
     static void audit(
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             CurrentActor actor,
             AuditAction action,
             String operationName,

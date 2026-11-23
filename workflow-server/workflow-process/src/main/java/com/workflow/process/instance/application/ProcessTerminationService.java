@@ -7,12 +7,12 @@ import com.workflow.process.status.application.ProcessEndReason;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.Result;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.application.ProcessTaskService;
@@ -47,8 +47,8 @@ public class ProcessTerminationService {
     private final HistoryService historyService;
     private final ProcessOperationLogMapper operationLogMapper;
     private final ProcessTaskService processTaskService;
-    private final IdentityDirectoryPort identityDirectoryPort;
-    private final EntityRecordPort entityRecordPort;
+    private final SysUserLookupPort identityDirectoryPort;
+    private final EntityProcessStatePort entityRecordPort;
     private final NodeOperationCapabilityService nodeOperationCapabilityService;
 
     /**

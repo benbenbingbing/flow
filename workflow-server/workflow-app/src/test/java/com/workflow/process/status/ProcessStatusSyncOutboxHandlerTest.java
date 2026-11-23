@@ -3,7 +3,7 @@ package com.workflow.process.status;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.contracts.outbox.model.OutboxEvent;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.status.application.ProcessStatusSyncOutboxHandler;
@@ -182,8 +182,8 @@ class ProcessStatusSyncOutboxHandlerTest {
                 mock(ProcessStatusSyncMapper.class);
         EntityProcessLinkMapper linkMapper =
                 mock(EntityProcessLinkMapper.class);
-        EntityRecordPort entityRecordPort =
-                mock(EntityRecordPort.class);
+        EntityProcessStatePort entityRecordPort =
+                mock(EntityProcessStatePort.class);
         JdbcIdempotentInsert inserts = mock(JdbcIdempotentInsert.class);
         ProcessStatusSyncOutboxHandler handler =
                 new ProcessStatusSyncOutboxHandler(
@@ -204,7 +204,7 @@ class ProcessStatusSyncOutboxHandlerTest {
             ObjectMapper objectMapper,
             ProcessStatusSyncMapper mapper,
             EntityProcessLinkMapper linkMapper,
-            EntityRecordPort entityRecordPort,
+            EntityProcessStatePort entityRecordPort,
             JdbcIdempotentInsert inserts,
             ProcessStatusSyncOutboxHandler handler) {
 

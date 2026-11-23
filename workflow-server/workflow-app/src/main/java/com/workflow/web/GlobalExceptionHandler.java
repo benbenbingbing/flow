@@ -1,7 +1,7 @@
 package com.workflow.web;
 
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.process.error.ProcessOperationException;
+import com.workflow.port.process.error.ProcessOperationException;
 import com.workflow.entity.form.application.error.FormCrossFieldValidationException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;

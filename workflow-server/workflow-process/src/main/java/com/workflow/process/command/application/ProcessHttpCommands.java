@@ -1,6 +1,6 @@
 package com.workflow.process.command.application;
 
-import com.workflow.contracts.process.model.CommandMeta;
+import com.workflow.port.process.model.CommandMeta;
 import com.workflow.process.task.api.request.TaskCompleteRequest;
 import java.util.Map;
 import java.util.UUID;

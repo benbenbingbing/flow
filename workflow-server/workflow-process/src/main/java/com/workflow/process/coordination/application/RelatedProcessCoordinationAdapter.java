@@ -3,7 +3,7 @@ package com.workflow.process.coordination.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.instance.port.RelatedProcessCoordinationPort;
+import com.workflow.port.process.RelatedProcessCoordinationPort;
 import com.workflow.process.action.application.PublishedFlowActionInvocation;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Command;
 import lombok.RequiredArgsConstructor;

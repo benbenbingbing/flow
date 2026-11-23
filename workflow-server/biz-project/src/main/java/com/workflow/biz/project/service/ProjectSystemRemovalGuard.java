@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.EntityRecordPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -36,7 +36,7 @@ public class ProjectSystemRemovalGuard {
     private static final Set<String> TERMINAL_CHANGE_STATUSES =
             Set.of("EFFECTIVE", "REJECTED", "CANCELLED", "FAILED");
 
-    private final EntityRecordQueryPort entityDataService;
+    private final EntityRecordPort entityDataService;
 
     /**
      * 收集阻断项；结果供调用方的后续步骤使用。

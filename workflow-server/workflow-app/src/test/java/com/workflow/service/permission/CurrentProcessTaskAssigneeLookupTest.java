@@ -7,7 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
@@ -53,7 +53,7 @@ class CurrentProcessTaskAssigneeLookupTest {
     private SqlSession mapperSession;
     private JdbcTemplate jdbc;
     private CurrentProcessTaskAssigneeLookup lookup;
-    private ProcessTaskAccessPort taskAccess;
+    private ProcessTaskPermissionPort taskAccess;
     private PermissionSqlBuilder permissionSqlBuilder;
     private SysUser alice;
     private EntityDataDTO row;
@@ -290,7 +290,7 @@ class CurrentProcessTaskAssigneeLookupTest {
 
     @Test
     void failsClosedWhenRecordOrUserHasNoIdentity() {
-        ProcessTaskAccessPort port = mock(ProcessTaskAccessPort.class);
+        ProcessTaskPermissionPort port = mock(ProcessTaskPermissionPort.class);
         CurrentProcessTaskAssigneeLookup guardedLookup = new CurrentProcessTaskAssigneeLookup(port);
         assertFalse(guardedLookup.isCurrentAssignee(new EntityDataDTO(), alice));
         assertEquals(Optional.empty(), guardedLookup.findActionableTaskId(new EntityDataDTO(), alice));

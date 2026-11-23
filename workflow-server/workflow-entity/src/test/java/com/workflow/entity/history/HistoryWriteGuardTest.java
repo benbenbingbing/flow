@@ -1,7 +1,7 @@
 package com.workflow.entity.history;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.*;
+import com.workflow.port.entity.mutation.model.*;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.*;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;

@@ -1,9 +1,12 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.entity.model.EntityTaskSummary;
-import com.workflow.contracts.entity.port.EntityTaskSummaryPort;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.process.port.TaskBusinessSummaryPort;
+import com.workflow.port.system.SysGroupPort;
+import com.workflow.port.system.SysUserGroupPort;
+
+import com.workflow.port.entity.model.EntityTaskSummary;
+import com.workflow.port.entity.EntityTaskSummaryPort;
+import com.workflow.port.system.SysUserLookupPort;
+import com.workflow.port.process.ProcessTaskSummaryPort;
 import com.workflow.process.task.infrastructure.persistence.mapper.*;
 import com.workflow.process.task.infrastructure.persistence.record.*;
 import lombok.RequiredArgsConstructor;
@@ -21,14 +24,16 @@ import java.util.Set;
 /** 本地任务身份与业务摘要的唯一投影写入口；任何异常交给外层事务回滚。 */
 @Service
 @RequiredArgsConstructor
-public class TaskInboxProjectionService implements TaskBusinessSummaryPort {
+public class TaskInboxProjectionService implements ProcessTaskSummaryPort {
     private final ProcessTaskMapper tasks;
     private final ProcessTaskCandidateUserMapper users;
     private final ProcessTaskCandidateGroupMapper groups;
     private final TaskInboxProjectionMapper projection;
     private final TaskService engineTasks;
     private final HistoryService history;
-    private final IdentityDirectoryPort directory;
+    private final SysUserLookupPort directory;
+    private final SysGroupPort groupDirectory;
+    private final SysUserGroupPort groupMembers;
     private final EntityTaskSummaryPort summaries;
     private final ObjectProvider<ProcessTaskService> processTasks;
     private final org.flowable.engine.RuntimeService runtime;
@@ -140,7 +145,7 @@ public class TaskInboxProjectionService implements TaskBusinessSummaryPort {
         Set<String> names = new LinkedHashSet<>();
         for (String user : candidateUsers) names.add(directory.getDisplayName(user));
         for (String group : candidateGroups) {
-            names.addAll(TaskCandidateNames.groupMembers(directory, group));
+            names.addAll(TaskCandidateNames.groupMembers(groupDirectory, groupMembers, directory, group));
         }
         names.remove(null);
         return names.isEmpty() ? null : String.join(",", names);

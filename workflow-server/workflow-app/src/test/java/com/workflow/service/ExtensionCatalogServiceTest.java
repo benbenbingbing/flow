@@ -3,11 +3,11 @@ package com.workflow.service;
 import com.workflow.admin.extension.action.application.FlowActionCatalogService;
 import com.workflow.admin.extension.catalog.application.ExtensionCatalogService;
 import com.workflow.admin.extension.person.application.PersonResolverCatalogService;
-import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
+import com.workflow.port.entity.UiExtensionCatalogPort;
 import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.entity.ui.model.UiExtensionCatalogItem;
+import com.workflow.port.entity.ui.model.UiExtensionCatalogItem;
 import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
 

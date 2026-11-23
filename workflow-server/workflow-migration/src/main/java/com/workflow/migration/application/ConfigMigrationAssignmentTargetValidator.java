@@ -1,6 +1,8 @@
 package com.workflow.migration.application;
 
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.port.system.SysPositionPort;
+
+import com.workflow.port.system.SysOrganizationPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
@@ -21,7 +23,8 @@ import static com.workflow.migration.application.ConfigMigrationAssignmentSuppor
 @RequiredArgsConstructor
 class ConfigMigrationAssignmentTargetValidator {
     private final PersonResolverRuntimeService resolverRuntimeService;
-    private final OrganizationPositionDirectoryPort organizationDirectory;
+    private final SysOrganizationPort organizationDirectory;
+    private final SysPositionPort positions;
     private final List<PersonResolverConfigurationValidationProvider> configurationValidators;
 
     /**
@@ -38,7 +41,7 @@ class ConfigMigrationAssignmentTargetValidator {
     boolean resolved(Map<String, Object> dependency, String type, String key,
             BiFunction<String, String, String> mapping,
             Function<String, Map<String, Object>> fieldLookup) {
-        if ("POSITION".equals(type)) return organizationDirectory.requireEnabledPosition(key) != null;
+        if ("POSITION".equals(type)) return positions.requireEnabledPosition(key) != null;
         if ("ORG_BUSINESS_LEVEL".equals(type)) return organizationDirectory.isOrganizationBusinessLevelEnabled(key);
         if ("ENTITY_PATH_FIELD".equals(type) || "ENTITY_PATH_RELATION".equals(type)) {
             String[] parts = key.split("/", 2);

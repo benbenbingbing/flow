@@ -2,10 +2,11 @@ package com.workflow.entity.history;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.workflow.contracts.history.*;
-import com.workflow.contracts.history.HistoryImportModels.*;
-import com.workflow.contracts.entity.mutation.model.*;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.EntityHistoryImportPort;
+import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.entity.mutation.model.*;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -29,7 +30,7 @@ public class EntityHistoryImportService implements EntityHistoryImportPort {
     private final EntityDefinitionMapper definitions;
     private final EntityPublishedSnapshotService snapshots;
     private final EntityActionCapabilityService permissions;
-    private final EntityMutationPort mutations;
+    private final TrustedEntityRecordMutationPort mutations;
     private final com.workflow.entity.data.application.EntityDataDynamicService records;
     private final com.workflow.entity.history.infrastructure.persistence.EntityHistorySourceMapper sources;
     private final ObjectMapper json;
@@ -162,7 +163,7 @@ public class EntityHistoryImportService implements EntityHistoryImportPort {
         String identity = HistoryIdentity.hash(system, spec.key(), row.sourceId());
         var context = EntityMutationContext.builder(EntityMutationSourceType.IMPORT, "HISTORICAL_IMPORT", "历史业务数据导入")
                 .sourceId(batchId).trace("history_" + identity, "history_" + identity).build();
-        com.workflow.contracts.entity.mutation.model.EntityMutationResult saved;
+        com.workflow.port.entity.mutation.model.EntityMutationResult saved;
         // 仅延迟必填子集合检查，字段、唯一性和写权限仍立即校验；事务提交前必定复核。
         try (var ignored = HistoryRelationValidationScope.open()) {
             saved = mutations.execute(EntityMutationCommand.create(spec.entityCode(), payload, context));

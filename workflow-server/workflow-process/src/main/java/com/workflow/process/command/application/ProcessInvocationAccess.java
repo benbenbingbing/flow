@@ -1,8 +1,8 @@
 package com.workflow.process.command.application;
 
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
-import com.workflow.contracts.process.error.ProcessOperationException;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
+import com.workflow.port.process.error.ProcessOperationException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.application.TaskIdentityAccessService;

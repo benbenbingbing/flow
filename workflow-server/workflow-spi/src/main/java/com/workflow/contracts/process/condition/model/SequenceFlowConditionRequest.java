@@ -1,6 +1,6 @@
 package com.workflow.contracts.process.condition.model;
 
-import com.workflow.contracts.process.model.ProcessValues;
+import com.workflow.port.process.model.ProcessValues;
 
 import java.util.Map;
 

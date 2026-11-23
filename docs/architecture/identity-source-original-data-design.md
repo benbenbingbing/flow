@@ -2,7 +2,7 @@
 
 状态为已实现。设计及实现日期为 2026-11-12，结构迁移为 V131。
 
-本方案覆盖 `IdentityWritePort` 的单条及批量用户、组织写入。业务模块在转换外部记录时同时提交该记录的原始 JSON，框架保存最近一次成功接收的原始内容，供管理页面追溯字段映射及同步结果。
+本方案覆盖 `SysUserPort` 和 `SysOrganizationPort` 的单条及批量用户、组织写入。业务模块在转换外部记录时同时提交该记录的原始 JSON，框架保存最近一次成功接收的原始内容，供管理页面追溯字段映射及同步结果。
 
 首期按每个来源身份保留一份原始记录设计。新增原始记录会替换此前内容，因此该方案支持查看最近一次留存的数据。逐次同步历史、失败报文及自动重放需要另行定义留存和执行规则。
 
@@ -168,4 +168,4 @@ MySQL 存量库另提供可直接执行的 [V131 手工升级 SQL](../sql/upgrad
 - 查询检查管理权限与对象范围，普通列表查询和审计记录避免加载或输出原文。
 - 实际迁移与七种初始化脚本结构一致，验证结果明确区分静态检查和目标数据库执行结果。
 
-相关实现依据见 [身份写入设计](identity-write-and-extension-design.md)、[保存模型](../../workflow-server/workflow-port/src/main/java/com/workflow/contracts/identity/model/UserSaveModel.java)、[身份写入服务](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityWriteService.java) 和 [来源访问校验](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityAccessService.java)。
+相关实现依据见 [身份写入设计](identity-write-and-extension-design.md)、[保存模型](../../workflow-server/workflow-port/src/main/java/com/workflow/port/system/identity/model/UserSaveModel.java)、[身份写入服务](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityWriteService.java) 和 [来源访问校验](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityAccessService.java)。

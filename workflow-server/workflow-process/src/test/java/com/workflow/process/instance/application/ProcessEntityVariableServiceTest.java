@@ -1,6 +1,6 @@
 package com.workflow.process.instance.application;
 
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;

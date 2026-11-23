@@ -1,6 +1,6 @@
 package com.workflow.embed.domain;
 
-import com.workflow.contracts.embed.error.EmbedBoundaryFailure;
+import com.workflow.port.embed.error.EmbedBoundaryFailure;
 
 /**
  * Public-boundary exception whose message never contains credentials or internal SQL details.

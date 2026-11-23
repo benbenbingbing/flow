@@ -1,8 +1,8 @@
 package com.workflow.process.variable;
 
-import com.workflow.contracts.process.model.*;
-import com.workflow.contracts.process.task.model.*;
-import com.workflow.contracts.process.variable.model.ProcessVariablePatch;
+import com.workflow.port.process.model.*;
+import com.workflow.port.process.task.model.*;
+import com.workflow.port.process.variable.model.ProcessVariablePatch;
 import com.workflow.process.variable.application.ProcessVariableReader;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskAddSignUserMapper;
 import org.flowable.engine.RuntimeService;
@@ -54,7 +54,7 @@ class ProcessVariableContractTest {
         when(runtime.createProcessInstanceQuery().processInstanceId("p").singleResult()).thenThrow(failure);
         var reader = new ProcessVariableReader(runtime, mock(TaskService.class), history, mock(ProcessTaskAddSignUserMapper.class));
         assertSame(failure, assertThrows(IllegalStateException.class, () -> reader.process("p",
-                com.workflow.contracts.process.variable.model.VariableReadMode.RUNTIME_OR_HISTORY)));
+                com.workflow.port.process.variable.model.VariableReadMode.RUNTIME_OR_HISTORY)));
         verifyNoInteractions(history);
     }
 }

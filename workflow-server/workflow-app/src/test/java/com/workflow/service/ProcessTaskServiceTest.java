@@ -1,11 +1,14 @@
 package com.workflow.service;
 
+import com.workflow.port.system.SysGroupPort;
+import com.workflow.port.system.SysUserGroupPort;
+
 import com.workflow.process.task.application.ProcessTaskService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.entity.EntityFormPort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -25,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.mockito.ArgumentCaptor;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,16 +57,16 @@ class ProcessTaskServiceTest {
     private NodeConfigMapper nodeConfigMapper;
 
     @Mock
-    private EntityFormRuntimePort entityFormRuntimePort;
+    private EntityFormPort entityFormRuntimePort;
 
     @Mock
     private ProcessDefinitionConfigMapper processDefinitionConfigMapper;
 
     @Mock
-    private EntityRecordPort entityRecordPort;
+    private EntityProcessStatePort entityRecordPort;
 
     @Mock
-    private IdentityDirectoryPort identityDirectoryPort;
+    private SysUserLookupPort identityDirectoryPort;
 
     @Mock
     private TaskQuery taskQuery;
@@ -84,7 +88,9 @@ class ProcessTaskServiceTest {
                 processDefinitionConfigMapper,
                 new ObjectMapper(),
                 entityRecordPort,
-                identityDirectoryPort
+                identityDirectoryPort,
+                mock(SysGroupPort.class),
+                mock(SysUserGroupPort.class)
         );
     }
 
@@ -235,7 +241,7 @@ class ProcessTaskServiceTest {
         when(flowableTask.getAssignee()).thenReturn("user-1");
         when(identityDirectoryPort.getDisplayName("user-1")).thenReturn("张三(alice)");
         when(identityDirectoryPort.findUser("alice")).thenReturn(java.util.Optional.of(
-                new com.workflow.contracts.identity.model.IdentityUser("user-1", "alice", "张三", null, null)));
+                new com.workflow.port.system.identity.model.IdentityUser("user-1", "alice", "张三", null, null)));
 
         List<ProcessTask> result = service.getTodoList("alice");
 

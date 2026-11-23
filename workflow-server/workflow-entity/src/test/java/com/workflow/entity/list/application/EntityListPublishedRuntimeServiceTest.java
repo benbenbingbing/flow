@@ -1,7 +1,7 @@
 package com.workflow.entity.list.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
+import com.workflow.port.embed.EmbedListDependencySnapshotPort;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -20,7 +20,7 @@ class EntityListPublishedRuntimeServiceTest {
         var mapper = mock(UiConfigReleaseMapper.class);
         var json = new ObjectMapper();
         var service = new EntityListPublishedRuntimeService(releases, new JsonDocumentCodec(json), mapper, json,
-                mock(EmbedNativeListDependencySnapshotPort.class));
+                mock(EmbedListDependencySnapshotPort.class));
         var draft = new EntityListConfig(); draft.setId("list");
         var published = new EntityListConfigDTO(); published.setId("list"); published.setListKey("main");
         published.setEntityCode("expense");

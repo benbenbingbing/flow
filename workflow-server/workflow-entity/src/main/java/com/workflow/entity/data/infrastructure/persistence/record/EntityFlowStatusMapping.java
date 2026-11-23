@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybati
 import com.baomidou.mybatisplus.annotation.TableField;import lombok.Data;
 import com.baomidou.mybatisplus.annotation.TableField;
 import java.time.LocalDateTime;
-import com.baomidou.mybatisplus.annotation.TableField;
 /**
  * 实体流程状态映射
  * 存储流程节点流转与实体数据状态的对应关系

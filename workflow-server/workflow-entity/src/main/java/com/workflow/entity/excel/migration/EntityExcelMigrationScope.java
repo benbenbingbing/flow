@@ -1,6 +1,6 @@
 package com.workflow.entity.excel.migration;
 
-import com.workflow.contracts.migration.port.EntityExcelMigrationPort;
+import com.workflow.port.migration.EntityExcelMigrationPort;
 import com.workflow.entity.excel.model.ExcelSchemeDocument;
 import java.util.Map;
 import java.util.Set;

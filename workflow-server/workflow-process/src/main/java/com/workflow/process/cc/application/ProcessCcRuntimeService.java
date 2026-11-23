@@ -27,10 +27,10 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.cc.api.request.TaskCcRequest;

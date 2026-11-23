@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.*;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.contracts.identity.model.GroupMemberFilter;
+import com.workflow.port.system.identity.model.GroupMemberFilter;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.*;
 import org.springframework.aop.framework.ProxyFactory;
@@ -48,10 +48,10 @@ class SysGroupTagIntegrationTest {
     @Test void emptyTagsMeanWholeGroupAndMultipleTagsUseUnionWithEffectiveUsersOnly() {
         String backend = service.save("g1", null, "后端").getId(), security = service.save("g1", null, "安全").getId();
         service.saveMembers("g1", request(List.of("u1","u2","u3"), row("u1",backend,security),row("u2",backend),row("u3",security)));
-        assertEquals(List.of("alice","bob"), service.resolve(List.of(filter("TECH"))));
-        assertEquals(List.of("alice"), service.resolve(List.of(filter("TECH",security))));
-        assertEquals(List.of("alice","bob"), service.resolve(List.of(filter("TECH",backend,security))));
-        assertEquals(List.of("alice","carol"), service.resolve(List.of(filter("TECH",security),filter("FIN"))));
+        assertEquals(List.of("alice","bob"), service.resolveMembersByTags(List.of(filter("TECH"))));
+        assertEquals(List.of("alice"), service.resolveMembersByTags(List.of(filter("TECH",security))));
+        assertEquals(List.of("alice","bob"), service.resolveMembersByTags(List.of(filter("TECH",backend,security))));
+        assertEquals(List.of("alice","carol"), service.resolveMembersByTags(List.of(filter("TECH",security),filter("FIN"))));
         // 同名用户不能合并；跨组重复成员只展示一次，缺少昵称仍保留可辨认的登录名。
         assertEquals(List.of(new SysGroupTagService.MemberPreview("alice", "张三"),
                 new SysGroupTagService.MemberPreview("bob", null),
@@ -67,11 +67,11 @@ class SysGroupTagIntegrationTest {
         service.save("g1",tag,"信息安全");
         groups.saveGroupUsers("g1",List.of("u1","u2"));
         assertEquals("m1",jdbc.queryForObject("SELECT id FROM sys_user_group WHERE user_id='u1' AND group_id='g1'",String.class));
-        assertEquals(List.of("alice"),service.resolve(List.of(filter("TECH",tag))));
+        assertEquals(List.of("alice"),service.resolveMembersByTags(List.of(filter("TECH",tag))));
         groups.saveGroupUsers("g1",List.of("u2"));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM sys_user_group_tag",Integer.class));
         groups.saveGroupUsers("g1",List.of("u1","u2"));
-        assertTrue(service.resolve(List.of(filter("TECH",tag))).isEmpty());
+        assertTrue(service.resolveMembersByTags(List.of(filter("TECH",tag))).isEmpty());
     }
 
     @Test void crossGroupTagRollsBackMembershipAndDeletedTagNeverExpandsToWholeGroup() {
@@ -81,8 +81,8 @@ class SysGroupTagIntegrationTest {
         String tag = service.save("g1",null,"后端").getId();
         service.saveMembers("g1",request(List.of("u1","u2"),row("u1",tag)));
         service.delete("g1",tag);
-        assertThrows(IllegalArgumentException.class,()->service.resolve(List.of(filter("TECH",tag))));
-        assertThrows(IllegalArgumentException.class,()->service.resolve(List.of(filter("TECH",foreign))));
+        assertThrows(IllegalArgumentException.class,()->service.resolveMembersByTags(List.of(filter("TECH",tag))));
+        assertThrows(IllegalArgumentException.class,()->service.resolveMembersByTags(List.of(filter("TECH",foreign))));
     }
 
     @Test void rejectsDuplicateNamesAndDisabledGroupsAndCleansGroupChildren() {
@@ -90,7 +90,7 @@ class SysGroupTagIntegrationTest {
         assertThrows(IllegalArgumentException.class,()->service.save("g1",null," 后端 "));
         service.saveMembers("g1",request(List.of("u1"),row("u1",tag)));
         jdbc.update("UPDATE sys_group SET status='1' WHERE id='g1'");
-        assertThrows(IllegalArgumentException.class,()->service.resolve(List.of(filter("TECH",tag))));
+        assertThrows(IllegalArgumentException.class,()->service.resolveMembersByTags(List.of(filter("TECH",tag))));
         groups.deleteGroup("g1");
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM sys_group_tag",Integer.class));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM sys_user_group_tag",Integer.class));

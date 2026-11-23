@@ -16,8 +16,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.error.RateLimitExceededException;
 import jakarta.servlet.FilterChain;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +34,7 @@ class TokenEndpointRateLimitFilterTest {
     private IntegrationClientNetworkPolicy networkPolicy;
     private OpenIntegrationClientAddressResolver addressResolver;
     private IntegrationCredentialUsageService credentialUsageService;
-    private SystemAuditPort auditPort;
+    private SystemOperationLogPort auditPort;
     private ObjectMapper objectMapper;
     private TokenEndpointRateLimitFilter filter;
 
@@ -44,7 +44,7 @@ class TokenEndpointRateLimitFilterTest {
         networkPolicy = mock(IntegrationClientNetworkPolicy.class);
         addressResolver =
                 mock(OpenIntegrationClientAddressResolver.class);
-        auditPort = mock(SystemAuditPort.class);
+        auditPort = mock(SystemOperationLogPort.class);
         credentialUsageService =
                 mock(IntegrationCredentialUsageService.class);
         objectMapper = new ObjectMapper().findAndRegisterModules();

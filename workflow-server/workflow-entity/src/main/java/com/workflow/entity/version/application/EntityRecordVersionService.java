@@ -4,10 +4,10 @@ import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
@@ -30,8 +30,8 @@ import com.workflow.entity.version.infrastructure.persistence.record.EntityRecor
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDataset;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDatasetRow;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -63,7 +63,7 @@ public class EntityRecordVersionService {
 
     private final EntityRecordVersionMapper versionMapper;
     private final EntityRecordSnapshotService snapshotService;
-    private final OutboxPublishPort outboxPublisher;
+    private final WorkflowOutboxEventPort outboxPublisher;
     private final ObjectMapper objectMapper;
     private final EntityVersionConfigurationService configurationService;
     private final EntityVersionPolicyMatcher policyMatcher;

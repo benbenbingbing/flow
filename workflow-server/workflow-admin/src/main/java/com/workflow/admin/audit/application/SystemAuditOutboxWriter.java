@@ -1,8 +1,8 @@
 package com.workflow.admin.audit.application;
 
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -17,7 +17,7 @@ public class SystemAuditOutboxWriter {
 
     public static final String TOPIC = "SYSTEM_AUDIT";
 
-    private final OutboxPublishPort outboxPublisher;
+    private final WorkflowOutboxEventPort outboxPublisher;
 
     /**
      * 入队系统审计待发送事件写入器；后续由接收方或异步任务继续处理。

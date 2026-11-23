@@ -198,8 +198,8 @@ class DataPermissionEngineTest {
         com.workflow.entity.data.application.EntityPhysicalTableResolver tableResolver =
                 mock(com.workflow.entity.data.application.EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        com.workflow.contracts.process.port.ProcessTaskAccessPort taskAccess =
-                mock(com.workflow.contracts.process.port.ProcessTaskAccessPort.class);
+        com.workflow.port.process.ProcessTaskPermissionPort taskAccess =
+                mock(com.workflow.port.process.ProcessTaskPermissionPort.class);
         when(taskAccess.findActionableEntityDataIds("2038628006255251457", "expense"))
                 .thenReturn(List.of("record-1"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(

@@ -1,13 +1,15 @@
 package com.workflow.embed.management.application;
 
+import com.workflow.port.system.CurrentActorPort;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.identity.model.CurrentActor;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.system.identity.model.CurrentActor;
 import com.workflow.embed.management.api.error.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;
@@ -44,7 +46,7 @@ class EmbedViewAdministrationServiceTest {
                 new EmbedViewConfigurationValidator(objectMapper, repository);
         service = new EmbedViewAdministrationService(
                 repository, validator,
-                () -> new CurrentActor("admin-1", "admin"),
+                currentActor(),
                 audits::add,
                 objectMapper,
                 Clock.fixed(Instant.parse("2026-08-27T01:00:00Z"), ZoneOffset.UTC));
@@ -228,4 +230,10 @@ class EmbedViewAdministrationServiceTest {
                 """;
     }
 
+
+    private static CurrentActorPort currentActor() {
+        var actor = org.mockito.Mockito.mock(CurrentActorPort.class);
+        org.mockito.Mockito.when(actor.current()).thenReturn(new CurrentActor("admin-1", "admin"));
+        return actor;
+    }
 }

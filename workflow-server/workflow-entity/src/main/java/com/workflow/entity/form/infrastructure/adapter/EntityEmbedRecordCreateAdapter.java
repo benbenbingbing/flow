@@ -1,14 +1,14 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.embed.EmbedRecordCreatePort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.application.context.FormSubmissionExecutionContext;
@@ -42,7 +42,7 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
     private final UiConfigReleaseService releaseService;
     private final EntityDefinitionMapper definitionMapper;
     private final PublishedFormSubmissionService formSubmissionService;
-    private final EntityMutationPort mutationPort;
+    private final TrustedEntityRecordMutationPort mutationPort;
 
     /**
      * 初始化实体嵌入式记录创建适配器，保存构造参数供后续方法使用。
@@ -58,7 +58,7 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
             UiConfigReleaseService releaseService,
             EntityDefinitionMapper definitionMapper,
             PublishedFormSubmissionService formSubmissionService,
-            EntityMutationPort mutationPort) {
+            TrustedEntityRecordMutationPort mutationPort) {
         this.capabilityService = capabilityService;
         this.releaseService = releaseService;
         this.definitionMapper = definitionMapper;

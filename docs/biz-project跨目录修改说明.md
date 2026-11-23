@@ -27,7 +27,7 @@
 | BPMN 图形修复 | `workflow-web/src/utils/bpmnLayout.js` | 校验每条 `sequenceFlow` 都有 `BPMNEdge`；缺失时先重建 incoming/outgoing，再生成完整 DI | 用户截图显示节点存在但完全没有连线 |
 | 设计与进度页面 | `ProcessDesign.vue`、`ProcessProgress.vue` | 统一使用完整 DI 检查和修复逻辑 | 仅检查 `BPMNShape` 会把“有节点、无连线”误判为完整 |
 | 前端依赖与测试 | `workflow-web/package.json`、`package-lock.json`、`bpmnLayout.spec.js` | 引入 `bpmn-moddle` 并把连线修复测试加入 `test:unit` | 保证部分 DI 和缺失 DI 均可稳定修复 |
-| 动作目录端口 | `workflow-contracts/.../FlowActionCatalogPort.java`、`workflow-admin/.../FlowActionCatalogService.java` | 增加“已配置、已启用且 Bean 可用”的统一判断 | 迁移分析和发布原先使用不同条件，出现分析通过但发布失败 |
+| 动作目录端口 | `workflow-contracts/.../ProcessActionDefinitionPort.java`、`workflow-admin/.../FlowActionCatalogService.java` | 增加“已配置、已启用且 Bean 可用”的统一判断 | 迁移分析和发布原先使用不同条件，出现分析通过但发布失败 |
 | 迁移依赖分析 | `workflow-migration/.../ConfigMigrationPackageService.java` | 流程动作处理器依赖复用动作目录判断 | R13 首次发布暴露动作目录假阳性 |
 | 异步动作上下文 | `FlowActionTriggerEvent.java`、`FlowActionEngineEventListener.java`、`FlowActionExecutionProcessor.java`、`FlowActionExecutor.java` | 保存操作人 ID/用户名；提交后动作执行前恢复用户上下文，结束后清理 | F03 批准动作跨实体查询被匿名数据范围过滤为空 |
 

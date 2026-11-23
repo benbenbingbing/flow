@@ -2,13 +2,13 @@ package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.EntityRecordData;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -30,7 +30,7 @@ public class CreateSystemAssetHandler implements FlowActionProvider {
     private static final String SOURCE_ENTITY = "system_application";
     private static final String TARGET_ENTITY = "system_asset";
 
-    private final EntityMutationPort entityMutationPort;
+    private final TrustedEntityRecordMutationPort entityMutationPort;
 
     /**
      * 初始化创建系统资产处理器，保存构造参数供后续方法使用。
@@ -38,7 +38,7 @@ public class CreateSystemAssetHandler implements FlowActionProvider {
      * @param entityMutationPort 实体变更端口依赖，保存到当前对象供后续业务方法调用
      */
     public CreateSystemAssetHandler(
-            EntityMutationPort entityMutationPort) {
+            TrustedEntityRecordMutationPort entityMutationPort) {
         this.entityMutationPort = entityMutationPort;
     }
 

@@ -9,11 +9,10 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.application.SysOrganizationService;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.identity.model.IdentityDirectoryModels.*;
-import com.workflow.contracts.identity.model.IdentityGroup;
-import com.workflow.contracts.identity.model.IdentityUser;
-import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
-import com.workflow.contracts.identity.port.IdentityDirectoryQueryPort;
+import com.workflow.port.system.identity.model.IdentityDirectoryModels.*;
+import com.workflow.port.system.identity.model.IdentityGroup;
+import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -28,19 +27,18 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class IdentityDirectoryQueryAdapter implements IdentityDirectoryQueryPort {
+public class IdentityDirectoryQueryAdapter {
     private static final String USER_VIEW = "system:user:view";
     private static final String ORGANIZATION_VIEW = "system:organization:view";
     private static final String ROLE_VIEW = "system:role:view";
 
-    private final CurrentAuthorizationPort authorization;
+    private final CurrentActorPort authorization;
     private final SysUserService users;
     private final SysUserMapper userMapper;
     private final SysGroupMapper groups;
     private final SysRoleService roles;
     private final SysOrganizationService organizations;
 
-    @Override
     public UserPage pageUsers(UserQuery query) {
         require(USER_VIEW);
         var page = users.getUserPage(query.pageNumber(), query.pageSize(), query.keyword(), query.status(),
@@ -49,7 +47,6 @@ public class IdentityDirectoryQueryAdapter implements IdentityDirectoryQueryPort
                 page.getTotal(), page.getPageNum(), page.getPageSize());
     }
 
-    @Override
     public List<IdentityUser> findUsersByIds(List<String> userIds) {
         require(USER_VIEW);
         var keys = userKeys(userIds);
@@ -59,7 +56,6 @@ public class IdentityDirectoryQueryAdapter implements IdentityDirectoryQueryPort
         return keys.stream().filter(byId::containsKey).map(byId::get).toList();
     }
 
-    @Override
     public List<IdentityUser> findUsersByUsernames(List<String> usernames) {
         require(USER_VIEW);
         var keys = userKeys(usernames);
@@ -69,38 +65,32 @@ public class IdentityDirectoryQueryAdapter implements IdentityDirectoryQueryPort
         return keys.stream().filter(byUsername::containsKey).map(byUsername::get).toList();
     }
 
-    @Override
     public Optional<Organization> findOrganization(String organizationId) {
         require(ORGANIZATION_VIEW);
         return Optional.ofNullable(organizations.getById(organizationId)).filter(SysOrganization::isHierarchyReady)
                 .map(this::organization);
     }
 
-    @Override
     public List<Organization> listOrganizationChildren(String parentId, String type) {
         require(ORGANIZATION_VIEW);
         return organizations.getChildren(parentId, type, null).stream().map(this::organization).toList();
     }
 
-    @Override
     public List<OrganizationNode> listOrganizationTree(String type) {
         require(ORGANIZATION_VIEW);
         return organizations.getOrgTree(type).stream().map(this::organizationNode).toList();
     }
 
-    @Override
     public List<Organization> listOrganizationAncestors(String organizationId) {
         require(ORGANIZATION_VIEW);
         return organizations.getAncestors(organizationId).stream().map(this::organization).toList();
     }
 
-    @Override
     public List<Role> listRoles(boolean enabledOnly) {
         require(ROLE_VIEW);
         return (enabledOnly ? roles.getEnabledRoles() : roles.getRoleList()).stream().map(this::role).toList();
     }
 
-    @Override
     public List<Role> listUserRoles(String userId) {
         require(USER_VIEW);
         SysUser target = users.getById(userId);
@@ -108,7 +98,6 @@ public class IdentityDirectoryQueryAdapter implements IdentityDirectoryQueryPort
                 : target.getRoles().stream().map(this::role).toList();
     }
 
-    @Override
     public List<IdentityGroup> listUserGroups(String userId) {
         require(USER_VIEW);
         return groups.selectGroupsByUserId(userId).stream()

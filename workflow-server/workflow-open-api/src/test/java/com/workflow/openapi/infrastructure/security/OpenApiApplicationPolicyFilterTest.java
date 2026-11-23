@@ -13,7 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.infrastructure.web.OpenRequestTrace;
@@ -36,7 +36,7 @@ class OpenApiApplicationPolicyFilterTest {
     private OpenIntegrationClientAddressResolver addressResolver;
     private IntegrationRateLimitService rateLimitService;
     private OpenApiConcurrencyLeaseService concurrencyService;
-    private SystemAuditPort auditPort;
+    private SystemOperationLogPort auditPort;
     private ObjectMapper objectMapper;
     private OpenApiApplicationPolicyFilter filter;
 
@@ -52,7 +52,7 @@ class OpenApiApplicationPolicyFilterTest {
                 mock(IntegrationRateLimitService.class);
         concurrencyService =
                 mock(OpenApiConcurrencyLeaseService.class);
-        auditPort = mock(SystemAuditPort.class);
+        auditPort = mock(SystemOperationLogPort.class);
         objectMapper = new ObjectMapper();
         filter = new OpenApiApplicationPolicyFilter(
                 applicationMapper,

@@ -133,7 +133,7 @@ class PermissionRuleMatcherTest {
             }
 
             @Override
-            public boolean matches(PermissionMatchConfig.MatchConditionDTO condition, com.workflow.contracts.identity.model.IdentityUser user) {
+            public boolean matches(PermissionMatchConfig.MatchConditionDTO condition, com.workflow.port.system.identity.model.IdentityUser user) {
                 return "u1".equals(user.id());
             }
         };

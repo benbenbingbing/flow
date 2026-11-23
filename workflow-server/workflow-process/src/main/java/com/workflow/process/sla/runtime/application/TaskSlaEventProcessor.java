@@ -8,7 +8,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import com.workflow.process.cc.application.ProcessCcService;
@@ -58,7 +58,7 @@ public class TaskSlaEventProcessor {
     private final ProcessCcRecordMapper ccRecordMapper;
     private final SysUserMapper userMapper;
     private final SysOrganizationMapper organizationMapper;
-    private final IdentityDirectoryPort identityDirectory;
+    private final SysUserLookupPort identityDirectory;
     private final ObjectMapper objectMapper;
 
     /**

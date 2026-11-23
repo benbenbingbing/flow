@@ -5,7 +5,7 @@ import com.workflow.contracts.process.assignment.model.PersonPrincipal;
 import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;

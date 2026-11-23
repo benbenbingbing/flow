@@ -4,8 +4,8 @@ import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.admin.dictionary.application.SysDictService;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
-import com.workflow.contracts.dictionary.model.DictionaryEntry;
-import com.workflow.contracts.dictionary.port.DictionaryReadPort;
+import com.workflow.port.system.dictionary.model.DictionaryEntry;
+import com.workflow.port.system.SysDictPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +19,7 @@ import java.util.stream.Stream;
 @Component
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class DictionaryReadAdapter implements DictionaryReadPort {
+public class DictionaryReadAdapter implements SysDictPort {
     private final SysDictService dictionaries;
     private final SysDictItemService items;
 

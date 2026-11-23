@@ -8,8 +8,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import com.workflow.process.sla.calendar.api.request.WorkCalendarSaveRequest;
 import com.workflow.process.sla.calendar.api.response.WorkCalendarDTO;
 import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarBindingMapper;
@@ -52,7 +52,7 @@ public class WorkCalendarService {
     private final WorkCalendarBindingMapper bindingMapper;
     private final WorkCalendarCalculator calculator;
     private final ObjectMapper objectMapper;
-    private final MigrationAssetPort migrationAssetHandler;
+    private final ConfigMigrationAssetPort migrationAssetHandler;
 
     /**
      * 列出未删除的所有日历版本，供管理端优先展示默认日历。

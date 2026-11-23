@@ -7,7 +7,7 @@ import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.permission.api.response.*;
@@ -46,7 +46,7 @@ class HasTodoPermissionBindingTest {
     private EmbeddedDatabase database;
     private SqlSession session;
     private EntityDataDynamicMapper mapper;
-    private ProcessTaskAccessPort taskAccess;
+    private ProcessTaskPermissionPort taskAccess;
     private PermissionSqlBuilder builder;
 
     @BeforeEach
@@ -69,7 +69,7 @@ class HasTodoPermissionBindingTest {
         mapper = session.getMapper(EntityDataDynamicMapper.class);
         EntityPhysicalTableResolver resolver = mock(EntityPhysicalTableResolver.class);
         when(resolver.resolve("expense")).thenReturn("wf_expense");
-        taskAccess = mock(ProcessTaskAccessPort.class);
+        taskAccess = mock(ProcessTaskPermissionPort.class);
         builder = new PermissionSqlBuilder(null, null, null, List.of(), null, resolver, null, taskAccess,
                 com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));

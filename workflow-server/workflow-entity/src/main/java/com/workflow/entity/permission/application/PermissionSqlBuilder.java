@@ -2,7 +2,7 @@ package com.workflow.entity.permission.application;
 
 import com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider;
 
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.schema.SchemaType;
 import com.workflow.entity.data.application.EntityTableDefinitionFactory;
@@ -78,7 +78,7 @@ public class PermissionSqlBuilder {
     private final EntityRecordTeamService teamService;
     private final EntityPhysicalTableResolver tableResolver;
     private final PermissionSqlFragmentCompiler sqlFragmentCompiler;
-    private final ProcessTaskAccessPort taskAccessPort;
+    private final ProcessTaskPermissionPort taskAccessPort;
     private final DatabaseQueryDialect queryDialect;
 
     /**
@@ -188,7 +188,7 @@ public class PermissionSqlBuilder {
             EntityRecordTeamService teamService,
             EntityPhysicalTableResolver tableResolver,
             PermissionSqlFragmentCompiler sqlFragmentCompiler,
-            ProcessTaskAccessPort taskAccessPort,
+            ProcessTaskPermissionPort taskAccessPort,
             DatabaseQueryDialect queryDialect) {
         this.definitionMapper = definitionMapper;
         this.fieldMapper = fieldMapper;

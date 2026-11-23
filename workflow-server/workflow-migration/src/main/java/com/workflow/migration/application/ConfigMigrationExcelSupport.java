@@ -1,7 +1,7 @@
 package com.workflow.migration.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.migration.port.EntityExcelMigrationPort;
+import com.workflow.port.migration.EntityExcelMigrationPort;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;

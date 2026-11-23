@@ -2,7 +2,7 @@ package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectGovernanceService;
 import org.springframework.stereotype.Component;
 

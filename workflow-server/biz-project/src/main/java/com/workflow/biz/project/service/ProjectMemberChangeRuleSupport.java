@@ -2,8 +2,8 @@ package com.workflow.biz.project.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.EntityRecordPort;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,7 +30,7 @@ final class ProjectMemberChangeRuleSupport {
     private static final Set<String> ACTIVE_MEMBER_STATUSES = Set.of(
             "PENDING_JOIN", "ACTIVE", "SUSPENDED", "PENDING_LEAVE");
 
-    private final EntityRecordQueryPort entityDataService;
+    private final EntityRecordPort entityDataService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -40,7 +40,7 @@ final class ProjectMemberChangeRuleSupport {
      * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
      */
     ProjectMemberChangeRuleSupport(
-            EntityRecordQueryPort entityDataService,
+            EntityRecordPort entityDataService,
             ObjectMapper objectMapper) {
         this.entityDataService = entityDataService;
         this.objectMapper = objectMapper;

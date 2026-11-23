@@ -1,7 +1,7 @@
 package com.workflow.adapter.embed;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
+import com.workflow.port.embed.EmbedRequestUserScopePort;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -14,7 +14,7 @@ import org.springframework.util.StringUtils;
  */
 @Component
 public class EmbedRequestUserContextAdapter
-        implements EmbedRequestUserContextPort {
+        implements EmbedRequestUserScopePort {
 
     /**
      * 处理打开，并将结果传给后续步骤。

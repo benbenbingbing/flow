@@ -7,10 +7,10 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -51,7 +51,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class EntityFormService {
     @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<com.workflow.contracts.entity.ui.port.FormDeletionReferencePort> deletionReferences;
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.port.entity.EntityFormDeletionReferencePort> deletionReferences;
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPublishedMapper publicationMapper;
 

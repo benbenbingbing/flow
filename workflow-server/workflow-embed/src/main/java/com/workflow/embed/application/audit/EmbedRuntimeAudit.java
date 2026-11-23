@@ -1,11 +1,11 @@
 package com.workflow.embed.application.audit;
 
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -41,7 +41,7 @@ public class EmbedRuntimeAudit {
             "^/api/entity-data/entity/[A-Za-z][A-Za-z0-9_]{0,99}"
                     + "/detail/([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})/load$");
 
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     private final Clock clock;
 
     /**
@@ -50,7 +50,7 @@ public class EmbedRuntimeAudit {
      * @param auditPort 审计端口，保存在对象中供后续校验、查询或展示
      */
     @Autowired
-    public EmbedRuntimeAudit(SystemAuditPort auditPort) {
+    public EmbedRuntimeAudit(SystemOperationLogPort auditPort) {
         this(auditPort, Clock.systemUTC());
     }
 
@@ -60,7 +60,7 @@ public class EmbedRuntimeAudit {
      * @param auditPort 审计端口依赖，保存到当前对象供后续业务方法调用
      * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
      */
-    EmbedRuntimeAudit(SystemAuditPort auditPort, Clock clock) {
+    EmbedRuntimeAudit(SystemOperationLogPort auditPort, Clock clock) {
         this.auditPort = auditPort;
         this.clock = clock;
     }

@@ -1,8 +1,8 @@
 package com.workflow.process.command.application;
 
 import java.util.Objects;
-import com.workflow.contracts.process.model.CommandMeta;
-import com.workflow.contracts.process.error.ProcessOperationException;
+import com.workflow.port.process.model.CommandMeta;
+import com.workflow.port.process.error.ProcessOperationException;
 
 /**
  * 由平台流程动作执行器建立的内部范围，不是公共契约或可反序列化的授权参数。

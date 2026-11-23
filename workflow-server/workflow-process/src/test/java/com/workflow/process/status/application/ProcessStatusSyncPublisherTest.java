@@ -1,7 +1,7 @@
 package com.workflow.process.status.application;
 
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import org.junit.jupiter.api.Test;
 
 import static org.mockito.ArgumentMatchers.argThat;
@@ -13,8 +13,8 @@ class ProcessStatusSyncPublisherTest {
 
     @Test
     void reconciliationPreservesExistingRetryBudgetAndDeadLetters() {
-        OutboxPublishPort outboxPublisher =
-                mock(OutboxPublishPort.class);
+        WorkflowOutboxEventPort outboxPublisher =
+                mock(WorkflowOutboxEventPort.class);
         ProcessStatusSyncPublisher publisher =
                 new ProcessStatusSyncPublisher(outboxPublisher);
 

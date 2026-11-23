@@ -1,7 +1,9 @@
 package com.workflow.migration.history;
 
-import com.workflow.contracts.history.*;
-import com.workflow.contracts.history.HistoryImportModels.*;
+import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.EntityHistoryImportPort;
+import com.workflow.port.migration.ProcessArchiveInstancePort;
+import com.workflow.port.migration.history.model.HistoryImportModels.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.util.*;
@@ -10,7 +12,7 @@ import static org.mockito.Mockito.*;
 
 class HistoryImportPlannerTest {
     final EntityHistoryImportPort entities = mock(EntityHistoryImportPort.class);
-    final ProcessArchivePort archives = mock(ProcessArchivePort.class);
+    final ProcessArchiveInstancePort archives = mock(ProcessArchiveInstancePort.class);
     final HistoryImportPlanner planner = new HistoryImportPlanner(entities, archives);
     final EntitySpec main = new EntitySpec("main", "expense", true, Map.of("supplier", "supplier"));
     final EntitySpec child = new EntitySpec("items", "item", true, Map.of("parent", "main"));

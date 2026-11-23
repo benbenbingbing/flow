@@ -1,6 +1,6 @@
 package com.workflow.entity.permission.application;
 
-import com.workflow.contracts.entity.port.EntityFileUploadAuthorizationPort;
+import com.workflow.port.entity.EntityFileUploadPermissionPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
@@ -19,7 +19,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class EntityFileUploadAuthorizationService
-        implements EntityFileUploadAuthorizationPort {
+        implements EntityFileUploadPermissionPort {
 
     private static final Set<EntityPermissionAction> UPLOAD_ACTIONS =
             EnumSet.of(

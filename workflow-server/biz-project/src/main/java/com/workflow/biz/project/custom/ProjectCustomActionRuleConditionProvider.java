@@ -1,8 +1,8 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.identity.model.IdentityUser;
+import com.workflow.port.system.identity.model.IdentityUser;
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider;
 import lombok.extern.slf4j.Slf4j;

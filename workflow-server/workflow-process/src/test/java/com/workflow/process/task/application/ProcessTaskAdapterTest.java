@@ -1,0 +1,68 @@
+package com.workflow.process.task.application;
+
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.ProcessBusinessReference;
+import com.workflow.port.process.query.model.ProcessInstanceView;
+import com.workflow.port.process.query.model.ProcessTaskView;
+import com.workflow.port.process.query.model.TaskCapabilities;
+import com.workflow.process.query.application.ProcessQueryAdapter;
+import com.workflow.process.task.api.response.TaskDetailDTO;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+class ProcessTaskAdapterTest {
+    private final ProcessQueryAdapter queries = mock(ProcessQueryAdapter.class);
+    private final TaskActionService actions = mock(TaskActionService.class);
+    private final TaskDetailService details = mock(TaskDetailService.class);
+    private final ProcessTaskAdapter port = new ProcessTaskAdapter(queries, mock(ProcessTaskCommandAdapter.class),
+            mock(ProcessTaskInterventionAdapter.class), actions, details);
+
+    @Test
+    void returnsOnlyAuthorizedTaskSummaryAndBusinessReference() {
+        var task = new ProcessTaskView("task", "task", "ENGINE", "instance", "node", "审核", "PENDING",
+                "operator", null, null, false);
+        var capabilities = new TaskCapabilities(Map.of(), List.of(), List.of());
+        var form = new TaskDetailDTO.FormConfigDTO();
+        form.setEntityFormId("form-1");
+        form.setFormName("审核表单");
+        var reference = new ProcessBusinessReference("expense", "record-1");
+        var instance = mock(ProcessInstanceView.class);
+        when(instance.businessReference()).thenReturn(reference);
+        when(queries.findActiveTask("task")).thenReturn(Optional.of(task));
+        when(queries.requireInstance("instance")).thenReturn(instance);
+        when(queries.getTaskCapabilities("task")).thenReturn(capabilities);
+        when(details.findActiveTaskForm("task", false)).thenReturn(form);
+
+        var result = port.getTaskDetail("task");
+
+        assertEquals(reference, result.businessReference());
+        assertEquals("form-1", result.form().formId());
+        assertEquals(capabilities, result.capabilities());
+        verify(actions).requireTaskAccess("task");
+    }
+
+    @Test
+    void readableInstanceDoesNotGrantTaskDetailAccess() {
+        var task = new ProcessTaskView("task", "task", "ENGINE", "instance", "node", "审核", "PENDING",
+                "another-user", null, null, false);
+        when(queries.findActiveTask("task")).thenReturn(Optional.of(task));
+        doThrow(new ForbiddenException("非候选人")).when(actions).requireTaskAccess("task");
+
+        assertEquals("PROCESS_ACCESS_DENIED",
+                assertThrows(ProcessOperationException.class, () -> port.getTaskDetail("task")).getErrorCode());
+
+        verifyNoInteractions(details);
+    }
+}

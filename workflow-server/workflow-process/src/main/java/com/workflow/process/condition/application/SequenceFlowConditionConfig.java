@@ -3,7 +3,7 @@ package com.workflow.process.condition.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.model.ProcessValues;
+import com.workflow.port.process.model.ProcessValues;
 
 import java.util.Map;
 

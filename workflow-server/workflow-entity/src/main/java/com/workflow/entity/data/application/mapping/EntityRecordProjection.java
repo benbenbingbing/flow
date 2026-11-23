@@ -1,6 +1,6 @@
 package com.workflow.entity.data.application.mapping;
 
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import java.util.LinkedHashMap;
 

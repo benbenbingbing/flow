@@ -1,6 +1,6 @@
 package com.workflow.entity.data.application;
 
-import com.workflow.contracts.process.port.TaskBusinessSummaryPort;
+import com.workflow.port.process.ProcessTaskSummaryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
@@ -14,7 +14,7 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 public class EntityTaskSummaryRefresh {
-    private final ObjectProvider<TaskBusinessSummaryPort> ports;
+    private final ObjectProvider<ProcessTaskSummaryPort> ports;
 
     /** 每次主表/关系子记录写入后登记；提交前仍在原事务，失败会与业务写入一起回滚。 */
     public void changed(String entityCode, String recordId) {

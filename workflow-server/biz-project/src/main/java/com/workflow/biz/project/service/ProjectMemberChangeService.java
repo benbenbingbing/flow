@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.EntityRecordPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +41,7 @@ public class ProjectMemberChangeService {
             "ALLOCATION_CHANGE");
     private static final Set<String> ALLOWED_PROJECT_STATUSES = Set.of(
             "APPROVED", "ACTIVE", "PAUSED", "ACCEPTING");
-    private final EntityRecordQueryPort entityDataService;
+    private final EntityRecordPort entityDataService;
     private final ProjectEntityMutationExecutor mutationExecutor;
     private final ProjectMemberChangeRuleSupport rules;
     private final ProjectMemberChangeTraceSupport traceSupport;

@@ -1,9 +1,9 @@
 package com.workflow.entity.permission.application;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.TaskCapability;
+import com.workflow.port.process.ProcessTaskPermissionPort;
+import com.workflow.port.process.ProcessTaskPermissionPort.RecordCoordinates;
+import com.workflow.port.process.ProcessTaskPermissionPort.TaskCapability;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,7 @@ import static org.mockito.Mockito.*;
 class TaskCapabilityDisplayBatchTest {
     @Test
     void pageUsesOneLazyBatchAndSubmissionsAlwaysRecheck() {
-        var port = mock(ProcessTaskAccessPort.class);
+        var port = mock(ProcessTaskPermissionPort.class);
         var lookup = new CurrentProcessTaskAssigneeLookup(port);
         var user = user("alice");
         var rows = java.util.stream.IntStream.range(0, 50).mapToObj(index -> row("r" + index)).toList();
@@ -44,7 +44,7 @@ class TaskCapabilityDisplayBatchTest {
 
     @Test
     void emptyCapabilitiesFailClosedAndScopeDoesNotLeakOnExceptionOrAcrossUsers() {
-        var port = mock(ProcessTaskAccessPort.class);
+        var port = mock(ProcessTaskPermissionPort.class);
         var lookup = new CurrentProcessTaskAssigneeLookup(port);
         var row = row("r1");
         var alice = user("alice");

@@ -5,8 +5,8 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.record.S
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.model.IdentityUser;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.ForbiddenException;
 import org.flowable.engine.TaskService;
 import org.flowable.identitylink.api.IdentityLink;
@@ -36,7 +36,7 @@ class TaskIdentityAccessServiceTest {
     @Mock private TaskService taskService;
     @Mock private SysGroupMapper groupMapper;
     @Mock private SysRoleMapper roleMapper;
-    @Mock private IdentityDirectoryPort identityDirectoryPort;
+    @Mock private SysUserLookupPort identityDirectoryPort;
     @Mock private Task task;
     private TaskIdentityAccessService service;
 

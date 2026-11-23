@@ -9,19 +9,19 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.dictionary.port.DictionaryMigrationPort;
+import com.workflow.port.migration.SysDictMigrationPort;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -166,7 +166,7 @@ public class ConfigMigrationImportApplyService {
     private final UiConfigReleaseService uiConfigReleaseService;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final UiViewCompositionService viewCompositionService;
-    private final DictionaryMigrationPort dictionaryAssets;
+    private final SysDictMigrationPort dictionaryAssets;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ConfigMigrationProcessLockCoordinator processLockCoordinator;
     private final ConfigMigrationAssetService assetService;
@@ -179,7 +179,7 @@ public class ConfigMigrationImportApplyService {
     private final ObjectMapper objectMapper;
     private final DatabaseQueryDialect queryDialect;
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.contracts.migration.port.EntityExcelMigrationPort excelConfigurations;
+    private com.workflow.port.migration.EntityExcelMigrationPort excelConfigurations;
 
     /**
      * 发布完整导入批次，将包内全部资产配置原子应用到目标环境。
@@ -369,22 +369,22 @@ public class ConfigMigrationImportApplyService {
     }
 
     /** 只提交已预检、实际需要应用的 ENTITY 分区，避免把一致复用资产扩大成延期校验。 */
-    private com.workflow.contracts.migration.port.EntityExcelMigrationPort.PublicationScope openExcelPublicationScope(List<ConfigImportItem> items) {
+    private com.workflow.port.migration.EntityExcelMigrationPort.PublicationScope openExcelPublicationScope(List<ConfigImportItem> items) {
         Map<String, Map<String, Object>> snapshots = new LinkedHashMap<>();
         for (ConfigImportItem item : items) {
             Map<String, Object> snapshot = readMap(item.getSnapshotJson());
             if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())
-                    && snapshot.containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION))
+                    && snapshot.containsKey(com.workflow.port.migration.EntityExcelMigrationPort.SECTION))
                 snapshots.put(item.getBusinessKey(), snapshot);
         }
-        if (snapshots.isEmpty()) return com.workflow.contracts.migration.port.EntityExcelMigrationPort.PublicationScope.NONE;
+        if (snapshots.isEmpty()) return com.workflow.port.migration.EntityExcelMigrationPort.PublicationScope.NONE;
         if (excelConfigurations == null) throw new IllegalStateException("Excel 配置迁移适配器不可用");
         return excelConfigurations.openPublicationScope(snapshots);
     }
 
     /** 目标实体、字段、表单已完成普通发布后，Excel 用本地身份重建并刷新最终迁移基线。 */
     private void applyExcelConfiguration(EntityContext context) {
-        if (!context.snapshot().containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION)) return;
+        if (!context.snapshot().containsKey(com.workflow.port.migration.EntityExcelMigrationPort.SECTION)) return;
         excelConfigurations.applyPublished(context.entity().getEntityCode(), context.snapshot());
         assetService.recordPublished(context.entity().getId());
     }
@@ -759,7 +759,7 @@ public class ConfigMigrationImportApplyService {
         excelScope.close();
         for (EntityRollbackContext rollback : entityRollbacks) {
             applyExcelConfiguration(rollback.context());
-            if (rollback.context().snapshot().containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION)) {
+            if (rollback.context().snapshot().containsKey(com.workflow.port.migration.EntityExcelMigrationPort.SECTION)) {
                 excelConfigurations.removeAddedSchemes(rollback.context().entity().getEntityCode(),
                         rollback.context().snapshot(), readMap(rollback.originalItem().getSnapshotJson()));
                 assetService.recordPublished(rollback.context().entity().getId());

@@ -1,7 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.contracts.process.port.ProcessRuntimePort;
+import com.workflow.port.process.EntityBoundProcessPort;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
@@ -93,8 +93,8 @@ class EntityDataMutationDeleteGuardTest {
                 mock(EntityRelationRuntimeService.class);
         EntityMultiValueRuntimeService multiValueRuntimeService =
                 mock(EntityMultiValueRuntimeService.class);
-        ProcessRuntimePort processRuntimePort =
-                mock(ProcessRuntimePort.class);
+        EntityBoundProcessPort processRuntimePort =
+                mock(EntityBoundProcessPort.class);
         SysUserService sysUserService =
                 mock(SysUserService.class);
         EntityPublishedSnapshotService snapshotService =

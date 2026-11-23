@@ -1,10 +1,10 @@
 package com.workflow.entity.definition.application;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ public class EntityStatusService {
     
     private final EntityStatusMapper entityStatusMapper;
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
-    private final com.workflow.contracts.process.port.ProcessCatalogPort processCatalogPort;
+    private final com.workflow.port.process.ProcessDefinitionConfigPort processCatalogPort;
     
     /**
      * 查询实体的状态列表

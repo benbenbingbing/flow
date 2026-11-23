@@ -1,7 +1,7 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.form.model.EntityFormBinding;
+import com.workflow.port.entity.form.model.EntityFormBinding;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -17,7 +17,8 @@ class EntityFormRuntimeAdapterTest {
     private final UiConfigReleaseService releases = mock(UiConfigReleaseService.class);
     private final EntityFormRuntimeAdapter adapter = new EntityFormRuntimeAdapter(
             mock(EntityDefinitionMapper.class), mock(EntityFormMapper.class), releases,
-            new ObjectMapper());
+            new ObjectMapper(), new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                    .getBeanProvider(NewEntityRecordFormResolver.class));
 
     @Test
     void newDataAcceptsOldProcessCoordinatesWhenCurrentFormExists() {

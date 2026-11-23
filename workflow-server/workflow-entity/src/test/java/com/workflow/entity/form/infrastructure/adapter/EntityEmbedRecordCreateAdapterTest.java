@@ -14,12 +14,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.embed.EmbedRecordCreatePort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -49,7 +49,7 @@ class EntityEmbedRecordCreateAdapterTest {
     private UiConfigReleaseService releaseService;
     private EntityDefinitionMapper definitionMapper;
     private PublishedFormSubmissionService formSubmissionService;
-    private EntityMutationPort mutationPort;
+    private TrustedEntityRecordMutationPort mutationPort;
     private EntityEmbedRecordCreateAdapter adapter;
     private EntityForm form;
 
@@ -59,7 +59,7 @@ class EntityEmbedRecordCreateAdapterTest {
         releaseService = mock(UiConfigReleaseService.class);
         definitionMapper = mock(EntityDefinitionMapper.class);
         formSubmissionService = mock(PublishedFormSubmissionService.class);
-        mutationPort = mock(EntityMutationPort.class);
+        mutationPort = mock(TrustedEntityRecordMutationPort.class);
         adapter = new EntityEmbedRecordCreateAdapter(
                 capabilityService, releaseService, definitionMapper,
                 formSubmissionService, mutationPort);
@@ -105,7 +105,7 @@ class EntityEmbedRecordCreateAdapterTest {
 
     @Test
     void rechecksPermissionAndPinnedReleaseThenUsesUnifiedMutationPort() {
-        com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreatedRecord result = adapter.create(command());
+        com.workflow.port.embed.EmbedRecordCreatePort.CreatedRecord result = adapter.create(command());
 
         assertEquals("record-1", result.recordId());
         assertNull(result.recordVersion());
@@ -133,7 +133,7 @@ class EntityEmbedRecordCreateAdapterTest {
 
     @Test
     void saveAndStartUsesServerTrustedTopLevelProcessFlag() {
-        adapter.create(new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand(
+        adapter.create(new com.workflow.port.embed.EmbedRecordCreatePort.CreateCommand(
                 command().target(), command().data(),
                 command().idempotencyRecordId(), true));
 
@@ -195,9 +195,9 @@ class EntityEmbedRecordCreateAdapterTest {
                 EntityMutationOperationType.CREATE, submitted, 1,
                 null, true, false));
 
-        com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand command =
-                new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand(
-                        new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.Target(
+        com.workflow.port.embed.EmbedRecordCreatePort.CreateCommand command =
+                new com.workflow.port.embed.EmbedRecordCreatePort.CreateCommand(
+                        new com.workflow.port.embed.EmbedRecordCreatePort.Target(
                                 "work_order", "form-1", "form-release-4", 4),
                         submitted, "idem-1");
 
@@ -255,7 +255,7 @@ class EntityEmbedRecordCreateAdapterTest {
     @Test
     void adapterMustJoinOuterEmbedBusinessTransaction() throws Exception {
         Method method = EntityEmbedRecordCreateAdapter.class.getMethod(
-                "create", com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand.class);
+                "create", com.workflow.port.embed.EmbedRecordCreatePort.CreateCommand.class);
         Transactional transactional = method.getAnnotation(Transactional.class);
 
         assertEquals(Propagation.MANDATORY, transactional.propagation());
@@ -268,9 +268,9 @@ class EntityEmbedRecordCreateAdapterTest {
         verify(mutationPort, never()).execute(any());
     }
 
-    private static com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand command() {
-        return new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand(
-                new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.Target(
+    private static com.workflow.port.embed.EmbedRecordCreatePort.CreateCommand command() {
+        return new com.workflow.port.embed.EmbedRecordCreatePort.CreateCommand(
+                new com.workflow.port.embed.EmbedRecordCreatePort.Target(
                         "work_order", "form-1", "form-release-4", 4),
                 Map.of("title", "forced-value"), "idem-1");
     }

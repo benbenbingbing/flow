@@ -224,7 +224,7 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
             """)
     List<com.workflow.process.task.infrastructure.persistence.record.ActionableTaskSummaryRow> selectActionableTaskSummaries(
             @Param("userId") String userId,
-            @Param("records") List<com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates> records);
+            @Param("records") List<com.workflow.port.process.ProcessTaskPermissionPort.RecordCoordinates> records);
 
     /**
      * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。

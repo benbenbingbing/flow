@@ -3,8 +3,8 @@ package com.workflow.service;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 
 import com.workflow.process.definition.application.port.FlowActionDesignPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -50,8 +50,8 @@ class ProcessDefinitionServicePublishTest {
                 mock(ProcessBpmnPublishSanitizer.class);
         FlowActionDesignPort actionDesignPort =
                 mock(FlowActionDesignPort.class);
-        MigrationAssetPort migrationAssetHandler =
-                mock(MigrationAssetPort.class);
+        ConfigMigrationAssetPort migrationAssetHandler =
+                mock(ConfigMigrationAssetPort.class);
         ProcessDefinitionPreflightService preflightService =
                 mock(ProcessDefinitionPreflightService.class);
         EntityCodeCatalogPort entityCodeCatalogPort =

@@ -4,8 +4,8 @@ import org.springframework.util.StringUtils;
 
 import java.util.Map;
 import java.util.List;
-import com.workflow.contracts.entity.port.EntityUserPathPort.Step;
-import com.workflow.contracts.entity.port.EntityUserPathPort.Version;
+import com.workflow.port.entity.EntityUserPathPort.Step;
+import com.workflow.port.entity.EntityUserPathPort.Version;
 import java.util.Set;
 import java.util.regex.Pattern;
 

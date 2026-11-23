@@ -2,15 +2,14 @@ package com.workflow.entity.data.infrastructure.adapter;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.contracts.entity.mutation.model.EntitySubmissionCommand;
-import com.workflow.contracts.entity.mutation.port.EntitySubmissionPort;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntitySubmissionCommand;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -34,13 +33,12 @@ import java.util.Objects;
 /** Java 调用复用标准实体表单编排，回执与实体和流程引擎变更一起提交。 */
 @Component
 @RequiredArgsConstructor
-public class EntitySubmissionAdapter implements EntitySubmissionPort {
+public class EntitySubmissionAdapter {
     private final EntityDataActionService actions;
     private final EntityMutationReceiptService receipts;
     private final CurrentActorPort actors;
     private final ObjectMapper json;
 
-    @Override
     @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public EntityRecordData submit(EntitySubmissionCommand command) {
         var actor = actors.current();
@@ -53,7 +51,10 @@ public class EntitySubmissionAdapter implements EntitySubmissionPort {
                 .sourceId("EntitySubmission").trace(trace, trace + ":receipt").build();
         var operation = command.recordId() == null ? EntityMutationOperationType.CREATE : EntityMutationOperationType.UPDATE;
         Map<String, Object> input = json.convertValue(command, new TypeReference<>() { });
-        var envelope = new EntityMutationCommand(trace, command.entityCode(), command.recordId(), operation, input, context);
+        // 省略空修订标记，已持久化的升级前回执仍可用相同命令重放。
+        input.remove("expectedRevision");
+        var envelope = new EntityMutationCommand(trace, command.entityCode(), command.recordId(), operation, input,
+                context, command.expectedRevision());
         // 回执在表单校验前重放，确保重试已发起或已进入新一轮的记录不会再操作旧状态。
         var replay = receipts.acquire(envelope);
         if (replay != null) return json.convertValue(replay.record(), EntityRecordData.class);
@@ -86,7 +87,8 @@ public class EntitySubmissionAdapter implements EntitySubmissionPort {
             request.put("restartProcess", true);
             request.put("previousProcessInstanceId", command.previousProcessInstanceId());
         }
-        return actions.updateFromPort(command.entityCode(), command.recordId(), command.listKey(), request, trace);
+        return actions.updateFromPort(command.entityCode(), command.recordId(), command.listKey(), request, trace,
+                command.expectedRevision());
     }
 
     /** 返回值必须仍指向本次实体和要求的流程轮次，事件替换不应被记成提交成功。 */

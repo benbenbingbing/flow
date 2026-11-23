@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchResult;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
 import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
 import com.workflow.core.error.BusinessForbiddenException;
@@ -81,7 +81,7 @@ class UiViewCompositionActionServiceTest {
     @Mock
     private EntityActionCapabilityService capabilityService;
     @Mock
-    private EntityMutationPort mutationPort;
+    private TrustedEntityRecordMutationPort mutationPort;
     @Mock
     private EntityAggregateWriter aggregateWriter;
     @Mock
@@ -127,14 +127,14 @@ class UiViewCompositionActionServiceTest {
                 org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(invocation ->
                         new UiViewCompositionActionReceiptService.AcquireResult(
-                                new com.workflow.contracts.entity.mutation.model.EntityMutationCommand(
+                                new com.workflow.port.entity.mutation.model.EntityMutationCommand(
                                         "batch-receipt",
                                         "source_entity",
                                         "source-1",
-                                        com.workflow.contracts.entity.mutation.model.EntityMutationOperationType.UPDATE,
+                                        com.workflow.port.entity.mutation.model.EntityMutationOperationType.UPDATE,
                                         Map.of(),
-                                        com.workflow.contracts.entity.mutation.model.EntityMutationContext.builder(
-                                                com.workflow.contracts.entity.mutation.model.EntityMutationSourceType.FORM,
+                                        com.workflow.port.entity.mutation.model.EntityMutationContext.builder(
+                                                com.workflow.port.entity.mutation.model.EntityMutationSourceType.FORM,
                                                 "TEST",
                                                 "测试")
                                                 .trace(

@@ -8,7 +8,7 @@
 
 新建扩展应从所属能力的 canonical `spi` 包导入接口，例如流程动作使用
 `com.workflow.contracts.process.action.spi`，实体 UI 数据源使用
-`com.workflow.contracts.entity.ui.spi`。跨模块单一能力从对应 `port` 包导入。
+`com.workflow.contracts.entity.ui.spi`。跨模块能力接口从 `com.workflow.port.<领域>` 导入。
 
 本目录中的示例直接实现 canonical `port`/`spi`，不通过旧接口建立间接继承关系。
 已钉定的 UI Provider 不得仅为换包而重新编译或改名：其默认制品摘要包含实现 class
@@ -46,7 +46,7 @@
 | `ProjectCustomOutboxEventHandler` | `OutboxEventHandlerProvider` | `PROJECT_CUSTOM_OUTBOX` | 只打印事件元数据 |
 
 `PROJECT_LOG` 渠道当前尚未出现在知会前端配置中，内置发布器默认仍使用
-`IN_APP`。`PROJECT_CUSTOM_OUTBOX` 需要业务代码通过 `OutboxPublishPort` 发布同名
+`IN_APP`。`PROJECT_CUSTOM_OUTBOX` 需要业务代码通过 `WorkflowOutboxEventPort` 发布同名
 主题。文件存储可用 `file.storage.type=PROJECT_LOG_ONLY` 验证调用，但不能用于
 保存真实文件。
 
@@ -107,8 +107,8 @@ Spring Bean，方便后续补入口时直接验证：
 
 | 类 | 接口 | 用途 |
 | --- | --- | --- |
-| `ProjectCustomMigrationAssetHandler` | `MigrationAssetPort` | 发布时登记配置迁移资产 |
-| `ProjectCustomBootstrapJobCoordinator` | `BootstrapJobPort` | 多实例启动任务互斥 |
+| `ProjectCustomMigrationAssetHandler` | `ConfigMigrationAssetPort` | 发布时登记配置迁移资产 |
+| `ProjectCustomBootstrapJobCoordinator` | `WorkflowBootstrapJobPort` | 多实例启动任务互斥 |
 | `ProjectCustomUiExtensionCatalogAdapter` | `UiExtensionCatalogPort` | 替换 UI 扩展目录读取来源 |
 
 ## 流程动作自定义失败策略
@@ -145,7 +145,7 @@ Spring Bean，方便后续补入口时直接验证：
 ## 范围说明
 
 本清单不包含 MyBatis Mapper、普通 Service 接口，以及
-`EntityMutationPort`、`ProcessRuntimePort`、`IdentityDirectoryPort` 等跨模块
+`TrustedEntityRecordMutationPort`、`EntityBoundProcessPort`、`SysUserLookupPort` 等跨模块
 架构端口。这些类型用于隔离模块和基础设施，不按编码/类型向业务配置开放；伪造
 空实现会改变平台核心语义，不属于本次“可配置后端扩展”。
 

@@ -2,10 +2,10 @@ package com.workflow.entity.form.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.model.ProcessCatalogItem;
-import com.workflow.contracts.process.port.ProcessCatalogPort;
-import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
+import com.workflow.port.process.model.ProcessCatalogItem;
+import com.workflow.port.process.ProcessDefinitionConfigPort;
+import com.workflow.port.process.ProcessRecordPermissionPort;
+import com.workflow.port.process.ProcessTaskPermissionPort.ActionableTaskContext;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.logging.LogValue;
@@ -71,8 +71,8 @@ public class EntityFormActionService {
     private final EntityActionCapabilityService capabilityService;
     private final EntityFormActionConfigPolicy configPolicy;
     private final UiConfigReleaseService releaseService;
-    private final ProcessCatalogPort processCatalogPort;
-    private final ProcessRecordReadAccessPort processRecordReadAccessPort;
+    private final ProcessDefinitionConfigPort processCatalogPort;
+    private final ProcessRecordPermissionPort processRecordReadAccessPort;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 

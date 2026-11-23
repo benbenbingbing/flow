@@ -1,14 +1,14 @@
 package com.workflow.admin.extension.action.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
-import com.workflow.contracts.process.action.model.FlowActionDefinitionDescriptor;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.process.ProcessActionDefinitionPort;
+import com.workflow.port.process.action.model.FlowActionDefinitionDescriptor;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.admin.extension.action.api.request.FlowActionDefinitionRequest;
 import com.workflow.admin.extension.action.api.response.FlowActionHandlerOption;
@@ -43,7 +43,7 @@ import java.util.Set;
  */
 @Service
 @RequiredArgsConstructor
-public class FlowActionCatalogService implements FlowActionCatalogPort {
+public class FlowActionCatalogService implements ProcessActionDefinitionPort {
 
     private final FlowActionDefinitionMapper definitionMapper;
     private final FlowActionDefinitionEntityMapper definitionEntityMapper;

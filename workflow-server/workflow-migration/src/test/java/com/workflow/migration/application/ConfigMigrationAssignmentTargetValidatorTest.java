@@ -1,6 +1,8 @@
 package com.workflow.migration.application;
 
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.port.system.SysPositionPort;
+
+import com.workflow.port.system.SysOrganizationPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
@@ -20,8 +22,8 @@ class ConfigMigrationAssignmentTargetValidatorTest {
     @Test
     void resolverRequiresTargetRegistrationForEveryUsageWithoutExecutingIt() {
         PersonResolverRuntimeService runtime = mock(PersonResolverRuntimeService.class);
-        OrganizationPositionDirectoryPort directory = mock(OrganizationPositionDirectoryPort.class);
-        var validator = new ConfigMigrationAssignmentTargetValidator(runtime, directory, List.of());
+        SysOrganizationPort directory = mock(SysOrganizationPort.class);
+        var validator = new ConfigMigrationAssignmentTargetValidator(runtime, directory, mock(SysPositionPort.class), List.of());
         Map<String, Object> dependency = resolver("people", List.of(reference("ASSIGNEE", Map.of()),
                 reference("MULTI_INSTANCE", Map.of())));
         when(runtime.supportsConfigured("targetPeople", PersonResolveUsage.ASSIGNEE)).thenReturn(true);
@@ -41,7 +43,7 @@ class ConfigMigrationAssignmentTargetValidatorTest {
         when(rules.resolverCode()).thenReturn("relativeOrgPosition");
         when(runtime.supportsConfigured("relativeOrgPosition", PersonResolveUsage.ASSIGNEE)).thenReturn(true);
         var validator = new ConfigMigrationAssignmentTargetValidator(runtime,
-                mock(OrganizationPositionDirectoryPort.class), List.of(rules));
+                mock(SysOrganizationPort.class), mock(SysPositionPort.class), List.of(rules));
         Map<String, Object> params = Map.of("positionCode", "SOURCE_POSITION", "hierarchy",
                 Map.of("mode", "BUSINESS_LEVEL", "businessLevelCode", "SOURCE_LEVEL"));
         var dependency = resolver("relativeOrgPosition", List.of(reference("ASSIGNEE", params)));
@@ -58,7 +60,7 @@ class ConfigMigrationAssignmentTargetValidatorTest {
         PersonResolverRuntimeService runtime = mock(PersonResolverRuntimeService.class);
         when(runtime.supportsConfigured("entityUserReferenceField", PersonResolveUsage.ASSIGNEE)).thenReturn(true);
         var validator = new ConfigMigrationAssignmentTargetValidator(runtime,
-                mock(OrganizationPositionDirectoryPort.class), List.of());
+                mock(SysOrganizationPort.class), mock(SysPositionPort.class), List.of());
         var dependency = resolver("entityUserReferenceField", List.of(reference("ASSIGNEE",
                 Map.of("schemaVersion", 1, "entityCode", "expense", "fieldCode", "reviewer"))));
         assertTrue(validator.resolved(dependency, "PERSON_RESOLVER", "entityUserReferenceField",
@@ -77,7 +79,7 @@ class ConfigMigrationAssignmentTargetValidatorTest {
         ConfigMigrationPackageService service = mock(ConfigMigrationPackageService.class, CALLS_REAL_METHODS);
         PersonResolverRuntimeService runtime = mock(PersonResolverRuntimeService.class);
         var validator = new ConfigMigrationAssignmentTargetValidator(runtime,
-                mock(OrganizationPositionDirectoryPort.class), List.of());
+                mock(SysOrganizationPort.class), mock(SysPositionPort.class), List.of());
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
         ReflectionTestUtils.setField(service, "documents", new ConfigMigrationPackageDocumentSupport(json));
         ReflectionTestUtils.setField(service, "assignmentTargetValidator", validator);

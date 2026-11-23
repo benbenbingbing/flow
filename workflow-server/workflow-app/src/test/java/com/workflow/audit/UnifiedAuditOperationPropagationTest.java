@@ -2,17 +2,17 @@ package com.workflow.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.infrastructure.aop.SystemAuditAspect;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.process.ProcessActionDefinitionPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.mutation.application.EntityMutationPipeline;
 import com.workflow.entity.mutation.application.EntityMutationTransactionExecutor;
 import com.workflow.core.web.CorrelationContext;
@@ -82,7 +82,7 @@ public class UnifiedAuditOperationPropagationTest {
     }
 
     private EntityMutationPipeline mutationPipeline(
-            SystemAuditPort auditPort) {
+            SystemOperationLogPort auditPort) {
         EntityMutationTransactionExecutor transactionExecutor =
                 mock(EntityMutationTransactionExecutor.class);
         EntityMutationCommand command = mutationCommand();
@@ -103,7 +103,7 @@ public class UnifiedAuditOperationPropagationTest {
     }
 
     private FlowActionExecutionService flowActionService(
-            SystemAuditPort auditPort) {
+            SystemOperationLogPort auditPort) {
         FlowActionExecutionMapper mapper =
                 mock(FlowActionExecutionMapper.class);
         doAnswer(invocation -> {
@@ -115,7 +115,7 @@ public class UnifiedAuditOperationPropagationTest {
                 mapper,
                 mock(FlowActionMapper.class),
                 new ObjectMapper().findAndRegisterModules(),
-                mock(FlowActionCatalogPort.class),
+                mock(ProcessActionDefinitionPort.class),
                 auditPort,
                 mock(com.workflow.process.action.application.FlowActionFailureStrategyCatalog.class));
     }
@@ -201,7 +201,7 @@ public class UnifiedAuditOperationPropagationTest {
         }
     }
 
-    static final class RecordingAuditPort implements SystemAuditPort {
+    static final class RecordingAuditPort implements SystemOperationLogPort {
         private final List<SystemAuditEvent> events = new ArrayList<>();
 
         @Override

@@ -1,7 +1,7 @@
 package com.workflow.embed.management.application;
 
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit.Operator;

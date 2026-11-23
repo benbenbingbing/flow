@@ -1,8 +1,8 @@
 package com.workflow.process.assignment.extension;
 
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.identity.model.GroupMemberFilter;
-import com.workflow.contracts.identity.port.GroupMemberTagPort;
+import com.workflow.port.system.identity.model.GroupMemberFilter;
+import com.workflow.port.system.SysUserGroupTagPort;
 import com.workflow.contracts.process.assignment.model.*;
 import com.workflow.contracts.process.assignment.spi.*;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +14,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class GroupMembersByTagPersonResolver implements PersonResolverProvider, PersonResolverConfigurationValidationProvider {
     public static final String CODE = "groupMembersByTag";
-    private final GroupMemberTagPort directory;
+    private final SysUserGroupTagPort directory;
 
     @Override public ExtensionImplementationOrigin implementationOrigin() { return ExtensionImplementationOrigin.PLATFORM; }
     @Override public String resolverCode() { return CODE; }
@@ -28,15 +28,15 @@ public class GroupMembersByTagPersonResolver implements PersonResolverProvider, 
         if (!request.multiInstance() && !"CANDIDATE".equals(request.assignmentMode())) {
             throw new IllegalArgumentException("用户组标签普通审批必须使用候选人模式");
         }
-        directory.validate(filters(request.extraParams()));
+        directory.validateTags(filters(request.extraParams()));
     }
 
     /** 每次解析读取当前目录；任务落地后由引擎保存候选用户，不保留可绕过标签的整组候选关系。 */
     @Override public PersonResolveResult resolve(PersonResolveRequest request) {
         try {
-            return PersonResolveResult.users(directory.resolve(filters(request.extraParams())));
+            return PersonResolveResult.users(directory.resolveMembersByTags(filters(request.extraParams())));
         } catch (IllegalArgumentException error) {
-            throw new com.workflow.contracts.process.assignment.error.PersonResolutionException("GROUP_TAG_SCOPE_INVALID", error.getMessage());
+            throw new com.workflow.port.process.assignment.error.PersonResolutionException("GROUP_TAG_SCOPE_INVALID", error.getMessage());
         }
     }
 

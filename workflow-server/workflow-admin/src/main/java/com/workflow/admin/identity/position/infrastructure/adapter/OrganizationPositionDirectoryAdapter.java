@@ -10,17 +10,17 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
-import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.error.OrganizationPositionErrorCode;
-import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
-import com.workflow.contracts.identity.position.model.OrganizationUnitStateView;
-import com.workflow.contracts.identity.position.model.PositionDefinitionView;
-import com.workflow.contracts.identity.position.model.PositionDirectoryResultCode;
-import com.workflow.contracts.identity.position.model.PositionHolderResolution;
-import com.workflow.contracts.identity.position.model.PositionHolderView;
+import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.port.system.SysPositionPort;
+import com.workflow.port.system.identity.position.error.OrganizationPositionErrorCode;
+import com.workflow.port.system.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.port.system.identity.position.model.OrganizationUnitStateView;
+import com.workflow.port.system.identity.position.model.PositionDefinitionView;
+import com.workflow.port.system.identity.position.model.PositionDirectoryResultCode;
+import com.workflow.port.system.identity.position.model.PositionHolderResolution;
+import com.workflow.port.system.identity.position.model.PositionHolderView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -41,7 +41,7 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 public class OrganizationPositionDirectoryAdapter
-        implements OrganizationPositionDirectoryPort {
+        implements SysPositionPort {
 
     private static final String BUSINESS_LEVEL_DICT =
             "organization_business_level";
@@ -59,7 +59,6 @@ public class OrganizationPositionDirectoryAdapter
      * @param idOrUsername ID或用户名，后续用于捕获{@code initiator}快照时匹配或展示
      * @return 捕获后的{@code initiator}快照结果，供调用方继续处理
      */
-    @Override
     public InitiatorOrganizationSnapshot captureInitiatorSnapshot(
             String idOrUsername) {
         SysUser user = null;
@@ -154,7 +153,6 @@ public class OrganizationPositionDirectoryAdapter
      * @param organizationUnitId 组织单元ID，后续用于校验并获取活动组织单元时定位或关联目标
      * @return 校验并获取后的活动组织单元结果，供调用方继续处理
      */
-    @Override
     public OrganizationUnitStateView requireActiveOrganizationUnit(
             String organizationUnitId) {
         SysOrganization unit = StringUtils.hasText(organizationUnitId)
@@ -275,7 +273,6 @@ public class OrganizationPositionDirectoryAdapter
      * @param businessLevelCode 业务层级编码，后续用于判断是否组织业务层级启用时定位或关联目标
      * @return 组织业务层级启用条件成立时为 true，否则为 false
      */
-    @Override
     public boolean isOrganizationBusinessLevelEnabled(
             String businessLevelCode) {
         return StringUtils.hasText(businessLevelCode)
@@ -289,7 +286,6 @@ public class OrganizationPositionDirectoryAdapter
      *
      * @return 组织业务层级视图集合，供调用方遍历或展示
      */
-    @Override
     public List<OrganizationBusinessLevelView>
             listEnabledOrganizationBusinessLevels() {
         return dictItemMapper.selectEnabledByDictCode(BUSINESS_LEVEL_DICT)

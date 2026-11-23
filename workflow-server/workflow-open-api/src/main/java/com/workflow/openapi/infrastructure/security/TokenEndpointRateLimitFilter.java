@@ -6,12 +6,12 @@ import com.workflow.openapi.infrastructure.config.OpenIntegrationProperties;
 import com.workflow.openapi.security.IntegrationClientNetworkPolicy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.error.RateLimitExceededException;
 import com.workflow.core.logging.LogValue;
 import jakarta.servlet.FilterChain;
@@ -47,7 +47,7 @@ public class TokenEndpointRateLimitFilter
     private final ObjectMapper objectMapper;
     private final IntegrationClientNetworkPolicy networkPolicy;
     private final OpenIntegrationClientAddressResolver addressResolver;
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     private final IntegrationCredentialUsageService credentialUsageService;
 
     /**
@@ -67,7 +67,7 @@ public class TokenEndpointRateLimitFilter
             ObjectMapper objectMapper,
             IntegrationClientNetworkPolicy networkPolicy,
             OpenIntegrationClientAddressResolver addressResolver,
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             IntegrationCredentialUsageService credentialUsageService) {
         this.rateLimitService = rateLimitService;
         this.properties = properties;

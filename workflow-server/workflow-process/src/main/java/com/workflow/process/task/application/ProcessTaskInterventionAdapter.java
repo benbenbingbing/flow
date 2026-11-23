@@ -1,8 +1,7 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.process.task.model.AddSignType;
-import com.workflow.contracts.process.task.model.TaskInterventionModels.*;
-import com.workflow.contracts.process.task.port.ProcessTaskInterventionPort;
+import com.workflow.port.process.task.model.AddSignType;
+import com.workflow.port.process.task.model.TaskInterventionModels.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -11,17 +10,15 @@ import java.util.List;
 /** 复用页面的任务干预服务，使 Java 调用与现有配置、锁和幂等规则一致。 */
 @Component
 @RequiredArgsConstructor
-public class ProcessTaskInterventionAdapter implements ProcessTaskInterventionPort {
+public class ProcessTaskInterventionAdapter {
     private final TaskHistoryReturnService history;
     private final TaskAddSignService addSign;
 
-    @Override
     public List<HistoryReturnTarget> listHistoryReturnTargets(String taskId) {
         return history.targets(taskId).stream().map(target -> new HistoryReturnTarget(target.activityInstanceId(),
                 target.nodeId(), target.nodeName(), target.resubmit())).toList();
     }
 
-    @Override
     public HistoryReturnResult returnToHistory(HistoryReturnCommand command) {
         var form = command.formReference();
         var result = history.execute(command.taskId(), new TaskHistoryReturnService.Request(
@@ -30,7 +27,6 @@ public class ProcessTaskInterventionAdapter implements ProcessTaskInterventionPo
         return new HistoryReturnResult(result.processInstanceId(), result.targetNodeId(), result.requestId());
     }
 
-    @Override
     public AddSignPreview previewAddSign(String taskId, AddSignType type, List<String> userIds) {
         return addSign.previewForCaller(taskId, userIds, type == null ? null : type.name());
     }

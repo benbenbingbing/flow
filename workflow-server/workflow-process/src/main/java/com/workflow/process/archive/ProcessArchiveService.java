@@ -3,8 +3,10 @@ package com.workflow.process.archive;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.workflow.contracts.history.*;
-import com.workflow.contracts.history.HistoryImportModels.*;
+import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.EntityHistoryImportPort;
+import com.workflow.port.migration.ProcessArchiveInstancePort;
+import com.workflow.port.migration.history.model.HistoryImportModels.*;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.admin.authorization.application.PermissionUtil;
@@ -22,7 +24,7 @@ import java.util.*;
 /** 保存来源事实与重绘图的不可变展示档案；查看时再次执行实体数据范围授权。 */
 @Service
 @RequiredArgsConstructor
-public class ProcessArchiveService implements ProcessArchivePort {
+public class ProcessArchiveService implements ProcessArchiveInstancePort {
     private final ProcessVersionHistoryMapper versions;
     private final EntityHistoryImportPort entities;
     private final com.workflow.process.archive.infrastructure.persistence.ProcessArchiveMapper mapper;

@@ -1,10 +1,10 @@
 package com.workflow.biz.project.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -17,7 +17,7 @@ import static org.mockito.Mockito.*;
 class ProjectEntityMutationExecutorTest {
     @Test
     void preservesAuditWireNameAndIgnoresHostPresentationFieldsInTheReceipt() {
-        EntityMutationPort port = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort port = mock(TrustedEntityRecordMutationPort.class);
         Map<String, Object> receipt = Map.of(
                 "id", "project-1", "entityCode", "project", "create_by", "creator-1",
                 "data", Map.of("budget", 100), "runtimeContext", "host-only-context",

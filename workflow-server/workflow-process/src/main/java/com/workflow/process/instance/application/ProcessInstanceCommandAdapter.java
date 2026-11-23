@@ -1,9 +1,8 @@
 package com.workflow.process.instance.application;
 
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.instance.model.*;
-import com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort;
-import com.workflow.contracts.process.model.ProcessCommandReceipt;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.instance.model.*;
+import com.workflow.port.process.model.ProcessCommandReceipt;
 import com.workflow.process.command.application.ProcessCommandExecutor;
 import com.workflow.process.command.application.ProcessCommandFailures;
 import com.workflow.process.command.application.ProcessInvocationAccess;
@@ -18,7 +17,7 @@ import org.springframework.stereotype.Component;
 /** 实例控制共享原平台业务执行路径，外层统一增加实际身份、事务回执与稳定错误。 */
 @Component
 @RequiredArgsConstructor
-public class ProcessInstanceCommandAdapter implements ProcessInstanceCommandPort {
+public class ProcessInstanceCommandAdapter {
     private final ProcessCommandExecutor commands;
     private final ProcessInvocationAccess access;
     private final TaskActionService taskActions;
@@ -28,7 +27,6 @@ public class ProcessInstanceCommandAdapter implements ProcessInstanceCommandPort
     private final HistoryService history;
 
     /** 撤回仍由原任务应用服务校验所有活动节点、发起人和实体目标状态，不能只删除引擎实例。 */
-    @Override
     public ProcessCommandReceipt withdraw(WithdrawProcessCommand command) {
         access.requireActor();
         return ProcessCommandFailures.translate(command.processInstanceId(), () -> commands.execute(command.meta(),
@@ -40,7 +38,6 @@ public class ProcessInstanceCommandAdapter implements ProcessInstanceCommandPort
     }
 
     /** 原终止服务的错误 Result 必须变为异常，才能阻止回执与外层事务被误当作成功提交。 */
-    @Override
     public ProcessCommandReceipt terminate(TerminateProcessCommand command) {
         access.requireActor();
         return ProcessCommandFailures.translate(command.processInstanceId(), () -> commands.execute(command.meta(),
@@ -59,7 +56,6 @@ public class ProcessInstanceCommandAdapter implements ProcessInstanceCommandPort
      * 接收任务的根变量与引擎推进由原实例服务在同一事务完成；不能在方法外先写变量。
      * 已消费 executionId 的重试先读持久化回执，不重新查找一个后继执行来代替原目标。
      */
-    @Override
     public ReceiveTaskTriggerResult triggerReceiveTask(TriggerReceiveTaskCommand command) {
         access.requireActor();
         ProcessVariablePolicy.requireWritable(command.variables().keySet(), command.processInstanceId());

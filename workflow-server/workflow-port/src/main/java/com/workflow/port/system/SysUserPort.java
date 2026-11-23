@@ -1,0 +1,27 @@
+package com.workflow.port.system;
+
+import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.identity.model.IdentityDirectoryModels.*;
+import java.util.List;
+import java.util.Optional;
+
+/** 用户资料查询与来源同步，业务查询、扩展和同步各自校验调用权限。 */
+public interface SysUserPort {
+    /** 根据用户筛选条件查询目录页。 */
+    UserPage pageUsers(UserQuery query);
+
+    /** 通过准确 ID 批量取目录详情，保持输入顺序去重，最多 100 个。 */
+    List<IdentityUser> findUsersByIds(List<String> userIds);
+
+    /** 通过准确用户名批量取目录详情，保持输入顺序去重，最多 100 个。 */
+    List<IdentityUser> findUsersByUsernames(List<String> usernames);
+
+    /** 保存用户基础快照及携带的扩展，映射、审计与资料一起提交；失败整次回滚。 */
+    IdentitySaveResult saveUser(UserSaveModel model);
+
+    /** 同来源最多 100 个用户，整批原子提交；已有同库事务须为 READ_COMMITTED，由外层决定最终提交。 */
+    List<IdentitySaveResult> saveUsers(List<UserSaveModel> models);
+
+    /** 未建档时为空；未知类型、未授权或对象不可见时抛边界异常。 */
+    <T extends UserExtension> Optional<T> findUserExtension(String userId, Class<T> extensionType);
+}

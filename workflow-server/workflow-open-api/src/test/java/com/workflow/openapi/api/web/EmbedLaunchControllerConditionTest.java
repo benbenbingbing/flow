@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
+import com.workflow.port.embed.EmbedLaunchPort;
 import com.workflow.openapi.application.security.OpenApplicationActorResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -15,8 +15,8 @@ class EmbedLaunchControllerConditionTest {
     void launchControllerIsAbsentWhenOpenApiIsDisabled() {
         new ApplicationContextRunner()
                 .withUserConfiguration(EmbedLaunchController.class)
-                .withBean(EmbedLaunchIssuePort.class,
-                        () -> mock(EmbedLaunchIssuePort.class))
+                .withBean(EmbedLaunchPort.class,
+                        () -> mock(EmbedLaunchPort.class))
                 .withBean(OpenApplicationActorResolver.class,
                         () -> mock(OpenApplicationActorResolver.class))
                 .withPropertyValues(
@@ -44,8 +44,8 @@ class EmbedLaunchControllerConditionTest {
     void launchControllerIsPresentOnlyWhenBothFeaturesAreEnabled() {
         new ApplicationContextRunner()
                 .withUserConfiguration(EmbedLaunchController.class)
-                .withBean(EmbedLaunchIssuePort.class,
-                        () -> mock(EmbedLaunchIssuePort.class))
+                .withBean(EmbedLaunchPort.class,
+                        () -> mock(EmbedLaunchPort.class))
                 .withBean(OpenApplicationActorResolver.class,
                         () -> mock(OpenApplicationActorResolver.class))
                 .withPropertyValues(

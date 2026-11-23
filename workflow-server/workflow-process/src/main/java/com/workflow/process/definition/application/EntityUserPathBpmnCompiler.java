@@ -3,7 +3,7 @@ package com.workflow.process.definition.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.contracts.entity.port.EntityUserPathPort;
+import com.workflow.port.entity.EntityUserPathPort;
 import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

@@ -1,6 +1,6 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.contracts.entity.port.EntityRelationQueryPort;
+import com.workflow.port.entity.EntityRelationPort;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan.InternalPurpose;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationService;
 import com.workflow.entity.data.application.EntityRelationGraphInternalCapabilityService;
@@ -18,7 +18,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
-public class EntityRelationQueryAdapter implements EntityRelationQueryPort {
+public class EntityRelationQueryAdapter implements EntityRelationPort {
     private final EntityRelationGraphInternalCapabilityService capability;
     private final EntityPublishedSnapshotService snapshots;
     private final PublishedRelationPathResolver paths;
@@ -27,7 +27,7 @@ public class EntityRelationQueryAdapter implements EntityRelationQueryPort {
 
     @Override
     @Transactional(readOnly = true)
-    public Result find(String sourceEntityCode, List<String> sourceRecordIds, List<Step> steps,
+    public Result findRelatedRecords(String sourceEntityCode, List<String> sourceRecordIds, List<Step> steps,
             int pageNumber, int pageSize) {
         capability.require(InternalPurpose.BUSINESS_QUERY);
         var source = snapshots.getLatestByEntityCode(sourceEntityCode);

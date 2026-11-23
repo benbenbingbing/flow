@@ -3,7 +3,7 @@ package com.workflow.entity.excel.migration;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
-import com.workflow.contracts.migration.port.EntityExcelMigrationPort;
+import com.workflow.port.migration.EntityExcelMigrationPort;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

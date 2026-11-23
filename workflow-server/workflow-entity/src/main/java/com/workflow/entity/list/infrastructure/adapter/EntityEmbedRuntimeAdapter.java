@@ -3,7 +3,7 @@ package com.workflow.entity.list.infrastructure.adapter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort;
+import com.workflow.port.embed.EmbedListDataPort;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.api.response.EntityListSchemaDTO;
@@ -30,7 +30,7 @@ import org.springframework.util.StringUtils;
  * {@link EntityListRuntimeService} 统一执行。</p>
  */
 @Component
-public class EntityEmbedRuntimeAdapter implements EmbedRuntimeEntityPort {
+public class EntityEmbedRuntimeAdapter implements EmbedListDataPort {
 
     private final EntityListRuntimeService runtimeService;
     private final ObjectMapper objectMapper;

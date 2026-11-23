@@ -1,7 +1,7 @@
 package com.workflow.entity.data.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.Result;

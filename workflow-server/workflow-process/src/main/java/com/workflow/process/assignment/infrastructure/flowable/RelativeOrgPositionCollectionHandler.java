@@ -1,7 +1,7 @@
 package com.workflow.process.assignment.infrastructure.flowable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import com.workflow.contracts.process.assignment.model.PersonPrincipal;
 import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
 import com.workflow.process.assignment.application.AssigneeIncidentRecorder;

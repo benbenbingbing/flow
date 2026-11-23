@@ -1,8 +1,8 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.process.model.CommandMeta;
-import com.workflow.contracts.process.task.model.TaskFormReference;
-import com.workflow.contracts.process.task.model.TaskInterventionModels.HistoryReturnCommand;
+import com.workflow.port.process.model.CommandMeta;
+import com.workflow.port.process.task.model.TaskFormReference;
+import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnCommand;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

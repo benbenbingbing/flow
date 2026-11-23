@@ -19,10 +19,10 @@
 
 ## 跨模块端口
 
-- 实体运行态通过 `ProcessRuntimePort` 发起流程，不直接依赖流程模块实现。
-- 流程模块通过 `EntityRecordPort` 更新实体流程字段和活动记录。
-- 流程表单解析通过 `EntityFormRuntimePort` 读取实体表单上下文。
-- 发布资产通过 `MigrationAssetPort` 登记到迁移模块。
-- 业务动作通过 `EntityRecordQueryPort` 获取 `EntityRecordData`；该投影不包含 HTTP 表单令牌和按钮能力，写入继续使用 `EntityMutationPort`。
+- 实体运行态通过 `EntityBoundProcessPort` 发起流程，不直接依赖流程模块实现。
+- 流程模块通过 `EntityProcessStatePort` 更新实体流程字段和活动记录。
+- 流程表单解析通过 `EntityFormPort` 读取实体表单上下文。
+- 发布资产通过 `ConfigMigrationAssetPort` 登记到迁移模块。
+- 业务动作通过 `EntityRecordPort` 获取 `EntityRecordData`；该投影不包含 HTTP 表单令牌和按钮能力，写入继续使用 `TrustedEntityRecordMutationPort`。
 - 按钮条件、权限过滤和用户范围扩展使用 `contracts.entity.permission.spi`，规则配置位于对应 `model` 包。宿主在调用 SPI 前转换身份和实体数据，插件不再接收 `SysUser` 或 `EntityDataDTO`。
 - `process_form_config` 与 `process_form_field_config` 是流程节点配置，相关 DTO、Mapper 和记录类型由 process 模块拥有；通用实体表单仍由本模块管理。

@@ -119,7 +119,7 @@ class EntityActionCapabilityServiceTaskBindingTest {
 
     @Test
     void wholePageBindsTaskIdsAndNamesWithOneCapabilityBatch() {
-        var port = mock(com.workflow.contracts.process.port.ProcessTaskAccessPort.class);
+        var port = mock(com.workflow.port.process.ProcessTaskPermissionPort.class);
         var realLookup = new CurrentProcessTaskAssigneeLookup(port);
         var realService = new EntityActionCapabilityService(actionConfigService,
                 new EntityActionRuleEvaluator(List.of(), realLookup), statusMapper, userService, realLookup);
@@ -128,11 +128,11 @@ class EntityActionCapabilityServiceTaskBindingTest {
         }).toList();
         when(port.findCapabilities(org.mockito.ArgumentMatchers.eq("user-lisi"), org.mockito.ArgumentMatchers.anyList()))
                 .thenAnswer(call -> {
-                    List<com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates> records = call.getArgument(1);
-                    var capabilities = new java.util.HashMap<com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates,
-                            com.workflow.contracts.process.port.ProcessTaskAccessPort.TaskCapability>();
+                    List<com.workflow.port.process.ProcessTaskPermissionPort.RecordCoordinates> records = call.getArgument(1);
+                    var capabilities = new java.util.HashMap<com.workflow.port.process.ProcessTaskPermissionPort.RecordCoordinates,
+                            com.workflow.port.process.ProcessTaskPermissionPort.TaskCapability>();
                     records.forEach(record -> capabilities.put(record,
-                            new com.workflow.contracts.process.port.ProcessTaskAccessPort.TaskCapability(
+                            new com.workflow.port.process.ProcessTaskPermissionPort.TaskCapability(
                                     "task-" + record.entityDataId(), "当前审批", false)));
                     return capabilities;
                 });

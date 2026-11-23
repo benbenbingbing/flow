@@ -9,13 +9,13 @@ import com.workflow.core.database.port.DatabaseClockPort;
 import com.workflow.process.task.application.TaskService;
 
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.process.port.ProcessRuntimePort;
-import com.workflow.contracts.process.model.ProcessStartRequest;
-import com.workflow.contracts.process.model.ProcessStartResult;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.process.EntityBoundProcessPort;
+import com.workflow.port.process.model.ProcessStartRequest;
+import com.workflow.port.process.model.ProcessStartResult;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.assignment.application.InitiatorOrganizationSnapshotService;
@@ -54,12 +54,12 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ProcessRuntimeService implements ProcessRuntimePort {
+public class ProcessRuntimeService implements EntityBoundProcessPort {
     /** 业务动作必须在实际步骤处分发，所有调用方式共用，不能只装饰 HTTP 入口。 */
     private final FlowActionOperationDispatcher operationActions;
 
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.contracts.history.EntityHistoryWritePolicyPort historyWriteGuard;
+    private com.workflow.port.migration.EntityHistoryWritePolicyPort historyWriteGuard;
 
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final RepositoryService repositoryService;
@@ -136,7 +136,7 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         // 发起时已选定实际部署版本；尚无实例 ID，准备动作写入的变量随后交给引擎。
         var operation = operationActions.process(deployedDefinition.getId(), null, "START", request.submitterId(),
                 variables, Map.of());
-        var originalVariables = com.workflow.contracts.process.model.ProcessValues.snapshot(variables);
+        var originalVariables = com.workflow.port.process.model.ProcessValues.snapshot(variables);
         operationActions.fire(operation, PROCESS_STARTING);
         // 无实例的准备动作也不能改写发起人、实体身份及内部控制变量。
         var changedVariables = new java.util.HashSet<String>(operation.getVariables().keySet());

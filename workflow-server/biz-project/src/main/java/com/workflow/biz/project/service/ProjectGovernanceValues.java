@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;

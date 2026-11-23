@@ -1,7 +1,7 @@
 package com.workflow.process.action.application;
 
-import com.workflow.contracts.process.action.model.FlowActionDefinitionDescriptor;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.action.model.FlowActionDefinitionDescriptor;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.process.action.api.request.FlowActionSaveRequest;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
@@ -17,7 +17,7 @@ class FlowActionFailurePublicationTest {
     @Test void savingAndPublishingCopyCustomStrategyVersionAndParameters() {
         var mapper = mock(FlowActionMapper.class);
         var validator = mock(FlowActionConfigurationValidator.class);
-        var catalog = mock(FlowActionCatalogPort.class);
+        var catalog = mock(ProcessActionDefinitionPort.class);
         when(catalog.requireSelectable(any(), any(), any())).thenReturn(new FlowActionDefinitionDescriptor("definition", "handler", "处理器"));
         var service = new FlowActionService(mapper, validator, catalog);
         var request = new FlowActionSaveRequest();
@@ -53,7 +53,7 @@ class FlowActionFailurePublicationTest {
             ((FlowAction) invocation.getArgument(0)).setFailureStrategyConfig("{\"delay\":60}");
             return null;
         }).when(validator).validate(action);
-        new FlowActionService(mapper, validator, mock(FlowActionCatalogPort.class)).publishActions("process", "v1");
+        new FlowActionService(mapper, validator, mock(ProcessActionDefinitionPort.class)).publishActions("process", "v1");
         var captured = ArgumentCaptor.forClass(FlowAction.class);
         verify(mapper).insert(captured.capture());
         assertEquals("{\"delay\":60}", captured.getValue().getFailureStrategyConfig());

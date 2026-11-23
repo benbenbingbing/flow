@@ -1,9 +1,9 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.contracts.dictionary.model.DictionaryEntry;
-import com.workflow.contracts.dictionary.port.DictionaryReadPort;
-import com.workflow.contracts.entity.model.EntityPublishedMetadata;
-import com.workflow.contracts.entity.port.EntityMetadataPort;
+import com.workflow.port.system.dictionary.model.DictionaryEntry;
+import com.workflow.port.system.SysDictPort;
+import com.workflow.port.entity.model.EntityPublishedMetadata;
+import com.workflow.port.entity.EntityDefinitionPort;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -22,11 +22,11 @@ import java.util.Optional;
 @Component
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class EntityMetadataAdapter implements EntityMetadataPort {
+public class EntityMetadataAdapter implements EntityDefinitionPort {
     private final EntityActionCapabilityService access;
     private final EntityPublishedSnapshotService snapshots;
     private final EntityStatusService statuses;
-    private final DictionaryReadPort dictionaries;
+    private final SysDictPort dictionaries;
     private final EntityFormMapper forms;
     private final UiInterfaceExtensionService extensions;
 

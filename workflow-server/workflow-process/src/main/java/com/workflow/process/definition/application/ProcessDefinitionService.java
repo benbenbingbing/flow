@@ -16,14 +16,14 @@ import com.workflow.process.definition.infrastructure.persistence.record.Process
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.task.application.operation.NodeHistoryReturnPolicy;
 
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.process.definition.application.port.FlowActionDesignPort;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.repository.Deployment;
@@ -60,7 +60,7 @@ public class ProcessDefinitionService {
     private final ProcessDefinitionNodeSyncService nodeSyncService;
     private final ProcessBpmnPublishSanitizer bpmnPublishSanitizer;
     private final FlowActionDesignPort flowActionDesignPort;
-    private final MigrationAssetPort migrationAssetHandler;
+    private final ConfigMigrationAssetPort migrationAssetHandler;
     private final ProcessDefinitionPreflightService preflightService;
     /** 绑定实体目录，用于让流程删除与实体绑定共用同一行锁门闩。 */
     private final EntityCodeCatalogPort entityCodeCatalogPort;

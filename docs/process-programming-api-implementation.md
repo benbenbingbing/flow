@@ -8,10 +8,10 @@ biz 模块注入 `workflow-port` 的接口；实现流程动作再依赖 `workfl
 
 | 入口 | 实现 | 共享业务路径 |
 | --- | --- | --- |
-| `ProcessQueryPort` | `ProcessQueryAdapter` | 实例读取授权、候选用户/组/角色待办、本地加签有效性、发布版本、审批预览和操作能力 |
+| `ProcessHistoryPort`、`ProcessNextApprovalPort` | `ProcessQueryAdapter` | 任务与操作历史、发布版本、审批预览 |
 | `ProcessVariablePort` | `ProcessVariableAdapter` | 根实例/任务本地作用域读取、保留变量策略、身份校验和原子补丁 |
-| `ProcessTaskCommandPort` | `ProcessTaskCommandAdapter` | 发布表单按钮、普通/本地加签/源任务分流、原有 `TaskActionService`、加签、知会和同步服务 |
-| `ProcessInstanceCommandPort` | `ProcessInstanceCommandAdapter` | 原有撤回、终止和接收任务校验/执行服务 |
+| `ProcessTaskPort` | `ProcessTaskAdapter` | 任务查询、历史回退、发布表单按钮、普通/本地加签/源任务分流、原有 `TaskActionService`、加签、知会和同步服务 |
+| `ProcessInstancePort` | `ProcessInstanceAdapter` | 实例与进度查询、操作可用性预检、原有撤回、终止和接收任务校验/执行服务 |
 
 原审批、认领、撤回、终止、接收任务、加签、知会以及退回/重提入口已委托公共命令或共享编排。成功响应保留旧页面格式；错误统一使用公共流程错误码并由全局处理器映射 HTTP 状态。原任务引擎办理、节点表单、下一审批人、多实例汇聚、待办同步和实体活动记录继续由既有服务执行。
 
@@ -55,7 +55,7 @@ HTTP 审批仍要求页面提供表单 ID 与摘要，并校验它声明的记�
 
 ## 流程动作升级
 
-`FlowActionRuntimePort.CONTRACT_VERSION = 2`。实例、任务返回独立投影，`getActiveTasks()` 代替“第一条当前任务”；新增 `getLiveVariables()`。`getVariables()` / `getVariable()` 保持触发快照优先的既有语义；快捷写入成功后同步更新本次上下文快照。
+`FlowActionContextPort.CONTRACT_VERSION = 2`。实例、任务返回独立投影，`getActiveTasks()` 代替“第一条当前任务”；新增 `getLiveVariables()`。`getVariables()` / `getVariable()` 保持触发快照优先的既有语义；快捷写入成功后同步更新本次上下文快照。
 
 返回签名变化会影响已编译扩展，外部 JAR 必须重新编译、测试并按现有发布流程生成新制品；仓库内两个 devtools 示例已更新。不能继续强转 Flowable 类型，也不能改写旧发布快照或摘要掩盖签名变化。
 

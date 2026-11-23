@@ -122,7 +122,7 @@ docs/project-member-change-e2e/project-member-change-20260730015454.json
 
 ## 运行时扩展
 
-项目动作和治理服务通过 `EntityRecordQueryPort` / `EntityMutationPort` 读取及变更业务记录，
+项目动作和治理服务通过 `EntityRecordPort` / `TrustedEntityRecordMutationPort` 读取及变更业务记录，
 使用 `EntityRecordData`，不依赖实体实现服务和 HTTP DTO。权限与知会扩展使用 contracts 中的
 SPI，身份参数为 `IdentityUser`；知会扩展不再使本模块直接依赖 workflow-process。
 
@@ -152,7 +152,7 @@ workflow-frontend/custom/biz-project/src/mobile/forms/ProjectMemberChangeForm.vu
 
 ## 用户、组织接入与资料扩展
 
-`identity/ProjectIdentityImporter` 演示 biz 接收已获取的业务快照，转换为公共模型并主动调用 `IdentityWritePort`。
+`identity/ProjectIdentityImporter` 演示 biz 接收已获取的业务快照，转换为公共模型并主动调用 `SysUserPort` 和 `SysOrganizationPort`。
 调用入口和时机由 biz 决定，本模块不注册自动取数任务。
 
 用户和组织快照都可通过 `mainFields` 显式映射来源字段到主表的 `ext1`～`ext5`。使用原构造方法时省略整组，保留已有值。

@@ -1,6 +1,6 @@
 package com.workflow.service.permission;
 
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.entity.permission.application.PermissionSqlFragmentCompiler;
@@ -114,7 +114,7 @@ class PermissionSqlBuilderTest {
         com.workflow.entity.data.application.EntityPhysicalTableResolver tableResolver =
                 mock(com.workflow.entity.data.application.EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
+        ProcessTaskPermissionPort taskAccess = mock(ProcessTaskPermissionPort.class);
         when(taskAccess.findActionableEntityDataIds("2038628006255251457", "expense"))
                 .thenReturn(List.of("record-1"));
         PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
@@ -147,7 +147,7 @@ class PermissionSqlBuilderTest {
     @Test
     void hasTodoEmptyScopeAndInvalidPhysicalTableFailClosed() {
         EntityPhysicalTableResolver resolver = mock(EntityPhysicalTableResolver.class);
-        ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
+        ProcessTaskPermissionPort taskAccess = mock(ProcessTaskPermissionPort.class);
         when(resolver.resolve("expense")).thenReturn("wf_expense");
         PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
                 definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess,
@@ -167,7 +167,7 @@ class PermissionSqlBuilderTest {
     @Test
     void hasTodoIdsAreBoundAsDataRatherThanExecutableSql() {
         EntityPhysicalTableResolver resolver = mock(EntityPhysicalTableResolver.class);
-        ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
+        ProcessTaskPermissionPort taskAccess = mock(ProcessTaskPermissionPort.class);
         when(resolver.resolve("expense")).thenReturn("wf_expense");
         String unusualId = "id\\' OR 1=1 --";
         when(taskAccess.findActionableEntityDataIds("u1", "expense")).thenReturn(List.of(unusualId));
@@ -339,7 +339,7 @@ class PermissionSqlBuilderTest {
             public String toSql(
                     String entityCode,
                     EntityActionRule.RuleNode node,
-                    com.workflow.contracts.identity.model.IdentityUser user) {
+                    com.workflow.port.system.identity.model.IdentityUser user) {
                 return "customer_level = 'VIP'";
             }
         };

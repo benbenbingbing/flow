@@ -28,7 +28,7 @@ public class TaskActionController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+    private com.workflow.port.process.ProcessInstancePort instanceCommands;
 
 
     private final TaskActionService taskActionService;
@@ -126,7 +126,7 @@ public class TaskActionController {
 
         String reason = requestBody != null ? requestBody.get("reason") : null;
 
-        instanceCommands.withdraw(new com.workflow.contracts.process.instance.model.WithdrawProcessCommand(
+        instanceCommands.withdraw(new com.workflow.port.process.instance.model.WithdrawProcessCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(requestBody == null ? null : requestBody.get("requestId")), processInstanceId, reason));
         return Result.success(null);
     }

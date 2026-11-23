@@ -1,8 +1,8 @@
 package com.workflow.service;
 
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.data.infrastructure.adapter.EntityRecordMutationAdapter;
 import com.workflow.entity.mutation.application.EntityMutationIsolationExecutor;
@@ -23,8 +23,8 @@ class EntityRecordMutationAdapterTest {
 
     @Test
     void processEndTreatsDeletedTargetAsIdempotentSuccess() {
-        EntityMutationPort mutationPort =
-                mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort =
+                mock(TrustedEntityRecordMutationPort.class);
         EntityRecordTeamService teamService =
                 mock(EntityRecordTeamService.class);
         EntityMutationIsolationExecutor isolationExecutor =
@@ -50,7 +50,7 @@ class EntityRecordMutationAdapterTest {
 
     @Test
     void returningToPreviousAssigneeGetsNewSyncKeyAndUsesSystemOperator() {
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         EntityRecordMutationAdapter adapter = new EntityRecordMutationAdapter(
                 mutationPort,
                 mock(EntityMutationIsolationExecutor.class),

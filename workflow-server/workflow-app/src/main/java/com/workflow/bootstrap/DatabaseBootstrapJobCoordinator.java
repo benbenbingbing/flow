@@ -1,6 +1,6 @@
 package com.workflow.bootstrap;
 
-import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
+import com.workflow.port.platform.WorkflowBootstrapJobPort;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.database.port.DatabaseClockPort;
 import java.util.List;
@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class DatabaseBootstrapJobCoordinator
-        implements BootstrapJobPort {
+        implements WorkflowBootstrapJobPort {
 
     private final BootstrapJobMapper jobMapper;
     private final JdbcLockedRow lockedRows;

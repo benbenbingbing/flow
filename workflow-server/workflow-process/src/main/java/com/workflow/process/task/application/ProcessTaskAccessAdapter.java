@@ -1,6 +1,6 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
@@ -15,7 +15,7 @@ import java.util.Optional;
 /** 实体审批入口复用待办查询的权威身份范围，不依赖实体摘要中的办理人或任务 ID。 */
 @Component
 @RequiredArgsConstructor
-public class ProcessTaskAccessAdapter implements ProcessTaskAccessPort {
+public class ProcessTaskAccessAdapter implements ProcessTaskPermissionPort {
 
     private final ProcessTaskMapper taskMapper;
     private final ProcessPublishedSnapshotService publishedSnapshotService;

@@ -1,8 +1,8 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.process.task.model.AddSignType;
-import com.workflow.contracts.process.task.model.TaskInterventionModels.AddSignPreview;
-import com.workflow.contracts.process.task.model.TaskInterventionModels.AddSignUser;
+import com.workflow.port.process.task.model.AddSignType;
+import com.workflow.port.process.task.model.TaskInterventionModels.AddSignPreview;
+import com.workflow.port.process.task.model.TaskInterventionModels.AddSignUser;
 
 import com.workflow.process.action.application.FlowActionOperationDispatcher;
 import static com.workflow.contracts.process.action.model.FlowActionTriggerTiming.*;
@@ -12,10 +12,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.process.task.api.request.TaskAddSignRequest;
 import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
 import com.workflow.process.task.application.operation.NodeOperationDecisionService;

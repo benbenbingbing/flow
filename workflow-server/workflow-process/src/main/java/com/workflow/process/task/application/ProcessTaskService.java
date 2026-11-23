@@ -1,9 +1,12 @@
 package com.workflow.process.task.application;
 
+import com.workflow.port.system.SysGroupPort;
+import com.workflow.port.system.SysUserGroupPort;
+
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.entity.EntityFormPort;
+import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -32,11 +35,13 @@ public class ProcessTaskService {
     private final RuntimeService runtimeService;
     private final org.flowable.engine.RepositoryService repositoryService;
     private final com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper nodeConfigMapper;
-    private final EntityFormRuntimePort entityFormRuntimePort;
+    private final EntityFormPort entityFormRuntimePort;
     private final com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
-    private final EntityRecordPort entityRecordPort;
-    private final IdentityDirectoryPort identityDirectoryPort;
+    private final EntityProcessStatePort entityRecordPort;
+    private final SysUserLookupPort identityDirectoryPort;
+    private final SysGroupPort groups;
+    private final SysUserGroupPort groupMembers;
     private final com.workflow.process.sla.runtime.application.TaskSlaRuntimeService
             taskSlaRuntimeService;
 
@@ -55,6 +60,8 @@ public class ProcessTaskService {
      * @param processDefinitionConfigMapper 流程定义配置映射器依赖，保存到当前对象供后续业务方法调用
      * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
      * @param entityRecordPort 实体记录端口依赖，保存到当前对象供后续业务方法调用
+     * @param groups 读取候选组的名称
+     * @param groupMembers 展开候选组成员供待办展示
      * @param identityDirectoryPort 身份目录端口依赖，保存到当前对象供后续业务方法调用
      * @param taskSlaRuntimeService 任务SLA运行时服务依赖，保存到当前对象供后续业务方法调用
      */
@@ -64,11 +71,13 @@ public class ProcessTaskService {
                               RuntimeService runtimeService,
                               org.flowable.engine.RepositoryService repositoryService,
                               com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper nodeConfigMapper,
-                              EntityFormRuntimePort entityFormRuntimePort,
+                              EntityFormPort entityFormRuntimePort,
                               com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper,
                               com.fasterxml.jackson.databind.ObjectMapper objectMapper,
-                              @Lazy EntityRecordPort entityRecordPort,
-                              IdentityDirectoryPort identityDirectoryPort,
+                              @Lazy EntityProcessStatePort entityRecordPort,
+                              SysUserLookupPort identityDirectoryPort,
+                              SysGroupPort groups,
+                              SysUserGroupPort groupMembers,
                               @Lazy com.workflow.process.sla.runtime.application.TaskSlaRuntimeService
                                       taskSlaRuntimeService) {
         this.taskMapper = taskMapper;
@@ -81,6 +90,8 @@ public class ProcessTaskService {
         this.objectMapper = objectMapper;
         this.entityRecordPort = entityRecordPort;
         this.identityDirectoryPort = identityDirectoryPort;
+        this.groups = groups;
+        this.groupMembers = groupMembers;
         this.taskSlaRuntimeService = taskSlaRuntimeService;
     }
 
@@ -96,6 +107,8 @@ public class ProcessTaskService {
      * @param processDefinitionConfigMapper 流程定义配置映射器，保存在对象中供后续校验、查询或展示
      * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
      * @param entityRecordPort 实体记录端口，保存在对象中供后续校验、查询或展示
+     * @param groups 读取候选组的名称
+     * @param groupMembers 展开候选组成员供待办展示
      * @param identityDirectoryPort 身份目录端口，保存在对象中供后续校验、查询或展示
      */
     public ProcessTaskService(ProcessTaskMapper taskMapper,
@@ -103,11 +116,13 @@ public class ProcessTaskService {
                        RuntimeService runtimeService,
                        org.flowable.engine.RepositoryService repositoryService,
                        com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper nodeConfigMapper,
-                       EntityFormRuntimePort entityFormRuntimePort,
+                       EntityFormPort entityFormRuntimePort,
                        com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper processDefinitionConfigMapper,
                        com.fasterxml.jackson.databind.ObjectMapper objectMapper,
-                       EntityRecordPort entityRecordPort,
-                       IdentityDirectoryPort identityDirectoryPort) {
+                       EntityProcessStatePort entityRecordPort,
+                       SysUserLookupPort identityDirectoryPort,
+                       SysGroupPort groups,
+                       SysUserGroupPort groupMembers) {
         this(
                 taskMapper,
                 flowableTaskService,
@@ -119,6 +134,8 @@ public class ProcessTaskService {
                 objectMapper,
                 entityRecordPort,
                 identityDirectoryPort,
+                groups,
+                groupMembers,
                 null);
     }
     
@@ -744,7 +761,7 @@ public class ProcessTaskService {
      */
     private String getGroupMemberNames(String groupCode) {
         try {
-            return String.join(",", TaskCandidateNames.groupMembers(identityDirectoryPort, groupCode));
+            return String.join(",", TaskCandidateNames.groupMembers(groups, groupMembers, identityDirectoryPort, groupCode));
         } catch (Exception e) {
             log.warn("获取组成员失败: {}", groupCode, e);
             return groupCode;

@@ -1,7 +1,7 @@
 package com.workflow.process.task.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
@@ -47,7 +47,7 @@ public class ProcessTaskController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+    private com.workflow.port.process.ProcessInstancePort instanceCommands;
 
 
     private final ProcessTaskService processTaskService;
@@ -177,7 +177,7 @@ public class ProcessTaskController {
     @PostMapping("/claim/{taskId}")
     public Result<Void> claimTask(@PathVariable String taskId) {
         try {
-            taskCommands.claim(new com.workflow.contracts.process.task.model.ClaimTaskCommand(
+            taskCommands.claim(new com.workflow.port.process.task.model.ClaimTaskCommand(
                     com.workflow.process.command.application.ProcessHttpCommands.meta(null), taskId));
         } catch (FlowableOptimisticLockingException | FlowableTaskAlreadyClaimedException exception) {
             throw taskStateChanged();
@@ -241,7 +241,7 @@ public class ProcessTaskController {
             }
             log.error("审批失败: {}", e.getMessage(),e);
             return Result.error("审批失败: " + e.getMessage());
-        } catch (com.workflow.contracts.process.error.ProcessOperationException e) {
+        } catch (com.workflow.port.process.error.ProcessOperationException e) {
             log.error("审批失败: {}", e.getMessage(),e);
             throw e;
         } catch (ForbiddenException | BusinessConflictException e) {
@@ -340,10 +340,10 @@ public class ProcessTaskController {
             if (currentUser == null || currentUser.isBlank()) {
                 throw new ForbiddenException("用户未登录");
             }
-            instanceCommands.withdraw(new com.workflow.contracts.process.instance.model.WithdrawProcessCommand(
+            instanceCommands.withdraw(new com.workflow.port.process.instance.model.WithdrawProcessCommand(
                     com.workflow.process.command.application.ProcessHttpCommands.meta(params.get("requestId")), processInstanceId, reason));
             return Result.success();
-        } catch (com.workflow.contracts.process.error.ProcessOperationException e) {
+        } catch (com.workflow.port.process.error.ProcessOperationException e) {
             throw e;
         } catch (ForbiddenException e) {
             throw e;

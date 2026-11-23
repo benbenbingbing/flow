@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;

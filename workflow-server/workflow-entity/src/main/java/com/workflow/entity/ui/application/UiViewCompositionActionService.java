@@ -4,18 +4,18 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import com.workflow.admin.authorization.application.PermissionUtil;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchResult;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
 import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
@@ -88,7 +88,7 @@ public class UiViewCompositionActionService {
     private final EntityDataDynamicService dynamicDataService;
     private final SystemEntityReadService systemEntityReadService;
     private final EntityActionCapabilityService capabilityService;
-    private final EntityMutationPort mutationPort;
+    private final TrustedEntityRecordMutationPort mutationPort;
     private final EntityAggregateWriter aggregateWriter;
     private final UiViewCompositionActionReceiptService actionReceiptService;
     private final UiInterfaceExtensionService dataSourceService;
@@ -231,7 +231,7 @@ public class UiViewCompositionActionService {
      *
      * <p>客户端只提交 actionKey、记录 ID 和 operationId。服务、操作、映射与
      * 可执行快照都从已发布宿主配置恢复；READ 只返回映射后的界面结果，WRITE
-     * 则先取得持久批次回执，再通过受控计划和 EntityMutationPort 原子执行。</p>
+     * 则先取得持久批次回执，再通过受控计划和 TrustedEntityRecordMutationPort 原子执行。</p>
      *
      * @param action 动作标识，决定后续接口动作采用的处理分支
      * @param context 执行上下文，向后续接口动作步骤传递身份、配置或状态

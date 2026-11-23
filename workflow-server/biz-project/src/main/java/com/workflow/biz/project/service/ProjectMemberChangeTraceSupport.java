@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;

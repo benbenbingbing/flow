@@ -1,9 +1,9 @@
 package com.workflow.process.form.application;
 
-import com.workflow.contracts.entity.form.model.EntityFormBinding;
-import com.workflow.contracts.entity.form.model.EntityFormRuntimeContext;
-import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.form.model.EntityFormBinding;
+import com.workflow.port.entity.form.model.EntityFormRuntimeContext;
+import com.workflow.port.entity.EntityFormPort;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
@@ -37,8 +37,8 @@ class EntityFormResolveServiceTest {
 
     @Test
     void newDataUsesPublishedDefaultFormBeforeFirstUserTaskForm() {
-        EntityFormRuntimePort entityFormRuntimePort =
-                mock(EntityFormRuntimePort.class);
+        EntityFormPort entityFormRuntimePort =
+                mock(EntityFormPort.class);
         ProcessDefinitionConfigMapper processConfigMapper =
                 mock(ProcessDefinitionConfigMapper.class);
         ProcessPublishedSnapshotService snapshotService =
@@ -67,8 +67,8 @@ class EntityFormResolveServiceTest {
 
     @Test
     void newDataFallsBackToFirstReachableUserTaskFormWithoutDefaultForm() {
-        EntityFormRuntimePort entityFormRuntimePort =
-                mock(EntityFormRuntimePort.class);
+        EntityFormPort entityFormRuntimePort =
+                mock(EntityFormPort.class);
         ProcessDefinitionConfigMapper processConfigMapper =
                 mock(ProcessDefinitionConfigMapper.class);
         ProcessPublishedSnapshotService snapshotService =
@@ -132,7 +132,7 @@ class EntityFormResolveServiceTest {
     @Test
     void firstUserTaskParserTraversesGateway() {
         EntityFormResolveService service = new EntityFormResolveService(
-                mock(EntityFormRuntimePort.class),
+                mock(EntityFormPort.class),
                 mock(ProcessDefinitionConfigMapper.class),
                 mock(ProcessPublishedSnapshotService.class),
                 mock(RuntimeService.class),
@@ -146,8 +146,8 @@ class EntityFormResolveServiceTest {
 
     @Test
     void completedDataFallsBackToDefaultFormWhenHistoricalBindingIsMissing() {
-        EntityFormRuntimePort entityFormRuntimePort =
-                mock(EntityFormRuntimePort.class);
+        EntityFormPort entityFormRuntimePort =
+                mock(EntityFormPort.class);
         ProcessPublishedSnapshotService snapshotService =
                 mock(ProcessPublishedSnapshotService.class);
         RuntimeService runtimeService = mock(RuntimeService.class);

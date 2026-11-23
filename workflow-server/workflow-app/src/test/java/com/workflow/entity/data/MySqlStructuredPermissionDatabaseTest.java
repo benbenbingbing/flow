@@ -169,8 +169,8 @@ class MySqlStructuredPermissionDatabaseTest {
             h.jdbc.update("INSERT INTO biz_structured_scope(id,`order`,deleted) VALUES ('match',?,0),('other','other',0)", SPECIAL);
             var provider = new com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider() {
                 public String getType() { return "CUSTOM:BOUND"; }
-                public String toSql(String entity, EntityActionRule.RuleNode node, com.workflow.contracts.identity.model.IdentityUser user) { throw new AssertionError("Expected shared bindings"); }
-                public String toSql(String entity, EntityActionRule.RuleNode node, com.workflow.contracts.identity.model.IdentityUser user, Map<String, Object> parameters) {
+                public String toSql(String entity, EntityActionRule.RuleNode node, com.workflow.port.system.identity.model.IdentityUser user) { throw new AssertionError("Expected shared bindings"); }
+                public String toSql(String entity, EntityActionRule.RuleNode node, com.workflow.port.system.identity.model.IdentityUser user, Map<String, Object> parameters) {
                     return "`order` = " + PermissionSqlParameters.bindText(parameters, user.id());
                 }
             };

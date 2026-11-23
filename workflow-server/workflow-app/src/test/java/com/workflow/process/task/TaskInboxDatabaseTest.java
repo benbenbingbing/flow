@@ -1,5 +1,8 @@
 package com.workflow.process.task;
 
+import com.workflow.port.system.SysGroupPort;
+import com.workflow.port.system.SysUserGroupPort;
+
 import com.workflow.process.task.application.model.TaskInboxQuery;
 
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -9,11 +12,11 @@ import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.model.EntityTaskSummary;
-import com.workflow.contracts.entity.port.*;
-import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.process.port.TaskBusinessSummaryPort;
+import com.workflow.port.entity.model.EntityTaskSummary;
+import com.workflow.port.entity.*;
+import com.workflow.port.entity.EntityFormPort;
+import com.workflow.port.system.SysUserLookupPort;
+import com.workflow.port.process.ProcessTaskSummaryPort;
 import com.workflow.entity.data.application.EntityTaskSummaryRefresh;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
@@ -106,19 +109,21 @@ class TaskInboxDatabaseTest {
         tasks = session.getMapper(ProcessTaskMapper.class);
         inbox = session.getMapper(TaskInboxMapper.class);
         projectionMapper = session.getMapper(TaskInboxProjectionMapper.class);
-        var directory = mock(IdentityDirectoryPort.class);
+        var directory = mock(SysUserLookupPort.class);
+        var groups = mock(SysGroupPort.class);
+        var groupMembers = mock(SysUserGroupPort.class);
         when(directory.getDisplayName(anyString())).thenAnswer(call -> {
             if (failSummary.get()) throw new IllegalStateException("injected directory failure");
             return call.getArgument(0);
         });
-        when(directory.findGroup(anyString())).thenAnswer(call -> {
+        when(groups.findGroup(anyString())).thenAnswer(call -> {
             if (failSummary.get()) throw new IllegalStateException("injected directory failure");
             return Optional.empty();
         });
         var beans = new DefaultListableBeanFactory();
         processTasks = transactional(new ProcessTaskService(tasks, engine.getTaskService(), engine.getRuntimeService(),
-                engine.getRepositoryService(), mock(NodeConfigMapper.class), mock(EntityFormRuntimePort.class),
-                mock(ProcessDefinitionConfigMapper.class), new ObjectMapper(), mock(EntityRecordPort.class), directory));
+                engine.getRepositoryService(), mock(NodeConfigMapper.class), mock(EntityFormPort.class),
+                mock(ProcessDefinitionConfigMapper.class), new ObjectMapper(), mock(EntityProcessStatePort.class), directory, groups, groupMembers));
         beans.registerSingleton("processTasks", processTasks);
         EntityTaskSummaryPort summaries = (entity, record) -> {
             if (failSummary.get()) throw new IllegalStateException("injected summary failure");
@@ -128,10 +133,10 @@ class TaskInboxDatabaseTest {
         };
         projection = transactional(new TaskInboxProjectionService(tasks,
                 session.getMapper(ProcessTaskCandidateUserMapper.class), session.getMapper(ProcessTaskCandidateGroupMapper.class),
-                projectionMapper, engine.getTaskService(), engine.getHistoryService(), directory, summaries,
+                projectionMapper, engine.getTaskService(), engine.getHistoryService(), directory, groups, groupMembers, summaries,
                 beans.getBeanProvider(ProcessTaskService.class), engine.getRuntimeService()));
         beans.registerSingleton("projection", projection);
-        summaryRefresh = new EntityTaskSummaryRefresh(beans.getBeanProvider(TaskBusinessSummaryPort.class));
+        summaryRefresh = new EntityTaskSummaryRefresh(beans.getBeanProvider(ProcessTaskSummaryPort.class));
         engine.getRuntimeService().addEventListener(new TaskInboxProjectionListener(beans.getBeanProvider(TaskInboxProjectionService.class)));
         queries = transactional(new TaskInboxQueryService(inbox, mock(EntityStatusService.class)));
         engine.getRepositoryService().createDeployment().addString("inbox.bpmn20.xml", """

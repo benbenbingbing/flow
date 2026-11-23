@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper;
 
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.record.IdentitySourceSnapshot;
-import com.workflow.contracts.identity.model.IdentityObjectType;
+import com.workflow.port.system.identity.model.IdentityObjectType;
 import org.apache.ibatis.annotations.*;
 
 /** 原文独立于用户、组织列表和来源绑定；写入方必须先持有目录事务锁。 */

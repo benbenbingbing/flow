@@ -1,9 +1,9 @@
 package com.workflow.process.assignment.application;
 
-import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.SysOrganizationPort;
+import com.workflow.port.system.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -22,8 +22,8 @@ class InitiatorOrganizationSnapshotServiceTest {
 
     @Test
     void captureAcceptsIdOrUsernameAndOverwritesForgedSnapshot() {
-        OrganizationPositionDirectoryPort directory =
-                mock(OrganizationPositionDirectoryPort.class);
+        SysOrganizationPort directory =
+                mock(SysOrganizationPort.class);
         InitiatorOrganizationSnapshot snapshot = snapshot();
         when(directory.captureInitiatorSnapshot("user-1"))
                 .thenReturn(snapshot);
@@ -52,8 +52,8 @@ class InitiatorOrganizationSnapshotServiceTest {
 
     @Test
     void duplicateFrozenUnitFailsWithStableCycleCode() {
-        OrganizationPositionDirectoryPort directory =
-                mock(OrganizationPositionDirectoryPort.class);
+        SysOrganizationPort directory =
+                mock(SysOrganizationPort.class);
         when(directory.captureInitiatorSnapshot("user-1"))
                 .thenReturn(new InitiatorOrganizationSnapshot(
                         1,

@@ -4,8 +4,8 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.process.form.api.response.FormConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.process.task.api.response.TaskDetailDTO;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -115,21 +115,120 @@ public class TaskDetailService {
         }
         dto.setProcessInstance(instanceDTO);
         
-        // 3. 获取节点配置（表单绑定信息）
+        var formConfig = resolveForm(taskId, processTask, addSignContext, historicalProcess);
+        dto.setFormConfigs(List.of(formConfig));
+        dto.setFormConfig(formConfig);
+        String entityCode = processTask.getEntityCode();
+
+        // 4. 获取实体数据
+        String entityDataId = processTask.getEntityDataId();
+        log.debug("获取实体数据: entityDataId={}, processInstanceId={}, entityCode={}",
+                entityDataId, processInstanceId, entityCode);
+
+        // 按流程中冻结的实体编码和记录ID读取动态实体聚合数据
+        try {
+            if (entityCode != null
+                    && entityDataId != null) {
+                var entityData =
+                        entityDataDynamicService.findById(
+                                entityCode,
+                                entityDataId);
+                Map<String, Object> dataMap =
+                        entityData.getData() == null
+                                ? new HashMap<>()
+                                : new HashMap<>(
+                                        entityData.getData());
+                dto.setEntityData(dataMap);
+                log.info("成功获取实体数据: processInstanceId={}, dataKeys={}",
+                        processInstanceId, dataMap.keySet());
+            } else {
+                log.warn(
+                        "流程缺少实体编码或记录ID: processInstanceId={}",
+                        processInstanceId);
+            }
+        } catch (Exception e) {
+            log.warn("获取实体数据失败: processInstanceId={}, error={}", processInstanceId, e.getMessage());
+        }
+
+        // 如果实体数据为空，尝试从流程变量获取
+        if (dto.getEntityData() == null || dto.getEntityData().isEmpty()) {
+            log.debug("尝试从流程变量获取数据: processInstanceId={}", processInstanceId);
+            Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
+            // 过滤掉系统变量
+            variables.remove("entityDataId");
+            variables.remove("entityCode");
+            variables.remove("submitterId");
+            // 发起人组织快照是平台安全上下文，不属于可回显的实体数据。
+            com.workflow.process.instance.application.WorkflowReservedVariables
+                    .removeInternalVariables(variables);
+            if (!variables.isEmpty()) {
+                dto.setEntityData(variables);
+                log.info("从流程变量获取数据: processInstanceId={}, dataKeys={}",
+                        processInstanceId, variables.keySet());
+            }
+        }
+
+        // 5. 获取字段名称映射（用于前端显示字段名称而不是编码）
+        if (entityCode != null && dto.getEntityData() != null) {
+            try {
+                Map<String, String> fieldNameMap = new HashMap<>();
+                // 查询实体字段定义
+                // 先根据 entityCode 查询 entityId
+                com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entityDef = entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
+                if (entityDef != null) {
+                    List<com.workflow.entity.definition.infrastructure.persistence.record.EntityField> fields = entityFieldMapper.findByEntityId(entityDef.getId());
+                    for (com.workflow.entity.definition.infrastructure.persistence.record.EntityField field : fields) {
+                        fieldNameMap.put(field.getFieldCode(), field.getFieldName());
+                    }
+                }
+                dto.setFieldNameMap(fieldNameMap);
+                log.debug("字段名称映射: entityCode={}, map={}", entityCode, fieldNameMap);
+            } catch (Exception e) {
+                log.warn("获取字段名称映射失败: {}", e.getMessage());
+            }
+        }
+
+        // 最终日志：检查entityData和formConfig的匹配情况
+        if (dto.getFormConfig() != null && dto.getFormConfig().getFields() != null && dto.getEntityData() != null) {
+            List<String> fieldCodes = dto.getFormConfig().getFields().stream()
+                    .map(f -> (String)f.get("fieldCode"))
+                    .collect(Collectors.toList());
+            Set<String> dataKeys = dto.getEntityData().keySet();
+            log.info("任务详情数据匹配检查: taskId={}, fieldCodes={}, dataKeys={}, matched={}",
+                    LogValue.safe(taskId), LogValue.safe(fieldCodes), LogValue.safe(dataKeys),
+                    LogValue.safe(fieldCodes.stream().filter(dataKeys::contains).collect(Collectors.toList())));
+        }
+
+        return dto;
+    }
+
+    /** 返回已授权活动任务的表单摘要，只解析绑定和表单，不加载实体数据或流程变量。 */
+    TaskDetailDTO.FormConfigDTO findActiveTaskForm(String taskId, boolean addSign) {
+        if (addSign) {
+            var context = localAddSignTaskAccessService.requireCurrentUserAccess(taskId, null);
+            return resolveForm(taskId, context.localTask(), context, false);
+        }
+        ProcessTask task = processTaskMapper.selectByTaskId(taskId);
+        return task == null ? null : resolveForm(taskId, task, null, false);
+    }
+
+    private TaskDetailDTO.FormConfigDTO resolveForm(String taskId, ProcessTask processTask,
+            LocalAddSignTaskAccessService.AuthorizedAddSignTask addSignContext, boolean historicalProcess) {
+        String processInstanceId = processTask.getProcessInstanceId();
         String nodeId = addSignContext == null ? processTask.getNodeId()
                 : addSignContext.sourceTask().getTaskDefinitionKey();
         String processDefinitionId = addSignContext == null ? processTask.getProcessDefinitionId()
                 : addSignContext.sourceTask().getProcessDefinitionId();
         String entityCode = processTask.getEntityCode();
-        
+
         // 预加载实体字段映射（id -> fieldCode），用于表单字段转换
         Map<String, String> entityFieldCodeMap = new HashMap<>();
         if (entityCode != null) {
             try {
-                com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entityDef = 
+                com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entityDef =
                     entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
                 if (entityDef != null) {
-                    List<com.workflow.entity.definition.infrastructure.persistence.record.EntityField> entityFields = 
+                    List<com.workflow.entity.definition.infrastructure.persistence.record.EntityField> entityFields =
                         entityFieldMapper.findByEntityId(entityDef.getId());
                     for (com.workflow.entity.definition.infrastructure.persistence.record.EntityField ef : entityFields) {
                         if (ef.getId() != null && ef.getFieldCode() != null) {
@@ -142,7 +241,7 @@ public class TaskDetailService {
                 log.warn("获取实体字段映射失败: {}", e.getMessage());
             }
         }
-        
+
         List<TaskDetailDTO.FormConfigDTO> formConfigs = new ArrayList<>();
         String formKey = addSignContext == null ? processTask.getFormKey()
                 : addSignContext.sourceTask().getFormKey();
@@ -277,92 +376,9 @@ public class TaskDetailService {
             empty.setIsReadonly(true);
             formConfigs.add(empty);
         }
-        TaskDetailDTO.FormConfigDTO formConfig = formConfigs.get(0);
-        dto.setFormConfigs(List.of(formConfig));
-        dto.setFormConfig(formConfig);
-        
-        // 4. 获取实体数据
-        String entityDataId = processTask.getEntityDataId();
-        log.debug("获取实体数据: entityDataId={}, processInstanceId={}, entityCode={}", 
-                entityDataId, processInstanceId, entityCode);
-        
-        // 按流程中冻结的实体编码和记录ID读取动态实体聚合数据
-        try {
-            if (entityCode != null
-                    && entityDataId != null) {
-                var entityData =
-                        entityDataDynamicService.findById(
-                                entityCode,
-                                entityDataId);
-                Map<String, Object> dataMap =
-                        entityData.getData() == null
-                                ? new HashMap<>()
-                                : new HashMap<>(
-                                        entityData.getData());
-                dto.setEntityData(dataMap);
-                log.info("成功获取实体数据: processInstanceId={}, dataKeys={}", 
-                        processInstanceId, dataMap.keySet());
-            } else {
-                log.warn(
-                        "流程缺少实体编码或记录ID: processInstanceId={}",
-                        processInstanceId);
-            }
-        } catch (Exception e) {
-            log.warn("获取实体数据失败: processInstanceId={}, error={}", processInstanceId, e.getMessage());
-        }
-        
-        // 如果实体数据为空，尝试从流程变量获取
-        if (dto.getEntityData() == null || dto.getEntityData().isEmpty()) {
-            log.debug("尝试从流程变量获取数据: processInstanceId={}", processInstanceId);
-            Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
-            // 过滤掉系统变量
-            variables.remove("entityDataId");
-            variables.remove("entityCode");
-            variables.remove("submitterId");
-            // 发起人组织快照是平台安全上下文，不属于可回显的实体数据。
-            com.workflow.process.instance.application.WorkflowReservedVariables
-                    .removeInternalVariables(variables);
-            if (!variables.isEmpty()) {
-                dto.setEntityData(variables);
-                log.info("从流程变量获取数据: processInstanceId={}, dataKeys={}", 
-                        processInstanceId, variables.keySet());
-            }
-        }
-        
-        // 5. 获取字段名称映射（用于前端显示字段名称而不是编码）
-        if (entityCode != null && dto.getEntityData() != null) {
-            try {
-                Map<String, String> fieldNameMap = new HashMap<>();
-                // 查询实体字段定义
-                // 先根据 entityCode 查询 entityId
-                com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entityDef = entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
-                if (entityDef != null) {
-                    List<com.workflow.entity.definition.infrastructure.persistence.record.EntityField> fields = entityFieldMapper.findByEntityId(entityDef.getId());
-                    for (com.workflow.entity.definition.infrastructure.persistence.record.EntityField field : fields) {
-                        fieldNameMap.put(field.getFieldCode(), field.getFieldName());
-                    }
-                }
-                dto.setFieldNameMap(fieldNameMap);
-                log.debug("字段名称映射: entityCode={}, map={}", entityCode, fieldNameMap);
-            } catch (Exception e) {
-                log.warn("获取字段名称映射失败: {}", e.getMessage());
-            }
-        }
-        
-        // 最终日志：检查entityData和formConfig的匹配情况
-        if (dto.getFormConfig() != null && dto.getFormConfig().getFields() != null && dto.getEntityData() != null) {
-            List<String> fieldCodes = dto.getFormConfig().getFields().stream()
-                    .map(f -> (String)f.get("fieldCode"))
-                    .collect(Collectors.toList());
-            Set<String> dataKeys = dto.getEntityData().keySet();
-            log.info("任务详情数据匹配检查: taskId={}, fieldCodes={}, dataKeys={}, matched={}", 
-                    LogValue.safe(taskId), LogValue.safe(fieldCodes), LogValue.safe(dataKeys),
-                    LogValue.safe(fieldCodes.stream().filter(dataKeys::contains).collect(Collectors.toList())));
-        }
-        
-        return dto;
+        return formConfigs.get(0);
     }
-    
+
     /**
      * 构建表单配置；结果供后续流程传递或持久化。
      *

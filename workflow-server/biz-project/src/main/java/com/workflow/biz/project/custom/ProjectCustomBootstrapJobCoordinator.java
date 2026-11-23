@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
+import com.workflow.port.platform.WorkflowBootstrapJobPort;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 
@@ -15,7 +15,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 public class ProjectCustomBootstrapJobCoordinator
-        implements BootstrapJobPort {
+        implements WorkflowBootstrapJobPort {
 
     /**
      * 执行{@code once}，并将结果传给后续步骤。

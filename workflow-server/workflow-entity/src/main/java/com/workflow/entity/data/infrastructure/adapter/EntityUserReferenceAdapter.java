@@ -1,8 +1,8 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
-import com.workflow.contracts.entity.port.EntityUserReferencePort;
-import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.port.entity.EntityUserFieldPort;
+import com.workflow.port.entity.EntityUserFieldPort.EntityUserReferenceException;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
@@ -30,7 +30,7 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class EntityUserReferenceAdapter
-        implements EntityUserReferencePort {
+        implements EntityUserFieldPort {
 
     private static final String USER_ENTITY_CODE = "sys_user";
     private static final int MAX_RESOLVED_USERS = 200;

@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybati
 import com.baomidou.mybatisplus.annotation.TableField;import lombok.Data;
 import com.baomidou.mybatisplus.annotation.TableField;
 import java.time.LocalDateTime;
-import com.baomidou.mybatisplus.annotation.TableField;
 /**
  * 实体状态定义
  */

@@ -435,7 +435,7 @@ public class UiEventBindingService {
         if ("FORM".equals(configType)) {
             var authorizedContext = releaseService.authorizeRuntimeContext(request.getConfigId(), request.getRuntimeContext());
             request.setServerReadOnly(authorizedContext != null && authorizedContext.purpose()
-                    == com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL);
+                    == com.workflow.port.entity.ui.model.UiRuntimePurpose.HISTORICAL);
             if (authorizedContext != null && StringUtils.hasText(authorizedContext.processInstanceId())
                     && (UiDataSourceExecutionAccessService.isFormFieldEvent(configType, targetType, eventCode)
                         || UiDataSourceExecutionAccessService.isFormReadEvent(configType, eventCode))) {

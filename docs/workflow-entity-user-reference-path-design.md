@@ -21,7 +21,7 @@
 | `workflow-web/src/components/NodeConfigPanel.vue` | 从绑定实体字段中过滤用户关系，使用 `el-select` 保存一个 `fieldCode` | 改为可逐级展开、可在用户节点结束的关系路径选择器 |
 | `workflow-web/src/shared/process-config/index.js` | `schemaVersion: 1 + entityCode + fieldCode`；只按末端字段类型决定分配方式 | 新增路径契约，按整条路径计算单值/多值 |
 | `EntityUserReferenceFieldConfig` / `EntityUserReferenceFieldPersonResolver` | V1 参数白名单，只校验与读取直接用户字段 | 兼容 V1，新增 V2 路径校验和运行时解析 |
-| `EntityUserReferencePort` / `EntityUserReferenceAdapter` | 单字段读取，用户主键转换为用户名，最多 200 人 | 增加路径能力，保留现有身份转换规则 |
+| `EntityUserFieldPort` / `EntityUserReferenceAdapter` | 单字段读取，用户主键转换为用户名，最多 200 人 | 增加路径能力，保留现有身份转换规则 |
 | `PublishedRelationPathResolver` | 支持发布快照、引用字段、实体关系、反向引用，路径最多 8 步 | 复用动态实体路径编译基础，补齐系统关系与旧类型兼容 |
 | `EntityRelationGraphReadService` | 有批量投影、授权和预算控制；末层支持分页；禁止路径重复经过同一记录 | 人员解析必须取得完整结果，并允许有限路径再次经过同一用户 |
 | `ConfigMigrationAssignmentSupport` | 只映射 `entityCode/fieldCode` | 逐段处理路径依赖和跨环境引用 |

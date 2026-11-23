@@ -1,7 +1,7 @@
 package com.workflow.process.form.infrastructure.adapter;
 
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.EntityFormPort.ResolvedForm;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
@@ -20,14 +20,14 @@ class EntityNewDataFormRuntimeAdapterTest {
         when(releases.resolveRuntimeFormRelease("form-first")).thenReturn(new ResolvedEntityFormRelease(
                 new EntityForm(), "current-hash", 1, false, "current-hash", "current-hash", null, UiRuntimePurpose.STANDALONE));
         var adapter = new EntityNewDataFormRuntimeAdapter(nativeService, releases);
-        assertEquals(new ResolvedForm("form-first", "current-hash", 1), adapter.resolveForNewData("expense").orElseThrow());
+        assertEquals(new ResolvedForm("form-first", "current-hash", 1), adapter.resolveNewRecordForm("expense").orElseThrow());
     }
 
     @Test void failsClosedWhenNativeResultHasNoStableIdentity() {
         var nativeService = mock(EntityFormResolveService.class);
         var releases = mock(UiConfigReleaseService.class);
         when(nativeService.resolveFormForNewData("expense")).thenReturn(Map.of("configHash", "hash"));
-        assertThrows(IllegalStateException.class, () -> new EntityNewDataFormRuntimeAdapter(nativeService, releases).resolveForNewData("expense"));
+        assertThrows(IllegalStateException.class, () -> new EntityNewDataFormRuntimeAdapter(nativeService, releases).resolveNewRecordForm("expense"));
         verifyNoInteractions(releases);
     }
 }

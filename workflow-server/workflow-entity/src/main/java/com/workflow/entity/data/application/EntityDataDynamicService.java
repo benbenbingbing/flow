@@ -32,12 +32,12 @@ import java.util.Map;
 /**
  * 动态实体聚合查询服务。
  *
- * <p>业务数据写入统一由 EntityMutationPort 进入变更管道，本服务不提供写方法。
+ * <p>业务数据写入统一由 TrustedEntityRecordMutationPort 进入变更管道，本服务不提供写方法。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class EntityDataDynamicService implements com.workflow.contracts.entity.port.EntityTaskSummaryPort {
+public class EntityDataDynamicService implements com.workflow.port.entity.EntityTaskSummaryPort {
 
     private final EntityDataDynamicMapper dynamicMapper;
     private final EntityDefinitionMapper definitionMapper;
@@ -473,7 +473,7 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
                 dynamicTableService.getTableName(entityCode),
                 id);
         if (data == null) {
-            throw new com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException(entityCode, id);
+            throw new com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException(entityCode, id);
         }
         return assembleAggregate(data, entityCode);
     }
@@ -484,8 +484,8 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
      */
     @Override
     @Transactional(readOnly = true)
-    public com.workflow.contracts.entity.model.EntityTaskSummary findTaskSummary(String entityCode, String recordId) {
-        var empty = com.workflow.contracts.entity.model.EntityTaskSummary.empty();
+    public com.workflow.port.entity.model.EntityTaskSummary findTaskSummary(String entityCode, String recordId) {
+        var empty = com.workflow.port.entity.model.EntityTaskSummary.empty();
         if (entityCode == null || recordId == null
                 || definitionMapper.findByEntityCode(entityCode).isEmpty()) return empty;
         String customNameColumn = getRuntimeFields(entityCode).stream()
@@ -496,7 +496,7 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
         Map<String, Object> data = dynamicMapper.selectTaskSummary(
                 dynamicTableService.getTableName(entityCode), recordId, customNameColumn);
         if (data == null) return empty;
-        return new com.workflow.contracts.entity.model.EntityTaskSummary(
+        return new com.workflow.port.entity.model.EntityTaskSummary(
                 summaryText(data.get("name")), summaryText(data.get("code")), summaryText(data.get("data_name")),
                 summaryText(data.get("current_task_name")), summaryText(data.get("status")));
     }

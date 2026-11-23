@@ -1,7 +1,7 @@
 package com.workflow.service.entity;
 
 import com.workflow.process.form.application.EntityFormRuntimeService;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;

@@ -1,0 +1,63 @@
+package com.workflow.port.process;
+
+import com.workflow.port.process.model.ProcessBindingState;
+import com.workflow.port.process.model.ProcessCatalogItem;
+import com.workflow.port.process.model.ProcessPage;
+import com.workflow.port.process.model.ProcessPageRequest;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * 流程目录查询端口。
+ *
+ * <p>供其他模块按流程 ID 查询流程名称与目录条目，屏蔽流程持久化层的实现细节。</p>
+ */
+public interface ProcessDefinitionConfigPort {
+
+    /** 在流程定义查看权限下分页列出已发布且未删除的定义；keyword 可按名称或编码筛选。 */
+    ProcessPage<ProcessCatalogItem> pagePublished(String keyword, ProcessPageRequest page);
+
+    /** 按编码查已发布且未删除的定义；缺失或其他发布状态返回 empty。 */
+    Optional<ProcessCatalogItem> findPublishedByKey(String processKey);
+
+    /**
+     * 获取草稿、当前发布版本及仍运行版本依赖的特殊结束状态类别。
+     * 实体状态保存时据此阻止删除唯一目标；实现不应执行流程或把动态条件当作禁用。
+     */
+    java.util.Set<String> requiredEndStatusCategories(String processId);
+
+    /**
+     * 根据流程 ID 集合批量查询流程名称。
+     *
+     * @param processIds 流程 ID 集合
+     * @return 流程 ID 到流程名称的映射
+     */
+    Map<String, String> findNamesByIds(Collection<String> processIds);
+
+    /**
+     * 根据流程 ID 集合批量查询流程目录条目。
+     *
+     * @param processIds 流程 ID 集合
+     * @return 流程 ID 到目录条目的映射，默认返回空映射
+     */
+    default Map<String, ProcessCatalogItem> findItemsByIds(Collection<String> processIds) {
+        return Collections.emptyMap();
+    }
+
+    /**
+     * 带锁读取。在当前事务中按传入顺序锁定流程配置，并返回绑定生命周期状态。
+     *
+     * <p>调用方必须按稳定顺序传入去重后的 ID。实现需要与流程发布共用同一数据库
+     * 行锁，使“发布”与“绑定、解绑、删除实体”不能交错提交。</p>
+     *
+     * @param processIds 需要锁定的流程配置 ID
+     * @return 实际存在的流程状态映射，不存在的 ID 不返回
+     */
+    default Map<String, ProcessBindingState> lockBindingStates(
+            Collection<String> processIds) {
+        throw new UnsupportedOperationException(
+                "当前流程目录实现不支持绑定状态锁定");
+    }
+}

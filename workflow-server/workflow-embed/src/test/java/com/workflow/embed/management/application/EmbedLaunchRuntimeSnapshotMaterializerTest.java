@@ -5,11 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
+import com.workflow.port.embed.EmbedPublishedListDependencyPort;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.port.entity.EntityFormPort;
 import com.workflow.embed.domain.EmbedReleaseSnapshot;
 import com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResource;
 import com.workflow.embed.management.support.InMemoryEmbedManagementRepository;
@@ -26,19 +29,19 @@ class EmbedLaunchRuntimeSnapshotMaterializerTest {
     private final InMemoryEmbedManagementRepository repository =
             new InMemoryEmbedManagementRepository();
     private EmbedLaunchRuntimeSnapshotMaterializer materializer;
-    private EmbedNativeListDependencyRuntimePort dependencyPort;
-    private EntityNewDataFormRuntimePort newDataFormRuntimePort;
+    private EmbedPublishedListDependencyPort dependencyPort;
+    private EntityFormPort newDataFormRuntimePort;
 
     @BeforeEach
     void setUp() {
         repository.resolvedResource = resolved("list-release-1", 3L,
                 "form-release-1", 5L);
-        dependencyPort = target -> new com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort.ResolvedList(
+        dependencyPort = target -> new com.workflow.port.embed.EmbedPublishedListDependencyPort.ResolvedList(
                 new ListCoordinate(
                         target.entityCode(), target.listKey(), "list-1",
                         target.listReleaseId(), target.listReleaseVersion()),
                 List.of());
-        newDataFormRuntimePort = entityCode -> Optional.empty();
+        newDataFormRuntimePort = mock(EntityFormPort.class);
         rebuildMaterializer();
     }
 
@@ -82,7 +85,7 @@ class EmbedLaunchRuntimeSnapshotMaterializerTest {
                 "asset-list-release-5", 5);
         dependencyPort = target -> {
             boolean root = "work_order".equals(target.entityCode());
-            return new com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort.ResolvedList(
+            return new com.workflow.port.embed.EmbedPublishedListDependencyPort.ResolvedList(
                     new ListCoordinate(
                             target.entityCode(), target.listKey(),
                             root ? "list-1" : "asset-list",
@@ -90,17 +93,17 @@ class EmbedLaunchRuntimeSnapshotMaterializerTest {
                             target.listReleaseVersion()),
                     root ? List.of(child) : List.of());
         };
-        AtomicReference<com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm> active =
-                new AtomicReference<>(new com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm(
+        AtomicReference<com.workflow.port.entity.EntityFormPort.ResolvedForm> active =
+                new AtomicReference<>(new com.workflow.port.entity.EntityFormPort.ResolvedForm(
                         "asset-form", "asset-form-release-1", 1));
-        newDataFormRuntimePort = entityCode -> "asset".equals(entityCode)
-                ? Optional.ofNullable(active.get()) : Optional.empty();
+        when(newDataFormRuntimePort.resolveNewRecordForm(anyString())).thenAnswer(call ->
+                "asset".equals(call.getArgument(0)) ? Optional.ofNullable(active.get()) : Optional.empty());
         rebuildMaterializer();
 
         EmbedReleaseSnapshot first = materialize();
         String firstConfig = repository.releases.get("view-1")
                 .get(0).configJson();
-        active.set(new com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm(
+        active.set(new com.workflow.port.entity.EntityFormPort.ResolvedForm(
                 "asset-form", "asset-form-release-2", 2));
         EmbedReleaseSnapshot second = materialize();
 
@@ -119,7 +122,7 @@ class EmbedLaunchRuntimeSnapshotMaterializerTest {
                 "asset-list-release-5", 5);
         dependencyPort = target -> {
             boolean root = "work_order".equals(target.entityCode());
-            return new com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort.ResolvedList(
+            return new com.workflow.port.embed.EmbedPublishedListDependencyPort.ResolvedList(
                     new ListCoordinate(
                             target.entityCode(), target.listKey(),
                             root ? "list-1" : "asset-list",

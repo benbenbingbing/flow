@@ -19,7 +19,7 @@ class EntityRecordQueryAdapterTest {
     private final EntityDataDynamicService records = mock(EntityDataDynamicService.class);
     private final EntityDataActionService actions = mock(EntityDataActionService.class);
     private final EntityRecordQueryAdapter adapter = new EntityRecordQueryAdapter(records, new ObjectMapper(),
-            new StaticListableBeanFactory(Map.of("actions", actions)).getBeanProvider(EntityDataActionService.class));
+            new StaticListableBeanFactory(Map.of("actions", actions)).getBeanProvider(EntityDataActionService.class), mock(EntitySubmissionAdapter.class));
 
     @Test
     void returnsBusinessValuesWithoutSharingTheHostFieldMaps() {

@@ -6,7 +6,7 @@ import com.workflow.admin.extension.action.infrastructure.persistence.mapper.Flo
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
@@ -23,7 +23,7 @@ final class MigrationReferenceTestFixture {
                 dependency(service, "roleMapper", SysRoleMapper.class),
                 dependency(service, "groupMapper", SysGroupMapper.class),
                 dependency(service, "organizationMapper", SysOrganizationMapper.class),
-                mock(FlowActionDefinitionMapper.class), mock(FlowActionCatalogPort.class));
+                mock(FlowActionDefinitionMapper.class), mock(ProcessActionDefinitionPort.class));
         ConfigMigrationSubFormReferences forms = new ConfigMigrationSubFormReferences(
                 dependency(service, "entityMapper", EntityDefinitionMapper.class),
                 dependency(service, "formMapper", EntityFormMapper.class), mock(UiConfigReleaseMapper.class),

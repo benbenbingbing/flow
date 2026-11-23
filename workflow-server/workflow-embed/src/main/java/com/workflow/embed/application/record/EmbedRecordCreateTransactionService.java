@@ -2,9 +2,9 @@ package com.workflow.embed.application.record;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand;
-import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreatedRecord;
-import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
+import com.workflow.port.embed.EmbedRecordCreatePort.CreateCommand;
+import com.workflow.port.embed.EmbedRecordCreatePort.CreatedRecord;
+import com.workflow.port.embed.EmbedRecordCreatePort;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit;
 import com.workflow.embed.application.record.EmbedNativeRecordCreateAuthorizationService.Authorization;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;

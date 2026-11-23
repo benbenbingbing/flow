@@ -4,9 +4,9 @@ import com.workflow.embed.security.EmbedContextHolder;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort.Scope;
-import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
-import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.EmbedRequestUserScopePort.Scope;
+import com.workflow.port.embed.EmbedRequestUserScopePort;
+import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
@@ -63,7 +63,7 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
     public static final String PROTOCOL_HEADER = "X-Flow-Embed-Protocol";
 
     private final EmbedSessionAuthenticationService authenticationService;
-    private final EmbedRequestUserContextPort userContextPort;
+    private final EmbedRequestUserScopePort userContextPort;
     private final EmbedTrafficControlPort trafficControlPort;
     private final ObjectMapper objectMapper;
     private final EmbedLifecycleMetrics metrics;
@@ -84,7 +84,7 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     public EmbedSessionAuthenticationFilter(
             EmbedSessionAuthenticationService authenticationService,
-            EmbedRequestUserContextPort userContextPort,
+            EmbedRequestUserScopePort userContextPort,
             EmbedTrafficControlPort trafficControlPort,
             ObjectMapper objectMapper,
             EmbedLifecycleMetrics metrics,
@@ -116,7 +116,7 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
      */
     public EmbedSessionAuthenticationFilter(
             EmbedSessionAuthenticationService authenticationService,
-            EmbedRequestUserContextPort userContextPort,
+            EmbedRequestUserScopePort userContextPort,
             EmbedTrafficControlPort trafficControlPort,
             ObjectMapper objectMapper,
             EmbedLifecycleMetrics metrics,
@@ -145,7 +145,7 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
      */
     private EmbedSessionAuthenticationFilter(
             EmbedSessionAuthenticationService authenticationService,
-            EmbedRequestUserContextPort userContextPort,
+            EmbedRequestUserScopePort userContextPort,
             EmbedTrafficControlPort trafficControlPort,
             ObjectMapper objectMapper,
             EmbedLifecycleMetrics metrics,

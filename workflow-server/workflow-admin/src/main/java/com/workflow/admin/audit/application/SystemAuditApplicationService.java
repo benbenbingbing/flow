@@ -1,11 +1,11 @@
 package com.workflow.admin.audit.application;
 
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,10 +20,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SystemAuditApplicationService implements SystemAuditPort {
+public class SystemAuditApplicationService implements SystemOperationLogPort {
 
     private final AuditLogPayloadFactory payloadFactory;
-    private final OutboxPublishPort outboxPublisher;
+    private final WorkflowOutboxEventPort outboxPublisher;
     private final SystemAuditFailureWriter failureWriter;
     private final SystemAuditOutboxWriter outboxWriter;
     private final ApplicationEventPublisher eventPublisher;

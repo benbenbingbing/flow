@@ -3,10 +3,10 @@ package com.workflow.process.task.application;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.model.CommandMeta;
-import com.workflow.contracts.process.task.model.TaskFormReference;
+import com.workflow.port.system.SysUserLookupPort;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.CommandMeta;
+import com.workflow.port.process.task.model.TaskFormReference;
 import com.workflow.process.action.application.FlowActionOperationDispatcher;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -74,7 +74,7 @@ public class TaskHistoryReturnService {
     private final FlowActionOperationDispatcher flowActions;
     private final ProcessOperationLogMapper logs;
     private final ObjectMapper json;
-    private final IdentityDirectoryPort identities;
+    private final SysUserLookupPort identities;
 
     public record Request(@NotBlank(message = "回退请求标识不能为空")
                           @Size(max = 200, message = "回退请求标识不能超过 200 个字符") String requestId,

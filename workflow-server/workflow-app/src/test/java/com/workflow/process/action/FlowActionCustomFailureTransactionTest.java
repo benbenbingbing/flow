@@ -3,11 +3,11 @@ package com.workflow.process.action;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.process.action.context.*;
 import com.workflow.contracts.process.action.model.*;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.contracts.process.action.spi.*;
 import com.workflow.process.action.application.*;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
@@ -286,7 +286,7 @@ public class FlowActionCustomFailureTransactionTest {
             var catalog = new FlowActionFailureStrategyCatalog(List.of(provider), json, mock(EntityCodeCatalogPort.class), beans);
             coordinator = new FlowActionFailureCoordinator(catalog);
             service = proxy(new FlowActionExecutionService(mapper, mock(FlowActionMapper.class), json,
-                    mock(FlowActionCatalogPort.class), mock(SystemAuditPort.class), catalog));
+                    mock(ProcessActionDefinitionPort.class), mock(SystemOperationLogPort.class), catalog));
             operation = proxy(new Operation());
             var scheduler = mock(TaskScheduler.class);
             doReturn(mock(ScheduledFuture.class)).when(scheduler).scheduleAtFixedRate(any(Runnable.class), any(Instant.class), any(Duration.class));

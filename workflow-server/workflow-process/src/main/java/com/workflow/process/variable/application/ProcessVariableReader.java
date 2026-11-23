@@ -1,8 +1,8 @@
 package com.workflow.process.variable.application;
 
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.model.ProcessValues;
-import com.workflow.contracts.process.variable.model.VariableReadMode;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.ProcessValues;
+import com.workflow.port.process.variable.model.VariableReadMode;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskAddSignUserMapper;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.HistoryService;

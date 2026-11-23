@@ -39,7 +39,7 @@ class GlobalExceptionHandlerTest {
         for (var expected : java.util.Map.of("PROCESS_ACCESS_DENIED", 403, "PROCESS_NOT_FOUND", 404,
                 "IDEMPOTENCY_CONFLICT", 409, "TASK_ALREADY_COMPLETED", 409, "VARIABLE_SCOPE_UNSUPPORTED", 400,
                 "PROCESS_OPERATION_FAILED", 500).entrySet()) {
-            var response = handler.handleProcessOperationException(new com.workflow.contracts.process.error.ProcessOperationException(
+            var response = handler.handleProcessOperationException(new com.workflow.port.process.error.ProcessOperationException(
                     expected.getKey(), "流程操作失败", "task-1"));
             assertEquals(expected.getValue(), response.getStatusCode().value());
             assertEquals(expected.getKey(), response.getBody().getErrorCode());

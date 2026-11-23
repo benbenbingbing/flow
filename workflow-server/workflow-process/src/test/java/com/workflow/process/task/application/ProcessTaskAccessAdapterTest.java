@@ -1,6 +1,6 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
+import com.workflow.port.process.ProcessTaskPermissionPort.ActionableTaskContext;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
@@ -28,7 +28,7 @@ class ProcessTaskAccessAdapterTest {
     @Test
     void batchPartitionsCoordinatesAndDoesNotFallBackToPerRecordQueries() {
         var records = java.util.stream.IntStream.range(0, 205)
-                .mapToObj(index -> new com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates(
+                .mapToObj(index -> new com.workflow.port.process.ProcessTaskPermissionPort.RecordCoordinates(
                         "expense", "record-" + index, "process-" + index)).toList();
         var result = adapter.findCapabilities("user-1", records);
         assertEquals(205, result.size());

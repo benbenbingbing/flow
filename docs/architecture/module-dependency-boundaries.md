@@ -3,7 +3,7 @@
 ## 规则
 
 - workflow-port 承载平台能力及共享模型；workflow-spi 承载 Provider 及扩展专用模型，单向依赖 workflow-port。
-- 两个契约模块保留 com.workflow.contracts 包名，不引用 core 或领域实现，不引入 Spring、MyBatis、Jackson。
+- 平台契约位于 `com.workflow.port`，扩展契约位于 `com.workflow.contracts`。两者均为纯 Java 契约，独立于 core、领域实现、Spring、MyBatis 和 Jackson。
 - database 是纯方言库；数据库执行由 core 和调用模块负责。
 - app 负责装配；领域模块不能反向依赖 app。
 - 新代码不得直接访问其他模块的持久化 Mapper/Record，优先使用所属领域的端口。
@@ -11,12 +11,12 @@
 
 ## 已收口的边界
 
-- storage 通过 CurrentActorPort / CurrentAuthorizationPort 校验资源归属，不再依赖 admin。
+- storage 通过 CurrentActorPort 获取操作人并校验资源归属。
 - 人员解析的身份展开与目录启用检查由 admin 适配器负责；原启用、删除过滤及去重语义不变。
 - 流程节点表单配置归属 process；实体模块不再持有这组 process_form_* 表的 Mapper。
-- 项目动作与治理服务通过 EntityRecordQueryPort 读取独立业务投影，统一变更端口保持不变。
+- 项目动作与治理服务通过 EntityRecordPort 读取独立业务投影，受信的批量写入使用 TrustedEntityRecordMutationPort。
 - 权限与知会扩展使用 workflow-spi 的 Provider，宿主在边界显式投影身份、记录和通知参数。
-- 字典资产的导入、停用及缓存刷新由 admin 实现 DictionaryMigrationPort，迁移模块维持外层事务编排。
+- 字典资产的导入、停用及缓存刷新由 admin 实现 SysDictMigrationPort，迁移模块维持外层事务编排。
 
 ## 渐进约束
 

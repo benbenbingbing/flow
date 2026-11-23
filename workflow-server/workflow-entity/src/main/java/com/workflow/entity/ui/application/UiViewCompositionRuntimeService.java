@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
@@ -209,7 +209,7 @@ public class UiViewCompositionRuntimeService {
             throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "关联来源记录不可访问");
         if (LIST.equals(validated.ownerType()) && !matchesFilters(sourceRecord, publishedFilters(map(owner.snapshot().get("list")).get("fixedFilterConfig"))))
             throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "来源记录不属于宿主列表固定范围");
-        boolean readonly = trusted != null && trusted.purpose() == com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL
+        boolean readonly = trusted != null && trusted.purpose() == com.workflow.port.entity.ui.model.UiRuntimePurpose.HISTORICAL
                 || Boolean.TRUE.equals(map(config.get("presentation")).get("readonly"));
 
         TargetAsset target = requireTargetAsset(targetConfig);
@@ -286,7 +286,7 @@ public class UiViewCompositionRuntimeService {
 
     /** 根列表可使用已认证 Embed 会话的固定配置；其余根使用当前发布，子层只接受已验证父配置。 */
     private OwnerRelease resolveOwnerRelease(ValidatedRequest request, UiConfigRelease inheritedRelease) {
-        var embedList = com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.authorizedListTarget().orElse(null);
+        var embedList = com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.authorizedListTarget().orElse(null);
         UiConfigRelease release = FORM.equals(request.ownerType())
                 ? currentFormRelease(request.ownerId())
                 : inheritedRelease != null ? inheritedRelease

@@ -1,7 +1,7 @@
 package com.workflow.migration.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.migration.port.EntityExcelMigrationPort;
+import com.workflow.port.migration.EntityExcelMigrationPort;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportItemMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportPackageMapper;
 import com.workflow.migration.infrastructure.persistence.record.ConfigImportItem;

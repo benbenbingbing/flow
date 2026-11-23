@@ -1,6 +1,6 @@
 package com.workflow.contracts.entity.ui.model;
 
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;

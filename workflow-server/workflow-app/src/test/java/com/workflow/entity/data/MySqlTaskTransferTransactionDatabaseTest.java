@@ -2,7 +2,7 @@ package com.workflow.entity.data;
 
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.cc.application.ProcessCcService;
@@ -134,7 +134,7 @@ class MySqlTaskTransferTransactionDatabaseTest {
             });
             actions = h.transactional(new TaskActionService(new com.workflow.process.action.application.FlowActionOperationDispatcher(mock(com.workflow.process.action.application.FlowActionDispatcher.class), runtime, mock(org.flowable.engine.HistoryService.class)), tasks, runtime, mock(HistoryService.class), processTasks,
                     mock(RepositoryService.class), h.mapper(ProcessOperationLogMapper.class), mock(SysUserService.class),
-                    mock(NodeFormSubmissionService.class), mock(EntityRecordPort.class), mock(ProcessCcService.class),
+                    mock(NodeFormSubmissionService.class), mock(EntityProcessStatePort.class), mock(ProcessCcService.class),
                     mock(NextApproverOverrideService.class), outcomes, mock(NodeOperationCapabilityService.class),
                     mock(TaskIdentityAccessService.class), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class)));
             UserContext.setCurrentUser("alice", "alice");

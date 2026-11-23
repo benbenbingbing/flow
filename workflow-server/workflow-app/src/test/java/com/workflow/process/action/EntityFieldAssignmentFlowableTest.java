@@ -2,9 +2,9 @@ package com.workflow.process.action;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.contracts.entity.mutation.model.*;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.mutation.model.*;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.entity.definition.application.*;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -45,7 +45,7 @@ class EntityFieldAssignmentFlowableTest {
         engine = cfg.buildProcessEngine();
         jdbc.execute("CREATE TABLE business_record(id VARCHAR(50) PRIMARY KEY, flag BOOLEAN, note VARCHAR(100), other_value VARCHAR(100), status VARCHAR(30))");
         jdbc.execute("CREATE TABLE mutation_call(id VARCHAR(200) PRIMARY KEY)");
-        var mutations = mock(EntityMutationPort.class);
+        var mutations = mock(TrustedEntityRecordMutationPort.class);
         when(mutations.execute(any())).thenAnswer(call -> {
             EntityMutationCommand command = call.getArgument(0);
             jdbc.update("INSERT INTO mutation_call VALUES (?)", command.operationId());

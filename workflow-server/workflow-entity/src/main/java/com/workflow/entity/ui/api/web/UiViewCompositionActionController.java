@@ -2,7 +2,7 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionCapabilitiesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilitiesResponse;

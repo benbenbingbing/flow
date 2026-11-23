@@ -2,19 +2,17 @@ package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessRuntimeService;
 import com.workflow.process.instance.application.ProcessEntityVariableService;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 
-import com.workflow.contracts.process.model.ProcessStartRequest;
-import com.workflow.contracts.process.model.ProcessStartResult;
+import com.workflow.port.process.model.ProcessStartRequest;
+import com.workflow.port.process.model.ProcessStartResult;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
-import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 import org.flowable.engine.IdentityService;
@@ -36,7 +34,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -90,7 +87,7 @@ class ProcessRuntimeServiceTest {
                         if ("PROCESS_STARTING".equals(event.getTriggerTiming())) event.getVariables().put("initiator", "other-user");
                         return null;
                 }).when(fixture.businessActions).dispatch(any());
-                org.junit.jupiter.api.Assertions.assertThrows(com.workflow.contracts.process.error.ProcessOperationException.class, () -> fixture.service().start(new ProcessStartRequest(
+                org.junit.jupiter.api.Assertions.assertThrows(com.workflow.port.process.error.ProcessOperationException.class, () -> fixture.service().start(new ProcessStartRequest(
                         "process-config-1", "expense", "data-1", "EXP-1", "admin", "管理员", "PENDING", Map.of(), Map.of())));
                 verify(fixture.runtimeService, org.mockito.Mockito.never()).startProcessInstanceById(anyString(), anyString(), anyMap());
         }
@@ -99,7 +96,7 @@ class ProcessRuntimeServiceTest {
         void historicalReadonlyGuardRunsBeforeAnyEngineStart() {
                 Fixture fixture = new Fixture();
                 ProcessRuntimeService service = fixture.service();
-                var guard = mock(com.workflow.contracts.history.EntityHistoryWritePolicyPort.class);
+                var guard = mock(com.workflow.port.migration.EntityHistoryWritePolicyPort.class);
                 org.springframework.test.util.ReflectionTestUtils.setField(service, "historyWriteGuard", guard);
                 org.mockito.Mockito.doThrow(new com.workflow.core.error.BusinessConflictException("HISTORICAL_RECORD_READONLY", "历史只读"))
                         .when(guard).requireWritable("expense", "data-1");

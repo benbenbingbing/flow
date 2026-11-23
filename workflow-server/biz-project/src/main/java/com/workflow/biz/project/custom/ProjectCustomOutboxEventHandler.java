@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * Outbox 事件处理器示例。
  *
- * <p>主题为 {@value #TOPIC}。业务方可通过平台 {@code OutboxPublishPort}
+ * <p>主题为 {@value #TOPIC}。业务方可通过平台 {@code WorkflowOutboxEventPort}
  * 发布该主题；处理器只记录稳定元数据，不解析或输出事件正文。</p>
  */
 @Slf4j

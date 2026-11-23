@@ -5,10 +5,10 @@ import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.version.application.EntityRecordSnapshotService.SnapshotCapture;
 import com.workflow.entity.version.application.EntityRecordSnapshotService.SnapshotCaptureV2;
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher.MatchedScenario;
@@ -24,7 +24,7 @@ import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,7 +62,7 @@ class EntityRecordVersionServiceTest {
     @Mock
     private EntityRecordSnapshotService snapshotService;
     @Mock
-    private OutboxPublishPort outboxPublisher;
+    private WorkflowOutboxEventPort outboxPublisher;
     @Mock
     private EntityVersionConfigurationService configurationService;
     @Mock

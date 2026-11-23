@@ -4,6 +4,8 @@
 - 日期：2026-09-05
 - 决策范围：`workflow-contracts`
 
+> 当前 Port 目录规则见 [ADR-0009](0009-flatten-platform-port-packages.md)。本文记录原分包决策。
+
 ## 背景
 
 `workflow-contracts` 同时承载跨模块单一能力、可发现的业务扩展、边界模型、运行时

@@ -1,9 +1,12 @@
 package com.workflow.process.task.application;
 
+import com.workflow.port.system.SysGroupPort;
+import com.workflow.port.system.SysUserGroupPort;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.entity.EntityFormPort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
@@ -18,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.NullSource;
-import com.workflow.contracts.identity.model.IdentityGroup;
+import com.workflow.port.system.identity.model.IdentityGroup;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
@@ -30,11 +33,13 @@ class ProcessTaskCreationTest {
     private final RuntimeService runtime = mock(RuntimeService.class, RETURNS_DEEP_STUBS);
     private final TaskSlaRuntimeService sla = mock(TaskSlaRuntimeService.class);
     private final TaskService engineTasks = mock(TaskService.class);
-    private final IdentityDirectoryPort directory = mock(IdentityDirectoryPort.class);
+    private final SysUserLookupPort directory = mock(SysUserLookupPort.class);
+    private final SysGroupPort groups = mock(SysGroupPort.class);
+    private final SysUserGroupPort groupMembers = mock(SysUserGroupPort.class);
     private final ProcessTaskService service = new ProcessTaskService(mapper, engineTasks, runtime,
             mock(RepositoryService.class, RETURNS_DEEP_STUBS), mock(NodeConfigMapper.class),
-            mock(EntityFormRuntimePort.class), mock(ProcessDefinitionConfigMapper.class), new ObjectMapper(),
-            mock(EntityRecordPort.class), directory, sla);
+            mock(EntityFormPort.class), mock(ProcessDefinitionConfigMapper.class), new ObjectMapper(),
+            mock(EntityProcessStatePort.class), directory, groups, groupMembers, sla);
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
@@ -88,7 +93,7 @@ class ProcessTaskCreationTest {
         var link = mock(org.flowable.identitylink.api.IdentityLink.class);
         when(link.getType()).thenReturn("candidate"); when(link.getGroupId()).thenReturn("finance");
         when(engineTasks.getIdentityLinksForTask("task-1")).thenReturn(List.of(link));
-        when(directory.findGroup("finance")).thenReturn(Optional.of(new IdentityGroup("g1", "finance", name)));
+        when(groups.findGroup("finance")).thenReturn(Optional.of(new IdentityGroup("g1", "finance", name)));
         var result = service.createTask(task, Map.of());
         assertNull(result.getAssigneeId()); assertEquals("group", result.getAssigneeType());
         assertEquals(name == null ? "finance" : name, result.getAssigneeName());

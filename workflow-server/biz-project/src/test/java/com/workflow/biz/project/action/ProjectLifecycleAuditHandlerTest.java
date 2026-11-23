@@ -2,7 +2,7 @@ package com.workflow.biz.project.action;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
+import com.workflow.port.process.FlowActionContextPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -34,8 +34,8 @@ class ProjectLifecycleAuditHandlerTest {
                 "auditCode", "F07_MEMBER_CHANGE",
                 "businessStage", "MEMBER_EFFECTIVE",
                 "legacyField", "ignored"));
-        FlowActionRuntimePort runtimeAccess =
-                mock(FlowActionRuntimePort.class);
+        FlowActionContextPort runtimeAccess =
+                mock(FlowActionContextPort.class);
         when(runtimeAccess.convertParams(
                 anyMap(),
                 eq(ProjectLifecycleAuditHandler
@@ -85,8 +85,8 @@ class ProjectLifecycleAuditHandlerTest {
                 new ProjectLifecycleAuditHandler();
         FlowActionContext context =
                 new FlowActionContext();
-        FlowActionRuntimePort runtimeAccess =
-                mock(FlowActionRuntimePort.class);
+        FlowActionContextPort runtimeAccess =
+                mock(FlowActionContextPort.class);
         when(runtimeAccess.convertParams(
                 anyMap(),
                 eq(ProjectLifecycleAuditHandler

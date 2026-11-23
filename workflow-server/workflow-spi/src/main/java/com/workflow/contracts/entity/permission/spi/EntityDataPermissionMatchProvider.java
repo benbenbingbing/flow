@@ -1,7 +1,7 @@
 package com.workflow.contracts.entity.permission.spi;
 
 import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
-import com.workflow.contracts.identity.model.IdentityUser;
+import com.workflow.port.system.identity.model.IdentityUser;
 
 /**
  * 数据权限匹配范围扩展点。

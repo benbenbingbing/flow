@@ -8,7 +8,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionMapper;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinition;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.contracts.migration.spi.ConfigMigrationParameterReferenceProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +32,7 @@ public class ConfigMigrationReferenceService {
     private final SysGroupMapper groupMapper;
     private final SysOrganizationMapper organizationMapper;
     private final FlowActionDefinitionMapper actionMapper;
-    private final FlowActionCatalogPort actionCatalog;
+    private final ProcessActionDefinitionPort actionCatalog;
     private List<ConfigMigrationParameterReferenceProvider> parameterReferenceProviders = List.of();
 
     /** 扩展可选择注册参数引用契约；无适配器时仍检查固定目录 ID，并给出具体参数路径与建议。 */

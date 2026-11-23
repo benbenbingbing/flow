@@ -1,7 +1,9 @@
 package com.workflow.migration.history;
 
-import com.workflow.contracts.history.*;
-import com.workflow.contracts.history.HistoryImportModels.*;
+import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.EntityHistoryImportPort;
+import com.workflow.port.migration.ProcessArchiveInstancePort;
+import com.workflow.port.migration.history.model.HistoryImportModels.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
@@ -17,7 +19,7 @@ public class HistoryImportPlanner {
     public static final int MAX_GROUP_ROWS = 200;
     public static final Set<String> RESULTS = Set.of("APPROVED", "REJECTED", "WITHDRAWN", "TERMINATED", "COMPLETED_UNKNOWN");
     private final EntityHistoryImportPort entities;
-    private final ProcessArchivePort processes;
+    private final ProcessArchiveInstancePort processes;
 
     public record Validated(Input input, Map<String, EntitySchema> schemas, ProcessTemplate template,
                             Map<String, List<String>> groups, List<String> groupOrder) {}

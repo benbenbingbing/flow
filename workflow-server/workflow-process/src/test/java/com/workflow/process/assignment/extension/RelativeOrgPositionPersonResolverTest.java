@@ -1,21 +1,23 @@
 package com.workflow.process.assignment.extension;
 
+import com.workflow.port.system.SysPositionPort;
+
 import com.workflow.process.assignment.application.InitiatorOrganizationSnapshotService;
 import com.workflow.process.assignment.application.model.RelativeOrgPositionPreview;
 
-import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.error.OrganizationPositionErrorCode;
-import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
-import com.workflow.contracts.identity.position.model.OrganizationUnitStateView;
-import com.workflow.contracts.identity.position.model.PositionDefinitionView;
-import com.workflow.contracts.identity.position.model.PositionDirectoryResultCode;
-import com.workflow.contracts.identity.position.model.PositionHolderResolution;
-import com.workflow.contracts.identity.position.model.PositionHolderView;
+import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.port.system.SysOrganizationPort;
+import com.workflow.port.system.identity.position.error.OrganizationPositionErrorCode;
+import com.workflow.port.system.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.port.system.identity.position.model.OrganizationUnitStateView;
+import com.workflow.port.system.identity.position.model.PositionDefinitionView;
+import com.workflow.port.system.identity.position.model.PositionDirectoryResultCode;
+import com.workflow.port.system.identity.position.model.PositionHolderResolution;
+import com.workflow.port.system.identity.position.model.PositionHolderView;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,18 +37,20 @@ import static org.mockito.Mockito.when;
 
 class RelativeOrgPositionPersonResolverTest {
 
-    private OrganizationPositionDirectoryPort directory;
+    private SysOrganizationPort directory;
+    private SysPositionPort positions;
     private InitiatorOrganizationSnapshotService snapshotService;
     private RelativeOrgPositionPersonResolver resolver;
 
     @BeforeEach
     void setUp() {
-        directory = mock(OrganizationPositionDirectoryPort.class);
+        directory = mock(SysOrganizationPort.class);
+        positions = mock(SysPositionPort.class);
         snapshotService = new InitiatorOrganizationSnapshotService(
                 directory);
         resolver = new RelativeOrgPositionPersonResolver(
-                directory, snapshotService);
-        when(directory.requireEnabledPosition("UNIT_LEADER"))
+                directory, positions, snapshotService);
+        when(positions.requireEnabledPosition("UNIT_LEADER"))
                 .thenReturn(new PositionDefinitionView(
                         "UNIT_LEADER", "负责人", "ANY", "MULTIPLE", 1));
     }
@@ -62,7 +66,7 @@ class RelativeOrgPositionPersonResolverTest {
                     return new OrganizationUnitStateView(
                             id, type, "revision-7");
                 });
-        when(directory.findCurrentHolders(
+        when(positions.findCurrentHolders(
                 org.mockito.ArgumentMatchers.eq("UNIT_LEADER"),
                 org.mockito.ArgumentMatchers.eq("dept-first")))
                 .thenReturn(resolved(
@@ -80,8 +84,8 @@ class RelativeOrgPositionPersonResolverTest {
 
         assertEquals(1, result.principals().size());
         assertEquals("leader", result.principals().get(0).key());
-        verify(directory).requireEnabledPosition("UNIT_LEADER");
-        verify(directory).findCurrentHolders(
+        verify(positions).requireEnabledPosition("UNIT_LEADER");
+        verify(positions).findCurrentHolders(
                 org.mockito.ArgumentMatchers.eq("UNIT_LEADER"),
                 org.mockito.ArgumentMatchers.eq("dept-first"));
     }
@@ -114,7 +118,7 @@ class RelativeOrgPositionPersonResolverTest {
         assertEquals("ORG_SNAPSHOT_INVALID", failure.reasonCode());
         verify(directory).requireActiveOrganizationUnit("dept-team");
         verify(directory).requireActiveOrganizationUnit("dept-mid");
-        verify(directory, never()).findCurrentHolders(
+        verify(positions, never()).findCurrentHolders(
                 any(), any());
     }
 
@@ -126,7 +130,7 @@ class RelativeOrgPositionPersonResolverTest {
         when(directory.requireActiveOrganizationUnit(any()))
                 .thenAnswer(invocation -> new OrganizationUnitStateView(
                         invocation.getArgument(0), "dept", "revision-9"));
-        when(directory.findCurrentHolders(
+        when(positions.findCurrentHolders(
                 org.mockito.ArgumentMatchers.eq("UNIT_LEADER"),
                 org.mockito.ArgumentMatchers.eq("dept-first")))
                 .thenReturn(resolved(
@@ -152,7 +156,7 @@ class RelativeOrgPositionPersonResolverTest {
         Map<String, Object> variables = captured(snapshot(), "user-1");
         when(directory.requireActiveOrganizationUnit(any())).thenAnswer(invocation ->
                 new OrganizationUnitStateView(invocation.getArgument(0), "dept", "revision"));
-        when(directory.findCurrentHolders("UNIT_LEADER", "dept-team"))
+        when(positions.findCurrentHolders("UNIT_LEADER", "dept-team"))
                 .thenReturn(resolved("dept-team", holder("alice"), holder("bob")));
         var failure = assertThrows(PersonResolutionException.class, () -> resolver.resolve(request(
                 "user-1", variables, config("UNIT_LEADER", Map.of("mode", "SELF"), "PRIMARY_OR_ERROR"))));

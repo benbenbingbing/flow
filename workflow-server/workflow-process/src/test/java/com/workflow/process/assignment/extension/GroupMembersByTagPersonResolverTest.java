@@ -1,7 +1,7 @@
 package com.workflow.process.assignment.extension;
 
-import com.workflow.contracts.identity.model.GroupMemberFilter;
-import com.workflow.contracts.identity.port.GroupMemberTagPort;
+import com.workflow.port.system.identity.model.GroupMemberFilter;
+import com.workflow.port.system.SysUserGroupTagPort;
 import com.workflow.contracts.process.assignment.model.*;
 import org.junit.jupiter.api.Test;
 import java.util.*;
@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class GroupMembersByTagPersonResolverTest {
-    GroupMemberTagPort directory = mock(GroupMemberTagPort.class);
+    SysUserGroupTagPort directory = mock(SysUserGroupTagPort.class);
     GroupMembersByTagPersonResolver resolver = new GroupMembersByTagPersonResolver(directory);
 
     @Test void keepsUnfilteredGroupsInUnionAndRejectsMalformedConditionsRatherThanTreatingAsWholeGroup() {
@@ -22,7 +22,7 @@ class GroupMembersByTagPersonResolverTest {
     @Test void validatesCandidateModeOwnershipAndSupportsAllAssignmentUsages() {
         var params = Map.<String,Object>of("groups",List.of(Map.of("groupCode","TECH","tagIds",List.of("tag"))));
         resolver.validate(new PersonResolverConfigurationValidationRequest(PersonResolveUsage.ASSIGNEE,"CANDIDATE",false,params));
-        verify(directory).validate(List.of(new GroupMemberFilter("TECH",List.of("tag"))));
+        verify(directory).validateTags(List.of(new GroupMemberFilter("TECH",List.of("tag"))));
         assertThrows(IllegalArgumentException.class,()->resolver.validate(new PersonResolverConfigurationValidationRequest(PersonResolveUsage.ASSIGNEE,"DIRECT",false,params)));
         assertEquals(Set.of(PersonResolveUsage.ASSIGNEE,PersonResolveUsage.CANDIDATE,PersonResolveUsage.MULTI_INSTANCE),resolver.descriptor().supportedUsages());
     }

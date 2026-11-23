@@ -4,10 +4,10 @@ import com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

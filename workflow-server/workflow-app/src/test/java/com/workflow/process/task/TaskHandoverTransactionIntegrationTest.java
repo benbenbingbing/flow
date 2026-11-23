@@ -1,11 +1,16 @@
 package com.workflow.process.task;
 
+import com.workflow.port.system.SysUserHandoverPort;
+
+import com.workflow.port.system.SysGroupPort;
+import com.workflow.port.system.SysUserGroupPort;
+
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -26,9 +31,9 @@ import com.workflow.entity.mutation.infrastructure.persistence.record.EntityMuta
 import com.workflow.entity.version.application.*;
 import com.workflow.integration.database.api.write.DatabaseInsertDialect;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.port.EntityTaskSummaryPort;
-import com.workflow.contracts.identity.model.IdentityHandoverUser;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.entity.EntityTaskSummaryPort;
+import com.workflow.port.system.identity.model.IdentityHandoverUser;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.sla.runtime.application.TaskSlaRuntimeService;
@@ -126,10 +131,13 @@ class TaskHandoverTransactionIntegrationTest {
         handover = session.getMapper(TaskHandoverMapper.class);
         var projectionMapper = session.getMapper(TaskInboxProjectionMapper.class);
 
-        var directory = mock(IdentityDirectoryPort.class);
-        when(directory.findHandoverUser("alice-id")).thenReturn(Optional.of(
+        var directory = mock(SysUserLookupPort.class);
+        var handoverUsers = mock(SysUserHandoverPort.class);
+        var groups = mock(SysGroupPort.class);
+        var groupMembers = mock(SysUserGroupPort.class);
+        when(handoverUsers.findHandoverUser("alice-id")).thenReturn(Optional.of(
                 new IdentityHandoverUser("alice-id", "alice", "原办理人", "1", true)));
-        when(directory.lockHandoverUser("bob-id")).thenReturn(Optional.of(
+        when(handoverUsers.lockHandoverUser("bob-id")).thenReturn(Optional.of(
                 new IdentityHandoverUser("bob-id", "bob", "接收人", "0", false)));
         when(directory.getDisplayName(anyString())).thenAnswer(call -> {
             String user = call.getArgument(0);
@@ -143,13 +151,13 @@ class TaskHandoverTransactionIntegrationTest {
         recordAdapter = currentTaskAdapter(session);
         var processTasks = transactional(new ProcessTaskService(tasks, engine.getTaskService(),
                 engine.getRuntimeService(), engine.getRepositoryService(), null, null, null,
-                new ObjectMapper(), recordAdapter, directory));
+                new ObjectMapper(), recordAdapter, directory, groups, groupMembers));
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("processTasks", processTasks);
         var inbox = transactional(new TaskInboxProjectionService(tasks,
                 session.getMapper(ProcessTaskCandidateUserMapper.class),
                 session.getMapper(ProcessTaskCandidateGroupMapper.class), projectionMapper,
-                engine.getTaskService(), engine.getHistoryService(), directory,
+                engine.getTaskService(), engine.getHistoryService(), directory, groups, groupMembers,
                 mock(EntityTaskSummaryPort.class), beans.getBeanProvider(ProcessTaskService.class),
                 engine.getRuntimeService()));
         sla = mock(TaskSlaRuntimeService.class);
@@ -158,7 +166,7 @@ class TaskHandoverTransactionIntegrationTest {
             return jdbc.update("UPDATE handover_sla SET assignee = ? WHERE task_id = ?",
                     call.getArgument(1, String.class), call.getArgument(0, String.class));
         }).when(sla).updateAssignee(anyString(), anyString());
-        service = transactional(new TaskHandoverService(directory, handover, tasks,
+        service = transactional(new TaskHandoverService(handoverUsers, directory, handover, tasks,
                 mock(ProcessTaskAddSignMapper.class), mock(ProcessTaskAddSignUserMapper.class),
                 projectionMapper, inbox, engine.getTaskService(), processTasks, sla,
                 session.getMapper(ProcessOperationLogMapper.class)));
@@ -330,7 +338,7 @@ class TaskHandoverTransactionIntegrationTest {
                 mock(EntityVersionPolicyMatcher.class), mock(EntityRecordVersionService.class),
                 mock(EntityRelatedVersionCaptureService.class), receipts, mock(EntityFormUniqueClaimService.class),
                 mock(PublishedFormCrossFieldMutationValidator.class), json));
-        return new EntityRecordMutationAdapter(new EntityMutationPipeline(executor, mock(SystemAuditPort.class)),
+        return new EntityRecordMutationAdapter(new EntityMutationPipeline(executor, mock(SystemOperationLogPort.class)),
                 null, null, null);
     }
 

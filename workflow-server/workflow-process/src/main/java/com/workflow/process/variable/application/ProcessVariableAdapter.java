@@ -1,9 +1,9 @@
 package com.workflow.process.variable.application;
 
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.model.ProcessCommandReceipt;
-import com.workflow.contracts.process.variable.model.*;
-import com.workflow.contracts.process.variable.port.ProcessVariablePort;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.ProcessCommandReceipt;
+import com.workflow.port.process.variable.model.*;
+import com.workflow.port.process.ProcessVariablePort;
 import com.workflow.process.command.application.ProcessCommandExecutor;
 import com.workflow.process.command.application.ProcessInvocationAccess;
 import com.workflow.process.task.application.LocalAddSignTaskAccessService;
@@ -43,7 +43,7 @@ public class ProcessVariableAdapter implements ProcessVariablePort {
     @Override
     @Transactional(readOnly = true)
     public VariableValue getProcessVariable(String instanceId, String name, VariableReadMode mode) {
-        com.workflow.contracts.process.model.ProcessValues.required(name, "变量名");
+        com.workflow.port.process.model.ProcessValues.required(name, "变量名");
         var values = getProcessVariables(instanceId, mode);
         return new VariableValue(values.containsKey(name), values.get(name));
     }
@@ -61,7 +61,7 @@ public class ProcessVariableAdapter implements ProcessVariablePort {
     @Override
     @Transactional(readOnly = true)
     public VariableValue getTaskLocalVariable(String taskId, String name, VariableReadMode mode) {
-        com.workflow.contracts.process.model.ProcessValues.required(name, "变量名");
+        com.workflow.port.process.model.ProcessValues.required(name, "变量名");
         var values = getTaskLocalVariables(taskId, mode);
         return new VariableValue(values.containsKey(name), values.get(name));
     }

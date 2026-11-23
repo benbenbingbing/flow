@@ -11,7 +11,7 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.setting.application.GlobalSettingService;
 import com.workflow.contracts.entity.permission.model.EntityActionRule;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.application.EntityActionRuleEvaluator;
 import org.junit.jupiter.api.Test;
@@ -31,7 +31,7 @@ class ConfigMigrationValueReferencesTest {
     private final SysRoleMapper roles = mock(SysRoleMapper.class);
     private final SysOrganizationMapper organizations = mock(SysOrganizationMapper.class);
     private final ConfigMigrationReferenceService references = new ConfigMigrationReferenceService(users, roles,
-            mock(SysGroupMapper.class), organizations, mock(FlowActionDefinitionMapper.class), mock(FlowActionCatalogPort.class));
+            mock(SysGroupMapper.class), organizations, mock(FlowActionDefinitionMapper.class), mock(ProcessActionDefinitionPort.class));
 
     @Test
     void defaultsInEntityFormNodeAndListQueriesUseTargetIdsAndPreserveRepresentations() throws Exception {

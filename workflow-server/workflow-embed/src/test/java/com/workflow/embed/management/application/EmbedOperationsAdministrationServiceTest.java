@@ -1,5 +1,6 @@
 package com.workflow.embed.management.application;
 
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -13,8 +14,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit.Operator;
@@ -52,7 +53,7 @@ class EmbedOperationsAdministrationServiceTest {
         repository = mock(EmbedOperationsRepository.class);
         terminationService = mock(EmbedSessionTerminationService.class);
         audit = mock(EmbedLifecycleAudit.class);
-        CurrentActorPort actorProvider = () -> new CurrentActor("admin-1", "alice");
+        CurrentActorPort actorProvider = currentActor();
         service = new EmbedOperationsAdministrationService(
                 repository, terminationService, actorProvider, audit,
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -179,5 +180,11 @@ class EmbedOperationsAdministrationServiceTest {
         return new EmbedSessionTerminationResult(
                 outcome, outcome == EmbedSessionTermination.TERMINATED,
                 id, "app-1", "view-1", "user-1", status);
+    }
+
+    private static CurrentActorPort currentActor() {
+        var actor = org.mockito.Mockito.mock(CurrentActorPort.class);
+        org.mockito.Mockito.when(actor.current()).thenReturn(new CurrentActor("admin-1", "alice"));
+        return actor;
     }
 }

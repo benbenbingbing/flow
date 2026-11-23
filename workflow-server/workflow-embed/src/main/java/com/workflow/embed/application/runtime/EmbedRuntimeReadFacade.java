@@ -3,18 +3,18 @@ package com.workflow.embed.application.runtime;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeActorRuntimePort.ActorSnapshot;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Action;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Field;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.ListPage;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.ListSchema;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Row;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeActorRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort;
+import com.workflow.port.embed.EmbedMappedUserPort.ActorSnapshot;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.port.embed.EmbedListDataPort.Action;
+import com.workflow.port.embed.EmbedListDataPort.Field;
+import com.workflow.port.embed.EmbedListDataPort.ListPage;
+import com.workflow.port.embed.EmbedListDataPort.ListSchema;
+import com.workflow.port.embed.EmbedListDataPort.Row;
+import com.workflow.port.embed.EmbedMappedUserPort;
+import com.workflow.port.embed.EmbedPublishedFormPort;
+import com.workflow.port.embed.EmbedPublishedListPort;
+import com.workflow.port.embed.EmbedListDataPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.embed.api.request.EmbedRuntimeListFilterRequest;
 import com.workflow.embed.api.request.EmbedRuntimeListQueryRequest;
@@ -59,13 +59,13 @@ public class EmbedRuntimeReadFacade {
     private static final int MAX_FILTER_VALUES = 100;
 
     private final EmbedRuntimeReleasePort releasePort;
-    private final EmbedRuntimeEntityPort entityPort;
+    private final EmbedListDataPort entityPort;
     private final EmbedProperties properties;
     private final ObjectMapper objectMapper;
     private final EmbedNativeFormTargetResolver nativeTargetResolver;
-    private final EmbedNativeFormRuntimePort nativeFormRuntimePort;
-    private final EmbedNativeListRuntimePort nativeListRuntimePort;
-    private final EmbedNativeActorRuntimePort nativeActorRuntimePort;
+    private final EmbedPublishedFormPort nativeFormRuntimePort;
+    private final EmbedPublishedListPort nativeListRuntimePort;
+    private final EmbedMappedUserPort nativeActorRuntimePort;
     private final boolean legacyProjectionTestMode;
 
     /**
@@ -83,13 +83,13 @@ public class EmbedRuntimeReadFacade {
     @Autowired
     public EmbedRuntimeReadFacade(
             EmbedRuntimeReleasePort releasePort,
-            EmbedRuntimeEntityPort entityPort,
+            EmbedListDataPort entityPort,
             EmbedProperties properties,
             ObjectMapper objectMapper,
             ObjectProvider<EmbedNativeFormTargetResolver> targetResolverProvider,
-            ObjectProvider<EmbedNativeFormRuntimePort> nativeFormRuntimePortProvider,
-            ObjectProvider<EmbedNativeListRuntimePort> nativeListRuntimePortProvider,
-            ObjectProvider<EmbedNativeActorRuntimePort> nativeActorRuntimePortProvider) {
+            ObjectProvider<EmbedPublishedFormPort> nativeFormRuntimePortProvider,
+            ObjectProvider<EmbedPublishedListPort> nativeListRuntimePortProvider,
+            ObjectProvider<EmbedMappedUserPort> nativeActorRuntimePortProvider) {
         this.releasePort = releasePort;
         this.entityPort = entityPort;
         this.properties = properties;
@@ -111,7 +111,7 @@ public class EmbedRuntimeReadFacade {
      */
     public EmbedRuntimeReadFacade(
             EmbedRuntimeReleasePort releasePort,
-            EmbedRuntimeEntityPort entityPort,
+            EmbedListDataPort entityPort,
             EmbedProperties properties,
             ObjectMapper objectMapper) {
         this.releasePort = releasePort;
@@ -230,7 +230,7 @@ public class EmbedRuntimeReadFacade {
                 throw runtimeUnavailable(null);
             }
             listConfigHash = nativeListRuntimePort.configHash(
-                    new com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort.Target(
+                    new com.workflow.port.embed.EmbedPublishedListPort.Target(
                             target.entityCode(), target.listKey(),
                             target.listReleaseId(), target.listReleaseVersion(),
                             runtime.session().sessionId(),

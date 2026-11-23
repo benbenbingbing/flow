@@ -22,7 +22,7 @@ import com.workflow.entity.excel.persistence.ExcelConfigurationRepository.Settin
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPublishedMapper;
 import com.workflow.entity.ui.application.UiEventBindingService;
-import com.workflow.contracts.migration.port.ExcelConfigurationPublicationPort;
+import com.workflow.port.migration.ExcelConfigurationPublicationPort;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;

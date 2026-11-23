@@ -9,8 +9,13 @@ import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.workflow.admin.externalsystem.infrastructure.persistence.mapper.ExternalSystemMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.config.database.DatabaseMybatisConfiguration;
-import com.workflow.contracts.entity.model.EntityTaskSummary;
+import com.workflow.port.entity.model.EntityTaskSummary;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.port.process.model.ProcessPageRequest;
+import com.workflow.port.system.CurrentActorPort;
+import com.workflow.process.definition.application.ProcessCatalogAdapter;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.TaskInboxProjectionMapper;
@@ -65,7 +70,8 @@ class MapperWrapperBehaviorTest {
         jdbc.execute("""
                 CREATE TABLE process_definition_config (
                   id VARCHAR(64) PRIMARY KEY, process_name VARCHAR(64), description VARCHAR(128),
-                  category VARCHAR(64), bpmn_xml CLOB, draft_hash VARCHAR(64), draft_revision BIGINT,
+                  process_key VARCHAR(64), status VARCHAR(16), category VARCHAR(64), bpmn_xml CLOB,
+                  draft_hash VARCHAR(64), draft_revision BIGINT,
                   update_time TIMESTAMP, deleted INT DEFAULT 0)
                 """);
         jdbc.execute("""
@@ -85,7 +91,8 @@ class MapperWrapperBehaviorTest {
         configuration.addInterceptor(pagination);
         // 同一实体的两个 BaseMapper 同时注册，覆盖生产环境的实际组合。
         for (Class<?> type : List.of(ExternalSystemMapper.class, SysUserMapper.class, ProcessTaskMapper.class,
-                TaskInboxProjectionMapper.class, ProcessDefinitionConfigMapper.class, EntityVersionConfigMapper.class)) {
+                TaskInboxProjectionMapper.class, ProcessDefinitionConfigMapper.class, EntityVersionConfigMapper.class,
+                EntityDataDynamicMapper.class)) {
             configuration.addMapper(type);
         }
         var factory = new MybatisSqlSessionFactoryBean();
@@ -246,6 +253,44 @@ class MapperWrapperBehaviorTest {
         assertNotNull(text("SELECT update_time FROM entity_version_config"));
         jdbc.update("UPDATE entity_version_config SET deleted=1");
         assertEquals(0, entity.updateCurrentIfRevision("config", 3, false, "stale", null));
+    }
+
+    @Test
+    void publishedProcessCatalogFiltersBeforeCountingAndPaginatesWithStableTies() {
+        jdbc.update("""
+                INSERT INTO process_definition_config (id,process_key,process_name,status,deleted,update_time)
+                VALUES ('1','onboarding','Onboarding','PUBLISHED',0,?),
+                       ('2','offboarding','Offboarding','PUBLISHED',0,?),
+                       ('3','disabled','Offboarding','DISABLED',0,?),
+                       ('4','removed','Offboarding','PUBLISHED',1,?)
+                """, NOW, NOW, NOW, NOW);
+        var actor = org.mockito.Mockito.mock(CurrentActorPort.class);
+        org.mockito.Mockito.when(actor.hasPermission("process:definition:view")).thenReturn(true);
+        var catalog = new ProcessCatalogAdapter(session.getMapper(ProcessDefinitionConfigMapper.class),
+                org.mockito.Mockito.mock(ProcessVersionHistoryMapper.class), actor);
+
+        var first = catalog.pagePublished("boarding", new ProcessPageRequest(1, 1, null));
+        var second = catalog.pagePublished("boarding", new ProcessPageRequest(2, 1, null));
+
+        assertEquals(2, first.total());
+        assertEquals("offboarding", first.items().get(0).processKey());
+        assertEquals("onboarding", second.items().get(0).processKey());
+    }
+
+    @Test
+    void entityLogicalDeletionRetainsBusinessDataAndHidesItFromNormalReads() {
+        jdbc.execute("""
+                CREATE TABLE wf_port_delete (
+                  id VARCHAR(64) PRIMARY KEY, name VARCHAR(64), update_time TIMESTAMP, deleted INT DEFAULT 0)
+                """);
+        jdbc.update("INSERT INTO wf_port_delete (id,name) VALUES ('1','保留历史业务数据')");
+        var mapper = session.getMapper(EntityDataDynamicMapper.class);
+
+        assertEquals(1, mapper.deleteById("wf_port_delete", "1"));
+
+        assertEquals(1, number("SELECT deleted FROM wf_port_delete WHERE id = '1'"));
+        assertEquals("保留历史业务数据", text("SELECT name FROM wf_port_delete WHERE id = '1'"));
+        assertNull(mapper.selectById("wf_port_delete", "1"));
     }
 
     private void insertTask(long id, int deleted, Integer summaryReady, Integer identityReady) {

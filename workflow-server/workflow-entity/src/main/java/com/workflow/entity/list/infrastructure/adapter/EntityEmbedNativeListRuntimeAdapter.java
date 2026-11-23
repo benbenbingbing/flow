@@ -1,18 +1,18 @@
 package com.workflow.entity.list.infrastructure.adapter;
 
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.embed.EmbedPublishedListPort;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
+import com.workflow.port.embed.EmbedListDependencySnapshotPort;
 import org.springframework.beans.factory.ObjectProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
@@ -33,12 +33,12 @@ import org.springframework.util.StringUtils;
  */
 @Component
 public class EntityEmbedNativeListRuntimeAdapter
-        implements EmbedNativeListRuntimePort {
+        implements EmbedPublishedListPort {
 
     private final EntityListConfigMapper listConfigMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final UiConfigReleaseService releaseService;
-    private final ObjectProvider<EmbedNativeListDependencySnapshotPort> dependencySnapshots;
+    private final ObjectProvider<EmbedListDependencySnapshotPort> dependencySnapshots;
     private final ObjectMapper objectMapper;
 
     /**
@@ -54,7 +54,7 @@ public class EntityEmbedNativeListRuntimeAdapter
             EntityListConfigMapper listConfigMapper,
             EntityDefinitionMapper definitionMapper,
             UiConfigReleaseService releaseService,
-            ObjectProvider<EmbedNativeListDependencySnapshotPort> dependencySnapshots, ObjectMapper objectMapper) {
+            ObjectProvider<EmbedListDependencySnapshotPort> dependencySnapshots, ObjectMapper objectMapper) {
         this.listConfigMapper = listConfigMapper;
         this.definitionMapper = definitionMapper;
         this.releaseService = releaseService;
@@ -119,7 +119,7 @@ public class EntityEmbedNativeListRuntimeAdapter
     /** 会话坐标只由认证过滤器提供，闭包从服务端恢复；请求只选择稳定列表标识。 */
     @Override
     public Target authorizeTarget(Target root, String entityCode, String listKey) {
-        var session = com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.currentSession()
+        var session = com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.currentSession()
                 .orElseThrow(() -> new IllegalArgumentException("缺少已认证 Embed 会话"));
         if (!Objects.equals(session.sessionId(),root.sessionId()) || !Objects.equals(session.viewReleaseId(),root.viewReleaseId()))
             throw new IllegalArgumentException("Embed 根目标与认证会话不一致");

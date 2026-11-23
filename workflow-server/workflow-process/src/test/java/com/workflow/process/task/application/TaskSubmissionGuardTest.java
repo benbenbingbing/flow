@@ -1,7 +1,7 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.task.model.TaskFormReference;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.task.model.TaskFormReference;
 import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.form.application.EntityFormService;
@@ -41,7 +41,7 @@ class TaskSubmissionGuardTest {
                 .thenReturn(new ProcessPublishedSnapshotService.PublishedNodeForms(null, List.of(binding)));
         var form = new TaskFormReference("published-form", "current-hash");
         when(forms.submissionReference(eq(binding), any())).thenAnswer(invocation -> {
-            var context = invocation.getArgument(1, com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class);
+            var context = invocation.getArgument(1, com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.class);
             assertEquals("local-child", context.taskId());
             assertEquals("review", context.nodeId());
             return form;

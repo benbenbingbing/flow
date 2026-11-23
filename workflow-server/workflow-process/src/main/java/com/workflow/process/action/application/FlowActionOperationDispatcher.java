@@ -2,7 +2,7 @@ package com.workflow.process.action.application;
 
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
-import com.workflow.contracts.process.model.ProcessValues;
+import com.workflow.port.process.model.ProcessValues;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import lombok.RequiredArgsConstructor;
 import org.flowable.common.engine.api.FlowableObjectNotFoundException;

@@ -1,10 +1,10 @@
 package com.workflow.entity.definition.application;
 
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.EntityFieldFileItemService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;

@@ -1,7 +1,7 @@
 package com.workflow.openapi.api.web;
 
-import com.workflow.contracts.embed.launch.model.EmbedApplicationActor;
-import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
+import com.workflow.port.embed.launch.model.EmbedApplicationActor;
+import com.workflow.port.embed.EmbedLaunchPort;
 import com.workflow.openapi.api.annotation.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.response.OpenApiResponse;
@@ -39,7 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class EmbedLaunchController {
 
-    private final EmbedLaunchIssuePort launchIssuePort;
+    private final EmbedLaunchPort launchIssuePort;
     private final OpenApplicationActorResolver actorResolver;
 
     /**

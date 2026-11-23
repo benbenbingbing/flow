@@ -26,23 +26,23 @@ import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
-import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.AuditEventIds;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.AuditSourcePointer;
-import com.workflow.contracts.audit.context.OperationContext;
-import com.workflow.contracts.audit.context.OperationContextHolder;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
+import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.AuditEventIds;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.AuditSourcePointer;
+import com.workflow.port.platform.audit.context.OperationContext;
+import com.workflow.port.platform.audit.context.OperationContextHolder;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.ui.model.UiPublishedFormReference;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.model.UiPublishedFormReference;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -149,7 +149,7 @@ public class UiConfigReleaseService {
     private final UiConfigSemanticPatchService semanticPatchService;
     private final UiConfigurationAccessService configurationAccessService;
     @Autowired
-    private org.springframework.beans.factory.ObjectProvider<com.workflow.contracts.entity.ui.port.UiRuntimeAccessPort> runtimeAccessPort;
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.port.entity.UiFormContextPort> runtimeAccessPort;
     @Autowired
     private org.springframework.beans.factory.ObjectProvider<UiViewCompositionRuntimeService> compositionRuntime;
     @Autowired
@@ -157,10 +157,10 @@ public class UiConfigReleaseService {
     private final FormSubmissionTraceService traceService;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
-    private final MigrationAssetPort migrationAssetHandler;
+    private final ConfigMigrationAssetPort migrationAssetHandler;
     private EntityListActionConfigService listActionConfigService;
     private UiViewCompositionService viewCompositionService;
-    private SystemAuditPort auditPort;
+    private SystemOperationLogPort auditPort;
 
     /**
      * 注入列表按钮规则校验与发布规范化服务。
@@ -192,7 +192,7 @@ public class UiConfigReleaseService {
      * @param auditPort 审计端口，供本方法设置审计端口时使用
      */
     @Autowired
-    void setAuditPort(SystemAuditPort auditPort) {
+    void setAuditPort(SystemOperationLogPort auditPort) {
         this.auditPort = auditPort;
     }
 

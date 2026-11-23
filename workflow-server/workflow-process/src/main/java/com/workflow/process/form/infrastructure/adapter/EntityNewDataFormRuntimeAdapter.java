@@ -1,6 +1,7 @@
 package com.workflow.process.form.infrastructure.adapter;
 
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
+import com.workflow.entity.form.infrastructure.adapter.NewEntityRecordFormResolver;
+import com.workflow.port.entity.EntityFormPort.ResolvedForm;
 import com.workflow.process.form.application.EntityFormResolveService;
 import java.util.Map;
 import java.util.Optional;
@@ -14,7 +15,7 @@ import org.springframework.util.StringUtils;
 @Component
 @RequiredArgsConstructor
 public class EntityNewDataFormRuntimeAdapter
-        implements EntityNewDataFormRuntimePort {
+        implements NewEntityRecordFormResolver {
 
     private final EntityFormResolveService resolveService;
     private final com.workflow.entity.ui.application.UiConfigReleaseService releaseService;
@@ -27,7 +28,7 @@ public class EntityNewDataFormRuntimeAdapter
      * @return 匹配的新数据；未找到时为空
      */
     @Override
-    public Optional<ResolvedForm> resolveForNewData(String entityCode) {
+    public Optional<ResolvedForm> resolveNewRecordForm(String entityCode) {
         Map<String, Object> form =
                 resolveService.resolveFormForNewData(entityCode);
         if (form == null) {

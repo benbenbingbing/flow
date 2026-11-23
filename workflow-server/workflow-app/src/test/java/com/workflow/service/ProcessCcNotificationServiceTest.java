@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
 import com.workflow.contracts.outbox.model.OutboxEvent;
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import com.workflow.contracts.process.cc.spi.CcNotificationChannelProvider;
 import com.workflow.process.cc.application.CcNotificationPayload;
 import com.workflow.process.cc.application.ProcessCcNotificationOutboxHandler;
@@ -27,8 +27,8 @@ class ProcessCcNotificationServiceTest {
 
     @Test
     void publishesOneIdempotentEventPerChannel() {
-        OutboxPublishPort outboxPublisher =
-                mock(OutboxPublishPort.class);
+        WorkflowOutboxEventPort outboxPublisher =
+                mock(WorkflowOutboxEventPort.class);
         ProcessCcNotificationPublisher publisher =
                 new ProcessCcNotificationPublisher(outboxPublisher);
         ProcessCcRecord record = record();

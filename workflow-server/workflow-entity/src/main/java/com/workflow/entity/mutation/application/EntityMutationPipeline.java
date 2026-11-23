@@ -1,22 +1,22 @@
 package com.workflow.entity.mutation.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.AuditEventIds;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.AuditSourcePointer;
-import com.workflow.contracts.audit.context.OperationContext;
-import com.workflow.contracts.audit.context.OperationContextHolder;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.AuditEventIds;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.AuditSourcePointer;
+import com.workflow.port.platform.audit.context.OperationContext;
+import com.workflow.port.platform.audit.context.OperationContextHolder;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchResult;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,10 +31,10 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 public class EntityMutationPipeline
-        implements EntityMutationPort {
+        implements TrustedEntityRecordMutationPort {
 
     private final EntityMutationTransactionExecutor transactionExecutor;
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
 
     /**
      * 执行实体变更{@code pipeline}，并将结果传给后续步骤。
@@ -197,7 +197,7 @@ public class EntityMutationPipeline
      * @return 审计后的动作结果，供调用方继续处理
      */
     private AuditAction auditAction(
-            com.workflow.contracts.entity.mutation.model.EntityMutationOperationType type) {
+            com.workflow.port.entity.mutation.model.EntityMutationOperationType type) {
         return switch (type) {
             case CREATE -> AuditAction.CREATE;
             case UPDATE, STATUS_CHANGE, APPLY_CHANGE ->

@@ -5,8 +5,7 @@ import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.contracts.identity.port.CurrentActorPort;
-import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -41,7 +40,6 @@ public class StoredFileAccessService {
             "[\\x21-\\x7E]{1,128}");
 
     private final StoredFileMapper fileMapper;
-    private final CurrentAuthorizationPort currentUserRoleService;
     private final CurrentActorPort currentActor;
     private final JdbcWriteAttempt writeAttempt;
     private final DatabaseQueryDialect queryDialect;
@@ -203,7 +201,7 @@ public class StoredFileAccessService {
             throw new ForbiddenException("文件不存在或无权访问");
         }
         if (reference.ownerUserId().equals(currentUserId())
-                || currentUserRoleService.isAdministrator()) {
+                || currentActor.isAdministrator()) {
             return reference.storageUrl();
         }
         throw new ForbiddenException("无权访问该文件");

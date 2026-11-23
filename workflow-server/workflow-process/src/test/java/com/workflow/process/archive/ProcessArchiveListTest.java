@@ -1,7 +1,7 @@
 package com.workflow.process.archive;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.history.EntityHistoryImportPort;
+import com.workflow.port.migration.EntityHistoryImportPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.archive.infrastructure.persistence.ProcessArchiveMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;

@@ -3,12 +3,12 @@ package com.workflow.entity.list.application;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort.Reference;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.port.embed.EmbedListDependencySnapshotPort.Reference;
+import com.workflow.port.embed.EmbedListDependencySnapshotPort;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -16,7 +16,7 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
@@ -46,7 +46,7 @@ public class EntityListPublishedRuntimeService {
     private final JsonDocumentCodec codec;
     private final UiConfigReleaseMapper releaseMapper;
     private final ObjectMapper objectMapper;
-    private final EmbedNativeListDependencySnapshotPort
+    private final EmbedListDependencySnapshotPort
             listDependencySnapshotPort;
 
     /**

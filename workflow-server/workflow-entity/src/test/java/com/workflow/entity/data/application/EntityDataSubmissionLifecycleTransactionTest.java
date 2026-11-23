@@ -1,19 +1,22 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.data.infrastructure.adapter.EntityRecordQueryAdapter;
+import com.workflow.port.system.CurrentActorPort;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.contracts.entity.mutation.model.EntitySubmissionCommand;
-import com.workflow.contracts.entity.mutation.port.EntitySubmissionPort;
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.process.model.ProcessStartRequest;
-import com.workflow.contracts.process.model.ProcessStartResult;
-import com.workflow.contracts.process.port.ProcessRuntimePort;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntitySubmissionCommand;
+import com.workflow.port.entity.EntityRecordPort;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.process.model.ProcessStartRequest;
+import com.workflow.port.process.model.ProcessStartResult;
+import com.workflow.port.process.EntityBoundProcessPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -337,20 +340,22 @@ class EntityDataSubmissionLifecycleTransactionTest {
         UserContext.setCurrentUser("submitter", "提交人");
         var command = new EntitySubmissionCommand("request-1", EntitySubmissionCommand.Intent.CREATE_AND_START,
                 "asset", null, null, null, null, null, Map.of("name", "提交"));
+        assertThrows(IllegalArgumentException.class, () -> port.saveDraft(command));
+        assertEquals(0, f.receiptCount());
         f.failStart = true;
 
-        assertThrows(IllegalStateException.class, () -> port.submit(command));
+        assertThrows(IllegalStateException.class, () -> port.createAndStart(command));
         assertEquals(0, f.recordCount());
         assertEquals(0, f.processCount());
         assertEquals(0, f.receiptCount());
 
         f.failStart = false;
-        var created = port.submit(command);
-        assertEquals(created, port.submit(command));
+        var created = port.createAndStart(command);
+        assertEquals(created, port.createAndStart(command));
         var changed = new EntitySubmissionCommand(command.requestId(), command.intent(), command.entityCode(),
                 null, null, null, null, null, Map.of("name", "其他提交"));
         assertEquals("ENTITY_MUTATION_IDEMPOTENCY_CONFLICT",
-                assertThrows(BusinessConflictException.class, () -> port.submit(changed)).getErrorCode());
+                assertThrows(BusinessConflictException.class, () -> port.createAndStart(changed)).getErrorCode());
         assertEquals(1, f.recordCount());
         assertEquals(1, f.processCount());
         assertEquals(1, f.receiptCount());
@@ -432,7 +437,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
         private final TransactionInterceptor transactions;
         private final EntityDataDynamicMapper rows;
         private final EntityRuntimeRecordMapper records = new EntityRuntimeRecordMapper(new ObjectMapper());
-        private final ProcessRuntimePort processes = mock(ProcessRuntimePort.class);
+        private final EntityBoundProcessPort processes = mock(EntityBoundProcessPort.class);
         private final EntityRecordTeamService teams = mock(EntityRecordTeamService.class);
         private final EntityDefinition definition = new EntityDefinition();
         private final EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
@@ -523,7 +528,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
         }
 
         /** 使用实际回执表、Mapper 和提交代理；表单测试在独立用例中覆盖。 */
-        private EntitySubmissionPort submissionPort() {
+        private EntityRecordPort submissionPort() {
             jdbc.execute("""
                     CREATE TABLE entity_mutation_receipt (
                         id VARCHAR(64) PRIMARY KEY, idempotency_key VARCHAR(200) UNIQUE, command_hash VARCHAR(64),
@@ -544,11 +549,13 @@ class EntityDataSubmissionLifecycleTransactionTest {
                     new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
             var actions = mock(EntityDataActionService.class);
             when(actions.createFromPort(any(), anyString())).thenAnswer(call -> service.save(call.getArgument(0)));
-            var adapter = new EntitySubmissionAdapter(actions, receipts,
-                    () -> new CurrentActor(UserContext.getUserId(), UserContext.getUsername()), json);
+            var actor = mock(CurrentActorPort.class);
+            when(actor.current()).thenAnswer(call -> new CurrentActor(UserContext.getUserId(), UserContext.getUsername()));
+            var adapter = new EntitySubmissionAdapter(actions, receipts, actor, json);
             var proxy = new ProxyFactory(adapter);
+            proxy.setProxyTargetClass(true);
             proxy.addAdvice(transactions);
-            return (EntitySubmissionPort) proxy.getProxy();
+            return new EntityRecordQueryAdapter(null, json, null, (EntitySubmissionAdapter) proxy.getProxy());
         }
 
         private int receiptCount() {

@@ -12,7 +12,7 @@ import com.workflow.openapi.infrastructure.security.TokenEndpointRateLimitFilter
 import com.workflow.openapi.security.IntegrationClientNetworkPolicy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.openapi.application.IntegrationSecretHasher;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.web.OpenApiRequestGuardFilter;
@@ -260,7 +260,7 @@ public class OpenIntegrationSecurityConfiguration {
                 IntegrationSecretHasher secretHasher,
                 IntegrationClientNetworkPolicy networkPolicy,
                 OpenIntegrationClientAddressResolver addressResolver,
-                SystemAuditPort auditPort,
+                SystemOperationLogPort auditPort,
                 IntegrationCredentialUsageService credentialUsageService)
                 throws Exception {
             PathPatternRequestMatcher tokenEndpoint =
@@ -358,7 +358,7 @@ public class OpenIntegrationSecurityConfiguration {
                 OpenIntegrationClientAddressResolver addressResolver,
                 IntegrationRateLimitService rateLimitService,
                 OpenApiConcurrencyLeaseService concurrencyService,
-                SystemAuditPort auditPort)
+                SystemOperationLogPort auditPort)
                 throws Exception {
             OpenApiSecurityResponseWriter responseWriter =
                     new OpenApiSecurityResponseWriter(objectMapper);

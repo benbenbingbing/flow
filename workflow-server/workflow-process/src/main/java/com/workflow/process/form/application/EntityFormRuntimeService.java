@@ -2,8 +2,8 @@ package com.workflow.process.form.application;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -244,18 +244,18 @@ public class EntityFormRuntimeService {
         return runtimeForm;
     }
     /** 只返回办理校验所需的稳定表单身份及摘要，避免跨模块传递表单持久化实体。 */
-    public com.workflow.contracts.process.task.model.TaskFormReference submissionReference(
+    public com.workflow.port.process.task.model.TaskFormReference submissionReference(
             ProcessNodeForm binding, UiRuntimeResolutionContext context) {
         EntityForm form = getByBinding(binding, context);
-        return form == null ? null : new com.workflow.contracts.process.task.model.TaskFormReference(
+        return form == null ? null : new com.workflow.port.process.task.model.TaskFormReference(
                 form.getId(), form.getConfigHash());
     }
 
     /** 默认表单也使用同一发布解析规则；返回 null 时提交入口必须明确拒绝。 */
-    public com.workflow.contracts.process.task.model.TaskFormReference defaultSubmissionReference(
+    public com.workflow.port.process.task.model.TaskFormReference defaultSubmissionReference(
             String entityId, UiRuntimeResolutionContext context) {
         EntityForm form = getDefaultForm(entityId, context);
-        return form == null ? null : new com.workflow.contracts.process.task.model.TaskFormReference(
+        return form == null ? null : new com.workflow.port.process.task.model.TaskFormReference(
                 form.getId(), form.getConfigHash());
     }
 

@@ -3,8 +3,8 @@ package com.workflow.embed.management.infrastructure.persistence;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
+import com.workflow.port.entity.EntityFormPort.ResolvedForm;
+import com.workflow.port.entity.EntityFormPort;
 import com.workflow.embed.management.domain.EmbedManagementModel.ApplicationOption;
 import com.workflow.embed.management.domain.EmbedManagementModel.IdentityProviderOption;
 import com.workflow.embed.management.domain.EmbedManagementModel.OptionsFilter;
@@ -44,7 +44,7 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
 
     private final EmbedManagementMapper mapper;
     private final PublishedUiResourceSnapshotParser snapshotParser;
-    private final EntityNewDataFormRuntimePort newDataFormRuntimePort;
+    private final EntityFormPort newDataFormRuntimePort;
     private final JdbcWriteAttempt writeAttempt;
 
     /**
@@ -58,7 +58,7 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
     public MyBatisEmbedManagementRepository(
             EmbedManagementMapper mapper,
             ObjectMapper objectMapper,
-            EntityNewDataFormRuntimePort newDataFormRuntimePort,
+            EntityFormPort newDataFormRuntimePort,
             JdbcWriteAttempt writeAttempt) {
         this.mapper = mapper;
         this.snapshotParser = new PublishedUiResourceSnapshotParser(objectMapper);
@@ -234,7 +234,7 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
             // 只将当次解析出的精确发布坐标写入 Runtime Snapshot，
             // 后续 ACTIVE 变化不影响已打开 Session。
             ResolvedForm resolvedForm =
-                    newDataFormRuntimePort.resolveForNewData(entityCode)
+                    newDataFormRuntimePort.resolveNewRecordForm(entityCode)
                             .orElse(null);
             if (resolvedForm != null) {
                 formId = resolvedForm.formId();

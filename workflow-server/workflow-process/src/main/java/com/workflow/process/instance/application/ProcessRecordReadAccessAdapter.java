@@ -1,6 +1,6 @@
 package com.workflow.process.instance.application;
 
-import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
+import com.workflow.port.process.ProcessRecordPermissionPort;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +14,7 @@ import java.util.Objects;
 /** 已办、知会与流程进度的表单按钮复用流程详情的只读授权。 */
 @Component
 @RequiredArgsConstructor
-public class ProcessRecordReadAccessAdapter implements ProcessRecordReadAccessPort {
+public class ProcessRecordReadAccessAdapter implements ProcessRecordPermissionPort {
 
     private final ProcessInstanceAccessService instanceAccessService;
     private final HistoryService historyService;

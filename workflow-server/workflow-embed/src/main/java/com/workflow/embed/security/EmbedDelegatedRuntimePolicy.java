@@ -1,16 +1,16 @@
 package com.workflow.embed.security;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
-import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort.Target;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort.RecordTarget;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort.TraversalTarget;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort;
+import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.port.embed.EmbedPublishedFormPort.VerifiedTarget;
+import com.workflow.port.embed.EmbedPublishedListPort.Target;
+import com.workflow.port.embed.EmbedProcessRecordPort.RecordTarget;
+import com.workflow.port.embed.EmbedRelatedTargetPort.TraversalTarget;
+import com.workflow.port.embed.EmbedPublishedFormPort;
+import com.workflow.port.embed.EmbedPublishedListPort;
+import com.workflow.port.embed.EmbedProcessRecordPort;
+import com.workflow.port.embed.EmbedRelatedTargetPort;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -43,10 +43,10 @@ public class EmbedDelegatedRuntimePolicy {
             EmbedDelegatedRequestContext.TARGET_ATTRIBUTE;
 
     private final EmbedNativeFormTargetResolver targetResolver;
-    private final EmbedNativeProcessRuntimePort processRuntimePort;
-    private final EmbedNativeTraversalRuntimePort traversalRuntimePort;
-    private final EmbedNativeListRuntimePort listRuntimePort;
-    private final EmbedNativeFormRuntimePort formRuntimePort;
+    private final EmbedProcessRecordPort processRuntimePort;
+    private final EmbedRelatedTargetPort traversalRuntimePort;
+    private final EmbedPublishedListPort listRuntimePort;
+    private final EmbedPublishedFormPort formRuntimePort;
 
     /**
      * 初始化嵌入式委托运行时策略，保存构造参数供后续方法使用。
@@ -60,11 +60,11 @@ public class EmbedDelegatedRuntimePolicy {
     @Autowired
     public EmbedDelegatedRuntimePolicy(
             EmbedNativeFormTargetResolver targetResolver,
-            ObjectProvider<EmbedNativeProcessRuntimePort> processPortProvider,
-            ObjectProvider<EmbedNativeTraversalRuntimePort>
+            ObjectProvider<EmbedProcessRecordPort> processPortProvider,
+            ObjectProvider<EmbedRelatedTargetPort>
                     traversalPortProvider,
-            ObjectProvider<EmbedNativeListRuntimePort> listPortProvider,
-            ObjectProvider<EmbedNativeFormRuntimePort> formPortProvider) {
+            ObjectProvider<EmbedPublishedListPort> listPortProvider,
+            ObjectProvider<EmbedPublishedFormPort> formPortProvider) {
         this.targetResolver = targetResolver;
         this.processRuntimePort = processPortProvider.getIfAvailable();
         this.traversalRuntimePort = traversalPortProvider.getIfAvailable();
@@ -81,8 +81,8 @@ public class EmbedDelegatedRuntimePolicy {
      */
     public EmbedDelegatedRuntimePolicy(
             EmbedNativeFormTargetResolver targetResolver,
-            ObjectProvider<EmbedNativeProcessRuntimePort> processPortProvider,
-            ObjectProvider<EmbedNativeTraversalRuntimePort>
+            ObjectProvider<EmbedProcessRecordPort> processPortProvider,
+            ObjectProvider<EmbedRelatedTargetPort>
                     traversalPortProvider) {
         this.targetResolver = targetResolver;
         this.processRuntimePort = processPortProvider.getIfAvailable();

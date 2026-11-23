@@ -1,7 +1,7 @@
 package com.workflow.process.status.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.contracts.outbox.model.OutboxEvent;
 import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import com.workflow.core.error.BusinessConflictException;
@@ -26,7 +26,7 @@ public class ProcessStatusSyncOutboxHandler
     private final ObjectMapper objectMapper;
     private final ProcessStatusSyncMapper statusSyncMapper;
     private final EntityProcessLinkMapper entityProcessLinkMapper;
-    private final EntityRecordPort entityRecordPort;
+    private final EntityProcessStatePort entityRecordPort;
     private final JdbcIdempotentInsert inserts;
     private final DatabaseClockPort clock;
 

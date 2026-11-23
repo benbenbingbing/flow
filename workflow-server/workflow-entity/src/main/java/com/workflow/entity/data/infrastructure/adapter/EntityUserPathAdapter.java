@@ -1,8 +1,8 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.port.EntityUserPathPort;
-import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.port.entity.EntityUserPathPort;
+import com.workflow.port.entity.EntityUserFieldPort.EntityUserReferenceException;
 import com.workflow.core.database.mybatis.ParameterizedSql;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;

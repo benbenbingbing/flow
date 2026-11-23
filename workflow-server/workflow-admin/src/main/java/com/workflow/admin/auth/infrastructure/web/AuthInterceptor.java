@@ -7,7 +7,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.Result;
 import com.workflow.core.security.ApiAccessPolicyResolver;
 import com.workflow.core.security.PublicApi;
-import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;

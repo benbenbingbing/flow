@@ -1,10 +1,12 @@
 package com.workflow.embed.management.application;
 
+import com.workflow.port.system.CurrentActorPort;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.model.CurrentActor;
+import com.workflow.port.system.identity.model.CurrentActor;
 import com.workflow.embed.management.api.error.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.Capability;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
@@ -53,7 +55,7 @@ class EmbedGrantAdministrationServiceTest {
                 new EmbedViewConfigurationValidator(objectMapper, repository);
         EmbedViewAdministrationService viewService = new EmbedViewAdministrationService(
                 repository, validator,
-                () -> new CurrentActor("admin", "admin"), event -> { },
+                currentActor(), event -> { },
                 objectMapper,
                 Clock.fixed(Instant.parse("2026-08-27T01:00:00Z"), ZoneOffset.UTC));
         viewService.updateDraft("view-1", new UpdateDraftCommand(
@@ -68,7 +70,7 @@ class EmbedGrantAdministrationServiceTest {
         service = new EmbedGrantAdministrationService(
                 repository, validator,
                 new ExactOriginPolicy(),
-                () -> new CurrentActor("admin", "admin"), event -> { },
+                currentActor(), event -> { },
                 objectMapper,
                 Clock.fixed(Instant.parse("2026-08-27T01:00:00Z"), ZoneOffset.UTC));
     }
@@ -165,5 +167,11 @@ class EmbedGrantAdministrationServiceTest {
                   "contextSchema":{},"contextBindings":[],"ui":{}
                 }
                 """;
+    }
+
+    private static CurrentActorPort currentActor() {
+        var actor = org.mockito.Mockito.mock(CurrentActorPort.class);
+        org.mockito.Mockito.when(actor.current()).thenReturn(new CurrentActor("admin", "admin"));
+        return actor;
     }
 }

@@ -1,8 +1,16 @@
 package com.workflow.process.definition.application;
 
-import com.workflow.contracts.process.port.ProcessCatalogPort;
-import com.workflow.contracts.process.model.ProcessCatalogItem;
-import com.workflow.contracts.process.model.ProcessBindingState;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.port.process.ProcessDefinitionConfigPort;
+import com.workflow.port.process.model.ProcessPage;
+import com.workflow.port.process.model.ProcessPageRequest;
+import com.workflow.port.process.model.ProcessSort;
+import com.workflow.port.process.model.ProcessValues;
+import com.workflow.port.system.CurrentActorPort;
+import com.workflow.port.process.model.ProcessCatalogItem;
+import com.workflow.port.process.model.ProcessBindingState;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
@@ -13,21 +21,23 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.math.BigInteger;
 
 /**
  * 流程目录适配器
- * 实现 {@link ProcessCatalogPort} 端口，作为流程定义信息对外暴露的适配层，
+ * 实现 {@link ProcessDefinitionConfigPort} 端口，作为流程定义信息对外暴露的适配层，
  * 将流程定义配置转换为流程目录项供其他模块（如操作日志、实体记录）使用。
  */
 @Component
 @RequiredArgsConstructor
-public class ProcessCatalogAdapter implements ProcessCatalogPort {
+public class ProcessCatalogAdapter implements ProcessDefinitionConfigPort {
 
     /** 流程定义配置 Mapper */
     private final ProcessDefinitionConfigMapper processMapper;
     /** 流程发布版本 Mapper */
     private final ProcessVersionHistoryMapper versionHistoryMapper;
+    private final CurrentActorPort authorization;
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.status.application.ProcessCancellationRequirements cancellationRequirements;
@@ -35,6 +45,47 @@ public class ProcessCatalogAdapter implements ProcessCatalogPort {
     private org.flowable.engine.RepositoryService repositoryService;
     @org.springframework.beans.factory.annotation.Autowired
     private org.flowable.engine.RuntimeService runtimeService;
+
+    /** 分页先限定发布状态和权限，更新时间相同的记录按主键稳定排序。 */
+    @Override
+    public ProcessPage<ProcessCatalogItem> pagePublished(String keyword, ProcessPageRequest request) {
+        requireDefinitionView();
+        var page = request == null ? ProcessPageRequest.defaults() : request;
+        var query = Wrappers.<ProcessDefinitionConfig>lambdaQuery()
+                .select(ProcessDefinitionConfig::getId, ProcessDefinitionConfig::getProcessKey,
+                        ProcessDefinitionConfig::getProcessName, ProcessDefinitionConfig::getStatus)
+                .eq(ProcessDefinitionConfig::getDeleted, 0)
+                .eq(ProcessDefinitionConfig::getStatus, ProcessDefinitionConfig.ProcessStatus.PUBLISHED.name())
+                .orderBy(true, page.sort() == ProcessSort.OLDEST_FIRST,
+                        ProcessDefinitionConfig::getUpdatedAt, ProcessDefinitionConfig::getId);
+        if (keyword != null && !keyword.isBlank()) {
+            String term = keyword.strip();
+            query.and(conditions -> conditions.like(ProcessDefinitionConfig::getProcessName, term)
+                    .or().like(ProcessDefinitionConfig::getProcessKey, term));
+        }
+        var result = processMapper.selectPage(new Page<ProcessDefinitionConfig>(page.pageNumber(), page.pageSize()), query);
+        return new ProcessPage<>(result.getRecords().stream().map(this::catalogItem).toList(), result.getTotal(),
+                page.pageNumber(), page.pageSize());
+    }
+
+    @Override
+    public Optional<ProcessCatalogItem> findPublishedByKey(String processKey) {
+        requireDefinitionView();
+        return processMapper.findByProcessKey(ProcessValues.required(processKey, "processKey"))
+                .filter(config -> config.getStatus() == ProcessDefinitionConfig.ProcessStatus.PUBLISHED)
+                .map(this::catalogItem);
+    }
+
+    private void requireDefinitionView() {
+        if (!authorization.hasPermission("process:definition:view")) {
+            throw new ForbiddenException("没有流程定义查看权限");
+        }
+    }
+
+    private ProcessCatalogItem catalogItem(ProcessDefinitionConfig config) {
+        return new ProcessCatalogItem(config.getId(), config.getProcessKey(), config.getProcessName(),
+                config.getStatus() == null ? null : config.getStatus().name());
+    }
 
     /** 旧实例依赖其部署版本；配置草稿改动不能使旧实例失去终止/撤回目标。 */
     @Override
@@ -89,11 +140,7 @@ public class ProcessCatalogAdapter implements ProcessCatalogPort {
         for (String processId : processIds) {
             ProcessDefinitionConfig process = processMapper.selectById(processId);
             if (process != null) {
-                items.put(processId, new ProcessCatalogItem(
-                        process.getId(),
-                        process.getProcessKey(),
-                        process.getProcessName(),
-                        process.getStatus() == null ? null : process.getStatus().name()));
+                items.put(processId, catalogItem(process));
             }
         }
         return items;
@@ -127,13 +174,7 @@ public class ProcessCatalogAdapter implements ProcessCatalogPort {
             if (process == null) {
                 continue;
             }
-            ProcessCatalogItem item = new ProcessCatalogItem(
-                    process.getId(),
-                    process.getProcessKey(),
-                    process.getProcessName(),
-                    process.getStatus() == null
-                            ? null
-                            : process.getStatus().name());
+            ProcessCatalogItem item = catalogItem(process);
             states.put(processId, new ProcessBindingState(
                     item,
                     process.getDeleted() == null

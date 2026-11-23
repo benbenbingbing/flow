@@ -10,7 +10,7 @@ import com.workflow.admin.audit.infrastructure.persistence.record.SystemOperatio
 import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
-import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.port.entity.EntityUserFieldPort.EntityUserReferenceException;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.port.SchemaDdlExecutor;

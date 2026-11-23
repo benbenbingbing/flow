@@ -2,12 +2,12 @@ package com.workflow.admin.audit.infrastructure.aop;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.result.Result;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 
@@ -191,7 +191,7 @@ class SystemAuditAspectTest {
         }
     }
 
-    static class RecordingAuditPort implements SystemAuditPort {
+    static class RecordingAuditPort implements SystemOperationLogPort {
         private final List<SystemAuditEvent> events = new ArrayList<>();
 
         @Override

@@ -15,7 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
+import com.workflow.port.entity.EntityFormPort;
 import com.workflow.embed.management.domain.EmbedManagementModel.OptionsFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.ProviderType;
 import com.workflow.embed.management.domain.EmbedManagementModel.SecurityStatus;
@@ -36,7 +36,7 @@ class MyBatisEmbedManagementRepositoryTest {
     void applicationOptionsUseOnlyNarrowQueriesAndPreserveExpiryAndPageTotal() {
         EmbedManagementMapper mapper = mock(EmbedManagementMapper.class);
         MyBatisEmbedManagementRepository repository = new MyBatisEmbedManagementRepository(
-                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+                mapper, new ObjectMapper(), mock(EntityFormPort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         LocalDateTime expiry = LocalDateTime.of(2026, 1, 1, 0, 0);
         when(mapper.findApplicationOptions("partner", "ACTIVE", 10, 20))
                 .thenReturn(List.of(new ApplicationOptionRow(
@@ -63,7 +63,7 @@ class MyBatisEmbedManagementRepositoryTest {
     void identityProviderOptionsNeverFetchFullProviderConfiguration() {
         EmbedManagementMapper mapper = mock(EmbedManagementMapper.class);
         MyBatisEmbedManagementRepository repository = new MyBatisEmbedManagementRepository(
-                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+                mapper, new ObjectMapper(), mock(EntityFormPort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         when(mapper.findIdentityProviderOptions("provider-1", null, 20, 0))
                 .thenReturn(List.of(new IdentityProviderOptionRow(
                         "provider-1", "Partner", "TRUSTED_EXTERNAL_ID", "DISABLED")));
@@ -85,7 +85,7 @@ class MyBatisEmbedManagementRepositoryTest {
     void bindingProjectionPreservesCurrentFlowUserReadiness() {
         EmbedManagementMapper mapper = mock(EmbedManagementMapper.class);
         MyBatisEmbedManagementRepository repository = new MyBatisEmbedManagementRepository(
-                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+                mapper, new ObjectMapper(), mock(EntityFormPort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         LocalDateTime now = LocalDateTime.of(2026, 1, 1, 0, 0);
         when(mapper.findBinding("binding-1")).thenReturn(new BindingRow(
                 "binding-1", "app-1", "provider-1", "digest", "v1",
@@ -104,8 +104,8 @@ class MyBatisEmbedManagementRepositoryTest {
     @Test
     void followActiveListUsesNativeNewDataResolverExactRelease() {
         EmbedManagementMapper mapper = mock(EmbedManagementMapper.class);
-        EntityNewDataFormRuntimePort formRuntimePort = mock(
-                EntityNewDataFormRuntimePort.class);
+        EntityFormPort formRuntimePort = mock(
+                EntityFormPort.class);
         ObjectMapper objectMapper = new ObjectMapper();
         MyBatisEmbedManagementRepository repository =
                 new MyBatisEmbedManagementRepository(
@@ -114,9 +114,9 @@ class MyBatisEmbedManagementRepositoryTest {
                 .thenReturn(new ListTargetRow(
                         "list-1", "entity-1", "expense", "default",
                         "list-release-1", 1L, "{}", "hash"));
-        when(formRuntimePort.resolveForNewData("expense"))
+        when(formRuntimePort.resolveNewRecordForm("expense"))
                 .thenReturn(Optional.of(
-                        new com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm(
+                        new com.workflow.port.entity.EntityFormPort.ResolvedForm(
                                 "form-first", "form-release-2", 2)));
         // 用 null 让测试在进入快照解析前停止；我们只验证此处
         // 必须消费原生 resolver 返回的精确发布坐标。
@@ -132,7 +132,7 @@ class MyBatisEmbedManagementRepositoryTest {
         assertNull(repository.resolvePublishedResource(
                 SurfaceType.LIST, target, policy));
 
-        verify(formRuntimePort).resolveForNewData("expense");
+        verify(formRuntimePort).resolveNewRecordForm("expense");
         verify(mapper).findFormTarget(
                 "expense", "form-first", "form-release-2");
     }

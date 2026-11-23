@@ -1,7 +1,7 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessProgressRuntimeService;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
@@ -789,7 +789,7 @@ class ProcessProgressRuntimeServiceTest {
             when(entityFormRuntimeService.getByBinding(
                     org.mockito.ArgumentMatchers.same(nodeForm),
                     org.mockito.ArgumentMatchers.any(
-                            com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class)))
+                            com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.class)))
                     .thenReturn(form);
         }
 
@@ -817,7 +817,7 @@ class ProcessProgressRuntimeServiceTest {
             form.setConfigHash("default-form-graph-hash");
             when(entityFormRuntimeService.getDefaultForm(
                     eq("entity-1"),
-                    any(com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class)))
+                    any(com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.class)))
                     .thenReturn(form);
         }
 

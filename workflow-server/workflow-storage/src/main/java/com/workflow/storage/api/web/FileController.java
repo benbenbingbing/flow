@@ -1,11 +1,11 @@
 package com.workflow.storage.api.web;
 
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.entity.port.EntityFileUploadAuthorizationPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.port.entity.EntityFileUploadPermissionPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
@@ -50,7 +50,7 @@ public class FileController {
     /** 文件存储策略工厂 */
     private final FileStorageFactory storageFactory;
     private final StoredFileAccessService fileAccessService;
-    private final List<EntityFileUploadAuthorizationPort> entityUploadAuthorizationPorts;
+    private final List<EntityFileUploadPermissionPort> entityUploadAuthorizationPorts;
 
     /**
      * 上传文件
@@ -126,7 +126,7 @@ public class FileController {
      *
      * @return 处理后的实体上传{@code authorizer}结果，供调用方继续处理
      */
-    private EntityFileUploadAuthorizationPort entityUploadAuthorizer() {
+    private EntityFileUploadPermissionPort entityUploadAuthorizer() {
         if (entityUploadAuthorizationPorts.size() != 1) {
             throw new ForbiddenException("实体文件上传授权服务暂不可用");
         }

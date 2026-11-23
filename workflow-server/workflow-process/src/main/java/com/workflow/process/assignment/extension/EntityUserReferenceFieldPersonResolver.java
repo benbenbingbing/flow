@@ -2,16 +2,16 @@ package com.workflow.process.assignment.extension;
 
 import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 
-import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
-import com.workflow.contracts.entity.port.EntityUserReferencePort;
-import com.workflow.contracts.entity.port.EntityUserPathPort;
+import com.workflow.port.entity.EntityUserFieldPort.EntityUserReferenceException;
+import com.workflow.port.entity.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityUserFieldPort;
+import com.workflow.port.entity.EntityUserPathPort;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
@@ -47,7 +47,7 @@ public class EntityUserReferenceFieldPersonResolver
     @Autowired
     private EntityUserPathPort pathPort;
 
-    private final EntityUserReferencePort referencePort;
+    private final EntityUserFieldPort referencePort;
     private final EntityCodeCatalogPort entityCodeCatalogPort;
 
     /**
@@ -57,7 +57,7 @@ public class EntityUserReferenceFieldPersonResolver
      * @param entityCodeCatalogPort 实体编码目录端口依赖，保存到当前对象供后续业务方法调用
      */
     public EntityUserReferenceFieldPersonResolver(
-            EntityUserReferencePort referencePort,
+            EntityUserFieldPort referencePort,
             EntityCodeCatalogPort entityCodeCatalogPort) {
         this.referencePort = referencePort;
         this.entityCodeCatalogPort = entityCodeCatalogPort;

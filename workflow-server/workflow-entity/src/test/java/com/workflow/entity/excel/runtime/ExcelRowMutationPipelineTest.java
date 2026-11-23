@@ -1,8 +1,8 @@
 package com.workflow.entity.excel.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.*;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
@@ -96,7 +96,7 @@ class ExcelRowMutationPipelineTest {
         var mapper = new ObjectMapper().findAndRegisterModules();
         var executor = new EntityMutationTransactionExecutor(writer, dynamic, mock(EntityVersionPolicyMatcher.class),
                 mock(EntityRecordVersionService.class), related, mock(EntityMutationReceiptService.class), unique, crossFields, mapper);
-        var pipeline = new EntityMutationPipeline(proxy(executor, manager), mock(SystemAuditPort.class));
+        var pipeline = new EntityMutationPipeline(proxy(executor, manager), mock(SystemOperationLogPort.class));
         service = proxy(new EntityDataActionService(mock(UiConfigReleaseService.class), dynamic, pipeline,
                 mock(EntityListActionConfigService.class), lists, permissions, mock(EntityListScopeAuditService.class),
                 formActions, submissions, mock(FormSubmissionTraceService.class), events, mock(SystemEntityReadService.class),

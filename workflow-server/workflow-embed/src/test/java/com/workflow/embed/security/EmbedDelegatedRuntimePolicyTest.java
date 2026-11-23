@@ -12,11 +12,11 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort;
+import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.port.embed.EmbedPublishedFormPort;
+import com.workflow.port.embed.EmbedPublishedListPort;
+import com.workflow.port.embed.EmbedProcessRecordPort;
+import com.workflow.port.embed.EmbedRelatedTargetPort;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedException;
@@ -32,19 +32,19 @@ import org.springframework.web.servlet.HandlerMapping;
 
 class EmbedDelegatedRuntimePolicyTest {
 
-    private com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.Scope sessionScope;
+    private com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.Scope sessionScope;
     @org.junit.jupiter.api.BeforeEach
-    void openSession() { sessionScope=com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.openSession("session-1","release-1"); }
+    void openSession() { sessionScope=com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.openSession("session-1","release-1"); }
     @org.junit.jupiter.api.AfterEach
     void closeSession() {sessionScope.close();}
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final EmbedNativeFormTargetResolver targetResolver = mock(
             EmbedNativeFormTargetResolver.class);
-    private final EmbedNativeFormRuntimePort formRuntimePort = mock(
-            EmbedNativeFormRuntimePort.class);
-    private final EmbedNativeListRuntimePort listRuntimePort = mock(
-            EmbedNativeListRuntimePort.class);
+    private final EmbedPublishedFormPort formRuntimePort = mock(
+            EmbedPublishedFormPort.class);
+    private final EmbedPublishedListPort listRuntimePort = mock(
+            EmbedPublishedListPort.class);
     private final EmbedNativeFormTarget root = new EmbedNativeFormTarget(
             "order", "form-1", "form-release-1", 3,
             "default", "list-release-1", 2,
@@ -170,10 +170,10 @@ class EmbedDelegatedRuntimePolicyTest {
         when(targetResolver.resolveRoot(session)).thenReturn(root);
         when(targetResolver.authorize(session, "VIEW", "record-1"))
                 .thenReturn(root);
-        EmbedNativeProcessRuntimePort process = mock(
-                EmbedNativeProcessRuntimePort.class);
+        EmbedProcessRecordPort process = mock(
+                EmbedProcessRecordPort.class);
         when(process.findRecordTarget("process-1")).thenReturn(Optional.of(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort.RecordTarget(
+                new com.workflow.port.embed.EmbedProcessRecordPort.RecordTarget(
                         "order", "record-1")));
         EmbedDelegatedRuntimePolicy policy = policy(process, null);
         MockHttpServletRequest request = get(
@@ -185,7 +185,7 @@ class EmbedDelegatedRuntimePolicyTest {
         verify(targetResolver).authorize(session, "VIEW", "record-1");
 
         when(process.findRecordTarget("process-2")).thenReturn(Optional.of(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort.RecordTarget(
+                new com.workflow.port.embed.EmbedProcessRecordPort.RecordTarget(
                         "customer", "record-9")));
         MockHttpServletRequest escaped = get("/api/future/process/process-2");
         pathVariables(escaped, Map.of("processInstanceId", "process-2"));
@@ -200,10 +200,10 @@ class EmbedDelegatedRuntimePolicyTest {
         when(targetResolver.resolveRoot(session)).thenReturn(root);
         when(targetResolver.authorize(session, "VIEW", "record-1"))
                 .thenReturn(root);
-        EmbedNativeTraversalRuntimePort traversal = mock(
-                EmbedNativeTraversalRuntimePort.class);
+        EmbedRelatedTargetPort traversal = mock(
+                EmbedRelatedTargetPort.class);
         when(traversal.resolve(any())).thenReturn(
-                new com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort.TraversalTarget(
+                new com.workflow.port.embed.EmbedRelatedTargetPort.TraversalTarget(
                         "FORM", "form-1", "form-release-1", 3,
                         "record-1", "FORM", "child-form",
                         "child-release", 7, "child-record",
@@ -440,7 +440,7 @@ class EmbedDelegatedRuntimePolicyTest {
     void compositionFromAnotherRootIsRejectedBeforeResolvingChild() throws Exception {
         AuthenticatedEmbedSession session=session(Set.of("RECORD_VIEW"));
         when(targetResolver.resolveRoot(session)).thenReturn(root);
-        EmbedNativeTraversalRuntimePort traversal=mock(EmbedNativeTraversalRuntimePort.class);
+        EmbedRelatedTargetPort traversal=mock(EmbedRelatedTargetPort.class);
         var policy=policy(null,traversal);
         var request=get("/metadata/customer"); pathVariables(request,Map.of("entityCode","customer"));
         request.setParameter("compositionContext","{\"ownerType\":\"FORM\",\"ownerId\":\"other-root\",\"recordId\":\"record-1\",\"compositionKey\":\"child\"}");
@@ -473,7 +473,7 @@ class EmbedDelegatedRuntimePolicyTest {
         Map<String, Object> context = Map.of("rootFormId", "form-1", "rootRecordId", "record-1",
                 "componentPath", java.util.List.of("customer-list"), "listKey", "customers");
         when(listRuntimePort.authorizeFormList("form-1", "customer", "customers", context))
-                .thenReturn(new EmbedNativeListRuntimePort.ReferencedList("customer", "customers", "child-list-release", 2));
+                .thenReturn(new EmbedPublishedListPort.ReferencedList("customer", "customers", "child-list-release", 2));
         var request = get("/metadata/customer");
         pathVariables(request, Map.of("entityCode", "customer"));
         request.setParameter("runtimeContext", objectMapper.writeValueAsString(context));
@@ -482,7 +482,7 @@ class EmbedDelegatedRuntimePolicyTest {
         assertEquals("customer", target.entityCode());
         assertEquals("child-list-release", target.listReleaseId());
         verify(targetResolver).authorize(session, "VIEW", "record-1");
-        assertEquals("customers", com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext
+        assertEquals("customers", com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext
                 .authorizedListTarget().orElseThrow().listKey());
     }
 
@@ -505,15 +505,15 @@ class EmbedDelegatedRuntimePolicyTest {
 
     @SuppressWarnings("unchecked")
     private EmbedDelegatedRuntimePolicy policy(
-            EmbedNativeProcessRuntimePort process,
-            EmbedNativeTraversalRuntimePort traversal) {
-        ObjectProvider<EmbedNativeProcessRuntimePort> processProvider =
+            EmbedProcessRecordPort process,
+            EmbedRelatedTargetPort traversal) {
+        ObjectProvider<EmbedProcessRecordPort> processProvider =
                 mock(ObjectProvider.class);
-        ObjectProvider<EmbedNativeTraversalRuntimePort> traversalProvider =
+        ObjectProvider<EmbedRelatedTargetPort> traversalProvider =
                 mock(ObjectProvider.class);
-        ObjectProvider<EmbedNativeListRuntimePort> listProvider =
+        ObjectProvider<EmbedPublishedListPort> listProvider =
                 mock(ObjectProvider.class);
-        ObjectProvider<EmbedNativeFormRuntimePort> formProvider =
+        ObjectProvider<EmbedPublishedFormPort> formProvider =
                 mock(ObjectProvider.class);
         when(processProvider.getIfAvailable()).thenReturn(process);
         when(traversalProvider.getIfAvailable()).thenReturn(traversal);
@@ -522,7 +522,7 @@ class EmbedDelegatedRuntimePolicyTest {
         when(formRuntimePort.authorizeTarget(anyString(),anyString(),any())).thenAnswer(invocation -> {
             String formId=invocation.getArgument(1);
             boolean child="child-form".equals(formId);
-            return new EmbedNativeFormRuntimePort.VerifiedTarget(child?"customer":"order",formId,child?"child-release":"form-release-1",child?7:3);
+            return new EmbedPublishedFormPort.VerifiedTarget(child?"customer":"order",formId,child?"child-release":"form-release-1",child?7:3);
         });
         when(listRuntimePort.authorizeTarget(any(),anyString(),anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         when(listRuntimePort.authorizeForm(any(),anyString(),anyString(),anyString(),any())).thenAnswer(invocation -> invocation.getArgument(3));

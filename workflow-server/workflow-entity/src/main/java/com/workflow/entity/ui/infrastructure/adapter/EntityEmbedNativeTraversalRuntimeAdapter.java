@@ -1,6 +1,6 @@
 package com.workflow.entity.ui.infrastructure.adapter;
 
-import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort;
+import com.workflow.port.embed.EmbedRelatedTargetPort;
 import com.workflow.entity.ui.application.UiViewCompositionRuntimeService;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class EntityEmbedNativeTraversalRuntimeAdapter
-        implements EmbedNativeTraversalRuntimePort {
+        implements EmbedRelatedTargetPort {
 
     private final UiViewCompositionRuntimeService runtimeService;
     private final ObjectMapper objectMapper;

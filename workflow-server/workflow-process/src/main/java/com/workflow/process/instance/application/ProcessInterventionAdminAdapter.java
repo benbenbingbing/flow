@@ -1,10 +1,12 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
-import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
-import com.workflow.contracts.process.instance.model.ProcessInterventionModels.*;
-import com.workflow.contracts.process.instance.port.ProcessInterventionAdminPort;
-import com.workflow.contracts.process.model.ProcessPage;
+import com.workflow.port.system.CurrentActorPort;
+import com.workflow.port.process.instance.model.ProcessInterventionModels.*;
+import com.workflow.port.process.ProcessActionExecutionPort;
+import com.workflow.port.process.ProcessAssigneeIncidentPort;
+import com.workflow.port.process.ProcessTaskHandoverPort;
+import com.workflow.port.process.model.ProcessPage;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.action.application.FlowActionExecutionService;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
@@ -20,28 +22,28 @@ import java.util.Map;
 /** 对其他模块复用事件处置、动作重放与管理员交接的原有规则和事务。 */
 @Component
 @RequiredArgsConstructor
-public class ProcessInterventionAdminAdapter implements ProcessInterventionAdminPort {
-    private final CurrentAuthorizationPort authorization;
+public class ProcessInterventionAdminAdapter implements ProcessAssigneeIncidentPort, ProcessActionExecutionPort, ProcessTaskHandoverPort {
+    private final CurrentActorPort authorization;
     private final CurrentUserRoleService roles;
     private final AssigneeIncidentService incidents;
     private final FlowActionExecutionService executions;
     private final TaskHandoverService handovers;
 
     @Override
-    public ProcessPage<Map<String, Object>> pageAssigneeIncidents(String status, int pageNumber, int pageSize) {
+    public ProcessPage<Map<String, Object>> pageIncidents(String status, int pageNumber, int pageSize) {
         require("process:assignee-incident:list");
         var result = incidents.list(status, pageNumber, pageSize);
         return new ProcessPage<>(result.getRecords(), result.getTotal(), (int) result.getPageNum(), (int) result.getPageSize());
     }
 
     @Override
-    public Map<String, Object> readAssigneeIncident(String incidentId) {
+    public Map<String, Object> findIncident(String incidentId) {
         require("process:assignee-incident:list");
         return incidents.detail(incidentId);
     }
 
     @Override
-    public Map<String, Object> handleAssigneeIncident(HandleAssigneeIncident command) {
+    public Map<String, Object> handleIncident(HandleAssigneeIncident command) {
         require("process:assignee-incident:handle");
         var request = new AssigneeIncidentHandleRequest();
         request.setRequestId(command.requestId());
@@ -53,7 +55,7 @@ public class ProcessInterventionAdminAdapter implements ProcessInterventionAdmin
     }
 
     @Override
-    public List<ActionExecution> listActionExecutions(String processInstanceId) {
+    public List<ActionExecution> listExecutions(String processInstanceId) {
         roles.requireSuperAdmin();
         return executions.findDetailsByProcessInstanceId(processInstanceId).stream().map(item -> new ActionExecution(
                 item.getId(), item.getActionName(), item.getTaskId(), item.getVersionId(), item.getStatus(),
@@ -62,13 +64,13 @@ public class ProcessInterventionAdminAdapter implements ProcessInterventionAdmin
     }
 
     @Override
-    public void retryActionExecution(String executionId) {
+    public void retryExecution(String executionId) {
         roles.requireSuperAdmin();
         executions.retry(executionId);
     }
 
     @Override
-    public void resolveActionExecution(String executionId, String note) {
+    public void resolveExecution(String executionId, String note) {
         roles.requireSuperAdmin();
         executions.resolve(executionId, note);
     }

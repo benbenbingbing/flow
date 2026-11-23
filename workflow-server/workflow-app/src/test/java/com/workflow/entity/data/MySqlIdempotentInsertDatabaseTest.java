@@ -8,7 +8,7 @@ import com.workflow.embed.infrastructure.persistence.adapter.MyBatisEmbedIdempot
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedIdempotencyMapper;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
-import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.contracts.outbox.model.OutboxEvent;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.status.application.ProcessStatusSyncOutboxHandler;
@@ -161,7 +161,7 @@ class MySqlIdempotentInsertDatabaseTest {
             f.table("side_effect", "id INT PRIMARY KEY, hits INT NOT NULL");
             var h = new Harness(f, ProcessStatusSyncMapper.class);
             h.jdbc.update("INSERT INTO side_effect VALUES (1,0)");
-            var entity = mock(EntityRecordPort.class);
+            var entity = mock(EntityProcessStatePort.class);
             var links = mock(EntityProcessLinkMapper.class);
             when(links.updateActiveStatus(anyString(), anyString())).thenReturn(1);
             var failOnce = new AtomicBoolean(true);

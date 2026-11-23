@@ -74,6 +74,52 @@ class SystemEntityReadServiceTest {
     }
 
     @Test
+    void batchLookupUsesOneBoundQueryAndPreservesInputOrder() {
+        when(definitionMapper.findByEntityCode("sys_user")).thenReturn(Optional.of(systemEntity("sys_user")));
+        when(fieldMapper.findByEntityId("entity-1"))
+                .thenReturn(List.of(field("id"), field("username"), field("password"), field("deleted")));
+        when(businessMapper.selectRecords(any())).thenReturn(List.of(
+                Map.of("id", "1", "username", "alice"), Map.of("id", "2", "username", "bob")));
+
+        var result = service.findByIds("sys_user", List.of("2", "missing", " 1 ", "2"));
+
+        assertEquals(List.of("2", "1"), result.stream().map(EntityDataDTO::getId).toList());
+        var query = ArgumentCaptor.forClass(ParameterizedSql.class);
+        verify(businessMapper).selectRecords(query.capture());
+        assertTrue(query.getValue().sql().contains("`id` IN (?, ?, ?)"));
+        assertTrue(query.getValue().sql().contains("`deleted` = 0"));
+        assertFalse(query.getValue().sql().contains("password"));
+        org.mockito.Mockito.verifyNoMoreInteractions(businessMapper);
+    }
+
+    @Test
+    void projectionAndMetadataShareFieldRestrictionsAndPagination() {
+        var user = systemEntity("sys_user");
+        when(definitionMapper.findByEntityCode("sys_user")).thenReturn(Optional.of(user));
+        when(definitionMapper.findByEntityCode("sys_dict")).thenReturn(Optional.of(systemEntity("sys_dict")));
+        when(definitionMapper.selectList(any())).thenReturn(List.of(systemEntity("sys_dict"), user));
+        when(fieldMapper.findByEntityId("entity-1"))
+                .thenReturn(List.of(field("id"), field("username"), field("password"), field("deleted")));
+        when(businessMapper.countRecords(any())).thenReturn(7L);
+        when(businessMapper.selectRecords(any())).thenReturn(List.of(Map.of("id", "1", "username", "alice")));
+
+        var page = service.findPage("sys_user", Map.of(), 1, 20, "username", "DESC", Set.of("username"));
+
+        assertEquals(7, page.getTotal());
+        assertEquals("1", page.getRecords().get(0).getId());
+        assertEquals(Map.of("username", "alice"), page.getRecords().get(0).getData());
+        var query = ArgumentCaptor.forClass(ParameterizedSql.class);
+        verify(businessMapper).selectRecords(query.capture());
+        assertTrue(query.getValue().sql().contains("ORDER BY `username` DESC"));
+        assertEquals(List.of("sys_user"), service.listReadable().stream().map(item -> item.entityCode()).toList());
+        assertEquals(List.of("id", "username", "deleted"),
+                service.describeReadableFields("sys_user").stream().map(field -> field.code()).toList());
+        assertThrows(ForbiddenException.class, () -> service.describeReadableFields("sys_dict"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.findPage("sys_user", Map.of(), 1, 20, null, "ASC", Set.of("password")));
+    }
+
+    @Test
     void queryUsesCatalogWhitelistAndNeverSelectsSensitiveColumns() {
         EntityDefinition entity = systemEntity("sys_user");
         when(definitionMapper.findByEntityCode("sys_user"))

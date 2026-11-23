@@ -1,8 +1,8 @@
 package com.workflow.process.cc.application;
 
-import com.workflow.contracts.process.instance.model.ProcessRuntimeViews.CcItem;
-import com.workflow.contracts.process.instance.port.ProcessCcPort;
-import com.workflow.contracts.process.model.ProcessPage;
+import com.workflow.port.process.instance.model.ProcessRuntimeViews.CcItem;
+import com.workflow.port.process.ProcessCcRecordPort;
+import com.workflow.port.process.model.ProcessPage;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.command.application.ProcessInvocationAccess;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 /** 知会收件人与平台原有用户名坐标一致，业务调用只操作本人记录。 */
 @Component
 @RequiredArgsConstructor
-public class ProcessCcAdapter implements ProcessCcPort {
+public class ProcessCcAdapter implements ProcessCcRecordPort {
     private final ProcessCcService cc;
     private final ProcessInvocationAccess callers;
 

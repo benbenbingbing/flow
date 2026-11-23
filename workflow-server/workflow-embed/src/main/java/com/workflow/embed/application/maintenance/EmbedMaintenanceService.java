@@ -1,11 +1,11 @@
 package com.workflow.embed.application.maintenance;
 
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.embed.application.port.EmbedMaintenancePort;
 import com.workflow.embed.application.port.EmbedMaintenancePort.CounterCursor;
 import com.workflow.embed.application.port.EmbedMaintenancePort.CounterObservation;
@@ -39,7 +39,7 @@ public class EmbedMaintenanceService {
     private static final Logger log = LoggerFactory.getLogger(EmbedMaintenanceService.class);
 
     private final EmbedMaintenancePort maintenancePort;
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     private final EmbedProperties properties;
     private final Clock clock;
 
@@ -57,7 +57,7 @@ public class EmbedMaintenanceService {
      */
     public EmbedMaintenanceService(
             EmbedMaintenancePort maintenancePort,
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             EmbedProperties properties,
             @Qualifier("embedClock") Clock clock) {
         this.maintenancePort = maintenancePort;

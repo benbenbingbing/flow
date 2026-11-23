@@ -1,10 +1,10 @@
 package com.workflow.entity.data;
 
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +20,7 @@ import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.contracts.outbox.model.OutboxEvent;
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
 import com.workflow.outbox.application.DatabaseOutboxPublisher;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import java.nio.file.Files;

@@ -3,7 +3,7 @@ package com.workflow.embed.api.web;
 import com.workflow.embed.api.response.EmbedApiEnvelope;
 import com.workflow.embed.api.response.EmbedRuntimeViews;
 
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
+import com.workflow.port.embed.EmbedPublishedFormPort;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.EmbedNativeFormTarget;
@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class EmbedNativeFormTargetController {
 
     private final EmbedNativeFormTargetResolver targetResolver;
-    private final EmbedNativeFormRuntimePort nativeRuntimePort;
+    private final EmbedPublishedFormPort nativeRuntimePort;
 
     /**
      * 初始化嵌入式原生表单目标控制器，保存构造参数供后续方法使用。
@@ -37,7 +37,7 @@ public class EmbedNativeFormTargetController {
      */
     public EmbedNativeFormTargetController(
             EmbedNativeFormTargetResolver targetResolver,
-            EmbedNativeFormRuntimePort nativeRuntimePort) {
+            EmbedPublishedFormPort nativeRuntimePort) {
         this.targetResolver = targetResolver;
         this.nativeRuntimePort = nativeRuntimePort;
     }

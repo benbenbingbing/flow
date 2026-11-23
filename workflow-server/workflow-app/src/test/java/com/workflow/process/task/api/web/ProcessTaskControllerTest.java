@@ -129,7 +129,7 @@ class ProcessTaskControllerTest {
                 mock(TaskListQueryService.class));
         UserContext.setCurrentUser("user-1", "admin");
 
-        var commands = mock(com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort.class);
+        var commands = mock(com.workflow.port.process.ProcessInstancePort.class);
         ReflectionTestUtils.setField(controller, "instanceCommands", commands);
         controller.withdrawProcess(Map.of(
                 "processInstanceId", "process-1",

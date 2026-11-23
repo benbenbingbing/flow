@@ -1,9 +1,8 @@
 package com.workflow.admin.identity.extension.application;
 
 import com.workflow.admin.identity.provisioning.application.IdentityAccessService;
-import com.workflow.contracts.identity.error.IdentityWriteException;
-import com.workflow.contracts.identity.model.*;
-import com.workflow.contracts.identity.port.IdentityExtensionQueryPort;
+import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.identity.model.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -18,7 +17,7 @@ import java.util.*;
 /** 通用独立表资料读写；Mapper 中全部 SQL 标识符来自启动注册白名单，业务值使用参数绑定。 */
 @Service
 @RequiredArgsConstructor
-public class IdentityExtensionService implements IdentityExtensionQueryPort {
+public class IdentityExtensionService {
     private final IdentityExtensionRegistry registry;
     private final IdentityAccessService access;
     private final IdentityPersistenceMapper persistence;
@@ -99,11 +98,9 @@ public class IdentityExtensionService implements IdentityExtensionQueryPort {
         }
     }
 
-    @Override
     public <T extends UserExtension> Optional<T> findUserExtension(String id, Class<T> type) {
         return find(IdentityObjectType.USER, id, type);
     }
-    @Override
     public <T extends OrganizationExtension> Optional<T> findOrganizationExtension(String id, Class<T> type) {
         return find(IdentityObjectType.ORGANIZATION, id, type);
     }

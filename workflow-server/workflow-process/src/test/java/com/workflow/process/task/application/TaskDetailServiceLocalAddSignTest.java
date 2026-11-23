@@ -2,8 +2,8 @@ package com.workflow.process.task.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.ForbiddenException;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
@@ -101,7 +101,7 @@ class TaskDetailServiceLocalAddSignTest {
         when(formRuntimeService.getByBinding(
                 org.mockito.ArgumentMatchers.same(binding),
                 org.mockito.ArgumentMatchers.any(
-                        com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class)))
+                        com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.class)))
                 .thenReturn(form);
 
         var detail = service.getTaskDetail("addsign-1");
@@ -163,6 +163,20 @@ class TaskDetailServiceLocalAddSignTest {
         assertThrows(ForbiddenException.class, () -> service.getTaskDetail("addsign-1"));
 
         verifyNoInteractions(runtimeService, snapshotService, formRuntimeService, dataService);
+    }
+
+    @Test
+    void portFormSummaryDoesNotReadEntitiesOrProcessVariables() {
+        Task source = mock(Task.class);
+        when(source.getFormKey()).thenReturn("source-form");
+        when(accessService.requireCurrentUserAccess("addsign-1", null))
+                .thenReturn(new LocalAddSignTaskAccessService.AuthorizedAddSignTask(local, source));
+
+        var form = service.findActiveTaskForm("addsign-1", true);
+
+        assertEquals("source-form", form.getFormKey());
+        assertEquals(true, form.getIsReadonly());
+        verifyNoInteractions(dataService, runtimeService);
     }
 
     @Test

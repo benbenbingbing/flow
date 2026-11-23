@@ -21,7 +21,7 @@ import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
 import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
 import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
@@ -178,7 +178,7 @@ class UiInterfaceExtensionServiceTest {
         when(provider.getObject()).thenReturn(releases);
         org.springframework.test.util.ReflectionTestUtils.setField(fixture.service(), "runtimeReleases", provider);
         when(releases.authorizeRuntimeContext(eq("form-1"), anyMap())).thenReturn(
-                com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.activeTask(
+                com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.activeTask(
                         "history", "node", "task-1", "instance-1", "expense", "record-1"));
         when(fixture.executionAccessService().authorizePublished(any(), any())).thenReturn(
                 new UiDataSourceExecutionAuthorization(false, "FORM", "form-1", "release-1", 1,
@@ -202,8 +202,8 @@ class UiInterfaceExtensionServiceTest {
         // 历史流程仅可读取，同一绑定不能因接口配置改为 WRITE 而获得写权限。
         request.setRecordId("record-1"); request.setConfigHash("page-hash");
         when(releases.authorizeRuntimeContext(eq("form-1"), anyMap())).thenReturn(
-                new com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext(
-                        com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL,
+                new com.workflow.port.entity.ui.context.UiRuntimeResolutionContext(
+                        com.workflow.port.entity.ui.model.UiRuntimePurpose.HISTORICAL,
                         "history", "node", null, "instance-1", "expense", "record-1"));
         definition.setInterfaceKind("WRITE");
         assertEquals("PROCESS_FORM_READ_ONLY", assertThrows(BusinessForbiddenException.class,
@@ -1259,7 +1259,7 @@ class UiInterfaceExtensionServiceTest {
         when(provider.getVersion()).thenReturn(1);
         when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
         org.mockito.Mockito.doAnswer(call -> {
-            var control = call.getArgument(4, com.workflow.contracts.execution.port.ExecutionControlPort.class);
+            var control = call.getArgument(4, com.workflow.port.platform.ExecutionBudgetPort.class);
             assertTrue(control.remainingMillis() <= 200);
             assertEquals("user-1", UserContext.getUserId());
             if (calls.incrementAndGet() == 1) {

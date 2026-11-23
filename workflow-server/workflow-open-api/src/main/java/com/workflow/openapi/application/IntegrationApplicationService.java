@@ -4,14 +4,14 @@ import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.openapi.api.request.CreateIntegrationApplicationRequest;
@@ -59,7 +59,7 @@ public class IntegrationApplicationService {
     private final IntegrationSecretGenerator secretGenerator;
     private final IntegrationSecretHasher secretHasher;
     private final CurrentActorPort actorProvider;
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -81,7 +81,7 @@ public class IntegrationApplicationService {
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
             CurrentActorPort actorProvider,
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             ObjectMapper objectMapper) {
         this(
                 applicationMapper,
@@ -112,7 +112,7 @@ public class IntegrationApplicationService {
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
             CurrentActorPort actorProvider,
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {
         this.applicationMapper = applicationMapper;

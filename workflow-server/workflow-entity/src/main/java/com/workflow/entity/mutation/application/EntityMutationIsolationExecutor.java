@@ -1,8 +1,8 @@
 package com.workflow.entity.mutation.application;
 
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -19,7 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @RequiredArgsConstructor
 public class EntityMutationIsolationExecutor {
 
-    private final EntityMutationPort mutationPort;
+    private final TrustedEntityRecordMutationPort mutationPort;
     private final PlatformTransactionManager transactionManager;
 
     /**

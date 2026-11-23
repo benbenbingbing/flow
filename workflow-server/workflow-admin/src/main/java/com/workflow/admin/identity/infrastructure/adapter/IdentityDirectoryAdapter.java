@@ -1,9 +1,11 @@
 package com.workflow.admin.identity.infrastructure.adapter;
 
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.identity.model.IdentityGroup;
-import com.workflow.contracts.identity.model.IdentityHandoverUser;
-import com.workflow.contracts.identity.model.IdentityUser;
+import com.workflow.port.system.SysGroupPort;
+import com.workflow.port.system.SysUserHandoverPort;
+import com.workflow.port.system.SysUserLookupPort;
+import com.workflow.port.system.identity.model.IdentityGroup;
+import com.workflow.port.system.identity.model.IdentityHandoverUser;
+import com.workflow.port.system.identity.model.IdentityUser;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
@@ -25,7 +27,7 @@ import java.util.Optional;
  */
 @Component
 @RequiredArgsConstructor
-public class IdentityDirectoryAdapter implements IdentityDirectoryPort {
+public class IdentityDirectoryAdapter implements SysUserLookupPort, SysUserHandoverPort, SysGroupPort {
 
     private final SysUserService userService;
     private final SysGroupMapper groupMapper;
@@ -108,7 +110,6 @@ public class IdentityDirectoryAdapter implements IdentityDirectoryPort {
      * @param idOrCode ID或编码，后续用于查询分组用户集合时定位或关联目标
      * @return 身份用户集合，供调用方遍历或展示
      */
-    @Override
     public List<IdentityUser> findGroupUsers(String idOrCode) {
         return findGroup(idOrCode)
                 .map(group -> {

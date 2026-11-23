@@ -232,12 +232,12 @@ class EntityUserReferenceFieldPublishSanitizerTest {
 
     @Test
     void publishCompilesVersionsForBaseAndNextApproverSources() {
-        var paths = mock(com.workflow.contracts.entity.port.EntityUserPathPort.class);
-        var step = new com.workflow.contracts.entity.port.EntityUserPathPort.Step("REFERENCE_FIELD", "owner", "sys_user", "expense");
-        var version = new com.workflow.contracts.entity.port.EntityUserPathPort.Version("expense", "local-history", "local-hash", null);
+        var paths = mock(com.workflow.port.entity.EntityUserPathPort.class);
+        var step = new com.workflow.port.entity.EntityUserPathPort.Step("REFERENCE_FIELD", "owner", "sys_user", "expense");
+        var version = new com.workflow.port.entity.EntityUserPathPort.Version("expense", "local-history", "local-hash", null);
         when(paths.describe(org.mockito.ArgumentMatchers.eq("expense"), org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.eq(List.of()))).thenReturn(
-                new com.workflow.contracts.entity.port.EntityUserPathPort.PathDescription("sys_user", false, true, List.of(version), List.of(step)));
+                new com.workflow.port.entity.EntityUserPathPort.PathDescription("sys_user", false, true, List.of(version), List.of(step)));
         var sanitizer = configuredSanitizer();
         var validator = mock(PersonResolverConfigurationValidationProvider.class);
         when(validator.resolverCode()).thenReturn("entityUserReferenceField");

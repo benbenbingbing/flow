@@ -11,22 +11,25 @@ import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionActionService;
 import com.workflow.entity.excel.runtime.ExcelAtomicExecutionContext;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.entity.data.application.mapping.EntityRecordRevision;
+import com.workflow.port.entity.EntityRecordPort.RecordCapability;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
@@ -45,6 +48,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -86,7 +90,7 @@ public class EntityDataActionService {
             "runtimeContext");
 
     private final EntityDataDynamicService dynamicService;
-    private final EntityMutationPort mutationPort;
+    private final TrustedEntityRecordMutationPort mutationPort;
     private final EntityListActionConfigService actionConfigService;
     private final EntityListPublishedRuntimeService publishedListRuntimeService;
     private final EntityActionCapabilityService capabilityService;
@@ -616,18 +620,19 @@ public class EntityDataActionService {
             String listKey,
             Map<String, Object> formData,
             EntityListRuntimeContext runtimeContext) {
-        return updateInternal(entityCode, id, listKey, formData, runtimeContext, null);
+        return updateInternal(entityCode, id, listKey, formData, runtimeContext, null, null);
     }
 
     /** Java 编辑仍经过行级权限、提交按钮校验和重新发起版本校验。 */
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public EntityDataDTO updateFromPort(String entityCode, String id, String listKey,
-            Map<String, Object> formData, String traceKey) {
-        return updateInternal(entityCode, id, listKey, formData, null, traceKey);
+            Map<String, Object> formData, String traceKey, String expectedRevision) {
+        return updateInternal(entityCode, id, listKey, formData, null, traceKey, expectedRevision);
     }
 
     private EntityDataDTO updateInternal(String entityCode, String id, String listKey,
-            Map<String, Object> formData, EntityListRuntimeContext runtimeContext, String portTraceKey) {
+            Map<String, Object> formData, EntityListRuntimeContext runtimeContext, String portTraceKey,
+            String expectedRevision) {
         requireDynamicRuntime(entityCode);
         var compositionContext = com.workflow.entity.ui.application.RuntimeRequestContext.composition(formData == null
                 ? null : formData.get(
@@ -687,7 +692,8 @@ public class EntityDataActionService {
                     config,
                     formData,
                     executionContext,
-                    portTraceKey != null);
+                    portTraceKey != null,
+                    expectedRevision);
         }
         UiEventExecuteRequest event = event(
                 UiDataSourceUsages.DATA_UPDATE,
@@ -745,7 +751,8 @@ public class EntityDataActionService {
                             id,
                             updateRequest,
                             applied.origin(),
-                            executionContext.businessTraceKey());
+                            executionContext.businessTraceKey(),
+                            expectedRevision);
                     if (portTraceKey != null) defaultSaved.set(saved);
                     return saved;
                 });
@@ -787,6 +794,8 @@ public class EntityDataActionService {
      * @param config 配置内容，决定后续实体数据动作默认的处理规则
      * @param formData 表单数据，作为 {@code updateRequest.put} 的输入影响后续处理
      * @param executionContext 执行上下文，向后续实体数据动作默认步骤传递身份、配置或状态
+     * @param javaSubmission 是否由 Java Port 提交，用于执行首轮启动校验
+     * @param expectedRevision 可选的已读记录修订号，供写锁下的并发校验使用
      * @return 更新后的实体数据动作默认结果，供调用方继续处理
      */
     private EntityDataDTO updateDefault(
@@ -795,7 +804,8 @@ public class EntityDataActionService {
             EntityListConfig config,
             Map<String, Object> formData,
             FormSubmissionExecutionContext executionContext,
-            boolean javaSubmission) {
+            boolean javaSubmission,
+            String expectedRevision) {
         EntityDataDTO row = findAccessible(entityCode, id, config);
         capabilityService.requireRowActionForConfig(
                 entityCode, config, "edit", row);
@@ -824,7 +834,8 @@ public class EntityDataActionService {
                 applied.origin() == null
                         ? listEventOrigin(config)
                         : applied.origin(),
-                executionContext.businessTraceKey());
+                executionContext.businessTraceKey(),
+                expectedRevision);
     }
 
     /**
@@ -922,24 +933,36 @@ public class EntityDataActionService {
             String id,
             String listKey,
             EntityListRuntimeContext runtimeContext) {
+        deleteInternal(entityCode, id, listKey, runtimeContext, false);
+    }
+
+    /** Port 按当前发布列表执行显式软删除，发布事件须执行标准删除步骤。 */
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.DELETE, operation = "删除实体数据",
+            risk = AuditRiskLevel.HIGH, targetType = "ENTITY_RECORD", targetIdArg = 1)
+    public void deleteFromPort(String entityCode, String id, String listKey) {
+        deleteInternal(entityCode, id, listKey, EntityListRuntimeContext.current(), true);
+    }
+
+    private void deleteInternal(String entityCode, String id, String listKey,
+            EntityListRuntimeContext runtimeContext, boolean portCall) {
         requireDynamicRuntime(entityCode);
         if (historyWriteGuard != null) historyWriteGuard.requireWritable(entityCode, id);
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
                 runtimeContext);
+        if (portCall) requireConfiguredListPermission(config);
         EntityDataDTO row = findAccessible(entityCode, id, config);
         capabilityService.requireRowActionForConfig(
                 entityCode,
                 config,
                 "delete",
                 row);
+        String expectedRevision = portCall ? revision(row) : null;
         EventOrigin origin = listEventOrigin(config);
         if (origin == null) {
-            mutateDelete(
-                    entityCode,
-                    id,
-                    origin);
+            mutateDelete(entityCode, id, origin, expectedRevision);
             return;
         }
         UiEventExecuteRequest event = event(
@@ -953,15 +976,11 @@ public class EntityDataActionService {
                         id,
                         "record",
                         objectMapper.convertValue(row, Map.class)));
-        eventRuntimeService.execute(
-                event,
-                ignored -> {
-                    mutateDelete(
-                            entityCode,
-                            id,
-                            origin);
-                    return Map.of("record", row);
-                });
+        var result = eventRuntimeService.execute(event, ignored -> {
+            mutateDelete(entityCode, id, origin, expectedRevision);
+            return Map.of("record", row);
+        });
+        if (portCall) requirePortDeletion(result.isDefaultExecuted());
     }
 
     /**
@@ -1006,12 +1025,26 @@ public class EntityDataActionService {
             List<String> ids,
             String listKey,
             EntityListRuntimeContext runtimeContext) {
+        batchDeleteInternal(entityCode, ids, listKey, runtimeContext, false);
+    }
+
+    /** 在同一个事务中校验并软删除整批记录，任一失败即回滚。 */
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.BATCH_DELETE, operation = "批量删除实体数据",
+            risk = AuditRiskLevel.HIGH, targetType = "ENTITY_RECORD_BATCH")
+    public void batchDeleteFromPort(String entityCode, List<String> ids, String listKey) {
+        batchDeleteInternal(entityCode, ids, listKey, EntityListRuntimeContext.current(), true);
+    }
+
+    private void batchDeleteInternal(String entityCode, List<String> ids, String listKey,
+            EntityListRuntimeContext runtimeContext, boolean portCall) {
         requireDynamicRuntime(entityCode);
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
                 runtimeContext);
-        if (ids == null || ids.isEmpty()) {
+        if (portCall) requireConfiguredListPermission(config);
+        if (ids == null || ids.isEmpty() || (portCall && ids.stream().noneMatch(StringUtils::hasText))) {
             throw new IllegalArgumentException("请选择需要删除的数据");
         }
         List<EntityDataDTO> rows = new ArrayList<>();
@@ -1035,10 +1068,7 @@ public class EntityDataActionService {
         }
         EventOrigin origin = listEventOrigin(config);
         if (origin == null) {
-            mutateBatchDelete(
-                    entityCode,
-                    rows,
-                    origin);
+            mutateBatchDelete(entityCode, rows, origin, portCall);
             return;
         }
         UiEventExecuteRequest event = event(
@@ -1058,13 +1088,10 @@ public class EntityDataActionService {
                                 .toList()));
         event.setSelectedIds(
                 rows.stream().map(EntityDataDTO::getId).toList());
-        eventRuntimeService.execute(
+        var result = eventRuntimeService.execute(
                 event,
                 ignored -> {
-                    mutateBatchDelete(
-                            entityCode,
-                            rows,
-                            origin);
+                    mutateBatchDelete(entityCode, rows, origin, portCall);
                     return Map.of(
                             "changedRecords",
                             rows.stream()
@@ -1075,6 +1102,45 @@ public class EntityDataActionService {
                                             row.getId()))
                                     .toList());
                 });
+        if (portCall) requirePortDeletion(result.isDefaultExecuted());
+    }
+
+    private void requirePortDeletion(boolean executed) {
+        if (!executed) {
+            throw new BusinessConflictException("ENTITY_DELETION_DEFAULT_WRITE_REQUIRED",
+                    "Java 实体删除必须执行标准软删除步骤");
+        }
+    }
+
+    /** 能力查询按当前发布的列表和行范围计算，执行时仍重新检查。 */
+    @Transactional(readOnly = true)
+    public Map<String, RecordCapability> getRecordCapabilities(String entityCode, String id, String listKey) {
+        requireDynamicRuntime(entityCode);
+        capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);
+        EntityListConfig config = resolveListConfig(entityCode, listKey, EntityListRuntimeContext.current());
+        requireConfiguredListPermission(config);
+        EntityDataDTO row = findAccessible(entityCode, id, config);
+        var result = new LinkedHashMap<String, RecordCapability>();
+        if (historyWriteGuard != null) {
+            try {
+                historyWriteGuard.requireWritable(entityCode, id);
+            } catch (BusinessConflictException denied) {
+                if (!"HISTORICAL_RECORD_READONLY".equals(denied.getErrorCode())) throw denied;
+                for (String key : List.of("edit", "delete", "batchDelete", "restartProcess")) {
+                    result.put(key, new RecordCapability(false, false, denied.getMessage()));
+                }
+                return Map.copyOf(result);
+            }
+        }
+        for (String key : List.of("edit", "delete", "batchDelete", "restartProcess")) {
+            var capability = capabilityService.evaluateRowActionForConfig(entityCode, config, key, row);
+            result.put(key, new RecordCapability(capability.isVisible(), capability.isEnabled(), capability.getReason()));
+        }
+        return Map.copyOf(result);
+    }
+
+    private String revision(EntityDataDTO row) {
+        return EntityRecordRevision.calculate(objectMapper, objectMapper.convertValue(row, new TypeReference<>() { }));
     }
 
     /**
@@ -1133,11 +1199,15 @@ public class EntityDataActionService {
             String id,
             Map<String, Object> updateRequest,
             EventOrigin origin,
-            String traceKey) {
+            String traceKey,
+            String expectedRevision) {
+        // 修订来自 Java 命令，绕开发布事件可转换的输入，由变更执行器在持锁时校验。
         java.util.function.Supplier<EntityMutationResult> write = () -> mutationPort.execute(
-                EntityMutationCommand.update(
+                new EntityMutationCommand(
+                        null,
                         entityCode,
                         id,
+                        EntityMutationOperationType.UPDATE,
                         updateRequest,
                         mutationContext(
                                 origin,
@@ -1145,7 +1215,8 @@ public class EntityDataActionService {
                                 "编辑实体数据",
                                 traceKey,
                                 entityCode,
-                                id)));
+                                id),
+                        expectedRevision));
         EntityMutationResult result = isRestart(updateRequest)
                 ? EntityProcessRestartContext.execute(entityCode, id,
                         text(updateRequest.get("previousProcessInstanceId")), write)
@@ -1166,18 +1237,12 @@ public class EntityDataActionService {
     private void mutateDelete(
             String entityCode,
             String id,
-            EventOrigin origin) {
-        mutationPort.execute(
-                EntityMutationCommand.delete(
-                        entityCode,
-                        id,
-                        mutationContext(
-                                origin,
-                                "DELETE_RECORD",
-                                "删除实体数据",
-                                null,
-                                entityCode,
-                                id)));
+            EventOrigin origin,
+            String expectedRevision) {
+        // 比较授权时读到的记录版本，防止状态改变后仍使用旧的删除权限判断。
+        mutationPort.execute(new EntityMutationCommand(null, entityCode, id, EntityMutationOperationType.DELETE,
+                Map.of(), mutationContext(origin, "DELETE_RECORD", "删除实体数据", null, entityCode, id),
+                expectedRevision));
     }
 
     /**
@@ -1190,7 +1255,8 @@ public class EntityDataActionService {
     private void mutateBatchDelete(
             String entityCode,
             List<EntityDataDTO> rows,
-            EventOrigin origin) {
+            EventOrigin origin,
+            boolean checkRevision) {
         String operationId =
                 java.util.UUID.randomUUID().toString();
         List<EntityMutationCommand> commands =
@@ -1208,7 +1274,8 @@ public class EntityDataActionService {
                                         "批量删除实体数据",
                                         operationId,
                                         entityCode,
-                                        row.getId())))
+                                        row.getId()),
+                                checkRevision ? revision(row) : null))
                         .toList();
         mutationPort.executeBatch(
                 new EntityMutationBatchCommand(

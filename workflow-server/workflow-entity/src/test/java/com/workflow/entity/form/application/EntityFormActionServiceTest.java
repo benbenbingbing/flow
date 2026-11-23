@@ -17,10 +17,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.model.ProcessCatalogItem;
-import com.workflow.contracts.process.port.ProcessCatalogPort;
-import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
+import com.workflow.port.process.model.ProcessCatalogItem;
+import com.workflow.port.process.ProcessDefinitionConfigPort;
+import com.workflow.port.process.ProcessRecordPermissionPort;
+import com.workflow.port.process.ProcessTaskPermissionPort.ActionableTaskContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -58,8 +58,8 @@ class EntityFormActionServiceTest {
             mock(EntityActionCapabilityService.class);
     private final UiConfigReleaseService releaseService =
             mock(UiConfigReleaseService.class);
-    private final ProcessCatalogPort processCatalogPort =
-            mock(ProcessCatalogPort.class);
+    private final ProcessDefinitionConfigPort processCatalogPort =
+            mock(ProcessDefinitionConfigPort.class);
     private final ObjectMapper objectMapper =
             new ObjectMapper().findAndRegisterModules();
 
@@ -71,7 +71,7 @@ class EntityFormActionServiceTest {
         service = new EntityFormActionService(
                 formMapper, formNodeMapper, definitionMapper, dataService,
                 capabilityService, new EntityFormActionConfigPolicy(),
-                releaseService, processCatalogPort, mock(ProcessRecordReadAccessPort.class),
+                releaseService, processCatalogPort, mock(ProcessRecordPermissionPort.class),
                 new JsonDocumentCodec(objectMapper), objectMapper);
         definition = new EntityDefinition();
         definition.setId("entity-1");

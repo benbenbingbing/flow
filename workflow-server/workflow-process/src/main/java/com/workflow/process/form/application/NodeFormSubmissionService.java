@@ -2,14 +2,14 @@ package com.workflow.process.form.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -57,7 +57,7 @@ public class NodeFormSubmissionService {
     private final EntityFormService entityFormService;
     /** 实体表单运行时解析服务 */
     private final EntityFormRuntimeService entityFormRuntimeService;
-    private final EntityMutationPort entityMutationPort;
+    private final TrustedEntityRecordMutationPort entityMutationPort;
     /** 已发布表单提交处理服务（按当前已发布配置执行提交前处理） */
     private final PublishedFormSubmissionService formSubmissionService;
     /** 表单提交追踪服务 */

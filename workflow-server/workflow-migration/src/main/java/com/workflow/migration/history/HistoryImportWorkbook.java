@@ -1,7 +1,7 @@
 package com.workflow.migration.history;
 
-import com.workflow.contracts.history.HistoryImportModels.*;
-import com.workflow.contracts.history.EntityHistoryImportPort;
+import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.migration.EntityHistoryImportPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;

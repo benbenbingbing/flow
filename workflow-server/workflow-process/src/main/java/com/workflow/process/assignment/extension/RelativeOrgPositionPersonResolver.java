@@ -1,23 +1,25 @@
 package com.workflow.process.assignment.extension;
 
+import com.workflow.port.system.SysPositionPort;
+
 import com.workflow.process.assignment.application.InitiatorOrganizationSnapshotService;
 import com.workflow.process.assignment.application.model.RelativeOrgPositionPreview;
 import com.workflow.process.assignment.domain.RelativeOrgPositionConfig;
 
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
-import com.workflow.contracts.identity.position.model.OrganizationUnitStateView;
-import com.workflow.contracts.identity.position.model.PositionDefinitionView;
-import com.workflow.contracts.identity.position.model.PositionDirectoryResultCode;
-import com.workflow.contracts.identity.position.model.PositionHolderResolution;
-import com.workflow.contracts.identity.position.model.PositionHolderView;
+import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.port.system.SysOrganizationPort;
+import com.workflow.port.system.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.port.system.identity.position.model.OrganizationUnitStateView;
+import com.workflow.port.system.identity.position.model.PositionDefinitionView;
+import com.workflow.port.system.identity.position.model.PositionDirectoryResultCode;
+import com.workflow.port.system.identity.position.model.PositionHolderResolution;
+import com.workflow.port.system.identity.position.model.PositionHolderView;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
@@ -57,19 +59,23 @@ public class RelativeOrgPositionPersonResolver
                     descriptorSchema(),
                     false);
 
-    private final OrganizationPositionDirectoryPort directoryPort;
+    private final SysOrganizationPort organizations;
+    private final SysPositionPort positions;
     private final InitiatorOrganizationSnapshotService snapshotService;
 
     /**
      * 初始化相对组织位置人员解析器，保存构造参数供后续方法使用。
      *
-     * @param directoryPort 目录端口依赖，保存到当前对象供后续业务方法调用
+     * @param organizations 读取组织状态和业务层级
+     * @param positions 查询可用岗位与任职人
      * @param snapshotService 快照服务依赖，保存到当前对象供后续业务方法调用
      */
     public RelativeOrgPositionPersonResolver(
-            OrganizationPositionDirectoryPort directoryPort,
+            SysOrganizationPort organizations,
+            SysPositionPort positions,
             InitiatorOrganizationSnapshotService snapshotService) {
-        this.directoryPort = directoryPort;
+        this.organizations = organizations;
+        this.positions = positions;
         this.snapshotService = snapshotService;
     }
 
@@ -117,7 +123,7 @@ public class RelativeOrgPositionPersonResolver
                 request.assignmentMode(), request.multiInstance());
         PositionDefinitionView position;
         try {
-            position = directoryPort.requireEnabledPosition(
+            position = positions.requireEnabledPosition(
                     config.positionCode());
         } catch (OrganizationPositionDirectoryException exception) {
             throw new IllegalArgumentException(
@@ -126,7 +132,7 @@ public class RelativeOrgPositionPersonResolver
         }
         validateApplicableUnitTypes(position, config);
         if (config.hierarchy().mode() == LookupMode.BUSINESS_LEVEL
-                && !directoryPort.isOrganizationBusinessLevelEnabled(
+                && !organizations.isOrganizationBusinessLevelEnabled(
                 config.hierarchy().businessLevelCode())) {
             throw new IllegalArgumentException(
                     "BUSINESS_LEVEL_NOT_FOUND: 业务层级不存在或已停用: "
@@ -267,7 +273,7 @@ public class RelativeOrgPositionPersonResolver
      */
     private void requireEnabledPosition(String positionCode) {
         try {
-            directoryPort.requireEnabledPosition(positionCode);
+            positions.requireEnabledPosition(positionCode);
         } catch (OrganizationPositionDirectoryException exception) {
             throw failure(
                     exception.errorCode().name(),
@@ -486,7 +492,7 @@ public class RelativeOrgPositionPersonResolver
             OrganizationUnitSnapshot unit,
             int depth,
             ResolutionTrace trace) {
-        PositionHolderResolution resolution = directoryPort
+        PositionHolderResolution resolution = positions
                 .findCurrentHolders(
                         config.positionCode(), unit.id());
         if (resolution == null || resolution.resultCode() == null) {
@@ -606,7 +612,7 @@ public class RelativeOrgPositionPersonResolver
      * 冻结链只冻结路由 ID，不冻结节点存活状态；每次跨越前都必须向目录确认
      * 该 ID 仍活跃，否则 Fail Closed 而不是沿冻结的上一层 ID 继续路由。
      *
-     * @param frozenUnit {@code frozen}单元，作为 {@code directoryPort.requireActiveOrganizationUnit} 的输入影响后续处理
+     * @param frozenUnit {@code frozen}单元，作为 {@code organizations.requireActiveOrganizationUnit} 的输入影响后续处理
      * @param depth 深度，作为 {@code trace.scanned} 的输入影响后续处理
      * @param trace 追踪，供本方法校验并获取活动单元时使用
      */
@@ -616,7 +622,7 @@ public class RelativeOrgPositionPersonResolver
             ResolutionTrace trace) {
         final OrganizationUnitStateView current;
         try {
-            current = directoryPort.requireActiveOrganizationUnit(
+            current = organizations.requireActiveOrganizationUnit(
                     frozenUnit.id());
         } catch (OrganizationPositionDirectoryException exception) {
             throw failure(

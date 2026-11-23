@@ -1,11 +1,11 @@
 package com.workflow.embed.application.audit;
 
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Outcome;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Reason;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Surface;
@@ -32,7 +32,7 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "workflow.embed", name = "enabled", havingValue = "true")
 public class EmbedLifecycleAudit {
 
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     private final EmbedLifecycleMetrics metrics;
     private final Clock clock;
 
@@ -44,7 +44,7 @@ public class EmbedLifecycleAudit {
      * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
      */
     public EmbedLifecycleAudit(
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             EmbedLifecycleMetrics metrics,
             @Qualifier("embedClock") Clock clock) {
         this.auditPort = auditPort;

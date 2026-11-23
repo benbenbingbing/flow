@@ -1,7 +1,5 @@
 package com.workflow.architecture;
 
-import com.tngtech.archunit.base.DescribedPredicate;
-import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import org.junit.jupiter.api.Test;
 
@@ -9,15 +7,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 两个制品保留原 Java 包名，因此按源码归属校验依赖，不能仅用包名区分 Maven 模块。
- * 连同嵌套类型检查，防止 Port 通过模型、上下文或回调间接依赖 SPI。
+ * 核对两个契约制品的源码归属、命名空间以及 Port 索引。
+ * 依赖检查涵盖嵌套类型、模型和上下文，防止平台契约间接依赖扩展契约。
  */
 class ContractModuleBoundaryTest {
+    private static final String PORT_PACKAGE = "com.workflow.port";
+    private static final String SPI_PACKAGE = "com.workflow.contracts";
+
     @Test
     void contractArtifactsHaveSingleOwnershipAndOneWayDependencies() throws Exception {
         Set<String> portTypes = types("workflow-port");
@@ -28,19 +30,9 @@ class ContractModuleBoundaryTest {
         assertFalse(portTypes.isEmpty());
         assertFalse(spiTypes.isEmpty());
 
-        noClasses().that(ownedBy("workflow-port", portTypes))
-                .should().dependOnClassesThat(ownedBy("workflow-spi", spiTypes))
-                .check(new ClassFileImporter().importPackages("com.workflow.contracts"));
-
-        // 包括新迁入的 outbox/storage，防止契约通过模型重新引用任何宿主实现。
-        noClasses().that().resideInAPackage("com.workflow.contracts..")
-                .should().dependOnClassesThat(new DescribedPredicate<JavaClass>("workflow implementation") {
-                    @Override
-                    public boolean test(JavaClass type) {
-                        return type.getName().startsWith("com.workflow.")
-                                && !type.getName().startsWith("com.workflow.contracts.");
-                    }
-                }).check(new ClassFileImporter().importPackages("com.workflow.contracts"));
+        noClasses().that().resideInAPackage(PORT_PACKAGE + "..")
+                .should().dependOnClassesThat().resideInAPackage(SPI_PACKAGE + "..")
+                .check(new ClassFileImporter().importPackages(PORT_PACKAGE, SPI_PACKAGE));
 
         String portPom = Files.readString(Path.of("../workflow-port/pom.xml"));
         String spiPom = Files.readString(Path.of("../workflow-spi/pom.xml"));
@@ -51,16 +43,57 @@ class ContractModuleBoundaryTest {
     @Test
     void callableInterfacesLiveInTheirOwningArtifact() throws Exception {
         for (String type : types("workflow-port")) {
+            assertTrue(type.startsWith(PORT_PACKAGE + "."), "Unexpected platform contract namespace: " + type);
             assertFalse(type.contains(".spi."), "SPI leaked into platform artifact: " + type);
         }
         for (String type : types("workflow-spi")) {
-            assertFalse(type.contains(".port."), "Port leaked into extension artifact: " + type);
+            assertTrue(type.startsWith(SPI_PACKAGE + "."), "Unexpected SPI namespace: " + type);
+            assertFalse(type.contains(".port.") || type.endsWith("Port"), "Port leaked into extension artifact: " + type);
         }
         assertTrue(types("workflow-spi").containsAll(Set.of(
                 "com.workflow.contracts.entity.list.spi.ListFieldDataProvider",
                 "com.workflow.contracts.entity.permission.spi.EntityPermissionOptionProvider",
                 "com.workflow.contracts.storage.spi.FileStorageProvider",
                 "com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider")));
+
+        // The Java identities of these protocol constants are also referenced by released UI provider classes.
+        assertTrue(types("workflow-spi").containsAll(Set.of(
+                "com.workflow.contracts.entity.list.model.EntityListQueryFields",
+                "com.workflow.contracts.entity.ui.model.UiDataSourceUsages")));
+    }
+
+    @Test
+    void platformPortsAreFlatAndEveryPortIsIndexedOnce() throws Exception {
+        String prefix = PORT_PACKAGE + ".";
+        Pattern directDomainPort = Pattern.compile(Pattern.quote(prefix) + "\\w+\\.\\w+Port");
+        Set<String> expected = new HashSet<>();
+        Set<String> groups = new HashSet<>();
+        for (String type : types("workflow-port")) {
+            assertTrue(type.startsWith(prefix), "Unexpected contract namespace: " + type);
+            groups.add(type.substring(prefix.length()).split("\\.", 2)[0]);
+            if (type.endsWith("Port")) {
+                assertTrue(directDomainPort.matcher(type).matches(),
+                        "Port must be declared directly in its capability package: " + type);
+                expected.add("src/main/java/" + type.replace('.', '/') + ".java");
+            }
+        }
+        assertFalse(expected.isEmpty());
+        assertEquals(Set.of("system", "entity", "process", "migration", "embed", "platform"), groups,
+                "Keep every Port and its supporting types under the documented capability groups");
+
+        // Use the linked source path as the identity so stale links, missing rows and duplicates fail together.
+        String readme = Files.readString(Path.of("../workflow-port/README.md"));
+        var rows = Pattern.compile(
+                "(?m)^\\| \\[`(\\w+Port)`\\]\\((src/main/java/[^)]+)\\)"
+                        + " \\| [^|]+ \\| [^|]+ \\| [^|]+ \\|$")
+                .matcher(readme);
+        Set<String> indexed = new HashSet<>();
+        while (rows.find()) {
+            String link = rows.group(2);
+            assertEquals(rows.group(1) + ".java", Path.of(link).getFileName().toString());
+            assertTrue(indexed.add(link), "duplicate Port index entry: " + link);
+        }
+        assertEquals(expected, indexed, "Port index must match the production sources");
     }
 
     private Set<String> types(String module) throws Exception {
@@ -76,12 +109,4 @@ class ContractModuleBoundaryTest {
         }
     }
 
-    private DescribedPredicate<JavaClass> ownedBy(String module, Set<String> types) {
-        return new DescribedPredicate<>("owned by " + module) {
-            @Override
-            public boolean test(JavaClass type) {
-                return types.contains(type.getName().split("\\$", 2)[0]);
-            }
-        };
-    }
 }

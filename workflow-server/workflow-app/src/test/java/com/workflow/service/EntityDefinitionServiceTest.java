@@ -14,10 +14,10 @@ import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.version.application.EntityVersionConfigurationService;
 
-import com.workflow.contracts.migration.port.MigrationAssetPort;
-import com.workflow.contracts.process.model.ProcessCatalogItem;
-import com.workflow.contracts.process.model.ProcessBindingState;
-import com.workflow.contracts.process.port.ProcessCatalogPort;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
+import com.workflow.port.process.model.ProcessCatalogItem;
+import com.workflow.port.process.model.ProcessBindingState;
+import com.workflow.port.process.ProcessDefinitionConfigPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
@@ -78,10 +78,10 @@ public class EntityDefinitionServiceTest {
     private EntityPublishHistoryMapper publishHistoryMapper;
 
     @Mock
-    private ProcessCatalogPort processCatalogPort;
+    private ProcessDefinitionConfigPort processCatalogPort;
 
     @Mock
-    private MigrationAssetPort migrationAssetHandler;
+    private ConfigMigrationAssetPort migrationAssetHandler;
 
     @Mock
     private EntityDataDynamicMapper entityDataDynamicMapper;

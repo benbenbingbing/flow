@@ -6,7 +6,7 @@ import com.workflow.process.task.application.nextapproval.model.NextApproverSele
 import com.workflow.process.task.infrastructure.flowable.FlowableConditionEvaluator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.entity.form.application.error.FormSubmissionPreviewDeferredException;
 import com.workflow.process.form.application.NodeFormSubmissionService;

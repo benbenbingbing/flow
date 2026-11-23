@@ -1,11 +1,11 @@
 package com.workflow.process.form.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.form.model.EntityFormBinding;
-import com.workflow.contracts.entity.form.model.EntityFormRuntimeContext;
-import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.form.model.EntityFormBinding;
+import com.workflow.port.entity.form.model.EntityFormRuntimeContext;
+import com.workflow.port.entity.EntityFormPort;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -46,7 +46,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class EntityFormResolveService {
 
-    private final EntityFormRuntimePort entityFormRuntimePort;
+    private final EntityFormPort entityFormRuntimePort;
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
     private final RuntimeService runtimeService;

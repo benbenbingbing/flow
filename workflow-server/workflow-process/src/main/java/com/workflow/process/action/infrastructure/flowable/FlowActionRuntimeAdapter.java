@@ -1,16 +1,16 @@
 package com.workflow.process.action.infrastructure.flowable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
-import com.workflow.contracts.process.model.ProcessLifecycle;
-import com.workflow.contracts.process.query.model.ProcessInstanceView;
-import com.workflow.contracts.process.query.model.ProcessTaskView;
-import com.workflow.contracts.process.query.port.ProcessQueryPort;
-import com.workflow.contracts.process.variable.model.ProcessVariablePatch;
-import com.workflow.contracts.process.variable.model.VariableReadMode;
-import com.workflow.contracts.process.variable.port.ProcessVariablePort;
+import com.workflow.port.process.FlowActionContextPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.EntityRecordPort;
+import com.workflow.port.process.model.ProcessLifecycle;
+import com.workflow.port.process.query.model.ProcessInstanceView;
+import com.workflow.port.process.query.model.ProcessTaskView;
+import com.workflow.process.query.application.ProcessQueryAdapter;
+import com.workflow.port.process.variable.model.ProcessVariablePatch;
+import com.workflow.port.process.variable.model.VariableReadMode;
+import com.workflow.port.process.ProcessVariablePort;
 import com.workflow.process.command.application.ProcessInvocationScope;
 import com.workflow.process.action.application.PublishedFlowActionInvocation;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
@@ -27,17 +27,17 @@ import java.util.Set;
  * 不因持有此 Bean 就自动获得跨流程权限，也不泄露可直接修改的 Flowable 对象。
  */
 @Component
-public class FlowActionRuntimeAdapter implements FlowActionRuntimePort {
-    private final ProcessQueryPort queries;
+public class FlowActionRuntimeAdapter implements FlowActionContextPort {
+    private final ProcessQueryAdapter queries;
     private final ProcessVariablePort variables;
     private final ProcessVariableReader reader;
-    private final EntityRecordQueryPort entityDataDynamicService;
+    private final EntityRecordPort entityDataDynamicService;
     private final ProcessEntityRecordReader processRecords;
     private final ObjectMapper objectMapper;
 
     /** 引擎监听器在引擎装配期间依赖此适配器，延迟取得端口以避免反向初始化流程引擎。 */
-    public FlowActionRuntimeAdapter(@Lazy ProcessQueryPort queries, @Lazy ProcessVariablePort variables,
-                                   @Lazy ProcessVariableReader reader, EntityRecordQueryPort entityDataDynamicService,
+    public FlowActionRuntimeAdapter(@Lazy ProcessQueryAdapter queries, @Lazy ProcessVariablePort variables,
+                                   @Lazy ProcessVariableReader reader, EntityRecordPort entityDataDynamicService,
                                    ProcessEntityRecordReader processRecords,
                                    ObjectMapper objectMapper) {
         this.queries = queries; this.variables = variables; this.reader = reader;

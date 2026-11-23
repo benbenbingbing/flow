@@ -1,12 +1,14 @@
 package com.workflow.embed.management.application;
 
+import com.workflow.port.system.CurrentActorPort;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.model.CurrentActor;
+import com.workflow.port.system.identity.model.CurrentActor;
 import com.workflow.embed.management.api.error.EmbedManagementException;
 import com.workflow.embed.management.application.port.EmbedSubjectDigester;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
@@ -52,7 +54,7 @@ class EmbedIdentityAdministrationServiceTest {
         };
         service = new EmbedIdentityAdministrationService(
                 repository, digester,
-                () -> new CurrentActor("admin", "admin"), event -> { }, objectMapper,
+                currentActor(), event -> { }, objectMapper,
                 Clock.fixed(Instant.parse("2026-08-27T01:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -289,5 +291,11 @@ class EmbedIdentityAdministrationServiceTest {
                 current.updateBy(), current.updateTime(), current.revokedBy(), current.revokedAt());
         repository.providers.put(replacement.id(), replacement);
         return replacement;
+    }
+
+    private static CurrentActorPort currentActor() {
+        var actor = org.mockito.Mockito.mock(CurrentActorPort.class);
+        org.mockito.Mockito.when(actor.current()).thenReturn(new CurrentActor("admin", "admin"));
+        return actor;
     }
 }

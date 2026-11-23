@@ -1,10 +1,11 @@
 package com.workflow.process.query.application;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.model.*;
-import com.workflow.contracts.process.query.model.*;
-import com.workflow.contracts.process.query.port.ProcessQueryPort;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.*;
+import com.workflow.port.process.query.model.*;
+import com.workflow.port.process.ProcessHistoryPort;
+import com.workflow.port.process.ProcessNextApprovalPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -44,7 +45,7 @@ import java.util.function.Supplier;
 @Component
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class ProcessQueryAdapter implements ProcessQueryPort {
+public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextApprovalPort {
     private final HistoryService history;
     private final RuntimeService runtime;
     private final TaskService tasks;
@@ -64,7 +65,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
     private final NodeOperationDecisionService decisions;
 
     /** 存在但不可见时抛授权异常；只有实际缺失才返回 empty。 */
-    @Override
     public Optional<ProcessInstanceView> findInstance(String instanceId) {
         ProcessValues.required(instanceId, "processInstanceId");
         var instance = historic(instanceId);
@@ -73,7 +73,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
         return Optional.of(projection.instance(instance));
     }
 
-    @Override
     public ProcessInstanceView requireInstance(String instanceId) {
         return findInstance(instanceId).orElseThrow(() -> new ProcessOperationException(
                 "PROCESS_NOT_FOUND", "流程实例不存在", instanceId));
@@ -83,7 +82,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
      * MY_STARTED 兼容 ID/用户名；PARTICIPATED 不因管理员角色扩大，READABLE 复用详情读取范围。
      * 历史数据尚无统一权限投影，按有序批次扫描并在分页前过滤，避免一次加载全库对象。
      */
-    @Override
     public ProcessPage<ProcessInstanceView> pageInstances(ProcessInstanceQuery query) {
         var actor = access.requireActor();
         var source = history.createHistoricProcessInstanceQuery();
@@ -120,15 +118,25 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
     }
 
     /** 同一业务记录的每轮单独授权；动作范围只覆盖当前一轮，不借关联读取其他实例。 */
-    @Override
     public List<ProcessRoundView> listRounds(String anchor) {
-        requireInstance(anchor);
+        var instance = requireInstance(anchor);
         var link = links.findByProcessInstanceId(anchor);
-        if (link == null) return List.of(round(requireInstance(anchor), 1));
+        if (link == null) return List.of(round(instance, 1));
+        return linkedRounds(link.getEntityCode(), link.getEntityRecordId());
+    }
+
+    /** 业务记录可读性不能替代流程访问权限，复用每轮检查并跳过范围外实例。 */
+    public List<ProcessRoundView> listRoundsByRecord(String entityCode, String entityRecordId) {
+        access.requireActor();
+        return linkedRounds(ProcessValues.required(entityCode, "entityCode"),
+                ProcessValues.required(entityRecordId, "entityRecordId"));
+    }
+
+    private List<ProcessRoundView> linkedRounds(String entityCode, String entityRecordId) {
         List<ProcessRoundView> result = new ArrayList<>();
         for (var candidate : links.selectList(Wrappers.<EntityProcessLink>lambdaQuery()
-                .eq(EntityProcessLink::getEntityCode, link.getEntityCode())
-                .eq(EntityProcessLink::getEntityRecordId, link.getEntityRecordId())
+                .eq(EntityProcessLink::getEntityCode, entityCode)
+                .eq(EntityProcessLink::getEntityRecordId, entityRecordId)
                 .orderByDesc(EntityProcessLink::getGeneration))) {
             if (!hasText(candidate.getProcessInstanceId())) continue;
             try {
@@ -143,7 +151,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
     }
 
     /** 本地加签按子任务、父编排和源任务共同判断存活，不能只看 taskId 前缀。 */
-    @Override
     public Optional<ProcessTaskView> findActiveTask(String taskId) {
         ProcessValues.required(taskId, "taskId");
         var task = tasks.createTaskQuery().taskId(taskId).singleResult();
@@ -158,7 +165,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
     }
 
     /** 返回全部活动分支及已激活的本地加签任务；排序稳定，不隐式挑选第一项。 */
-    @Override
     public List<ProcessTaskView> listActiveTasks(String instanceId) {
         requireInstance(instanceId);
         var result = new ArrayList<ProcessTaskView>();
@@ -180,7 +186,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
     }
 
     /** 待办/已办范围复用平台 SQL，包含业务用户组、角色及本地加签有效性。 */
-    @Override
     public ProcessPage<ProcessTaskView> pageTasks(ProcessTaskQuery query) {
         List<ProcessTaskView> visible;
         Map<String, String> names = new HashMap<>();
@@ -268,7 +273,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
     }
 
     /** 历史活动的 unfinished 范围保留同一节点的多个执行分支；已结束实例返回空集合。 */
-    @Override
     public List<ProcessActivityView> listActiveActivities(String instanceId) {
         if (requireInstance(instanceId).lifecycle() == ProcessLifecycle.ENDED) return List.of();
         return history.createHistoricActivityInstanceQuery().processInstanceId(instanceId).unfinished().list().stream()
@@ -278,7 +282,6 @@ public class ProcessQueryAdapter implements ProcessQueryPort {
     }
 
     /** 操作能力用于提示，命令执行仍需重新检查发布规则和任务状态。 */
-    @Override
     public TaskCapabilities getTaskCapabilities(String taskId) {
         access.requireActor();
         return legacy(taskId, () -> {

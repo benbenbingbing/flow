@@ -10,16 +10,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Action;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.ActionCapability;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Field;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.ListPage;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.ListSchema;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Row;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeActorRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort;
+import com.workflow.port.embed.EmbedListDataPort.Action;
+import com.workflow.port.embed.EmbedListDataPort.ActionCapability;
+import com.workflow.port.embed.EmbedListDataPort.Field;
+import com.workflow.port.embed.EmbedListDataPort.ListPage;
+import com.workflow.port.embed.EmbedListDataPort.ListSchema;
+import com.workflow.port.embed.EmbedListDataPort.Row;
+import com.workflow.port.embed.EmbedMappedUserPort;
+import com.workflow.port.embed.EmbedPublishedFormPort;
+import com.workflow.port.embed.EmbedPublishedListPort;
+import com.workflow.port.embed.EmbedListDataPort;
 import com.workflow.embed.api.request.EmbedRuntimeListFilterRequest;
 import com.workflow.embed.api.request.EmbedRuntimeListQueryRequest;
 import com.workflow.embed.infrastructure.config.EmbedProperties;
@@ -217,10 +217,10 @@ class EmbedRuntimeReadFacadeTest {
     void nativeListBootstrapWithoutDefaultFormReturnsNullFormCoordinates()
             throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        var closure = new com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure(
+        var closure = new com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure(
                 1,
-                List.of(new com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode(
-                        new com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate(
+                List.of(new com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode(
+                        new com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate(
                                 "work_order", "supplier_open", "list-1",
                                 "list-release-7", 7),
                         true, null, List.of())));
@@ -254,8 +254,8 @@ class EmbedRuntimeReadFacadeTest {
                         "work_order", null, null, null,
                         "supplier_open", "list-release-7", 7,
                         "LIST", null, null, Map.of(), Map.of(), Map.of()));
-        EmbedNativeListRuntimePort listRuntime = mock(
-                EmbedNativeListRuntimePort.class);
+        EmbedPublishedListPort listRuntime = mock(
+                EmbedPublishedListPort.class);
         when(listRuntime.configHash(any()))
                 .thenReturn("list-config-hash");
         facade = new EmbedRuntimeReadFacade(
@@ -264,9 +264,9 @@ class EmbedRuntimeReadFacadeTest {
                 new EmbedProperties(),
                 objectMapper,
                 provider(resolver),
-                provider((EmbedNativeFormRuntimePort) null),
+                provider((EmbedPublishedFormPort) null),
                 provider(listRuntime),
-                provider((EmbedNativeActorRuntimePort) null));
+                provider((EmbedMappedUserPort) null));
 
         var target = facade.bootstrap().target();
 
@@ -389,7 +389,7 @@ class EmbedRuntimeReadFacadeTest {
                 "张三", "zh-CN", "dark", formPresentation);
     }
 
-    private static final class CapturingEntityPort implements EmbedRuntimeEntityPort {
+    private static final class CapturingEntityPort implements EmbedListDataPort {
         String releaseId;
         int releaseVersion;
         Map<String, Object> clientFilters;

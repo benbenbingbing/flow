@@ -1,8 +1,8 @@
 package com.workflow.entity.definition.application;
 
-import com.workflow.contracts.entity.port.EntityUserPathPort.*;
-import com.workflow.contracts.entity.port.EntityUserPathPort;
-import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.port.entity.EntityUserPathPort.*;
+import com.workflow.port.entity.EntityUserPathPort;
+import com.workflow.port.entity.EntityUserFieldPort.EntityUserReferenceException;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;

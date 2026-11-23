@@ -9,18 +9,18 @@ import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
-import com.workflow.contracts.process.model.ProcessCatalogItem;
-import com.workflow.contracts.process.model.ProcessBindingState;
-import com.workflow.contracts.process.port.ProcessCatalogPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
+import com.workflow.port.process.model.ProcessCatalogItem;
+import com.workflow.port.process.model.ProcessBindingState;
+import com.workflow.port.process.ProcessDefinitionConfigPort;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
@@ -62,7 +62,7 @@ public class EntityDefinitionService {
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
     private final EntityPublishHistoryMapper publishHistoryMapper;
-    private final ProcessCatalogPort processCatalogPort;
+    private final ProcessDefinitionConfigPort processCatalogPort;
     private final EntityDataDynamicMapper entityDataDynamicMapper;
     private final DynamicTableService dynamicTableService;
     private final EntityRecordTeamService entityRecordTeamService;
@@ -78,7 +78,7 @@ public class EntityDefinitionService {
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
-    private final MigrationAssetPort migrationAssetHandler;
+    private final ConfigMigrationAssetPort migrationAssetHandler;
     @Autowired(required = false)
     private EntitySchemaOperationService schemaOperationService;
 

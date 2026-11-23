@@ -16,8 +16,8 @@ import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
-import com.workflow.contracts.identity.port.IdentityMembershipPort;
-import com.workflow.contracts.process.assignment.port.PersonResolverRegistrationPort;
+import com.workflow.port.system.ProcessCandidateMemberPort;
+import com.workflow.port.process.ProcessAssigneeResolverPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -36,9 +36,9 @@ class PersonResolverRuntimeSecurityTest {
 
     @Test
     void configuredResolverMustRemainEnabledInTheOwnedDirectory() {
-        var registrations = mock(PersonResolverRegistrationPort.class);
+        var registrations = mock(ProcessAssigneeResolverPort.class);
         var service = new PersonResolverRuntimeService(List.of(resolver(List.of())),
-                mock(IdentityMembershipPort.class), registrations);
+                mock(ProcessCandidateMemberPort.class), registrations);
 
         assertTrue(service.supports("securityResolver", PersonResolveUsage.ASSIGNEE));
         assertFalse(service.supportsConfigured("securityResolver", PersonResolveUsage.ASSIGNEE));

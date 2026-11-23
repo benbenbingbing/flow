@@ -1,10 +1,10 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.process.status.application.ProcessEntityStatusPolicy;
 import lombok.RequiredArgsConstructor;
 import org.flowable.bpmn.model.SequenceFlow;
@@ -23,7 +23,7 @@ public class EntityTransitionStatusListener implements FlowableEventListener {
     private final RuntimeService runtimeService;
     private final RepositoryService repositoryService;
     private final ProcessEntityStatusPolicy statusPolicy;
-    private final EntityMutationPort mutationPort;
+    private final TrustedEntityRecordMutationPort mutationPort;
 
     /**
      * 响应事件阶段的回调，并将结果传给后续处理。

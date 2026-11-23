@@ -98,7 +98,7 @@ public interface UiDataSourceProvider {
      */
     default Object execute(UiInvocationContext context, DataScopePlan dataScopePlan,
             Map<String, Object> configuration, Map<String, Object> input,
-            com.workflow.contracts.execution.port.ExecutionControlPort control) {
+            com.workflow.port.platform.ExecutionBudgetPort control) {
         control.check();
         Object result = execute(context, dataScopePlan, configuration, input);
         control.check();

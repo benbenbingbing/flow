@@ -1,13 +1,12 @@
-import com.workflow.contracts.process.model.CommandMeta;
-import com.workflow.contracts.process.model.ProcessCommandReceipt;
-import com.workflow.contracts.process.query.model.ProcessTaskView;
-import com.workflow.contracts.process.query.port.ProcessQueryPort;
-import com.workflow.contracts.process.task.model.CompleteTaskCommand;
-import com.workflow.contracts.process.task.model.TaskCommandResult;
-import com.workflow.contracts.process.task.model.TaskSubmission;
-import com.workflow.contracts.process.task.port.ProcessTaskCommandPort;
-import com.workflow.contracts.process.variable.model.ProcessVariablePatch;
-import com.workflow.contracts.process.variable.port.ProcessVariablePort;
+import com.workflow.port.process.model.CommandMeta;
+import com.workflow.port.process.model.ProcessCommandReceipt;
+import com.workflow.port.process.query.model.ProcessTaskView;
+import com.workflow.port.process.task.model.CompleteTaskCommand;
+import com.workflow.port.process.task.model.TaskCommandResult;
+import com.workflow.port.process.task.model.TaskSubmission;
+import com.workflow.port.process.ProcessTaskPort;
+import com.workflow.port.process.variable.model.ProcessVariablePatch;
+import com.workflow.port.process.ProcessVariablePort;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,20 +17,17 @@ import java.util.Set;
  * 不代替人工审批身份。业务与流程需要一起回滚时，在上层应用服务开启事务。
  */
 public final class ProcessBusinessCustomization {
-    private final ProcessQueryPort queries;
     private final ProcessVariablePort variables;
-    private final ProcessTaskCommandPort tasks;
+    private final ProcessTaskPort tasks;
 
-    public ProcessBusinessCustomization(ProcessQueryPort queries, ProcessVariablePort variables,
-                                         ProcessTaskCommandPort tasks) {
-        this.queries = queries;
+    public ProcessBusinessCustomization(ProcessVariablePort variables, ProcessTaskPort tasks) {
         this.variables = variables;
         this.tasks = tasks;
     }
 
     /** 返回全部活动任务，业务按明确的 taskId 选择，不能把第一条当作唯一当前任务。 */
     public List<ProcessTaskView> activeTasks(String instanceId) {
-        return queries.listActiveTasks(instanceId);
+        return tasks.listActiveTasks(instanceId);
     }
 
     /** requestId 来自一次业务意图的持久化标识；失败重试复用，新的业务意图使用新键。 */

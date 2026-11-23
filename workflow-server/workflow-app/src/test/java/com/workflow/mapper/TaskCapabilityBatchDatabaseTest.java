@@ -1,6 +1,6 @@
 package com.workflow.mapper;
 
-import com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates;
+import com.workflow.port.process.ProcessTaskPermissionPort.RecordCoordinates;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.task.application.ProcessTaskAccessAdapter;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;

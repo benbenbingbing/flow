@@ -3,7 +3,7 @@ package com.workflow.process.action.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import java.util.List;
@@ -36,7 +36,7 @@ class FlowActionDependenciesTest {
 
     @Test void publishingRemapsDependenciesForEachVersionAndNeverChangesDraftIds() {
         var mapper = mock(FlowActionMapper.class);
-        var service = new FlowActionService(mapper, mock(FlowActionConfigurationValidator.class), mock(FlowActionCatalogPort.class));
+        var service = new FlowActionService(mapper, mock(FlowActionConfigurationValidator.class), mock(ProcessActionDefinitionPort.class));
         var a = action("a", null); var b = action("b", "a");
         when(mapper.findDraftActionsByProcessConfigId("process")).thenReturn(List.of(b,a));
         service.publishActions("process", "v1"); service.publishActions("process", "v2");
@@ -50,7 +50,7 @@ class FlowActionDependenciesTest {
 
     @Test void deletingOrDisablingPredecessorIsRejected() {
         var mapper = mock(FlowActionMapper.class);
-        var service = new FlowActionService(mapper, mock(FlowActionConfigurationValidator.class), mock(FlowActionCatalogPort.class));
+        var service = new FlowActionService(mapper, mock(FlowActionConfigurationValidator.class), mock(ProcessActionDefinitionPort.class));
         var a = action("a", null); var b = action("b", "a"); a.setStatus("DRAFT");
         when(mapper.findDraftActionsByProcessConfigId("process")).thenReturn(List.of(a,b)); when(mapper.selectById("a")).thenReturn(a);
         assertThrows(IllegalArgumentException.class, () -> service.deleteAction("a"));

@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordQueryPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.EntityRecordPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +46,7 @@ public class ProjectGovernanceService {
             Set.of("APPROVED", "ACTIVE", "PAUSED", "ACCEPTING");
     private static final Set<String> TERMINAL_LINK_STATUSES =
             Set.of("INVALID", "REJECTED", "CANCELLED");
-    private final EntityRecordQueryPort entityDataService;
+    private final EntityRecordPort entityDataService;
     private final ProjectEntityMutationExecutor mutationExecutor;
     private final ProjectSystemRemovalGuard removalGuard;
     private final ObjectMapper objectMapper;

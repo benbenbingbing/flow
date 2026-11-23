@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public class ProjectCustomMigrationAssetHandler
-        implements MigrationAssetPort {
+        implements ConfigMigrationAssetPort {
 
     /**
      * 记录实体；供后续追溯或审计使用。

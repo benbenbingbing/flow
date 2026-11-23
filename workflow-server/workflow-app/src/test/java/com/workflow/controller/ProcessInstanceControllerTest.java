@@ -40,7 +40,7 @@ public class ProcessInstanceControllerTest {
     private ProcessInstanceService processInstanceService;
 
     @MockitoBean
-    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+    private com.workflow.port.process.ProcessInstancePort instanceCommands;
 
     /** 每个测试前初始化的流程进度测试 DTO */
     private ProcessProgressDTO testProgress;
@@ -178,7 +178,7 @@ public class ProcessInstanceControllerTest {
     @Test
     void triggerReceiveTaskPassesMessageAndVariablesToService() throws Exception {
         when(instanceCommands.triggerReceiveTask(any()))
-                .thenReturn(new com.workflow.contracts.process.instance.model.ReceiveTaskTriggerResult(null, "execution-1"));
+                .thenReturn(new com.workflow.port.process.instance.model.ReceiveTaskTriggerResult(null, "execution-1"));
 
         mockMvc.perform(post("/api/process-instance/proc-inst-1/receive")
                         .contentType("application/json")

@@ -4,14 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.launch.model.EmbedApplicationActor;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchCommand;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchEntry;
-import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchSubject;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchUi;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchView;
+import com.workflow.port.embed.launch.model.EmbedApplicationActor;
+import com.workflow.port.embed.launch.model.EmbedLaunchCommand;
+import com.workflow.port.embed.launch.model.EmbedLaunchEntry;
+import com.workflow.port.embed.EmbedLaunchPort;
+import com.workflow.port.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.port.embed.launch.model.EmbedLaunchSubject;
+import com.workflow.port.embed.launch.model.EmbedLaunchUi;
+import com.workflow.port.embed.launch.model.EmbedLaunchView;
 import com.workflow.embed.application.port.EmbedAssertionReplayPort;
 import com.workflow.embed.application.port.EmbedContextProtectionPort;
 import com.workflow.embed.application.port.EmbedDigestPort;
@@ -61,7 +61,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** 将可信外部身份精确映射到 Flow 用户，并签发短时、一次性的 Embed Launch。 */
 @Service
 @ConditionalOnProperty(prefix = "workflow.embed", name = "enabled", havingValue = "true")
-public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
+public class EmbedLaunchIssueService implements EmbedLaunchPort {
 
     private static final String PROTOCOL_VERSION = "flow-embed/1";
     private static final Pattern SAFE_CHANNEL = Pattern.compile("[A-Za-z0-9._:-]{16,128}");

@@ -1,9 +1,9 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -28,11 +28,11 @@ import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext
 
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.instance.application.ProcessEntityVariableService;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
 
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -76,7 +76,7 @@ class NodeFormSubmissionServiceTest {
         var runtime = mock(RuntimeService.class);
         var snapshots = mock(ProcessPublishedSnapshotService.class);
         var runtimeForms = mock(EntityFormRuntimeService.class);
-        var mutations = mock(EntityMutationPort.class);
+        var mutations = mock(TrustedEntityRecordMutationPort.class);
         var traces = mock(FormSubmissionTraceService.class);
         var releases = mock(UiConfigReleaseService.class);
         var records = mock(EntityDataDynamicService.class);
@@ -156,7 +156,7 @@ class NodeFormSubmissionServiceTest {
         when(runtime.getVariable("instance-1", "entityDataId")).thenReturn(scenario.equals("MISSING_RECORD") ? null : "data-1");
         var snapshots = mock(ProcessPublishedSnapshotService.class);
         var forms = mock(EntityFormRuntimeService.class);
-        var mutations = mock(EntityMutationPort.class);
+        var mutations = mock(TrustedEntityRecordMutationPort.class);
         var submissions = mock(PublishedFormSubmissionService.class);
         var service = new NodeFormSubmissionService(runtime, snapshots, mock(EntityFormService.class), forms,
                 mutations, submissions, mock(FormSubmissionTraceService.class), new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
@@ -180,7 +180,7 @@ class NodeFormSubmissionServiceTest {
         EntityFormRuntimeService runtimeFormService = mock(EntityFormRuntimeService.class);
         PublishedFormSubmissionService submissionService = mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService = mock(FormSubmissionTraceService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         ProcessEntityRecordReader records = mock(ProcessEntityRecordReader.class);
         EntityRecordData record = new EntityRecordData();
         record.setName("2");
@@ -254,7 +254,7 @@ class NodeFormSubmissionServiceTest {
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
                 mock(FormSubmissionTraceService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService,
                 snapshotService,
@@ -353,7 +353,7 @@ class NodeFormSubmissionServiceTest {
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormRuntimeService runtimeFormService =
                 mock(EntityFormRuntimeService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         PublishedFormSubmissionService submissionService =
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
@@ -433,7 +433,7 @@ class NodeFormSubmissionServiceTest {
                 Map.of("data", Map.of("amount", 88)),
                 updateCaptor.getValue().payload());
         assertEquals(
-                com.workflow.contracts.entity.mutation.model.EntityMutationSourceType.APPROVAL_TASK,
+                com.workflow.port.entity.mutation.model.EntityMutationSourceType.APPROVAL_TASK,
                 updateCaptor.getValue().context().sourceType());
         assertEquals(
                 List.of(new FormUniqueMutationContext.Reference(
@@ -475,8 +475,8 @@ class NodeFormSubmissionServiceTest {
                 mock(ProcessPublishedSnapshotService.class);
         EntityFormRuntimeService runtimeFormService =
                 mock(EntityFormRuntimeService.class);
-        EntityMutationPort mutationPort =
-                mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort =
+                mock(TrustedEntityRecordMutationPort.class);
         PublishedFormSubmissionService submissionService =
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
@@ -585,7 +585,7 @@ class NodeFormSubmissionServiceTest {
                 commandCaptor.capture());
         EntityMutationCommand command = commandCaptor.getValue();
         assertEquals(
-                com.workflow.contracts.entity.mutation.model.EntityMutationSourceType.APPROVAL_TASK,
+                com.workflow.port.entity.mutation.model.EntityMutationSourceType.APPROVAL_TASK,
                 command.context().sourceType());
         assertEquals(
                 Map.of("data", Map.of(
@@ -622,7 +622,7 @@ class NodeFormSubmissionServiceTest {
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormRuntimeService runtimeFormService =
                 mock(EntityFormRuntimeService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         PublishedFormSubmissionService submissionService =
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
@@ -705,7 +705,7 @@ class NodeFormSubmissionServiceTest {
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormRuntimeService runtimeFormService =
                 mock(EntityFormRuntimeService.class);
-        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort = mock(TrustedEntityRecordMutationPort.class);
         PublishedFormSubmissionService submissionService =
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
@@ -803,7 +803,7 @@ class NodeFormSubmissionServiceTest {
                         snapshotService,
                         mock(EntityFormService.class),
                         mock(EntityFormRuntimeService.class),
-                        mock(EntityMutationPort.class),
+                        mock(TrustedEntityRecordMutationPort.class),
                         mock(PublishedFormSubmissionService.class),
                         mock(FormSubmissionTraceService.class),
                         new ObjectMapper(), mock(ProcessEntityVariableService.class), entityRecords);
@@ -838,8 +838,8 @@ class NodeFormSubmissionServiceTest {
                 mock(ProcessPublishedSnapshotService.class);
         EntityFormRuntimeService runtimeFormService =
                 mock(EntityFormRuntimeService.class);
-        EntityMutationPort mutationPort =
-                mock(EntityMutationPort.class);
+        TrustedEntityRecordMutationPort mutationPort =
+                mock(TrustedEntityRecordMutationPort.class);
         PublishedFormSubmissionService submissionService =
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =

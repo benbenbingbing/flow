@@ -2,9 +2,9 @@ package com.workflow.admin.identity.provisioning.application;
 
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentitySourceSnapshotMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.error.IdentityWriteException;
-import com.workflow.contracts.identity.model.IdentityObjectType;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.identity.model.IdentityObjectType;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -15,7 +15,7 @@ import static org.mockito.Mockito.*;
 class IdentitySourceSnapshotAccessTest {
     final IdentitySourceSnapshotMapper mapper = mock(IdentitySourceSnapshotMapper.class);
     final IdentityAccessService access = mock(IdentityAccessService.class);
-    final IdentitySourceSnapshotService service = new IdentitySourceSnapshotService(mapper, new IdentityWriteProperties(), access, mock(SystemAuditPort.class));
+    final IdentitySourceSnapshotService service = new IdentitySourceSnapshotService(mapper, new IdentityWriteProperties(), access, mock(SystemOperationLogPort.class));
 
     @AfterEach void clear() { UserContext.clear(); }
 

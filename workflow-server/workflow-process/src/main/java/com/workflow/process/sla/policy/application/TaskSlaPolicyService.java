@@ -7,8 +7,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import com.workflow.process.sla.policy.api.request.TaskSlaPolicySaveRequest;
 import com.workflow.process.sla.policy.api.response.TaskSlaPolicyDTO;
 import com.workflow.process.sla.policy.infrastructure.persistence.mapper.TaskSlaEscalationStepMapper;
@@ -48,7 +48,7 @@ public class TaskSlaPolicyService {
     private final TaskSlaPolicyMapper policyMapper;
     private final TaskSlaEscalationStepMapper stepMapper;
     private final ObjectMapper objectMapper;
-    private final MigrationAssetPort migrationAssetHandler;
+    private final ConfigMigrationAssetPort migrationAssetHandler;
 
     /**
      * 列出未删除的所有策略版本，管理端按编码和版本展示。

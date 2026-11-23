@@ -100,7 +100,7 @@ class OceanBaseOraclePersistenceDatabaseTest {
             var files = new com.workflow.storage.application.StoredFileAccessService(
                     com.workflow.support.BusinessMapperTestSupport.mapper(f.source, "OCEANBASE_ORACLE",
                             com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class),
-                    null, null, attempt, dialect);
+                    null, attempt, dialect);
             var incidents = new com.workflow.process.assignment.application.AssigneeIncidentRecorder(
                     com.workflow.support.BusinessMapperTestSupport.mapper(f.source, "OCEANBASE_ORACLE",
                             com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class),

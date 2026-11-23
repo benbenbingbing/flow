@@ -6,7 +6,7 @@ import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
+import com.workflow.port.entity.EntityFormPort;
 import com.workflow.embed.infrastructure.persistence.adapter.MyBatisEmbedLaunchPersistenceAdapter;
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedLaunchPersistenceMapper;
 import com.workflow.embed.management.domain.EmbedManagementModel.*;
@@ -167,8 +167,8 @@ class MySqlRemainingConflictDatabaseTest {
             table(f, "storage_file_object", "V011__storage_object_ownership.sql");
             alter(f, "storage_file_object", "V018__storage_upload_idempotency.sql"); effectTable(f);
             var h = new Harness(f);
-            var service = h.transactional(new StoredFileAccessService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class), mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
-                new com.workflow.admin.security.context.UserContextCurrentActorProvider(), h.attempt,
+            var service = h.transactional(new StoredFileAccessService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class), new com.workflow.admin.security.context.UserContextCurrentActorProvider(
+                    mock(com.workflow.admin.authorization.application.CurrentUserRoleService.class)), h.attempt,
                     DatabaseQueryDialects.forDatabaseId("MYSQL")));
             var file = new MockMultipartFile("file", "name.txt", "text/plain", "same content".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             var barrier = new CyclicBarrier(6);
@@ -228,7 +228,7 @@ class MySqlRemainingConflictDatabaseTest {
             Class<?> mapperType = Class.forName("com.workflow.embed.management.infrastructure.persistence.EmbedManagementMapper");
             var h = new Harness(f, mapperType);
             var repository = (MyBatisEmbedManagementRepository) MyBatisEmbedManagementRepository.class.getConstructors()[0]
-                    .newInstance(h.mapper(mapperType), h.json, mock(EntityNewDataFormRuntimePort.class), h.attempt);
+                    .newInstance(h.mapper(mapperType), h.json, mock(EntityFormPort.class), h.attempt);
             h.tx.executeWithoutResult(status -> repository.insertGrant(grant("winner")));
             h.tx.executeWithoutResult(status -> {
                 h.jdbc.update("INSERT INTO conflict_effect VALUES ('before')");

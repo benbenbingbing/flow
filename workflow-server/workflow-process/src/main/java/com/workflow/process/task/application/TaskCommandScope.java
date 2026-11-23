@@ -1,6 +1,6 @@
 package com.workflow.process.task.application;
 
-import com.workflow.contracts.process.error.ProcessOperationException;
+import com.workflow.port.process.error.ProcessOperationException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Supplier;

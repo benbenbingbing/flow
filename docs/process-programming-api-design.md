@@ -6,18 +6,18 @@
 
 ## 1. 设计结论
 
-采用可注入的公共接口和唯一业务实现，按查询、变量、任务办理、实例控制划分。业务模块只依赖 `workflow-port`；实现流程动作等扩展时再依赖 `workflow-spi`。Spring 装配和 Flowable 适配保留在 `workflow-process`。
+采用可注入的公共接口和唯一业务实现，按流程实例、任务、历史和变量等对象划分。业务模块只依赖 `workflow-port`；实现流程动作等扩展时再依赖 `workflow-spi`。Spring 装配和 Flowable 适配保留在 `workflow-process`。
 
 不新增静态 `FlowableUtils` 或要求业务通过 Spring 容器查找 Bean。纯粹的字段转换工具可以在流程模块内部使用，跨模块的“辅助方法”以 Port 提供，方便事务代理、替换实现和单元测试。
 
 | 公共入口 | 主要用途 | 放置位置 |
 | --- | --- | --- |
-| `ProcessQueryPort` | 实例、待办、历史、活动节点和操作能力查询 | `contracts.process.query.port` |
-| `ProcessVariablePort` | 流程变量、任务本地变量的读取与补丁写入 | `contracts.process.variable.port` |
-| `ProcessTaskCommandPort` | 认领、审批、转办、退回、重提、加签、知会 | `contracts.process.task.port` |
-| `ProcessInstanceCommandPort` | 撤回、终止、触发等待中的接收任务 | `contracts.process.instance.port` |
-| 现有 `ProcessRuntimePort` | 保留实体绑定流程的内部启动和重新发起判断 | 保留现有包和职责 |
-| 现有 `ProcessCatalogPort` | 保留流程定义目录和绑定状态查询 | 保留现有包和职责 |
+| `ProcessHistoryPort`、`ProcessNextApprovalPort` | 办理历史、操作日志和下一审批人预览 | `com.workflow.port.process` |
+| `ProcessVariablePort` | 流程变量、任务本地变量的读取与补丁写入 | `com.workflow.port.process` |
+| `ProcessTaskPort` | 查任务、认领、审批、转办、退回、重提、加签、知会 | `com.workflow.port.process` |
+| `ProcessInstancePort` | 查实例、撤回、终止、触发等待中的接收任务 | `com.workflow.port.process` |
+| `EntityBoundProcessPort` | 实体绑定流程的内部启动和重新发起判断 | `com.workflow.port.process` |
+| `ProcessDefinitionConfigPort` | 流程定义目录和绑定状态查询 | `com.workflow.port.process` |
 
 首轮不再叠加一个转发全部方法的大型 Helper。业务需要什么能力就注入对应 Port；流程动作继续通过 `FlowActionContext` 获得当前流程的快捷方法。
 
@@ -37,40 +37,15 @@
 
 ## 2. 查询接口
 
-以下签名省略 import。辅助模型的字段和行为见第 6 节。
+查询按业务对象进入对应接口。模型字段与行为见第 6 节。
 
-```java
-public interface ProcessQueryPort {
-    // 同时覆盖运行中和已结束的实例；缺失返回 Optional.empty()。
-    Optional<ProcessInstanceView> findInstance(String processInstanceId);
+| Port | 查询方法 |
+| --- | --- |
+| `ProcessInstancePort` | `findInstance`、`requireInstance`、`pageInstances`、`listRounds`、`listActiveActivities`、`getProgress` |
+| `ProcessTaskPort` | `findActiveTask`、`listActiveTasks`、`pageTasks`、`getTaskCapabilities` |
+| `ProcessHistoryPort` | `pageTaskHistory`、`pageOperations` |
+| `ProcessNextApprovalPort` | `previewNextApproval`、`pageNextApproverOptions` |
 
-    // 适合后续必须执行操作的业务路径；缺失抛标准异常。
-    ProcessInstanceView requireInstance(String processInstanceId);
-
-    ProcessPage<ProcessInstanceView> pageInstances(ProcessInstanceQuery query);
-
-    // 以可访问的一轮为锚点，返回同一业务记录的可访问流程轮次。
-    List<ProcessRoundView> listRounds(String anchorProcessInstanceId);
-
-    // 活动任务包含平台本地加签任务，缺失或已完成返回 empty。
-    Optional<ProcessTaskView> findActiveTask(String taskId);
-
-    // 返回该实例下全部可见活动任务，不隐式选取第一条。
-    List<ProcessTaskView> listActiveTasks(String processInstanceId);
-
-    ProcessPage<ProcessTaskView> pageTasks(ProcessTaskQuery query);
-    ProcessPage<ProcessTaskHistoryView> pageTaskHistory(ProcessHistoryQuery query);
-    ProcessPage<ProcessOperationView> pageOperations(ProcessHistoryQuery query);
-
-    // 包含人工节点与正在等待的接收任务等，用于定位当前执行位置。
-    List<ProcessActivityView> listActiveActivities(String processInstanceId);
-
-    // 能力结果用于判断/展示，不是授权凭据，执行命令时重新校验。
-    TaskCapabilities getTaskCapabilities(String taskId);
-    NextApprovalPreview previewNextApproval(NextApprovalQuery query);
-    ProcessPage<ApproverOption> pageNextApproverOptions(NextApproverOptionsQuery query);
-}
-```
 
 ### 查询语义
 
@@ -143,7 +118,7 @@ public record TaskVariablePatch(
 ## 4. 任务办理接口
 
 ```java
-public interface ProcessTaskCommandPort {
+public interface ProcessTaskPort {
     TaskCommandResult claim(ClaimTaskCommand command);
     TaskCommandResult complete(CompleteTaskCommand command);
     TaskCommandResult transfer(TransferTaskCommand command);
@@ -206,7 +181,7 @@ public record TaskFormReference(String formId, String configHash) {}
 ## 5. 实例控制及启动边界
 
 ```java
-public interface ProcessInstanceCommandPort {
+public interface ProcessInstancePort {
     ProcessCommandReceipt withdraw(WithdrawProcessCommand command);
     ProcessCommandReceipt terminate(TerminateProcessCommand command);
     ReceiveTaskTriggerResult triggerReceiveTask(TriggerReceiveTaskCommand command);
@@ -223,7 +198,7 @@ public interface ProcessInstanceCommandPort {
 
 ### 启动保留现有契约
 
-现有 `ProcessRuntimePort.start(ProcessStartRequest)` 继续保留，不复制为新的同义接口。但其性质必须写清楚：它是实体绑定流程的内部启动能力，要求调用方已经完成业务记录准备、授权和同事务锁定，启动结果仍由原编排回写业务记录。
+现有 `EntityBoundProcessPort.start(ProcessStartRequest)` 继续保留，不复制为新的同义接口。但其性质必须写清楚：它是实体绑定流程的内部启动能力，要求调用方已经完成业务记录准备、授权和同事务锁定，启动结果仍由原编排回写业务记录。
 
 当前平台完整发起还包含实体记录保存、提交审计、流程关联和运行态回写。本次排除实体接口调整，因此不承诺提供“只传 processKey 即可完成全部业务发起”的新 API，也不让普通 biz 调用示例直接使用这个底层入口。
 
@@ -342,7 +317,7 @@ context.getTriggerTask();             // 当前活动触发任务，已完成可
 
 `getCurrentTask()` 的“第一条”不能作为自动审批目标。新代码使用任务集合或明确 taskId；实现改造时盘点并更新仓库调用方与示例，不新增一套长期保留的同义契约。
 
-现有 FlowActionRuntimePort 的 Object 返回类型升级会影响实现方和外部已编译扩展，需要明确升级版本、重新编译并验证。在精确发布摘要已固定的扩展上，还需要检查制品摘要及历史版本保留要求；不能把签名变更当作无影响内部修改。
+现有 FlowActionContextPort 的 Object 返回类型升级会影响实现方和外部已编译扩展，需要明确升级版本、重新编译并验证。在精确发布摘要已固定的扩展上，还需要检查制品摘要及历史版本保留要求；不能把签名变更当作无影响内部修改。
 
 实体数据快捷方法保持现状，本设计不顺带调整其权限或返回行为。
 
@@ -354,7 +329,7 @@ context.getTriggerTask();             // 当前活动触发任务，已完成可
 @Service
 @RequiredArgsConstructor
 public class ProjectWorkflowService {
-    private final ProcessQueryPort processQuery;
+    private final ProcessInstancePort instances;
     private final ProcessVariablePort processVariables;
 
     /**
@@ -362,7 +337,7 @@ public class ProjectWorkflowService {
      * requestId 由本次业务意图产生，重试复用；执行身份由宿主绑定。
      */
     public void updateRisk(String instanceId, String requestId, String risk) {
-        ProcessInstanceView instance = processQuery.requireInstance(instanceId);
+        ProcessInstanceView instance = instances.requireInstance(instanceId);
         if (instance.lifecycle() != ProcessLifecycle.RUNNING) {
             throw new IllegalStateException("当前流程不能更新风险等级");
         }
@@ -401,7 +376,7 @@ TaskCommandResult result = taskCommands.complete(new CompleteTaskCommand(
 | `TaskService`、`TaskServiceImpl` | 旧入口逐步委托到公共应用服务，避免维持第二套办理/重提逻辑 |
 | `ProcessRollbackService` | 先统一退回/重提语义，再导出稳定命令 |
 | `ProcessTerminationService` | 复用现有终止规则，将 Result 返回适配为统一异常与回执 |
-| `ProcessRuntimePort`、`ProcessRuntimeService` | 保留内部启动前提，不直接升级为任意 biz 可用的完整发起入口 |
+| `EntityBoundProcessPort`、`ProcessRuntimeService` | 保留内部启动前提，不直接升级为任意 biz 可用的完整发起入口 |
 | `WorkflowReservedVariables` | 扩展为统一的公共变量读写边界，核对全部实际平台保留键 |
 
 已有规则不通过复制代码实现；允许调整其所属层，使平台内部、HTTP 入口、流程动作和 biz 调用最终共享权威路径。

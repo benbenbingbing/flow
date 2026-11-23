@@ -8,15 +8,15 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import com.workflow.migration.api.request.ConfigMigrationAssetQuery;
 import com.workflow.migration.api.request.ConfigMigrationMarkRequest;
 import com.workflow.migration.infrastructure.crypto.WfpackIntegrity;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
@@ -109,7 +109,7 @@ import java.util.regex.Pattern;
  */
 @Service
 @RequiredArgsConstructor
-public class ConfigMigrationAssetService implements MigrationAssetPort, com.workflow.contracts.migration.port.ExcelConfigurationPublicationPort {
+public class ConfigMigrationAssetService implements ConfigMigrationAssetPort, com.workflow.port.migration.ExcelConfigurationPublicationPort {
     public static final String ENTITY = "ENTITY";
     public static final String PROCESS = "PROCESS";
     public static final String DICTIONARY = "DICTIONARY";
@@ -179,7 +179,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
     private final DatabaseQueryDialect queryDialect;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.contracts.migration.port.EntityExcelMigrationPort excelConfigurations;
+    private com.workflow.port.migration.EntityExcelMigrationPort excelConfigurations;
 
     /** Excel 独立发布也形成完整 ENTITY 资产，避免默认指针变化漏过导出及本地冲突检测。 */
     @Override
@@ -194,7 +194,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
             throw new IllegalStateException("请先发布实体并生成完整迁移资产，再发布 Excel 配置");
         // Excel 独立发布不能顺带发布实体/表单草稿；保留已发布资产的其他分区，只覆盖本次 Excel 配置。
         Map<String, Object> snapshot = mapValue(parseJson(latest.getSnapshotJson(), Map.of()));
-        snapshot.put(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION,
+        snapshot.put(com.workflow.port.migration.EntityExcelMigrationPort.SECTION,
                 excelConfigurations.exportPublished(entity.getEntityCode()));
         List<Map<String, Object>> dependencies = new ArrayList<>(castList(snapshot.get("dependencies")).stream()
                 .filter(value -> !String.valueOf(value.get("source")).startsWith("Excel ")).toList());
@@ -1522,7 +1522,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         collectExtensionDependencies(snapshot, dependencies);
         collectViewCompositionDependencies(snapshot, dependencies);
         if (excelConfigurations != null) {
-            snapshot.put(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION,
+            snapshot.put(com.workflow.port.migration.EntityExcelMigrationPort.SECTION,
                     excelConfigurations.exportPublished(entity.getEntityCode()));
             ConfigMigrationExcelSupport.sanitizeInterfaces(snapshot, objectMapper);
             dependencies.addAll(ConfigMigrationExcelSupport.dependencies(snapshot));

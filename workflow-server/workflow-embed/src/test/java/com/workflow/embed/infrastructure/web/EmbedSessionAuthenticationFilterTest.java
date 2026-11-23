@@ -16,8 +16,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
-import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.EmbedRequestUserScopePort;
+import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Outcome;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Reason;
@@ -57,7 +57,7 @@ class EmbedSessionAuthenticationFilterTest {
                 eq("Bearer " + TOKEN), any(EmbedAuditCorrelation.class)))
                 .thenReturn(authenticated);
         AtomicBoolean flowContextOpen = new AtomicBoolean();
-        EmbedRequestUserContextPort userContext = (userId, username, sessionId) -> {
+        EmbedRequestUserScopePort userContext = (userId, username, sessionId) -> {
             flowContextOpen.set(true);
             return () -> flowContextOpen.set(false);
         };

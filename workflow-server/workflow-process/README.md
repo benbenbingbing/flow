@@ -21,12 +21,12 @@
 
 ## 跨模块端口
 
-- 对外提供 `ProcessCatalogPort` 和 `ProcessRuntimePort`。
-- 通过 `EntityRecordPort` 更新实体记录的流程运行态。
-- 通过 `EntityFormRuntimePort` 获取实体表单，不访问实体 Mapper。
-- 通过 `IdentityDirectoryPort` 解析用户和用户组，不访问系统模块内部服务。
-- 发布资产通过 `MigrationAssetPort` 登记到迁移模块。
-- `PersonResolverRuntimeService` 通过 `IdentityMembershipPort` 展开身份主体，通过 `PersonResolverRegistrationPort` 查询受控目录；启用状态、软删除和成员查询由 admin 实现。
+- 对外提供 `ProcessDefinitionConfigPort` 和 `EntityBoundProcessPort`。
+- 通过 `EntityProcessStatePort` 更新实体记录的流程运行态。
+- 通过 `EntityFormPort` 获取实体表单，不访问实体 Mapper。
+- 通过 `SysUserLookupPort`、`SysGroupPort` 和 `SysUserGroupPort` 解析用户和用户组，不访问系统模块内部服务。
+- 发布资产通过 `ConfigMigrationAssetPort` 登记到迁移模块。
+- `PersonResolverRuntimeService` 通过 `ProcessCandidateMemberPort` 展开身份主体，通过 `ProcessAssigneeResolverPort` 查询受控目录；启用状态、软删除和成员查询由 admin 实现。
 - 节点表单配置 `FormConfig`、`FormFieldConfig` 及其 Mapper/响应类型归属 `process.form`，数据库表和接口 JSON 不变。
 - 知会人员解析和渠道 SPI 位于 `contracts.process.cc.spi`。渠道收到独立的 `CcNotification` 投影，不能通过修改参数回写收件箱状态。
 - 流程动作中的实体数据返回 `EntityRecordData`，调用方不再转换为实体模块的 HTTP DTO。

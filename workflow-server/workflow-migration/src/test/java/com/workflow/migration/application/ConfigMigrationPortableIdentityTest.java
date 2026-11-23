@@ -11,7 +11,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -31,7 +31,7 @@ class ConfigMigrationPortableIdentityTest {
     private final SysGroupMapper groups = mock(SysGroupMapper.class);
     private final SysOrganizationMapper organizations = mock(SysOrganizationMapper.class);
     private final FlowActionDefinitionMapper actions = mock(FlowActionDefinitionMapper.class);
-    private final FlowActionCatalogPort catalog = mock(FlowActionCatalogPort.class);
+    private final ProcessActionDefinitionPort catalog = mock(ProcessActionDefinitionPort.class);
     private final ConfigMigrationReferenceService service = new ConfigMigrationReferenceService(users, roles, groups, organizations, actions, catalog);
 
     @Test

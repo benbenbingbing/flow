@@ -3,7 +3,7 @@ package com.workflow.biz.project.contracts.action;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
+import com.workflow.port.process.FlowActionContextPort;
 import com.workflow.contracts.process.action.model.FlowActionTraceFields;
 
 import org.junit.jupiter.api.Test;
@@ -38,8 +38,8 @@ class FlowActionContextTest {
 
     @Test
     void writesProcessVariablesAndRefreshesSnapshot() {
-        FlowActionRuntimePort runtimeAccess =
-                mock(FlowActionRuntimePort.class);
+        FlowActionContextPort runtimeAccess =
+                mock(FlowActionContextPort.class);
         FlowActionContext context =
                 new FlowActionContext();
         context.setProcessInstanceId("PROC-1");

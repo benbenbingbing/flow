@@ -3,11 +3,11 @@ package com.workflow.process.action;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.process.action.application.*;
 import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
@@ -107,7 +107,7 @@ public class FlowActionOperationExecutionTransactionTest {
         var coordinator = new FlowActionFailureCoordinator(failures);
         var actionMapper = mock(FlowActionMapper.class);
         when(actionMapper.selectById(anyString())).thenAnswer(call -> actions.get(call.getArgument(0)));
-        executions = proxy(new FlowActionExecutionService(mapper, actionMapper, json, mock(FlowActionCatalogPort.class), mock(SystemAuditPort.class), failures));
+        executions = proxy(new FlowActionExecutionService(mapper, actionMapper, json, mock(ProcessActionDefinitionPort.class), mock(SystemOperationLogPort.class), failures));
         var runtime = mock(FlowActionRuntimeAdapter.class);
         // 流程动作的受控变量写入在此适配成真实引擎写入，路由及回滚断言不能停留在 mock 调用。
         doAnswer(call -> { engine.getRuntimeService().setVariable(call.getArgument(0), call.getArgument(1), call.getArgument(2)); return null; })
@@ -748,8 +748,8 @@ public class FlowActionOperationExecutionTransactionTest {
         var service = proxy(new com.workflow.process.instance.application.ProcessTerminationService(operations,
                 engine.getRuntimeService(), engine.getHistoryService(), logs,
                 mock(com.workflow.process.task.application.ProcessTaskService.class),
-                mock(com.workflow.contracts.identity.port.IdentityDirectoryPort.class),
-                mock(com.workflow.contracts.entity.port.EntityRecordPort.class),
+                mock(com.workflow.port.system.SysUserLookupPort.class),
+                mock(com.workflow.port.entity.EntityProcessStatePort.class),
                 mock(com.workflow.process.task.application.operation.NodeOperationCapabilityService.class)));
         if (!failureStage.equals("SUCCESS")) {
             assertThrows(IllegalArgumentException.class, () -> service.terminateProcess(instanceId, "alice", "终止原因"));
@@ -855,7 +855,7 @@ public class FlowActionOperationExecutionTransactionTest {
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(), projection,
                 engine.getRepositoryService(), mock(com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper.class),
                 mock(com.workflow.admin.identity.user.application.SysUserService.class), forms,
-                mock(com.workflow.contracts.entity.port.EntityRecordPort.class), mock(com.workflow.process.cc.application.ProcessCcService.class),
+                mock(com.workflow.port.entity.EntityProcessStatePort.class), mock(com.workflow.process.cc.application.ProcessCcService.class),
                 mock(com.workflow.process.task.application.nextapproval.NextApproverOverrideService.class),
                 new com.workflow.process.task.application.MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(), engine.getTaskService(), new ObjectMapper()),
                 mock(com.workflow.process.task.application.operation.NodeOperationCapabilityService.class),

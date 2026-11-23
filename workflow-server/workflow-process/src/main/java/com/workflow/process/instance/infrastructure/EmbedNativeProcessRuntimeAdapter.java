@@ -1,6 +1,6 @@
 package com.workflow.process.instance.infrastructure;
 
-import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort;
+import com.workflow.port.embed.EmbedProcessRecordPort;
 import java.util.Optional;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RuntimeService;
@@ -11,7 +11,7 @@ import org.springframework.util.StringUtils;
 /** 从 Flowable 实例变量恢复 Embed 流程读取所属的业务记录。 */
 @Component
 public class EmbedNativeProcessRuntimeAdapter
-        implements EmbedNativeProcessRuntimePort {
+        implements EmbedProcessRecordPort {
 
     private final RuntimeService runtimeService;
     private final HistoryService historyService;

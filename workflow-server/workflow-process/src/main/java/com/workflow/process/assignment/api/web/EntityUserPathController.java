@@ -2,8 +2,8 @@ package com.workflow.process.assignment.api.web;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
-import com.workflow.contracts.entity.port.EntityUserPathPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityUserPathPort;
 import com.workflow.core.result.Result;
 import com.workflow.core.security.RequiresPermission;
 import lombok.RequiredArgsConstructor;

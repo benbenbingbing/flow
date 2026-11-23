@@ -17,11 +17,11 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
@@ -69,7 +69,7 @@ public class TaskActionService {
     private final com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper operationLogMapper;
     private final SysUserService sysUserService;
     private final NodeFormSubmissionService nodeFormSubmissionService;
-    private final EntityRecordPort entityRecordPort;
+    private final EntityProcessStatePort entityRecordPort;
     /** 抄送/知会服务：用于统计未读抄送数等 */
     private final ProcessCcService processCcService;
     /** 下一审批人预览与覆盖必须存在，避免生产配置异常时静默跳过权威重验。 */

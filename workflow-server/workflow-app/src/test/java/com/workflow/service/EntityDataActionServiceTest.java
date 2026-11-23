@@ -20,11 +20,11 @@ import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionActionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -79,7 +79,7 @@ class EntityDataActionServiceTest {
         private SystemEntityReadService systemEntityReadService;
 
         @Mock
-        private EntityMutationPort mutationPort;
+        private TrustedEntityRecordMutationPort mutationPort;
 
         @Mock
         private EntityListActionConfigService actionConfigService;
@@ -789,6 +789,74 @@ class EntityDataActionServiceTest {
                                 actionRequest.getAllValues().stream()
                                                 .map(FormActionResolveRequest::getRecordId)
                                                 .toList());
+        }
+
+        @Test
+        void portDeleteUsesStandardMutationWithRevisionFromAuthorizedRow() {
+                EntityDataDTO record = row("1", "A-1");
+                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(record);
+
+                service.deleteFromPort("asset", "1", null);
+
+                var command = ArgumentCaptor.forClass(EntityMutationCommand.class);
+                verify(capabilityService).requireRowActionForConfig("asset", null, "delete", record);
+                verify(mutationPort).execute(command.capture());
+                assertEquals(EntityMutationOperationType.DELETE, command.getValue().operationType());
+                assertEquals(Map.of(), command.getValue().payload());
+                org.junit.jupiter.api.Assertions.assertNotNull(command.getValue().expectedRevision());
+        }
+
+        @Test
+        void portBatchDeleteRechecksEachRevisionInOneAtomicBatchAndDeduplicatesIds() {
+                EntityDataDTO record = row("1", "A-1");
+                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(record);
+                when(capabilityService.evaluateRowActionForConfig("asset", null, "batchDelete", record))
+                                .thenReturn(EntityActionCapabilityDTO.allowed());
+
+                service.batchDeleteFromPort("asset", List.of("1", "1"), null);
+
+                var batch = ArgumentCaptor.forClass(EntityMutationBatchCommand.class);
+                verify(mutationPort).executeBatch(batch.capture());
+                assertEquals(true, batch.getValue().atomic());
+                assertEquals(1, batch.getValue().commands().size());
+                var command = batch.getValue().commands().get(0);
+                assertEquals(EntityMutationOperationType.DELETE, command.operationType());
+                org.junit.jupiter.api.Assertions.assertNotNull(command.expectedRevision());
+        }
+
+        @Test
+        void portBatchDeleteRejectsAllRowsWhenAnyRowIsDenied() {
+                var permitted = row("1", "A-1");
+                var blocked = row("2", "A-2");
+                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(permitted);
+                when(dynamicService.findAccessibleById("asset", "2", null)).thenReturn(blocked);
+                when(capabilityService.evaluateRowActionForConfig("asset", null, "batchDelete", permitted))
+                                .thenReturn(EntityActionCapabilityDTO.allowed());
+                when(capabilityService.evaluateRowActionForConfig("asset", null, "batchDelete", blocked))
+                                .thenReturn(EntityActionCapabilityDTO.hidden("记录已进入审批"));
+
+                assertThrows(ForbiddenException.class,
+                                () -> service.batchDeleteFromPort("asset", List.of("1", "2"), null));
+                verify(mutationPort, never()).executeBatch(any());
+        }
+
+        @Test
+        void portCapabilitiesUsesThePublishedRowActionsAndIncludesDenialReason() {
+                var record = row("1", "A-1");
+                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(record);
+                when(capabilityService.evaluateRowActionForConfig("asset", null, "edit", record))
+                                .thenReturn(EntityActionCapabilityDTO.allowed());
+                for (String key : List.of("delete", "batchDelete", "restartProcess")) {
+                        when(capabilityService.evaluateRowActionForConfig("asset", null, key, record))
+                                        .thenReturn(EntityActionCapabilityDTO.hidden("当前状态不允许"));
+                }
+
+                var capabilities = service.getRecordCapabilities("asset", "1", null);
+
+                verify(capabilityService).requireStandardPermission("asset", EntityPermissionAction.VIEW);
+                assertEquals(true, capabilities.get("edit").enabled());
+                assertEquals(false, capabilities.get("delete").enabled());
+                assertEquals("当前状态不允许", capabilities.get("delete").reason());
         }
 
         /** 构造一条包含 id 与 code 的实体数据 DTO */

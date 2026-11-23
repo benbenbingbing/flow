@@ -1,7 +1,7 @@
 package com.workflow.process.task.api.web;
 
-import com.workflow.contracts.identity.model.IdentityHandoverUser;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.system.identity.model.IdentityHandoverUser;
+import com.workflow.port.system.SysUserHandoverPort;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.security.RequiresPermission;
@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/task-handover")
 @RequiredArgsConstructor
 public class TaskHandoverController {
-    private final IdentityDirectoryPort directory;
+    private final SysUserHandoverPort directory;
     private final TaskHandoverService service;
 
     /** 来源允许所有状态；targetOnly 只筛选可接收任务的正常人员，不返回账号敏感字段。 */

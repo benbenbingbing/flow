@@ -1,7 +1,7 @@
 package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -255,7 +255,7 @@ class UiExcelBuiltinEventTest {
             ObjectProvider<EntityExcelRuntimeResolver> provider = mock(ObjectProvider.class);
             when(provider.getObject()).thenReturn(excel);
             runtime = new UiEventRuntimeService(resolvedBindings, interfaces, new UiEventValueMapper(),
-                    mock(EntitySelectionRuntimeService.class), mock(SystemAuditPort.class), capabilities, forms,
+                    mock(EntitySelectionRuntimeService.class), mock(SystemOperationLogPort.class), capabilities, forms,
                     receipts, mock(EntityDataDynamicService.class), json, provider);
         }
 

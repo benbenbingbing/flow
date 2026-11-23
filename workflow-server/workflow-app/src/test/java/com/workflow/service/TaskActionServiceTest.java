@@ -8,7 +8,7 @@ import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.TaskIdentityAccessService;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.system.SysUserLookupPort;
 import org.flowable.identitylink.api.IdentityLink;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideService;
 import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
@@ -19,7 +19,7 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import org.flowable.engine.HistoryService;
@@ -90,7 +90,7 @@ class TaskActionServiceTest {
     private NodeFormSubmissionService nodeFormSubmissionService;
 
     @Mock
-    private EntityRecordPort entityRecordPort;
+    private EntityProcessStatePort entityRecordPort;
 
     @Mock
     private TaskQuery taskQuery;
@@ -143,7 +143,7 @@ class TaskActionServiceTest {
                         new com.fasterxml.jackson.databind.ObjectMapper()),
                 nodeOperationCapabilityService,
                 new TaskIdentityAccessService(taskService, mock(SysGroupMapper.class),
-                        mock(SysRoleMapper.class), mock(IdentityDirectoryPort.class)),
+                        mock(SysRoleMapper.class), mock(SysUserLookupPort.class)),
                 entityVariableService);
         UserContext.setCurrentUser("admin-id", "admin");
     }

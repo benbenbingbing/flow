@@ -5,7 +5,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.contracts.process.action.spi.FlowActionTriggerProvider;
-import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
+import com.workflow.port.platform.WorkflowBootstrapJobPort;
 import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.list.spi.DataScopePredicateProvider;
 import com.workflow.contracts.entity.list.spi.EntityListActionProvider;
@@ -13,21 +13,21 @@ import com.workflow.contracts.entity.list.spi.EntityListContextResolverProvider;
 import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.identity.model.IdentityUser;
+import com.workflow.port.system.SysUserLookupPort;
+import com.workflow.port.system.identity.model.IdentityUser;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
-import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.process.ProcessTaskPermissionPort;
+import com.workflow.port.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import com.workflow.contracts.entity.ui.context.CommonInvocationContext;
 import com.workflow.contracts.entity.ui.model.EntityDescriptor;
 import com.workflow.contracts.entity.ui.context.FormInvocationContext;
 import com.workflow.contracts.entity.ui.context.ListInvocationContext;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
-import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
+import com.workflow.port.entity.UiExtensionCatalogPort;
 import com.workflow.core.result.PageResult;
 import com.workflow.contracts.entity.list.model.ListFieldDataRecord;
 import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
@@ -79,7 +79,7 @@ class ProjectCustomBackendExtensionsTest {
 
     @Test
     void keepsLegacyProcessTaskAccessPortImplementationsFailClosed() {
-        ProcessTaskAccessPort legacyAdapter = new ProcessTaskAccessPort() {
+        ProcessTaskPermissionPort legacyAdapter = new ProcessTaskPermissionPort() {
             @Override
             public Optional<String> findActionableTaskId(
                     String userId,
@@ -222,10 +222,10 @@ class ProjectCustomBackendExtensionsTest {
         try (AnnotationConfigApplicationContext context =
                      customExtensionContext()) {
             assertTrue(context.getBeansOfType(
-                            MigrationAssetPort.class)
+                            ConfigMigrationAssetPort.class)
                     .isEmpty());
             assertTrue(context.getBeansOfType(
-                            BootstrapJobPort.class)
+                            WorkflowBootstrapJobPort.class)
                     .isEmpty());
             assertTrue(context.getBeansOfType(
                             UiExtensionCatalogPort.class)
@@ -631,7 +631,7 @@ class ProjectCustomBackendExtensionsTest {
                         "Project",
                         permissionCode));
 
-        var user = new com.workflow.contracts.identity.model.IdentityUser("USER-1", "demo", null, null, null);
+        var user = new com.workflow.port.system.identity.model.IdentityUser("USER-1", "demo", null, null, null);
         PermissionMatchConfig.MatchConditionDTO match =
                 new PermissionMatchConfig.MatchConditionDTO();
         match.setScopeType(
@@ -643,7 +643,7 @@ class ProjectCustomBackendExtensionsTest {
                 new ProjectCustomDataPermissionMatchProvider()
                         .matches(match, user));
 
-        var row = new com.workflow.contracts.entity.model.EntityRecordData();
+        var row = new com.workflow.port.entity.model.EntityRecordData();
         row.setId("PROJECT-1");
         row.setData(Map.of("riskLevel", "HIGH"));
         row.setCode("PROJECT-001");
@@ -763,8 +763,8 @@ class ProjectCustomBackendExtensionsTest {
 
     private AnnotationConfigApplicationContext
             customExtensionContext() {
-        IdentityDirectoryPort directory =
-                mock(IdentityDirectoryPort.class);
+        SysUserLookupPort directory =
+                mock(SysUserLookupPort.class);
         when(directory.findUser("external-user"))
                 .thenReturn(Optional.of(
                         new IdentityUser(
@@ -776,7 +776,7 @@ class ProjectCustomBackendExtensionsTest {
         AnnotationConfigApplicationContext context =
                 new AnnotationConfigApplicationContext();
         context.registerBean(
-                IdentityDirectoryPort.class,
+                SysUserLookupPort.class,
                 () -> directory);
         context.registerBean(
                 ProjectEntityMutationExecutor.class,

@@ -3,7 +3,7 @@ package com.workflow.process.sla.runtime.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import com.workflow.process.cc.application.ProcessCcService;
@@ -98,7 +98,7 @@ class TaskSlaEventProcessorTest {
                 mock(ProcessCcRecordMapper.class),
                 mock(SysUserMapper.class),
                 mock(SysOrganizationMapper.class),
-                mock(IdentityDirectoryPort.class),
+                mock(SysUserLookupPort.class),
                 objectMapper);
 
         processor.process("event-1", "worker-1", 7L);

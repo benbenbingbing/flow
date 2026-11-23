@@ -2,8 +2,8 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
@@ -36,7 +36,7 @@ class EntityFieldAssignmentPublishTest {
         when(entities.findEntityCodeByProcessDefinitionId("process")).thenReturn("expense");
         when(snapshots.getLatestByEntityCode("expense")).thenReturn(snapshot);
         var handler = new EntityFieldAssignmentFlowActionHandler(entities, snapshots,
-                new EntityFieldValidationRuleService(json), mock(SysDictItemService.class), mock(EntityMutationPort.class), json);
+                new EntityFieldValidationRuleService(json), mock(SysDictItemService.class), mock(TrustedEntityRecordMutationPort.class), json);
         context.getBeanFactory().registerSingleton(EntityFieldAssignmentFlowActionHandler.BEAN_NAME, handler);
         validator = new FlowActionConfigurationValidator(configs, context, new FlowActionTimingCatalog(List.of()), json,
                 mock(FlowActionFailureStrategyCatalog.class));
@@ -81,9 +81,9 @@ class EntityFieldAssignmentPublishTest {
 
     @Test void saveAndPublishPreserveStructuredLiteralParametersAndOldPublishedCopy() {
         var mapper = mock(com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper.class);
-        var catalog = mock(com.workflow.contracts.process.action.port.FlowActionCatalogPort.class);
+        var catalog = mock(com.workflow.port.process.ProcessActionDefinitionPort.class);
         when(catalog.requireSelectable(any(), any(), any())).thenReturn(
-                new com.workflow.contracts.process.action.model.FlowActionDefinitionDescriptor("definition",
+                new com.workflow.port.process.action.model.FlowActionDefinitionDescriptor("definition",
                         EntityFieldAssignmentFlowActionHandler.BEAN_NAME, "实体字段赋值"));
         var service = new FlowActionService(mapper, validator, catalog);
         var draft = action("left", "flag", "false");

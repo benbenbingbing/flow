@@ -5,14 +5,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort.ResolvedList;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
-import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.port.embed.EmbedPublishedListDependencyPort.ResolvedList;
+import com.workflow.port.embed.EmbedPublishedListDependencyPort;
+import com.workflow.port.entity.EntityFormPort.ResolvedForm;
+import com.workflow.port.entity.EntityFormPort;
 import com.workflow.embed.application.port.EmbedRuntimeSnapshotMaterializationPort;
 import com.workflow.embed.application.runtime.EmbedNativeListDependencyClosureCodec;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -64,8 +64,8 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
     private final EmbedViewConfigurationValidator validator;
     private final EmbedManagementRepository repository;
     private final ObjectMapper objectMapper;
-    private final EmbedNativeListDependencyRuntimePort listDependencyPort;
-    private final EntityNewDataFormRuntimePort newDataFormRuntimePort;
+    private final EmbedPublishedListDependencyPort listDependencyPort;
+    private final EntityFormPort newDataFormRuntimePort;
 
     /**
      * 初始化嵌入式启动记录运行时快照{@code materializer}，保存构造参数供后续方法使用。
@@ -80,8 +80,8 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
             EmbedViewConfigurationValidator validator,
             EmbedManagementRepository repository,
             ObjectMapper objectMapper,
-            EmbedNativeListDependencyRuntimePort listDependencyPort,
-            EntityNewDataFormRuntimePort newDataFormRuntimePort) {
+            EmbedPublishedListDependencyPort listDependencyPort,
+            EntityFormPort newDataFormRuntimePort) {
         this.validator = validator;
         this.repository = repository;
         this.objectMapper = objectMapper;
@@ -311,7 +311,7 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
      */
     private ResolvedDefaultForm resolveDefaultForm(String entityCode) {
         ResolvedForm resolved =
-                newDataFormRuntimePort.resolveForNewData(entityCode)
+                newDataFormRuntimePort.resolveNewRecordForm(entityCode)
                         .orElse(null);
         if (resolved == null) {
             // resolved=true + null 是权威“当次没有新增表单”，运行时不得回退 ACTIVE。

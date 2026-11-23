@@ -1,8 +1,8 @@
 package com.workflow.embed.application.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.EmbedListDependencySnapshotPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.EmbedRuntimeReleaseSnapshot;
 import java.util.Objects;
@@ -12,7 +12,7 @@ import org.springframework.util.StringUtils;
 /** 从 Session 固定的 immutable View Release 恢复 LIST 依赖闭包。 */
 @Component
 public class EmbedNativeListDependencySnapshotAdapter
-        implements EmbedNativeListDependencySnapshotPort {
+        implements EmbedListDependencySnapshotPort {
 
     private final EmbedRuntimeReleasePort releasePort;
     private final ObjectMapper objectMapper;

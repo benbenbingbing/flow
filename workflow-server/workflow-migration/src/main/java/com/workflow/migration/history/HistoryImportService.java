@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.authorization.application.PermissionUtil;
-import com.workflow.contracts.history.*;
-import com.workflow.contracts.history.HistoryImportModels.*;
+import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.EntityHistoryImportPort;
+import com.workflow.port.migration.ProcessArchiveInstancePort;
+import com.workflow.port.migration.history.model.HistoryImportModels.*;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +30,7 @@ public class HistoryImportService {
     private final HistoryImportPlanner planner;
     private final HistoryImportWorkbook workbook;
     private final EntityHistoryImportPort entities;
-    private final ProcessArchivePort archives;
+    private final ProcessArchiveInstancePort archives;
     private final PlatformTransactionManager transactions;
 
     public record GroupResult(String group, int created, int reused, List<Map<String, String>> records,

@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.contracts.entity.mutation.model.*;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.mutation.model.*;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
@@ -47,7 +47,7 @@ public class EntityFieldAssignmentFlowActionHandler implements FlowActionProvide
     private final EntityPublishedSnapshotService snapshots;
     private final EntityFieldValidationRuleService fieldRules;
     private final SysDictItemService dictionaries;
-    private final EntityMutationPort mutations;
+    private final TrustedEntityRecordMutationPort mutations;
     private final ObjectMapper objectMapper;
 
     @Override public ExtensionImplementationOrigin implementationOrigin() { return ExtensionImplementationOrigin.PLATFORM; }

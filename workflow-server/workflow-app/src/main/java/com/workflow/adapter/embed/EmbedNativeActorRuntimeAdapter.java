@@ -6,7 +6,7 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.record.S
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeActorRuntimePort;
+import com.workflow.port.embed.EmbedMappedUserPort;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -17,7 +17,7 @@ import org.springframework.util.StringUtils;
 /** 从现有账号、角色和菜单权限链构造 Embed 原生 UI 快照。 */
 @Component
 public class EmbedNativeActorRuntimeAdapter
-        implements EmbedNativeActorRuntimePort {
+        implements EmbedMappedUserPort {
 
     private final SysUserMapper userMapper;
     private final SysRoleMapper roleMapper;

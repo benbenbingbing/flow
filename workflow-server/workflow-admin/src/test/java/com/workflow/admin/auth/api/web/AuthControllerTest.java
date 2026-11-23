@@ -22,7 +22,7 @@ import com.workflow.admin.auth.infrastructure.web.ClientAddressResolver;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.SystemOperationLogPort;
 import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -57,7 +57,7 @@ class AuthControllerTest {
         login.setPassword("guess");
         AuthController controller = new AuthController(
                 userService,
-                mock(SystemAuditPort.class),
+                mock(SystemOperationLogPort.class),
                 throttle,
                 resolver,
                 mock(AuthSessionService.class),
@@ -182,7 +182,7 @@ class AuthControllerTest {
             AuthSessionProperties properties) {
         return new AuthController(
                 userService,
-                mock(SystemAuditPort.class),
+                mock(SystemOperationLogPort.class),
                 mock(LoginThrottleService.class),
                 mock(ClientAddressResolver.class),
                 sessions,

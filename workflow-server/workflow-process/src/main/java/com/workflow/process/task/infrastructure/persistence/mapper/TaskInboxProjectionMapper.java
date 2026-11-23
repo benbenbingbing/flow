@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.workflow.contracts.entity.model.EntityTaskSummary;
+import com.workflow.port.entity.model.EntityTaskSummary;
 import com.workflow.core.database.mybatis.OffsetPage;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import org.apache.ibatis.annotations.Mapper;

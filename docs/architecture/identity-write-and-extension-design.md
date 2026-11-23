@@ -1,6 +1,6 @@
 # 用户、组织标准写入与独立扩展
 
-状态：已实现。biz 获取数据、转换为公共模型并主动调用 `IdentityWritePort`；框架负责保存。
+状态：已实现。biz 获取数据、转换为公共模型并主动调用 `SysUserPort` 或 `SysOrganizationPort`；框架负责保存。
 主表文本扩展已在 V135 接入，用户、组织各有 ext1～ext5 五列，适合少量需要直接查询的来源字段。
 没有增加取数 Provider、定时任务或后台重试，业务自行决定调用时机和失败后的处理方式。
 
@@ -11,7 +11,7 @@
 ```mermaid
 flowchart LR
     External[业务自己的数据源] --> Biz[biz 获取并转换]
-    Biz --> Port[IdentityWritePort]
+    Biz --> Port[SysUserPort / SysOrganizationPort]
     Port --> Base[产品用户与组织表]
     Port --> Ext[独立扩展表]
     Port --> Binding[来源身份映射与审计]
@@ -28,7 +28,7 @@ flowchart LR
 
 依赖方向为 biz → workflow-port，admin → workflow-port，由 workflow-app 装配。
 公共模型不引用 Spring、MyBatis、Jackson 或 admin 实体。biz 不继承 SysUser / SysOrganization。
-现有 IdentityDirectoryPort、IdentityMembershipPort 和最小 IdentityUser 查询模型保持各自用途。
+SysUserLookupPort、ProcessCandidateMemberPort 和最小 IdentityUser 查询模型保持各自用途。
 
 ## 2. biz 接入：配置、转换、调用
 
@@ -67,10 +67,10 @@ workflow:
 
 ```java
 // 注入公共 Port，不依赖 admin 的 Mapper、实体或 Service。
-private final IdentityWritePort identities;
+private final SysUserPort users;
 
 public IdentitySaveResult saveEmployee(ExternalEmployee employee) {
-    return identities.saveUser(UserSaveModel.builder()
+    return users.saveUser(UserSaveModel.builder()
             .key(new ExternalIdentityKey("project-directory", employee.getId()))
             .sourceVersion(employee.getRevision())
             .base(UserBaseData.builder()
@@ -227,10 +227,10 @@ SOURCE 组必须在注解中显式指定 maintenance，并加入来源的 extens
 
 ### 4.3 biz 读取扩展
 
-通过 `IdentityExtensionQueryPort` 按精确本地 ID 和已注册 Class 查询，缺失资料返回 Optional.empty()：
+通过 `SysUserPort` 或 `SysOrganizationPort` 按精确本地 ID 和已注册 Class 查询，缺失资料返回 Optional.empty()：
 
 ```java
-profiles.findUserExtension(localUserId, HrUserExtension.class);
+users.findUserExtension(localUserId, HrUserExtension.class);
 // 组织扩展定义并建表后，同样可通过 findOrganizationExtension 读取。
 ```
 

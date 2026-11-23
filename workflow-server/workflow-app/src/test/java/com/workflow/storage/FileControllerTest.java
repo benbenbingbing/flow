@@ -14,7 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.entity.port.EntityFileUploadAuthorizationPort;
+import com.workflow.port.entity.EntityFileUploadPermissionPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
@@ -257,8 +257,8 @@ class FileControllerTest {
         FileStorageFactory factory = mock(FileStorageFactory.class);
         StoredFileAccessService accessService =
                 mock(StoredFileAccessService.class);
-        EntityFileUploadAuthorizationPort authorizer =
-                mock(EntityFileUploadAuthorizationPort.class);
+        EntityFileUploadPermissionPort authorizer =
+                mock(EntityFileUploadPermissionPort.class);
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "report.txt",
@@ -294,8 +294,8 @@ class FileControllerTest {
         FileStorageFactory factory = mock(FileStorageFactory.class);
         StoredFileAccessService accessService =
                 mock(StoredFileAccessService.class);
-        EntityFileUploadAuthorizationPort authorizer =
-                mock(EntityFileUploadAuthorizationPort.class);
+        EntityFileUploadPermissionPort authorizer =
+                mock(EntityFileUploadPermissionPort.class);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "report.txt", "text/plain", new byte[] {1});
         doThrow(new ForbiddenException("没有权限"))
@@ -318,10 +318,10 @@ class FileControllerTest {
         FileStorageFactory factory = mock(FileStorageFactory.class);
         StoredFileAccessService accessService =
                 mock(StoredFileAccessService.class);
-        EntityFileUploadAuthorizationPort first =
-                mock(EntityFileUploadAuthorizationPort.class);
-        EntityFileUploadAuthorizationPort second =
-                mock(EntityFileUploadAuthorizationPort.class);
+        EntityFileUploadPermissionPort first =
+                mock(EntityFileUploadPermissionPort.class);
+        EntityFileUploadPermissionPort second =
+                mock(EntityFileUploadPermissionPort.class);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "report.txt", "text/plain", new byte[] {1});
 

@@ -1,7 +1,9 @@
 package com.workflow.biz.project.identity;
 
-import com.workflow.contracts.identity.model.*;
-import com.workflow.contracts.identity.port.IdentityWritePort;
+import com.workflow.port.system.SysUserPort;
+import com.workflow.port.system.SysOrganizationPort;
+
+import com.workflow.port.system.identity.model.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.List;
@@ -10,7 +12,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ProjectIdentityImporter {
-    private final IdentityWritePort identities;
+    private final SysUserPort users;
+    private final SysOrganizationPort organizations;
     private static final String SOURCE = "project-directory";
 
     /**
@@ -33,7 +36,7 @@ public class ProjectIdentityImporter {
     /** 显式指定本次提交的主表字段组，传 null 保留现值，携带时整组替换。 */
     public IdentitySaveResult saveUser(DirectoryUser user, String rawDataJson, IdentityMainFields mainFields) {
         // 零散可查询资料写主表槽位；独立业务扩展仍按原注册及建表约定接入。
-        return identities.saveUser(new UserSaveModel(new ExternalIdentityKey(SOURCE, user.externalId()), user.version(),
+        return users.saveUser(new UserSaveModel(new ExternalIdentityKey(SOURCE, user.externalId()), user.version(),
                 new UserBaseData(user.account(), user.displayName(), user.email(), user.phone(), null,
                         user.organizationId(), user.departmentId(), user.enabled()), List.of(), rawDataJson, mainFields));
     }
@@ -50,7 +53,7 @@ public class ProjectIdentityImporter {
 
     /** 显式指定本次提交的主表字段组，字段用途由业务约定，传 null 保留现值。 */
     public IdentitySaveResult saveOrganization(DirectoryOrganization unit, String rawDataJson, IdentityMainFields mainFields) {
-        return identities.saveOrganization(new OrganizationSaveModel(new ExternalIdentityKey(SOURCE, unit.externalId()), unit.version(),
+        return organizations.saveOrganization(new OrganizationSaveModel(new ExternalIdentityKey(SOURCE, unit.externalId()), unit.version(),
                 new OrganizationBaseData(unit.code(), unit.name(), unit.type(), unit.parentId(), null,
                         null, null, null, null, 0, unit.enabled()), List.of(), rawDataJson, mainFields));
     }

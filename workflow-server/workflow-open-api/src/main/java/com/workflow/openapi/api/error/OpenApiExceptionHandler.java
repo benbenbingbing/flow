@@ -1,7 +1,7 @@
 package com.workflow.openapi.api.error;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.embed.error.EmbedBoundaryFailure;
+import com.workflow.port.embed.error.EmbedBoundaryFailure;
 import com.workflow.openapi.api.annotation.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.response.OpenApiResponse;
 import com.workflow.openapi.infrastructure.web.OpenRequestTrace;

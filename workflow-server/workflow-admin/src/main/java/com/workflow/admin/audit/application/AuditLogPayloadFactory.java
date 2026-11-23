@@ -1,9 +1,9 @@
 package com.workflow.admin.audit.application;
 
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.model.AuditSourcePointer;
-import com.workflow.contracts.audit.context.OperationContext;
-import com.workflow.contracts.audit.context.OperationContextHolder;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.audit.model.AuditSourcePointer;
+import com.workflow.port.platform.audit.context.OperationContext;
+import com.workflow.port.platform.audit.context.OperationContextHolder;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.infrastructure.AuditDiffCalculator;
 import com.workflow.admin.audit.infrastructure.AuditPayloadSanitizer;

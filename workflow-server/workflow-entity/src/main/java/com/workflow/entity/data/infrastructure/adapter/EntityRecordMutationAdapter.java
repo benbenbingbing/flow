@@ -1,13 +1,13 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.data.application.EntityMutationSystemFields;
-import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.mutation.application.EntityMutationIsolationExecutor;
 import lombok.RequiredArgsConstructor;
@@ -25,9 +25,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class EntityRecordMutationAdapter
-        implements EntityRecordPort {
+        implements EntityProcessStatePort {
 
-    private final EntityMutationPort mutationPort;
+    private final TrustedEntityRecordMutationPort mutationPort;
     private final EntityMutationIsolationExecutor isolationExecutor;
     private final EntityRecordTeamService teamService;
     private final com.workflow.entity.definition.application.EntityStatusService statusService;

@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.provisioning.application;
 
-import com.workflow.contracts.identity.error.IdentityWriteException;
-import com.workflow.contracts.identity.model.*;
+import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.identity.model.*;
 import lombok.RequiredArgsConstructor;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
 import org.springframework.stereotype.Component;

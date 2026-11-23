@@ -64,7 +64,7 @@ class ArchitectureBoundaryTest {
     @ArchTest
     static final ArchRule CORE_CONTRACTS_ARE_FRAMEWORK_FREE =
             noClasses()
-                    .that().resideInAPackage("com.workflow.contracts..")
+                    .that().resideInAnyPackage("com.workflow.port..", "com.workflow.contracts..")
                     .should().dependOnClassesThat().resideInAnyPackage(
                             "org.springframework..",
                             "com.baomidou..",
@@ -90,9 +90,10 @@ class ArchitectureBoundaryTest {
 
     @ArchTest
     static final ArchRule SHARED_CONTRACTS_NEVER_REFERENCE_IMPLEMENTATION =
-            noClasses().that().resideInAPackage("com.workflow.contracts..")
+            noClasses().that().resideInAnyPackage("com.workflow.port..", "com.workflow.contracts..")
                     .should().dependOnClassesThat(
                             JavaClass.Predicates.resideInAPackage("com.workflow..")
+                                    .and(JavaClass.Predicates.resideOutsideOfPackage("com.workflow.port.."))
                                     .and(JavaClass.Predicates.resideOutsideOfPackage("com.workflow.contracts..")));
 
     @ArchTest

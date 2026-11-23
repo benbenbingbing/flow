@@ -2,7 +2,7 @@ package com.workflow.service;
 
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.extension.action.application.FlowActionCatalogService;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.admin.extension.action.api.response.FlowActionHandlerOption;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinition;
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionMapper;

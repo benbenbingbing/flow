@@ -12,12 +12,12 @@ import com.workflow.admin.auth.application.LoginThrottleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.admin.auth.api.request.ChangePasswordDTO;
 import com.workflow.admin.auth.api.request.LoginDTO;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -59,7 +59,7 @@ public class AuthController {
     /** 用户查询、密码更新和会话全量撤销服务。 */
     private final SysUserService userService;
     /** 认证操作审计端口。 */
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     /** 登录失败频率限制服务。 */
     private final LoginThrottleService loginThrottleService;
     /** 登录来源地址解析器。 */

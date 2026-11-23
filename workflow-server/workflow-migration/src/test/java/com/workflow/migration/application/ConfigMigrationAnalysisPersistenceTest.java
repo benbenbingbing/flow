@@ -1,7 +1,7 @@
 package com.workflow.migration.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -89,7 +89,7 @@ class ConfigMigrationAnalysisPersistenceTest {
     @Mock
     private SysGroupMapper groupMapper;
     @Mock
-    private FlowActionCatalogPort flowActionCatalogPort;
+    private ProcessActionDefinitionPort flowActionCatalogPort;
     @Spy
     private ObjectMapper objectMapper =
             new ObjectMapper().findAndRegisterModules();

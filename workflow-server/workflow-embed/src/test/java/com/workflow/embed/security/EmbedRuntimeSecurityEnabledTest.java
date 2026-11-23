@@ -13,7 +13,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
+import com.workflow.port.embed.EmbedRequestUserScopePort;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit;
@@ -115,14 +115,14 @@ class EmbedRuntimeSecurityEnabledTest {
         }
 
         @Bean
-        EmbedRequestUserContextPort userContextPort() {
+        EmbedRequestUserScopePort userContextPort() {
             return (userId, username, sessionId) -> () -> { };
         }
 
         @Bean
         EmbedSessionAuthenticationFilter embedSessionAuthenticationFilter(
                 EmbedSessionAuthenticationService authenticationService,
-                EmbedRequestUserContextPort userContextPort,
+                EmbedRequestUserScopePort userContextPort,
                 EmbedTrafficControlPort trafficControlPort,
                 com.fasterxml.jackson.databind.ObjectMapper objectMapper,
                 EmbedLifecycleMetrics metrics,

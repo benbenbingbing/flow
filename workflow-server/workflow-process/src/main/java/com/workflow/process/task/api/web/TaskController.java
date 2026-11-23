@@ -30,7 +30,7 @@ public class TaskController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+    private com.workflow.port.process.ProcessInstancePort instanceCommands;
 
 
     private final TaskService taskService;
@@ -174,7 +174,7 @@ public class TaskController {
         if (currentUser == null || currentUser.isBlank()) {
             currentUser = UserContext.getUsername();
         }
-        instanceCommands.withdraw(new com.workflow.contracts.process.instance.model.WithdrawProcessCommand(
+        instanceCommands.withdraw(new com.workflow.port.process.instance.model.WithdrawProcessCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(params.get("requestId")), processInstanceId, reason));
         return Result.success();
     }
@@ -199,9 +199,9 @@ public class TaskController {
      */
     @PostMapping("/resubmit")
     public Result<Void> resubmitTask(@RequestBody Map<String, Object> params) {
-        taskCommands.resubmit(new com.workflow.contracts.process.task.model.ResubmitTaskCommand(
+        taskCommands.resubmit(new com.workflow.port.process.task.model.ResubmitTaskCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta((String) params.get("requestId")),
-                (String) params.get("taskId"), new com.workflow.contracts.process.task.model.TaskSubmission(
+                (String) params.get("taskId"), new com.workflow.port.process.task.model.TaskSubmission(
                         (String) params.get("comment"), "重新提交", (Map<String, Object>) params.get("formData"), null, null)));
         return Result.success();
     }

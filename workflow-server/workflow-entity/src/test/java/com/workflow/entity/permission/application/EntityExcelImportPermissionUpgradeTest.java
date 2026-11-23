@@ -6,7 +6,7 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.S
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMenuMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRoleMenu;
-import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
+import com.workflow.port.platform.WorkflowBootstrapJobPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -109,7 +109,7 @@ class EntityExcelImportPermissionUpgradeTest {
         SysRole role = new SysRole(); role.setId(id); role.setRoleCode(code); return role;
     }
 
-    private static final class CompletedJobs implements BootstrapJobPort {
+    private static final class CompletedJobs implements WorkflowBootstrapJobPort {
         private final Set<String> completed;
         private CompletedJobs(Set<String> completed) { this.completed = new HashSet<>(completed); }
         public <T> Optional<T> executeOnce(String name, int version, Supplier<T> action) {

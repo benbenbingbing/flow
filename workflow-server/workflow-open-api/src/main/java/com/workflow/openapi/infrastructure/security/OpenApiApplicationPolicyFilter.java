@@ -4,12 +4,12 @@ import com.workflow.openapi.application.security.IntegrationRateLimitService;
 import com.workflow.openapi.application.security.OpenApiConcurrencyLeaseService;
 import com.workflow.openapi.security.IntegrationClientNetworkPolicy;
 
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.error.RateLimitExceededException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
@@ -40,7 +40,7 @@ public class OpenApiApplicationPolicyFilter
     private final IntegrationRateLimitService rateLimitService;
     private final OpenApiConcurrencyLeaseService concurrencyService;
     private final OpenApiSecurityResponseWriter responseWriter;
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
 
     /**
      * 初始化打开API应用策略过滤，保存构造参数供后续方法使用。
@@ -60,7 +60,7 @@ public class OpenApiApplicationPolicyFilter
             IntegrationRateLimitService rateLimitService,
             OpenApiConcurrencyLeaseService concurrencyService,
             OpenApiSecurityResponseWriter responseWriter,
-            SystemAuditPort auditPort) {
+            SystemOperationLogPort auditPort) {
         this.applicationMapper = applicationMapper;
         this.networkPolicy = networkPolicy;
         this.addressResolver = addressResolver;

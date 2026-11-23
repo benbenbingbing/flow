@@ -1,17 +1,19 @@
 package com.workflow.entity.mutation.application;
 
+import com.workflow.entity.data.infrastructure.adapter.EntitySubmissionAdapter;
+
 import com.workflow.entity.version.application.EntityRecordVersionService;
 import com.workflow.entity.version.application.EntityRelatedVersionCaptureService;
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.application.EntityAggregateWriter;
@@ -301,7 +303,7 @@ class EntityMutationTransactionExecutorTest {
         when(queryService.findVisibleById("asset", "record-1")).thenReturn(before);
         var actions = mock(EntityDataActionService.class);
         var queryPort = new EntityRecordQueryAdapter(queryService, new ObjectMapper().findAndRegisterModules(),
-                new StaticListableBeanFactory(Map.of("actions", actions)).getBeanProvider(EntityDataActionService.class));
+                new StaticListableBeanFactory(Map.of("actions", actions)).getBeanProvider(EntityDataActionService.class), mock(EntitySubmissionAdapter.class));
         var expected = queryPort.findById("asset", "record-1").getRevision();
         var command = new EntityMutationCommand(base.operationId(), base.entityCode(), base.recordId(),
                 EntityMutationOperationType.UPDATE, base.payload(), base.context(), expected);

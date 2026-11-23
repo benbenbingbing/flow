@@ -1,7 +1,7 @@
 package com.workflow.entity.list.infrastructure.adapter;
 
-import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
+import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.port.embed.EmbedPublishedListDependencyPort;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -23,7 +23,7 @@ import org.springframework.util.StringUtils;
  */
 @Component
 public class EntityEmbedNativeListDependencyRuntimeAdapter
-        implements EmbedNativeListDependencyRuntimePort {
+        implements EmbedPublishedListDependencyPort {
 
     private static final Comparator<ListCoordinate> COORDINATE_ORDER =
             Comparator.comparing(ListCoordinate::entityCode)

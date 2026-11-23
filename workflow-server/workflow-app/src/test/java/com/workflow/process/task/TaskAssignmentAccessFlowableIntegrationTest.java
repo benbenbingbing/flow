@@ -7,9 +7,9 @@ import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGr
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.identity.model.IdentityUser;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
@@ -104,7 +104,7 @@ class TaskAssignmentAccessFlowableIntegrationTest {
         role.setStatus("0");
         role.setDeleted(0);
         when(roleMapper.selectRolesByUserId("alice-id")).thenReturn(List.of(role));
-        IdentityDirectoryPort identityDirectory = mock(IdentityDirectoryPort.class);
+        SysUserLookupPort identityDirectory = mock(SysUserLookupPort.class);
         IdentityUser alice = new IdentityUser("alice-id", "alice", "Alice", null, null);
         when(identityDirectory.findUser("alice-id")).thenReturn(Optional.of(alice));
         when(identityDirectory.findUser("alice")).thenReturn(Optional.of(alice));
@@ -126,7 +126,7 @@ class TaskAssignmentAccessFlowableIntegrationTest {
                 processTaskService, engine.getRepositoryService(),
                 mock(ProcessOperationLogMapper.class), mock(SysUserService.class),
                 mock(NodeFormSubmissionService.class),
-                mock(EntityRecordPort.class), mock(ProcessCcService.class),
+                mock(EntityProcessStatePort.class), mock(ProcessCcService.class),
                 mock(NextApproverOverrideService.class),
                 new MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(),
                         engine.getTaskService(), objectMapper),

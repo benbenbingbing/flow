@@ -4,10 +4,10 @@ import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -310,7 +310,7 @@ public class SysUserService {
         if (identityManagement != null) {
             identityManagement.protectUser(user, existing);
             if (existing != null && user.getStatus() != null) {
-                user.setStatus(identityManagement.status(com.workflow.contracts.identity.model.IdentityObjectType.USER, user.getId(), user.getStatus()));
+                user.setStatus(identityManagement.status(com.workflow.port.system.identity.model.IdentityObjectType.USER, user.getId(), user.getStatus()));
             } else if (existing != null) {
                 user.setStatus(existing.getStatus());
             }
@@ -367,7 +367,7 @@ public class SysUserService {
         }
         
         if (identityManagement != null) identityManagement.saveExtensions(
-                com.workflow.contracts.identity.model.IdentityObjectType.USER, user.getId(), user.getExtensions());
+                com.workflow.port.system.identity.model.IdentityObjectType.USER, user.getId(), user.getExtensions());
         return user;
     }
 
@@ -516,7 +516,7 @@ public class SysUserService {
         
         // 逻辑删除用户
         userMapper.deleteById(id);
-        if (identityManagement != null) identityManagement.retire(com.workflow.contracts.identity.model.IdentityObjectType.USER, id);
+        if (identityManagement != null) identityManagement.retire(com.workflow.port.system.identity.model.IdentityObjectType.USER, id);
         log.info("删除用户：{}", user.getUsername());
     }
     
@@ -540,7 +540,7 @@ public class SysUserService {
     public void updateStatus(String id, String status) {
         if (identityManagement != null) {
             identityManagement.lock();
-            status = identityManagement.status(com.workflow.contracts.identity.model.IdentityObjectType.USER, id, status);
+            status = identityManagement.status(com.workflow.port.system.identity.model.IdentityObjectType.USER, id, status);
         }
         // 不能禁用超级管理员
         if ("1".equals(status)) {

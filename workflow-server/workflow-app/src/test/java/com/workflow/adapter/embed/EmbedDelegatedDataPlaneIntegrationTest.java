@@ -21,7 +21,7 @@ import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
+import com.workflow.port.embed.EmbedRequestUserScopePort;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
@@ -170,7 +170,7 @@ class EmbedDelegatedDataPlaneIntegrationTest {
         }
 
         @Bean
-        EmbedRequestUserContextPort userContextPort() {
+        EmbedRequestUserScopePort userContextPort() {
             return (userId, username, sessionId) -> {
                 UserContext.setCurrentUser(userId, username, sessionId);
                 return UserContext::clear;
@@ -214,7 +214,7 @@ class EmbedDelegatedDataPlaneIntegrationTest {
         @Bean
         EmbedSessionAuthenticationFilter embedSessionAuthenticationFilter(
                 EmbedSessionAuthenticationService authenticationService,
-                EmbedRequestUserContextPort userContextPort,
+                EmbedRequestUserScopePort userContextPort,
                 EmbedTrafficControlPort trafficControlPort,
                 ObjectMapper objectMapper,
                 EmbedLifecycleMetrics metrics,

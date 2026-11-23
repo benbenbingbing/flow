@@ -5,7 +5,7 @@ import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import org.junit.jupiter.api.Test;

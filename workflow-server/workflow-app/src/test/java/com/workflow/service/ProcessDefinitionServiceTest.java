@@ -7,7 +7,7 @@ import com.workflow.process.configuration.infrastructure.persistence.mapper.Assi
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 import com.workflow.process.definition.application.port.FlowActionDesignPort;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 

@@ -2,14 +2,14 @@ package com.workflow.process.assignment.extension;
 
 import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 
-import com.workflow.contracts.entity.port.EntityUserReferencePort;
-import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
-import com.workflow.contracts.entity.port.EntityUserReferencePort.UserReferenceField;
-import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.port.entity.EntityUserFieldPort;
+import com.workflow.port.entity.EntityUserFieldPort.EntityUserReferenceException;
+import com.workflow.port.entity.EntityUserFieldPort.UserReferenceField;
+import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,13 +29,13 @@ import static org.mockito.Mockito.when;
 
 class EntityUserReferenceFieldPersonResolverTest {
 
-    private EntityUserReferencePort referencePort;
+    private EntityUserFieldPort referencePort;
     private EntityCodeCatalogPort entityCodeCatalogPort;
     private EntityUserReferenceFieldPersonResolver resolver;
 
     @BeforeEach
     void setUp() {
-        referencePort = mock(EntityUserReferencePort.class);
+        referencePort = mock(EntityUserFieldPort.class);
         entityCodeCatalogPort = mock(EntityCodeCatalogPort.class);
         resolver = new EntityUserReferenceFieldPersonResolver(
                 referencePort, entityCodeCatalogPort);
@@ -319,14 +319,14 @@ class EntityUserReferenceFieldPersonResolverTest {
 
     @Test
     void pathCardinalityComesFromTheEntirePathAndDeployedPathsRequireVersions() {
-        var paths = mock(com.workflow.contracts.entity.port.EntityUserPathPort.class);
+        var paths = mock(com.workflow.port.entity.EntityUserPathPort.class);
         org.springframework.test.util.ReflectionTestUtils.setField(resolver, "pathPort", paths);
         Map<String, Object> params = Map.of("schemaVersion", 2, "entityCode", "purchase_order", "path", List.of(
                 Map.of("type", "REFERENCE_FIELD", "code", "projects"),
                 Map.of("type", "REFERENCE_FIELD", "code", "owner")));
         var parsed = EntityUserReferenceFieldConfig.parse(params);
         when(paths.describe("purchase_order", parsed.path(), List.of())).thenReturn(
-                new com.workflow.contracts.entity.port.EntityUserPathPort.PathDescription("sys_user", true, true, List.of(), parsed.path()));
+                new com.workflow.port.entity.EntityUserPathPort.PathDescription("sys_user", true, true, List.of(), parsed.path()));
         assertThrows(IllegalArgumentException.class, () -> resolver.validate(validationRequest(
                 PersonResolveUsage.ASSIGNEE, "DIRECT", false, params)));
         resolver.validate(validationRequest(PersonResolveUsage.ASSIGNEE, "CANDIDATE", false, params));

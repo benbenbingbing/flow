@@ -22,7 +22,7 @@ class DatabaseAdapterBoundaryTest {
             .that().resideInAPackage("com.workflow.integration.database..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "com.workflow.entity..", "com.workflow.process..", "com.workflow.admin..",
-                    "com.workflow.contracts..", "com.workflow.core..", "com.workflow.config..",
+                    "com.workflow.port..", "com.workflow.contracts..", "com.workflow.core..", "com.workflow.config..",
                     "com.workflow.bootstrap..", "com.workflow.adapter..", "com.workflow.web..",
                     "com.workflow.observability..",
                     "com.workflow.migration..", "com.workflow.dbmigrator..", "java.sql..", "javax.sql..",
@@ -36,5 +36,5 @@ class DatabaseAdapterBoundaryTest {
 
     @ArchTest
     static final ArchRule DATABASE_STANDARD_IS_NOT_IN_CONTRACTS = noClasses()
-            .should().resideInAPackage("com.workflow.contracts.database..");
+            .should().resideInAnyPackage("com.workflow.port.database..", "com.workflow.contracts.database..");
 }

@@ -1,7 +1,7 @@
 package com.workflow.listener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
 import com.workflow.process.engine.infrastructure.flowable.EntityTransitionStatusListener;
@@ -23,7 +23,7 @@ class EntityTransitionStatusFlowableTest {
     static ProcessEngine engine;
     static JdbcTemplate jdbc;
     static TransactionTemplate transactions;
-    static final EntityMutationPort mutations = mock(EntityMutationPort.class);
+    static final TrustedEntityRecordMutationPort mutations = mock(TrustedEntityRecordMutationPort.class);
     static final ProcessBpmnPublishSanitizer sanitizer = new ProcessBpmnPublishSanitizer(new ObjectMapper());
     static boolean rejectWrite;
     static final com.workflow.process.status.application.ProcessStatusSyncPublisher ends = mock(com.workflow.process.status.application.ProcessStatusSyncPublisher.class);
@@ -41,7 +41,7 @@ class EntityTransitionStatusFlowableTest {
         engine = cfg.buildProcessEngine();
         jdbc.execute("CREATE TABLE status_write(id VARCHAR(100), status VARCHAR(30))");
         when(mutations.execute(any())).thenAnswer(call -> {
-            var command = (com.workflow.contracts.entity.mutation.model.EntityMutationCommand) call.getArgument(0);
+            var command = (com.workflow.port.entity.mutation.model.EntityMutationCommand) call.getArgument(0);
             jdbc.update("INSERT INTO status_write VALUES (?,?)", command.operationId(), command.payload().get("status"));
             if (rejectWrite) throw new IllegalStateException("模拟业务写入失败");
             return null;

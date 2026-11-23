@@ -16,10 +16,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
-import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchView;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
+import com.workflow.port.embed.EmbedLaunchPort;
+import com.workflow.port.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.port.embed.launch.model.EmbedLaunchView;
+import com.workflow.port.embed.EmbedPublishedFormPort;
 import com.workflow.embed.api.error.EmbedApiExceptionHandler;
 import com.workflow.embed.api.web.EmbedLaunchEntryController;
 import com.workflow.embed.api.web.EmbedNativeFormTargetController;
@@ -738,7 +738,7 @@ class EmbedOpenApiContractTest {
                         token.settings().getTokenEndpoint(), HttpMethod.POST),
                 new SuccessProof(Set.of("200"), null));
 
-        EmbedLaunchIssuePort issuePort = mock(EmbedLaunchIssuePort.class);
+        EmbedLaunchPort issuePort = mock(EmbedLaunchPort.class);
         OpenApplicationActorResolver actorResolver =
                 mock(OpenApplicationActorResolver.class);
         Authentication authentication = mock(Authentication.class);
@@ -917,8 +917,8 @@ class EmbedOpenApiContractTest {
             Map<OperationKey, SuccessProof> statuses) {
         EmbedNativeFormTargetResolver targetResolver =
                 mock(EmbedNativeFormTargetResolver.class);
-        EmbedNativeFormRuntimePort nativeRuntimePort =
-                mock(EmbedNativeFormRuntimePort.class);
+        EmbedPublishedFormPort nativeRuntimePort =
+                mock(EmbedPublishedFormPort.class);
         EmbedNativeFormTarget target = new EmbedNativeFormTarget(
                 "work_order", "form-1", "form-release-1", 4,
                 "supplier-work-orders", "list-release-1", 3,

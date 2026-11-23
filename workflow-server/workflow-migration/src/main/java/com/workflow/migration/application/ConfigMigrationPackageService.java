@@ -10,11 +10,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
 import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -101,14 +101,14 @@ public class ConfigMigrationPackageService {
     private final SysRoleMapper roleMapper;
     private final SysOrganizationMapper organizationMapper;
     private final SysGroupMapper groupMapper;
-    private final FlowActionCatalogPort flowActionCatalogPort;
+    private final ProcessActionDefinitionPort flowActionCatalogPort;
     private final ConfigMigrationPackageDocumentSupport documents;
     private final ConfigMigrationAssignmentTargetValidator assignmentTargetValidator;
     private final DatabaseQueryDialect queryDialect;
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.entity.definition.application.EntityPublishedSnapshotService userPathSnapshots;
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.contracts.migration.port.EntityExcelMigrationPort excelConfigurations;
+    private com.workflow.port.migration.EntityExcelMigrationPort excelConfigurations;
     /**
      * 生成配置导出包。
      *
@@ -993,7 +993,7 @@ public class ConfigMigrationPackageService {
             String reason = null;
             try {
                 resolved = isDependencyResolved(dependency, type, targetKey, packageAssets);
-            } catch (IllegalArgumentException | com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException exception) {
+            } catch (IllegalArgumentException | com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException exception) {
                 resolved = false;
                 reason = exception.getMessage();
             }
@@ -1009,7 +1009,7 @@ public class ConfigMigrationPackageService {
 
     /** 包内 Excel 预检与其他引用一起形成阻断报告，实际写入前再次校验。 */
     private void validateExcelSnapshot(ConfigImportItem item, Map<String, Object> snapshot) {
-        if (!snapshot.containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION)) return;
+        if (!snapshot.containsKey(com.workflow.port.migration.EntityExcelMigrationPort.SECTION)) return;
         if (!ConfigMigrationAssetService.ENTITY.equals(item.getAssetType()) || excelConfigurations == null)
             throw new IllegalArgumentException("Excel 配置只能随普通实体资产迁移");
         excelConfigurations.validate(item.getBusinessKey(), snapshot);

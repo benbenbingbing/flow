@@ -28,10 +28,10 @@ import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.entity.ui.context.UiInvocationContext;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -711,7 +711,7 @@ class UiDataSourceExecutionAccessServiceTest {
         });
         UiEventRuntimeService runtime = new UiEventRuntimeService(
                 bindings, interfaces, new UiEventValueMapper(), mock(EntitySelectionRuntimeService.class),
-                mock(SystemAuditPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
+                mock(SystemOperationLogPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
                 mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper,
                 org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
 
@@ -1156,7 +1156,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 .thenReturn(new ResolvedEntityFormRelease(
                         form, "release-1", 1, false,
                         "release-1", effectiveHash, null,
-                        com.workflow.contracts.entity.ui.model.UiRuntimePurpose.NEW_INSTANCE));
+                        com.workflow.port.entity.ui.model.UiRuntimePurpose.NEW_INSTANCE));
 
         UiExtensionDefinition extension = definition("REGISTERED_PROVIDER", "GLOBAL", null);
         extension.setExtensionType("INTERFACE");
@@ -1193,7 +1193,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 bindings, interfaces, new UiEventValueMapper(),
                 new EntitySelectionRuntimeService(entityData, mock(SystemEntityService.class),
                         mock(SystemEntityReadService.class), context.definitionMapper(), objectMapper),
-                mock(SystemAuditPort.class), permissions, mock(EntityFormActionService.class),
+                mock(SystemOperationLogPort.class), permissions, mock(EntityFormActionService.class),
                 mock(UiEventExecutionReceiptService.class), entityData, objectMapper,
                 org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
         UiEventExecuteRequest request = new UiEventExecuteRequest();

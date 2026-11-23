@@ -7,8 +7,9 @@ import com.workflow.admin.identity.position.api.response.PositionViews;
 import com.workflow.admin.identity.position.application.PositionAssignmentQueryService;
 import com.workflow.admin.identity.position.application.PositionAssignmentService;
 import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
-import com.workflow.contracts.identity.port.IdentityMembershipManagementPort;
+import com.workflow.port.system.CurrentActorPort;
+import com.workflow.port.system.SysPositionAssignmentPort;
+import com.workflow.port.system.SysPositionAssignmentPort.PositionAssignment;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -18,13 +19,13 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
-public class IdentityMembershipManagementAdapter implements IdentityMembershipManagementPort {
+public class IdentityMembershipManagementAdapter implements SysPositionAssignmentPort {
     private static final String USER_VIEW = "system:user:view";
     private static final String USER_MANAGE = "system:user:manage";
     private static final String POSITION_VIEW = "system:position:view";
     private static final String POSITION_ASSIGN = "system:position:assign";
 
-    private final CurrentAuthorizationPort authorization;
+    private final CurrentActorPort authorization;
     private final SysUserService users;
     private final SysRoleMapper roles;
     private final SysGroupService groups;
@@ -32,18 +33,17 @@ public class IdentityMembershipManagementAdapter implements IdentityMembershipMa
     private final PositionAssignmentQueryService positionQueries;
 
     @Override
-    public List<PositionAssignment> positionsOfUser(String userId) {
+    public List<PositionAssignment> listAssignmentsByUser(String userId) {
         require(POSITION_VIEW);
         return positionQueries.byUser(userId).assignments().stream().map(this::project).toList();
     }
 
     @Override
-    public List<PositionAssignment> positionsInOrganization(String organizationId) {
+    public List<PositionAssignment> listAssignmentsInOrganization(String organizationId) {
         require(POSITION_VIEW);
         return positionQueries.byOrganization(organizationId).assignments().stream().map(this::project).toList();
     }
 
-    @Override
     @Transactional(rollbackFor = Exception.class)
     public void replaceUserRoles(List<String> userIds, List<String> roleIds) {
         require(USER_VIEW, USER_MANAGE);
@@ -55,7 +55,6 @@ public class IdentityMembershipManagementAdapter implements IdentityMembershipMa
         users.batchAssignRoles(List.copyOf(userIds), distinctRoles);
     }
 
-    @Override
     public void replaceGroupMembers(String groupId, List<String> userIds) {
         require(USER_VIEW, USER_MANAGE);
         groups.saveGroupUsers(groupId, List.copyOf(userIds));

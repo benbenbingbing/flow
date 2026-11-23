@@ -8,9 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit.Operator;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Surface;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -145,7 +145,7 @@ class EmbedLifecycleAuditTest {
     }
 
     private static EmbedLifecycleAudit audit(
-            SystemAuditPort port, MeterRegistry registry) {
+            SystemOperationLogPort port, MeterRegistry registry) {
         @SuppressWarnings("unchecked")
         ObjectProvider<MeterRegistry> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(registry);

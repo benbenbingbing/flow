@@ -1,11 +1,11 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.model.EntitySubmissionCommand;
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.mutation.model.EntitySubmissionCommand;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -70,6 +70,25 @@ class EntitySubmissionAdapterTest {
 
         assertEquals("ENTITY_SUBMISSION_PROCESS_NOT_STARTED", conflict.getErrorCode());
         verify(receipts, never()).complete(any(), any());
+    }
+
+    @Test
+    void forwardsExpectedRevisionSeparatelyFromFormDataAndBindsItToReceipt() {
+        String revision = "a".repeat(64);
+        var command = new EntitySubmissionCommand("update-1", EntitySubmissionCommand.Intent.UPDATE,
+                "asset", "record-1", null, null, null, null, Map.of("name", "new"), revision);
+        when(actors.current()).thenReturn(new CurrentActor("u1", "alice"));
+        when(actions.updateFromPort(eq("asset"), eq("record-1"), isNull(), anyMap(), anyString(), eq(revision)))
+                .thenReturn(saved(null));
+
+        assertEquals("record-1", adapter.submit(command).getId());
+
+        var envelope = ArgumentCaptor.forClass(EntityMutationCommand.class);
+        verify(receipts).acquire(envelope.capture());
+        assertEquals(revision, envelope.getValue().expectedRevision());
+        assertFalse(envelope.getValue().payload().containsKey("expectedRevision"));
+        verify(actions).updateFromPort(eq("asset"), eq("record-1"), isNull(),
+                argThat(form -> !form.containsKey("expectedRevision")), anyString(), eq(revision));
     }
 
     private EntitySubmissionCommand submission() {

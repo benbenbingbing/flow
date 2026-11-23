@@ -1,6 +1,6 @@
 package com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper;
 
-import com.workflow.contracts.identity.model.*;
+import com.workflow.port.system.identity.model.*;
 import org.apache.ibatis.annotations.*;
 import java.util.Map;
 import java.util.List;

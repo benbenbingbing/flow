@@ -19,13 +19,13 @@ import com.workflow.entity.ui.application.UiViewCompositionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
-import com.workflow.contracts.audit.context.OperationContext;
-import com.workflow.contracts.audit.context.OperationContextHolder;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
+import com.workflow.port.platform.audit.context.OperationContext;
+import com.workflow.port.platform.audit.context.OperationContextHolder;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
@@ -1606,7 +1606,7 @@ class UiConfigReleaseServiceTest {
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
-                mock(MigrationAssetPort.class));
+                mock(ConfigMigrationAssetPort.class));
         attachViewCompositionService(service);
 
         Map<String, Object> legacySnapshot = objectMapper.convertValue(
@@ -1842,7 +1842,7 @@ class UiConfigReleaseServiceTest {
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
-                mock(MigrationAssetPort.class));
+                mock(ConfigMigrationAssetPort.class));
         attachViewCompositionService(service);
 
         UiConfigDiffDTO diff = service.diff(
@@ -2294,7 +2294,7 @@ class UiConfigReleaseServiceTest {
     @Test
     void projectsUiReleaseAuditWithNativeSourcePointer() {
         TestContext context = context();
-        SystemAuditPort auditPort = mock(SystemAuditPort.class);
+        SystemOperationLogPort auditPort = mock(SystemOperationLogPort.class);
         ReflectionTestUtils.setField(
                 context.service(), "auditPort", auditPort);
 
@@ -2460,7 +2460,7 @@ class UiConfigReleaseServiceTest {
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
-                mock(MigrationAssetPort.class));
+                mock(ConfigMigrationAssetPort.class));
         ReflectionTestUtils.setField(service, "formPublishedMapper",
                 mock(com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPublishedMapper.class));
         UiViewCompositionService viewCompositionService =

@@ -14,10 +14,10 @@ class GlobalSettingReadAdapterTest {
     void exposesOnlyRegisteredPublicValues() {
         var settings = mock(GlobalSettingService.class);
         var port = new GlobalSettingReadAdapter(new GlobalSettingRegistry(), settings);
-        assertThrows(ForbiddenException.class, () -> port.readPublicSystemValue(GlobalSettingRegistry.MIGRATION_SIGNING_KEY));
+        assertThrows(ForbiddenException.class, () -> port.getPublicSetting(GlobalSettingRegistry.MIGRATION_SIGNING_KEY));
         verifyNoInteractions(settings);
 
         when(settings.readSystemValue(GlobalSettingRegistry.MOBILE_THEME)).thenReturn(TextNode.valueOf("public"));
-        assertEquals("\"public\"", port.readPublicSystemValue(GlobalSettingRegistry.MOBILE_THEME));
+        assertEquals("\"public\"", port.getPublicSetting(GlobalSettingRegistry.MOBILE_THEME));
     }
 }

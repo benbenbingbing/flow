@@ -2,7 +2,7 @@ package com.workflow.entity.form.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.form.api.response.FormActionRuntimeDTO;
 import com.workflow.entity.form.application.EntityFormActionService;

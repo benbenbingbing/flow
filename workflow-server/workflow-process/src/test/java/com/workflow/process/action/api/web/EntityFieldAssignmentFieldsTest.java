@@ -2,7 +2,7 @@ package com.workflow.process.action.api.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.infrastructure.adapter.EntityCodeCatalogAdapter;
@@ -46,7 +46,7 @@ class EntityFieldAssignmentFieldsTest {
         when(histories.findLatestByEntityCode("legacy_entity")).thenReturn(history);
         var fields = new EntityFieldAssignmentFlowActionHandler(new EntityCodeCatalogAdapter(definitions),
                 new EntityPublishedSnapshotService(histories, json), new EntityFieldValidationRuleService(json),
-                dictionaries, mock(EntityMutationPort.class), json);
+                dictionaries, mock(TrustedEntityRecordMutationPort.class), json);
         controller = new FlowActionController(mock(FlowActionService.class), mock(FlowActionTimingCatalog.class),
                 mock(FlowActionFailureStrategyCatalog.class), fields);
         http = MockMvcBuilders.standaloneSetup(controller).build();

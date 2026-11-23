@@ -2,11 +2,11 @@ package com.workflow.process.action.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.model.AuditModule;
-import com.workflow.contracts.audit.model.AuditRiskLevel;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.audit.model.AuditModule;
+import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.process.action.api.request.FlowActionSaveRequest;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
@@ -32,7 +32,7 @@ public class FlowActionService {
     
     private final FlowActionMapper flowActionMapper;
     private final FlowActionConfigurationValidator configurationValidator;
-    private final FlowActionCatalogPort definitionService;
+    private final ProcessActionDefinitionPort definitionService;
     
     /**
      * 查询流程配置下所有草稿动作

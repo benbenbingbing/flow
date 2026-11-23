@@ -2,9 +2,9 @@ package com.workflow.embed.application.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.OperationNotAllowedException;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort;
+import com.workflow.port.embed.EmbedFormPermissionPort.OperationNotAllowedException;
+import com.workflow.port.embed.EmbedFormPermissionPort.Target;
+import com.workflow.port.embed.EmbedFormPermissionPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -44,9 +44,9 @@ public class EmbedNativeFormTargetResolver {
             "VIEW", "RECORD_VIEW");
 
     private final EmbedRuntimeReleasePort releasePort;
-    private final EmbedNativeFormAccessPort accessPort;
+    private final EmbedFormPermissionPort accessPort;
     private final ObjectMapper objectMapper;
-    private final com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort formRuntimePort;
+    private final com.workflow.port.embed.EmbedPublishedFormPort formRuntimePort;
 
     /**
      * 初始化嵌入式原生表单目标解析器，保存构造参数供后续方法使用。
@@ -58,8 +58,8 @@ public class EmbedNativeFormTargetResolver {
      */
     public EmbedNativeFormTargetResolver(
             EmbedRuntimeReleasePort releasePort,
-            EmbedNativeFormAccessPort accessPort,
-            com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort formRuntimePort,
+            EmbedFormPermissionPort accessPort,
+            com.workflow.port.embed.EmbedPublishedFormPort formRuntimePort,
             ObjectMapper objectMapper) {
         this.releasePort = releasePort;
         this.accessPort = accessPort;

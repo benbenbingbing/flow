@@ -20,7 +20,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPubl
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormPublished;
 import com.workflow.entity.ui.application.UiEventBindingService;
-import com.workflow.contracts.migration.port.ExcelConfigurationPublicationPort;
+import com.workflow.port.migration.ExcelConfigurationPublicationPort;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.BeforeEach;

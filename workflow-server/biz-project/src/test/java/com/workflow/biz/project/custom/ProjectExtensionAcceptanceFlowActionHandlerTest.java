@@ -2,7 +2,7 @@ package com.workflow.biz.project.custom;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
+import com.workflow.port.process.FlowActionContextPort;
 import com.workflow.biz.project.service.ProjectEntityMutationExecutor;
 import org.junit.jupiter.api.Test;
 
@@ -58,8 +58,8 @@ class ProjectExtensionAcceptanceFlowActionHandlerTest {
                 "visibleMessage", "技术复核扩展已执行",
                 "writeBack", true,
                 "legacyField", "ignored"));
-        FlowActionRuntimePort runtimeAccess =
-                mock(FlowActionRuntimePort.class);
+        FlowActionContextPort runtimeAccess =
+                mock(FlowActionContextPort.class);
         when(runtimeAccess.convertParams(
                 anyMap(),
                 eq(ProjectExtensionAcceptanceFlowActionHandler
@@ -114,8 +114,8 @@ class ProjectExtensionAcceptanceFlowActionHandlerTest {
                 new FlowActionContext();
         context.setTriggerTiming("NODE_COMPLETED");
         context.setEntityCode("other");
-        FlowActionRuntimePort runtimeAccess =
-                mock(FlowActionRuntimePort.class);
+        FlowActionContextPort runtimeAccess =
+                mock(FlowActionContextPort.class);
         when(runtimeAccess.convertParams(
                 anyMap(),
                 eq(ProjectExtensionAcceptanceFlowActionHandler

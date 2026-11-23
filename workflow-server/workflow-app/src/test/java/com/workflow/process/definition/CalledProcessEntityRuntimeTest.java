@@ -1,8 +1,8 @@
 package com.workflow.process.definition;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.model.EntityRecordData;
-import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.port.entity.model.EntityRecordData;
+import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -37,7 +37,7 @@ class CalledProcessEntityRuntimeTest {
     private final ObjectMapper json = new ObjectMapper();
     private final ProcessDefinitionConfigMapper configs = mock(ProcessDefinitionConfigMapper.class);
     private final EntityDefinitionMapper entities = mock(EntityDefinitionMapper.class);
-    private final EntityRecordPort records = mock(EntityRecordPort.class);
+    private final EntityProcessStatePort records = mock(EntityProcessStatePort.class);
     private final ProcessEntityRecordReader queries = mock(ProcessEntityRecordReader.class);
     private final EntityProcessLinkMapper links = mock(EntityProcessLinkMapper.class);
     private final ProcessEntityStatusPolicy statuses = mock(ProcessEntityStatusPolicy.class);

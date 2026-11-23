@@ -5,7 +5,7 @@ import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
 import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
-import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectMemberChangeService;
 import org.springframework.stereotype.Component;
 

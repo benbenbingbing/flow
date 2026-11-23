@@ -1,26 +1,31 @@
 package com.workflow.admin.security.context;
 
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.admin.authorization.application.PermissionUtil;
+import lombok.RequiredArgsConstructor;
+
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import org.springframework.stereotype.Component;
 
-/**
- * 使用现有认证上下文适配跨模块当前操作人端口。
- *
- * <p>兼容期保留原 Bean 类型与默认 Bean 名，避免已有按实现类类型注入、按 Bean 名查找或
- * 已编译插件发生回归。业务调用方应注入 {@link CurrentActorPort}，不依赖本实现或
- * 静态 UserContext，从而将认证上下文的存储方式限制在管理模块内。</p>
- */
+/** 使用认证上下文与现有角色判定实现跨模块身份和权限查询。 */
 @Component("userContextCurrentActorProvider")
+@RequiredArgsConstructor
 public class UserContextCurrentActorProvider implements CurrentActorPort {
+    private final CurrentUserRoleService roles;
 
-    /**
-     * 处理当前，并将结果传给后续步骤。
-     *
-     * @return 处理后的当前结果，供调用方继续处理
-     */
     @Override
     public CurrentActor current() {
         return new CurrentActor(UserContext.getUserId(), UserContext.getUsername());
+    }
+
+    @Override
+    public boolean isAdministrator() {
+        return roles.isAdministrator();
+    }
+
+    @Override
+    public boolean hasPermission(String permissionCode) {
+        return permissionCode != null && !permissionCode.isBlank() && PermissionUtil.hasPermission(permissionCode);
     }
 }

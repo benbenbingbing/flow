@@ -4,8 +4,8 @@ import com.workflow.contracts.process.assignment.model.PersonPrincipal;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
-import com.workflow.contracts.identity.port.IdentityMembershipPort;
-import com.workflow.contracts.process.assignment.port.PersonResolverRegistrationPort;
+import com.workflow.port.system.ProcessCandidateMemberPort;
+import com.workflow.port.process.ProcessAssigneeResolverPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -23,8 +23,8 @@ import java.util.List;
 public class PersonResolverRuntimeService {
 
     private final List<PersonResolverProvider> resolvers;
-    private final IdentityMembershipPort memberships;
-    private final PersonResolverRegistrationPort registrations;
+    private final ProcessCandidateMemberPort memberships;
+    private final ProcessAssigneeResolverPort registrations;
 
     /**
      * 判断是否支持人员解析器运行时；判断结果决定调用方的后续分支。

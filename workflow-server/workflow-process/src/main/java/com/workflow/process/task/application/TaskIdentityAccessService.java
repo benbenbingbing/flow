@@ -3,8 +3,8 @@ package com.workflow.process.task.application;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.model.IdentityUser;
-import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.TaskService;
@@ -27,7 +27,7 @@ public class TaskIdentityAccessService {
     private final TaskService taskService;
     private final SysGroupMapper groupMapper;
     private final SysRoleMapper roleMapper;
-    private final IdentityDirectoryPort identityDirectoryPort;
+    private final SysUserLookupPort identityDirectoryPort;
 
     /**
      * 校验当前登录人能否查看、认领或办理运行中的任务，不执行认领或其他写操作。

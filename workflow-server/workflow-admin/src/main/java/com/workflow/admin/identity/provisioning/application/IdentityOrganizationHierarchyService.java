@@ -3,9 +3,9 @@ package com.workflow.admin.identity.provisioning.application;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.identity.error.IdentityWriteException;
-import com.workflow.contracts.identity.model.ExternalIdentityKey;
-import com.workflow.contracts.identity.model.IdentityObjectType;
+import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.identity.model.ExternalIdentityKey;
+import com.workflow.port.system.identity.model.IdentityObjectType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

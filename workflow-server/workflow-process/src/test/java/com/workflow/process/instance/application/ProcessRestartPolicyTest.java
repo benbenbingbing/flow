@@ -36,11 +36,11 @@ class ProcessRestartPolicyTest {
     @Test void implicitStartAndOldRestartRequestCannotReserveAnotherGeneration() {
         when(links.selectLatestForUpdate("expense", "record")).thenReturn(link);
         var config = new com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig();
-        var initial = new com.workflow.contracts.process.model.ProcessStartRequest("config", "expense", "record",
+        var initial = new com.workflow.port.process.model.ProcessStartRequest("config", "expense", "record",
                 "EXP-1", "starter", "发起人", "PENDING", java.util.Map.of(), java.util.Map.of());
         assertThrows(com.workflow.core.error.BusinessConflictException.class,
                 () -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "reserveLink", initial, config));
-        var stale = new com.workflow.contracts.process.model.ProcessStartRequest("config", "expense", "record",
+        var stale = new com.workflow.port.process.model.ProcessStartRequest("config", "expense", "record",
                 "EXP-1", "starter", "发起人", "PENDING", java.util.Map.of(), java.util.Map.of(), "older");
         assertThrows(com.workflow.core.error.BusinessConflictException.class,
                 () -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(service, "reserveLink", stale, config));

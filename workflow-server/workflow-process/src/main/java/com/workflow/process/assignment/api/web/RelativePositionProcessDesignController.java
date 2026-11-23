@@ -1,10 +1,12 @@
 package com.workflow.process.assignment.api.web;
 
-import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
-import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.model.PositionDefinitionView;
-import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.port.system.SysPositionPort;
+
+import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.port.system.SysOrganizationPort;
+import com.workflow.port.system.identity.position.model.PositionDefinitionView;
+import com.workflow.port.process.assignment.error.PersonResolutionException;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.process.assignment.api.request.RelativePositionPreviewRequest;
@@ -29,19 +31,23 @@ import java.util.Locale;
 @RequiresPermission("process:definition:view")
 public class RelativePositionProcessDesignController {
 
-    private final OrganizationPositionDirectoryPort directoryPort;
+    private final SysOrganizationPort organizations;
+    private final SysPositionPort positions;
     private final RelativeOrgPositionPersonResolver resolver;
 
     /**
      * 初始化相对位置流程{@code design}控制器，保存构造参数供后续方法使用。
      *
-     * @param directoryPort 目录端口依赖，保存到当前对象供后续业务方法调用
+     * @param organizations 读取组织状态和业务层级
+     * @param positions 查询可用岗位与任职人
      * @param resolver 解析器依赖，保存到当前对象供后续业务方法调用
      */
     public RelativePositionProcessDesignController(
-            OrganizationPositionDirectoryPort directoryPort,
+            SysOrganizationPort organizations,
+            SysPositionPort positions,
             RelativeOrgPositionPersonResolver resolver) {
-        this.directoryPort = directoryPort;
+        this.organizations = organizations;
+        this.positions = positions;
         this.resolver = resolver;
     }
 
@@ -56,7 +62,7 @@ public class RelativePositionProcessDesignController {
     public ApiResponse<List<PositionDefinitionView>> positionOptions(
             @RequestParam(required = false) String applicableUnitType,
             @RequestParam(required = false) String anchor) {
-        return ApiResponse.success(directoryPort.listEnabledPositions(
+        return ApiResponse.success(positions.listEnabledPositions(
                 normalizedUnitType(applicableUnitType, anchor)));
     }
 
@@ -68,7 +74,7 @@ public class RelativePositionProcessDesignController {
     @GetMapping("/organization-business-levels")
     public ApiResponse<List<OrganizationBusinessLevelView>> businessLevels() {
         return ApiResponse.success(
-                directoryPort.listEnabledOrganizationBusinessLevels());
+                organizations.listEnabledOrganizationBusinessLevels());
     }
 
     /**

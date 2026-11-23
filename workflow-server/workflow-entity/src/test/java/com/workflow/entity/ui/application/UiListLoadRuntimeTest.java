@@ -1,7 +1,7 @@
 package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
@@ -24,7 +24,7 @@ class UiListLoadRuntimeTest {
     private final UiInterfaceExtensionService interfaces = mock(UiInterfaceExtensionService.class);
     private final UiEventRuntimeService runtime = new UiEventRuntimeService(
             bindings, interfaces, new UiEventValueMapper(), mock(EntitySelectionRuntimeService.class),
-            mock(SystemAuditPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
+            mock(SystemOperationLogPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
             mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper, mock(org.springframework.beans.factory.ObjectProvider.class));
 
     @Test

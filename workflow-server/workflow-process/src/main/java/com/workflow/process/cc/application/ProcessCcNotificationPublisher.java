@@ -1,8 +1,8 @@
 package com.workflow.process.cc.application;
 
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
-import com.workflow.contracts.outbox.model.OutboxPublishRequest;
-import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,7 +21,7 @@ public class ProcessCcNotificationPublisher {
 
     public static final String TOPIC = "PROCESS_CC_NOTIFICATION";
 
-    private final OutboxPublishPort outboxPublisher;
+    private final WorkflowOutboxEventPort outboxPublisher;
 
     /**
      * 入队流程抄送通知{@code publisher}；后续由接收方或异步任务继续处理。

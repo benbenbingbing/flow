@@ -1,13 +1,13 @@
 package com.workflow.admin.audit.infrastructure.aop;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.model.AuditResult;
-import com.workflow.contracts.audit.model.AuditSourcePointer;
-import com.workflow.contracts.audit.context.OperationContext;
-import com.workflow.contracts.audit.context.OperationContextHolder;
-import com.workflow.contracts.audit.annotation.SystemAudit;
-import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.port.platform.audit.model.AuditResult;
+import com.workflow.port.platform.audit.model.AuditSourcePointer;
+import com.workflow.port.platform.audit.context.OperationContext;
+import com.workflow.port.platform.audit.context.OperationContextHolder;
+import com.workflow.port.platform.audit.annotation.SystemAudit;
+import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.web.CorrelationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +38,7 @@ public class SystemAuditAspect {
 
     private static final ThreadLocal<Integer> AUDIT_DEPTH = ThreadLocal.withInitial(() -> 0);
 
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     private final ObjectMapper objectMapper;
 
     /**

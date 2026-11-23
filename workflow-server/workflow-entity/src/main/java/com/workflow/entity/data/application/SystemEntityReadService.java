@@ -1,6 +1,8 @@
 package com.workflow.entity.data.application;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.admin.authorization.application.PermissionUtil;
+import com.workflow.port.system.SystemEntityDefinitionPort;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
@@ -38,6 +40,8 @@ public class SystemEntityReadService {
 
     private static final Pattern IDENTIFIER =
             Pattern.compile("[a-z][a-z0-9_]{0,127}");
+    private static final int MAX_ID_BATCH = 200;
+
     private static final Set<String> OPERATORS = Set.of(
             "EQ", "NE", "LIKE", "IN", "BETWEEN",
             "GT", "GE", "LT", "LE", "IS_NULL");
@@ -115,17 +119,25 @@ public class SystemEntityReadService {
             long pageSize,
             String sortField,
             String sortDirection) {
+        return findPage(entityCode, filters, pageNum, pageSize, sortField, sortDirection, null);
+    }
+
+    /** 字段投影与分页使用同一份授权元数据，字段选择不影响筛选、排序及总数。 */
+    @Transactional(readOnly = true)
+    public PageResult<EntityDataDTO> findPage(String entityCode, Map<String, Object> filters, long pageNum,
+            long pageSize, String sortField, String sortDirection, Set<String> fields) {
         EntityDefinition definition = requireSystemEntity(entityCode);
         requirePermissions(entityCode);
         QueryMetadata metadata = metadata(definition);
-        return executePage(
-                definition,
-                metadata,
-                buildFilter(metadata, filters),
-                pageNum,
-                pageSize,
-                sortField,
-                sortDirection);
+        if (fields != null && !metadata.readableColumns().keySet().containsAll(fields)) {
+            throw new IllegalArgumentException("投影包含不可读取的系统实体字段");
+        }
+        var result = executePage(definition, metadata, buildFilter(metadata, filters), pageNum, pageSize,
+                sortField, sortDirection);
+        if (fields != null) {
+            result.getRecords().forEach(record -> record.getData().keySet().retainAll(fields));
+        }
+        return result;
     }
 
     /**
@@ -178,13 +190,7 @@ public class SystemEntityReadService {
             String sortDirection) {
         long safePageNum = Math.max(1, pageNum);
         long safePageSize = Math.max(1, Math.min(200, pageSize));
-        String selectColumns = metadata.readableColumns().values()
-                .stream()
-                .map(this::quote)
-                .distinct()
-                .reduce((left, right) -> left + ", " + right)
-                .orElseThrow(() ->
-                        new IllegalStateException("系统实体没有可读字段"));
+        String selectColumns = selectColumns(metadata);
         String table = quote(metadata.tableName());
         String where = sqlFilter.sql().isBlank()
                 ? ""
@@ -212,6 +218,66 @@ public class SystemEntityReadService {
                 total == null ? 0 : total,
                 safePageNum,
                 safePageSize);
+    }
+
+    private String selectColumns(QueryMetadata metadata) {
+        if (metadata.readableColumns().isEmpty()) {
+            throw new IllegalStateException("系统实体没有可读字段");
+        }
+        return metadata.readableColumns().values().stream().distinct().map(this::quote)
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /** 将记录按有界 IN 批次读取，使用与普通系统列表相同的已删除过滤及字段规则。 */
+    @Transactional(readOnly = true)
+    public List<EntityDataDTO> findByIds(String entityCode, List<String> recordIds) {
+        EntityDefinition definition = requireSystemEntity(entityCode);
+        requirePermissions(entityCode);
+        QueryMetadata metadata = metadata(definition);
+        if (!metadata.readableColumns().containsKey("id")) {
+            throw new IllegalStateException("系统实体没有可读主键字段");
+        }
+        var ids = recordIds.stream().filter(StringUtils::hasText).map(String::strip).distinct().toList();
+        Map<String, EntityDataDTO> matches = new LinkedHashMap<>();
+        for (int offset = 0; offset < ids.size(); offset += MAX_ID_BATCH) {
+            var batch = ids.subList(offset, Math.min(offset + MAX_ID_BATCH, ids.size()));
+            var filter = buildFilter(metadata, Map.of("id", batch, "id_op", "IN"));
+            String sql = "SELECT " + selectColumns(metadata) + " FROM " + quote(metadata.tableName())
+                    + " WHERE " + filter.sql();
+            for (var row : mapper.selectRecords(ParameterizedSql.of(sql, filter.parameters().toArray()))) {
+                var record = toDto(definition, metadata, row);
+                matches.put(record.getId(), record);
+            }
+        }
+        return ids.stream().map(matches::get).filter(java.util.Objects::nonNull).toList();
+    }
+
+    /** 只枚举当前权限允许、已经登记且可用于只读查询的系统实体。 */
+    @Transactional(readOnly = true)
+    public List<SystemEntityDefinitionPort.Summary> listReadable() {
+        Set<String> permissions = PermissionUtil.getCurrentUserPermissions();
+        return definitionMapper.selectList(Wrappers.<EntityDefinition>lambdaQuery()
+                        .eq(EntityDefinition::getStorageMode, EntityDefinition.StorageMode.SYSTEM)
+                        .orderByAsc(EntityDefinition::getEntityCode))
+                .stream()
+                .filter(definition -> isValidRegistration(definition) && fieldPolicy.isSupportedEntity(definition.getEntityCode()))
+                .filter(definition -> firstMissingPermission(definition.getEntityCode(), permissions) == null)
+                .map(definition -> new SystemEntityDefinitionPort.Summary(definition.getEntityCode(),
+                        definition.getEntityName(), fieldPolicy.displayField(definition.getEntityCode())))
+                .toList();
+    }
+
+    /** 字段目录和读取投影使用同一套字段校验，禁止通过元数据看到敏感字段。 */
+    @Transactional(readOnly = true)
+    public List<SystemEntityDefinitionPort.Field> describeReadableFields(String entityCode) {
+        var definition = requireSystemEntity(entityCode);
+        requirePermissions(entityCode);
+        var fields = fieldMapper.findByEntityId(definition.getId());
+        var readable = metadata(definition, fields).readableColumns();
+        return fields.stream().filter(field -> readable.containsKey(normalize(field.getFieldCode())))
+                .map(field -> new SystemEntityDefinitionPort.Field(normalize(field.getFieldCode()), field.getFieldName(),
+                        field.getFieldType() == null ? null : field.getFieldType().name()))
+                .toList();
     }
 
     /**
@@ -259,31 +325,20 @@ public class SystemEntityReadService {
             throw new ForbiddenException(
                     "平台系统表不在通用只读访问白名单");
         }
-        if (RUNTIME_SELECTOR_ENTITIES.contains(normalize(entityCode))) {
-            return;
-        }
-        Set<String> current =
-                PermissionUtil.getCurrentUserPermissions();
-        if (current.contains("*")) {
-            return;
-        }
-        for (String permission :
-                fieldPolicy.requiredPermissions(entityCode)) {
-            if (!current.contains(permission)) {
-                throw new ForbiddenException(
-                        "没有权限访问平台系统表：" + permission);
-            }
+        if (RUNTIME_SELECTOR_ENTITIES.contains(normalize(entityCode))) return;
+        String missing = firstMissingPermission(entityCode, PermissionUtil.getCurrentUserPermissions());
+        if (missing != null) {
+            throw new ForbiddenException("没有权限访问平台系统表：" + missing);
         }
     }
 
-    /**
-     * 校验并获取系统实体；不满足约束时阻止后续处理。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @return 校验并获取后的系统实体结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
+    private String firstMissingPermission(String entityCode, Set<String> permissions) {
+        if (RUNTIME_SELECTOR_ENTITIES.contains(normalize(entityCode)) || permissions.contains("*")) return null;
+        return fieldPolicy.requiredPermissions(entityCode).stream()
+                .filter(permission -> !permissions.contains(permission)).findFirst().orElse(null);
+    }
+
+    /** 校验平台目录记录的存储类型和物理表名，SQL 标识符只使用服务端登记值。 */
     private EntityDefinition requireSystemEntity(
             String entityCode) {
         EntityDefinition definition =
@@ -296,15 +351,17 @@ public class SystemEntityReadService {
             throw new IllegalArgumentException(
                     "实体不是平台系统表: " + entityCode);
         }
-        String tableName = definition.getPhysicalTableName();
-        if (!StringUtils.hasText(tableName)
-                || !tableName.equals(definition.getEntityCode())
-                || !tableName.startsWith("sys_")
-                || !IDENTIFIER.matcher(tableName).matches()) {
+        if (!isValidRegistration(definition)) {
             throw new IllegalStateException(
                     "平台系统表目录登记不合法: " + entityCode);
         }
         return definition;
+    }
+
+    private boolean isValidRegistration(EntityDefinition definition) {
+        String tableName = definition.getPhysicalTableName();
+        return StringUtils.hasText(tableName) && tableName.equals(definition.getEntityCode())
+                && tableName.startsWith("sys_") && IDENTIFIER.matcher(tableName).matches();
     }
 
     /**
@@ -316,10 +373,12 @@ public class SystemEntityReadService {
      */
     private QueryMetadata metadata(
             EntityDefinition definition) {
-        Map<String, String> readableColumns =
-                new LinkedHashMap<>();
-        for (EntityField field :
-                fieldMapper.findByEntityId(definition.getId())) {
+        return metadata(definition, fieldMapper.findByEntityId(definition.getId()));
+    }
+
+    private QueryMetadata metadata(EntityDefinition definition, List<EntityField> fields) {
+        Map<String, String> readableColumns = new LinkedHashMap<>();
+        for (EntityField field : fields) {
             if (!fieldPolicy.isRuntimeReadable(
                     definition, field)) {
                 continue;
@@ -328,6 +387,7 @@ public class SystemEntityReadService {
             String column = normalize(firstNonBlank(
                     field.getDbColumnName(),
                     field.getFieldCode()));
+            if (fieldPolicy.isSensitive(column)) continue;
             if (!IDENTIFIER.matcher(fieldCode).matches()
                     || !IDENTIFIER.matcher(column).matches()) {
                 throw new IllegalStateException(

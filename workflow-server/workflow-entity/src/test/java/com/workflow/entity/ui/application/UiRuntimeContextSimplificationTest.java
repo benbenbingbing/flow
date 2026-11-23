@@ -1,8 +1,8 @@
 package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.ui.port.UiRuntimeAccessPort;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.UiFormContextPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -23,8 +23,8 @@ import static org.mockito.Mockito.*;
 class UiRuntimeContextSimplificationTest {
     @Test void digestDoesNotAllowBypassingLiveTaskAuthorization() {
         UiConfigReleaseService service = mock(UiConfigReleaseService.class, CALLS_REAL_METHODS);
-        UiRuntimeAccessPort access = mock(UiRuntimeAccessPort.class);
-        ObjectProvider<UiRuntimeAccessPort> provider = mock(ObjectProvider.class);
+        UiFormContextPort access = mock(UiFormContextPort.class);
+        ObjectProvider<UiFormContextPort> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(access);
         ReflectionTestUtils.setField(service, "runtimeAccessPort", provider);
         Map<String, Object> context = Map.of("taskId", "transferred-task");

@@ -1,8 +1,8 @@
 package com.workflow.process.sla.runtime.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.process.instance.model.ProcessRuntimeViews.TaskSla;
-import com.workflow.contracts.process.task.port.ProcessTaskSlaPort;
+import com.workflow.port.process.instance.model.ProcessRuntimeViews.TaskSla;
+import com.workflow.port.process.ProcessTaskSlaPort;
 import com.workflow.process.sla.runtime.infrastructure.persistence.record.ProcessTaskSla;
 import com.workflow.process.task.application.TaskActionService;
 import lombok.RequiredArgsConstructor;

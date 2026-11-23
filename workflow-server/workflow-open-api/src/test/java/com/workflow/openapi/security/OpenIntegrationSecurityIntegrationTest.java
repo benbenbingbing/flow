@@ -19,10 +19,10 @@ import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.openapi.application.IntegrationSecretHasher;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
-import com.workflow.contracts.embed.launch.model.EmbedLaunchView;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.embed.EmbedLaunchPort;
+import com.workflow.port.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.port.embed.launch.model.EmbedLaunchView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.api.web.EmbedLaunchController;
@@ -484,14 +484,14 @@ class OpenIntegrationSecurityIntegrationTest {
         }
 
         @Bean
-        SystemAuditPort systemAuditPort() {
-            return Mockito.mock(SystemAuditPort.class);
+        SystemOperationLogPort systemAuditPort() {
+            return Mockito.mock(SystemOperationLogPort.class);
         }
 
         @Bean
-        EmbedLaunchIssuePort embedLaunchIssuePort() {
-            EmbedLaunchIssuePort port = Mockito.mock(
-                    EmbedLaunchIssuePort.class);
+        EmbedLaunchPort embedLaunchIssuePort() {
+            EmbedLaunchPort port = Mockito.mock(
+                    EmbedLaunchPort.class);
             Mockito.when(port.issue(Mockito.any(), Mockito.any()))
                     .thenReturn(new EmbedLaunchIssued(
                             "lch-test-1",

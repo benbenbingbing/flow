@@ -3,7 +3,7 @@ package com.workflow.migration.application;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.port.migration.ConfigMigrationAssetPort;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -168,7 +168,7 @@ class CurrentFormPublishAssetDatabaseTest {
             create(ConfigMigrationReferenceService.class);
             create(ConfigMigrationSubFormReferences.class);
             ConfigMigrationAssetService assets = create(ConfigMigrationAssetService.class);
-            beans.put(MigrationAssetPort.class, assets);
+            beans.put(ConfigMigrationAssetPort.class, assets);
 
             EntityDefinition entity = new EntityDefinition();
             entity.setId("entity"); entity.setEntityCode(storageMode == EntityDefinition.StorageMode.SYSTEM ? "sys_user" : "TEST_ENTITY");

@@ -8,11 +8,11 @@ import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.process.port.ProcessCatalogPort;
-import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
-import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
-import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.port.process.ProcessDefinitionConfigPort;
+import com.workflow.port.process.ProcessRecordPermissionPort;
+import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
@@ -66,13 +66,13 @@ class EntityFormCandidateApprovalActionTest {
     private static final String ENTITY_CODE = "work_order";
     private static final String APPROVE_PERMISSION = "entity:work_order:approve";
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-    private final ProcessTaskAccessPort taskAccessPort = mock(ProcessTaskAccessPort.class);
+    private final ProcessTaskPermissionPort taskAccessPort = mock(ProcessTaskPermissionPort.class);
     private final SysMenuMapper menuMapper = mock(SysMenuMapper.class);
     private final EntityFormMapper formMapper = mock(EntityFormMapper.class);
     private final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
     private final EntityDataDynamicService dataService = mock(EntityDataDynamicService.class);
     private final UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
-    private final ProcessRecordReadAccessPort processReadAccess = mock(ProcessRecordReadAccessPort.class);
+    private final ProcessRecordPermissionPort processReadAccess = mock(ProcessRecordPermissionPort.class);
     private EntityActionCapabilityService capabilityService;
     private EntityFormActionService formActionService;
     private EntityDefinition definition;
@@ -97,7 +97,7 @@ class EntityFormCandidateApprovalActionTest {
         formActionService = new EntityFormActionService(
                 formMapper, mock(EntityFormNodeMapper.class), definitionMapper,
                 dataService, capabilityService, new EntityFormActionConfigPolicy(),
-                releaseService, mock(ProcessCatalogPort.class), processReadAccess,
+                releaseService, mock(ProcessDefinitionConfigPort.class), processReadAccess,
                 new JsonDocumentCodec(objectMapper), objectMapper);
         definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -294,7 +294,7 @@ class EntityFormCandidateApprovalActionTest {
         for (int mismatchedCoordinate : List.of(0, 1, 2, 3)) {
             when(taskAccessPort.findActionableTaskContext(
                     "alice-id", "candidate-task", ENTITY_CODE, "record-1", "process-1"))
-                    .thenReturn(Optional.of(new ProcessTaskAccessPort.ActionableTaskContext(
+                    .thenReturn(Optional.of(new ProcessTaskPermissionPort.ActionableTaskContext(
                             mismatchedCoordinate == 0 ? "other-task" : "candidate-task",
                             mismatchedCoordinate == 1 ? "other-process" : "process-1",
                             "definition-1", "history-1", "node-1",
@@ -332,7 +332,7 @@ class EntityFormCandidateApprovalActionTest {
                         "release-1", 1, "release-1", false, "hash-1"));
         when(taskAccessPort.findActionableTaskContext(
                 "alice-id", "candidate-task", ENTITY_CODE, "record-1", "process-1"))
-                .thenReturn(Optional.of(new ProcessTaskAccessPort.ActionableTaskContext(
+                .thenReturn(Optional.of(new ProcessTaskPermissionPort.ActionableTaskContext(
                         "candidate-task", "process-1", "definition-1", "history-1", "node-1",
                         ENTITY_CODE, "record-1")));
         FormActionResolveRequest request = new FormActionResolveRequest();

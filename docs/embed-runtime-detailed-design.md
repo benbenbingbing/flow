@@ -233,8 +233,8 @@ Embed 配置保存的 JSON Schema 校验，并由服务端映射为：
 | 应用来源网段、限流、并发租约 | `OpenApiApplicationPolicyFilter` 等 | 在唯一 Embed launch 边界复用 |
 | 外部响应 Envelope、Trace、1 MiB 请求保护 | `OpenApiResponse`、`OpenApiRequestGuardFilter` | 外部 Launch 与 Embed API 统一复用其风格 |
 | 凭据生成与哈希 | `IntegrationSecretGenerator`、`IntegrationSecretHasher` | 复用安全随机数和哈希设计，Token 不存明文 |
-| 系统审计 | `SystemAuditPort`、`SystemAuditEvent` | 复用，模块归类为 `INTEGRATION` |
-| Flow 用户目录 | `IdentityDirectoryPort`、`SysUserService` | 精确解析和校验映射后的 Flow 用户 |
+| 系统审计 | `SystemOperationLogPort`、`SystemAuditEvent` | 复用，模块归类为 `INTEGRATION` |
+| Flow 用户目录 | `SysUserLookupPort`、`SysUserService` | 精确解析和校验映射后的 Flow 用户 |
 | 当前用户上下文 | `UserContext` | Embed 过滤器建立并在请求后清理 |
 | 列表页面/查询 | `EntityDataList.vue`、`EntityListRuntimeService`、`EntityListPublishedRuntimeService` | iframe 直接挂载同一原生页面，并通过受控请求委托复用同一 API |
 | 表单页面与弹层 | `EntityDataFormDialog.vue`、`EntityApprovalDialog.vue`、完整字段/自定义组件 Registry | FORM 直接挂载原生组件树，不复制、裁剪或替换控件 |
@@ -317,7 +317,7 @@ workflow-embed（新增）
   └─ 管理端 API
 
 workflow-contracts（新增契约）
-  ├─ EmbedLaunchIssuePort
+  ├─ EmbedLaunchPort
   ├─ LIST/FORM 固定目标与不可变依赖快照读取契约
   ├─ 原生请求委托契约（不定义字段、组件或 datasource 投影契约）
   ├─ EmbedRecordRuntimePort
@@ -339,7 +339,7 @@ workflow-web
 ```
 
 `workflow-open-api` 不直接依赖 `workflow-embed` 实现。建议在 `workflow-contracts` 定义
-`EmbedLaunchIssuePort`，由 `workflow-embed` 实现，Open API Controller 只调用契约端口。
+`EmbedLaunchPort`，由 `workflow-embed` 实现，Open API Controller 只调用契约端口。
 `workflow-embed` 也不得直接访问实体或流程 Mapper。
 
 ### 4.2 三类接口边界
@@ -521,7 +521,7 @@ Namespace 下任意已绑定用户，应配合最小来源网段、强审计和�
 1. 取得经过验证的 `applicationId + issuer/namespace + externalSubject`。
 2. 精确查询 ACTIVE Identity Binding。
 3. 找不到映射时返回 `EXTERNAL_IDENTITY_NOT_MAPPED`，不按用户名猜测。
-4. 使用 `IdentityDirectoryPort`/用户服务加载 `flowUserId`。
+4. 使用 `SysUserLookupPort`/用户服务加载 `flowUserId`。
 5. 检查用户存在、未禁用、未删除；密码重置限制是否阻止 Embed 由安全策略配置，默认阻止。
 6. 将映射版本和 Flow 用户 ID 固定到 Launch 和 Session。
 7. 每个 Runtime 请求重新检查用户有效状态；角色和数据权限不写入长期 Token，继续从 Flow
@@ -2539,7 +2539,7 @@ Entity/Process Mapper、Spring MVC Request 或前端 DTO，外部模型通过 An
 
 1. 新增 `workflow-embed`，由 `workflow-app` 引入。
 2. `workflow-contracts` 增加 Embed Launch、Actor、列表、表单、记录和共享集成策略端口。
-3. `workflow-open-api` 增加 Launch Controller，只依赖 `EmbedLaunchIssuePort`。
+3. `workflow-open-api` 增加 Launch Controller，只依赖 `EmbedLaunchPort`。
 4. 现有 Open API 限流、租约、幂等能力通过 Contracts Port 暴露给 Embed，避免 Embed 依赖
    Open API Controller 或 Mapper。
 5. `workflow-entity`、`workflow-process` 实现窄 Adapter；Adapter 调用现有应用服务，不让
@@ -2556,7 +2556,7 @@ Entity/Process Mapper、Spring MVC Request 或前端 DTO，外部模型通过 An
 Bridge 契约，不是当前可注入或可调用能力：
 
 ```java
-public interface EmbedLaunchIssuePort {
+public interface EmbedLaunchPort {
     EmbedLaunchIssued issue(EmbedApplicationActor application,
                             EmbedLaunchCommand command);
 }
@@ -3071,7 +3071,7 @@ Published Form 内建 `saveAndStart` 只提交封闭 `actionKey`，服务端重�
 | 第三方应用和 Client Secret | `integration_application`、凭据轮换 | 无 | 无 |
 | 机器 OAuth | Spring Authorization Server 配置 | 只允许精确 Launch 路由 | 无 |
 | 应用 CIDR/限流/并发 | 现有 Policy Filter、Bucket、Lease | 增加 Embed namespace 和 Contracts Port | Exchange/Session 细分策略 |
-| 用户目录 | `IdentityDirectoryPort`、SysUser | 校验 Embed 使用限制 | 无 |
+| 用户目录 | `SysUserLookupPort`、SysUser | 校验 Embed 使用限制 | 无 |
 | 外部人员映射 | 现有 Resolver 思想 | 抽象通用 `ExternalSubjectResolver` | V1 Provider、Binding、JWT 校验、防重放；OIDC 后续建设 |
 | 普通用户上下文 | `UserContext` | 支持安全建立/清理和显式 Actor | `EmbedContext` |
 | 列表发布和查询 | `EntityListRuntimeService`、`EntityListPublishedRuntimeService` | Session 固定 Release/依赖闭包与请求委托 | 无外部 Schema/结果投影 |
@@ -3079,7 +3079,7 @@ Published Form 内建 `saveAndStart` 只提交封闭 `actionKey`，服务端重�
 | 表单提交 | `PublishedFormSubmissionService` | 固定目标/Context、幂等协调 | 最小 receipt 与 Returnable 回投 DTO |
 | 实体权限/数据范围 | `EntityDataActionService`、`DataPermissionEngine` | 恢复映射 UserContext | Capability 仅用于直接入口/Bridge |
 | 原生列表/表单动作 | 原生按钮解析、UI Event/Interface Operation 端点 | TargetBinding、恢复映射用户 | 无 Embed Action Registry、Capability 按钮求交或动作重写层 |
-| 审计 | `SystemAuditPort`、Outbox | 新事件类型和字段映射 | Embed 安全审计编排 |
+| 审计 | `SystemOperationLogPort`、Outbox | 新事件类型和字段映射 | Embed 安全审计编排 |
 | 幂等 | `integration_idempotency_record`、fencing | Actor/View 请求哈希、敏感响应处理 | Embed Coordinator |
 | 更新并发 | 暂无可靠通用能力 | 动态 DDL/读写链路 | `record_version` 全链路 |
 | Session | 普通 Session 不适用 | 无 | Launch、Embed Session、专用 Filter |

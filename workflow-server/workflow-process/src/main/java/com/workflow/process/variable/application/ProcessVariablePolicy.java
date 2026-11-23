@@ -1,7 +1,7 @@
 package com.workflow.process.variable.application;
 
-import com.workflow.contracts.process.error.ProcessOperationException;
-import com.workflow.contracts.process.model.ProcessValues;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.ProcessValues;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 
 import java.util.Collection;

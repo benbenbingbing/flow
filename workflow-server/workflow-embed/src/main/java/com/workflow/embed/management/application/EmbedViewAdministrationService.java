@@ -5,10 +5,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.contracts.audit.model.AuditAction;
-import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.CurrentActorPort;
 import com.workflow.embed.management.api.error.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;
@@ -42,7 +42,7 @@ public class EmbedViewAdministrationService {
     private final EmbedManagementRepository repository;
     private final EmbedViewConfigurationValidator validator;
     private final CurrentActorPort actorProvider;
-    private final SystemAuditPort auditPort;
+    private final SystemOperationLogPort auditPort;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -60,7 +60,7 @@ public class EmbedViewAdministrationService {
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
             CurrentActorPort actorProvider,
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             ObjectMapper objectMapper) {
         this(repository, validator, actorProvider, auditPort, objectMapper,
                 Clock.systemUTC());
@@ -80,7 +80,7 @@ public class EmbedViewAdministrationService {
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
             CurrentActorPort actorProvider,
-            SystemAuditPort auditPort,
+            SystemOperationLogPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {
         this.repository = repository;
