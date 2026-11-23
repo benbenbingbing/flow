@@ -9,6 +9,7 @@ import com.workflow.process.task.application.TaskAddSignService;
 import com.workflow.process.task.application.TaskHistoryReturnService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -52,10 +53,15 @@ public class TaskOperationController {
         return Result.success(historyReturns.targets(taskId));
     }
 
-    /** 在共用幂等事务内将当前待办回退到所选的历史活动。 */
+    /** 校验回退请求后，在共用幂等事务内将当前待办回退到所选的历史活动。 */
     @PostMapping("/api/tasks/{taskId}/return")
     public Result<TaskHistoryReturnService.Outcome> returnTask(
-            @PathVariable String taskId, @Valid @RequestBody TaskHistoryReturnService.Request request) {
+            @PathVariable String taskId, @Valid @RequestBody TaskHistoryReturnService.Request request,
+            BindingResult validation) {
+        // 直接调用接口时也应获得可修正的参数提示，不应由通用异常处理返回系统繁忙。
+        if (validation.hasErrors()) {
+            throw new IllegalArgumentException(validation.getAllErrors().get(0).getDefaultMessage());
+        }
         return Result.success(historyReturns.execute(taskId, request));
     }
 

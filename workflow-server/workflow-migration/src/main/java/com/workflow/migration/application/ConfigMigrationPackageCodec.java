@@ -650,12 +650,15 @@ public class ConfigMigrationPackageCodec {
     private void addSelectedSupportSections(Map<String, Object> source,
                                             Map<String, Object> selected,
                                             Set<String> sections) {
-        boolean uiSectionSelected = selected.containsKey("forms")
-                || selected.containsKey("lists");
-        if (!uiSectionSelected
-                && !sections.contains("interfaceExtensions")
-                && !sections.contains("dataSources")
-                && !sections.contains("extensions")) {
+        List<ConfigMigrationFieldOptionReferences.Ref> optionRefs = castMapList(selected.get("fields")).stream()
+                .map(ConfigMigrationFieldOptionReferences::read).filter(java.util.Objects::nonNull).toList();
+        boolean uiSupportSelected = selected.containsKey("forms") || selected.containsKey("lists")
+                || sections.contains("interfaceExtensions") || sections.contains("dataSources") || sections.contains("extensions");
+        if (!uiSupportSelected) {
+            // 仅字段迁移只带字段实际使用的候选接口，保留其他 UI 配置的选择范围。
+            if (!optionRefs.isEmpty()) {
+                addSelectedInterfaceExtensions(source, selected, sections, Set.of(), optionRefs);
+            }
             return;
         }
         Set<String> interfaceExtensionCodes = new LinkedHashSet<>();
@@ -668,7 +671,7 @@ public class ConfigMigrationPackageCodec {
                 "dataSourceCode",
                 "queryDataSourceCode"), interfaceExtensionCodes);
         addSelectedInterfaceExtensions(
-                source, selected, sections, interfaceExtensionCodes);
+                source, selected, sections, interfaceExtensionCodes, optionRefs);
 
         Set<String> extensionKeys = new LinkedHashSet<>();
         collectValuesForKeys(selected, Set.of(
@@ -701,12 +704,14 @@ public class ConfigMigrationPackageCodec {
      * @param selected 已选择，作为 {@code copyIfPresent} 的输入影响后续处理
      * @param sections 区段集合，供本方法添加已选择接口{@code extensions}时使用
      * @param referencedCodes 已引用编码集合，作为 {@code filter} 的输入影响后续处理
+     * @param optionRefs 字段候选接口的完整编码和版本
      */
     private void addSelectedInterfaceExtensions(
             Map<String, Object> source,
             Map<String, Object> selected,
             Set<String> sections,
-            Set<String> referencedCodes) {
+            Set<String> referencedCodes,
+            List<ConfigMigrationFieldOptionReferences.Ref> optionRefs) {
         boolean entireSectionSelected =
                 sections.contains("interfaceExtensions")
                         || sections.contains("dataSources");
@@ -714,13 +719,12 @@ public class ConfigMigrationPackageCodec {
             if (entireSectionSelected) {
                 copyIfPresent(
                         source, selected, "interfaceExtensions");
-            } else if (!referencedCodes.isEmpty()) {
+            } else if (!referencedCodes.isEmpty() || !optionRefs.isEmpty()) {
                 selected.put(
                         "interfaceExtensions",
                         castMapList(source.get("interfaceExtensions")).stream()
-                                .filter(value -> referencedCodes.contains(
-                                        String.valueOf(value.get(
-                                                "extensionKey"))))
+                                .filter(value -> referencedCodes.contains(String.valueOf(value.get("extensionKey")))
+                                        || optionRefs.stream().anyMatch(ref -> ref.matches(value)))
                                 .toList());
             }
             // 当前格式存在时绝不同时输出已退役的 dataSources。

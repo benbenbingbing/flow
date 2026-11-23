@@ -158,14 +158,14 @@ public class ProcessDefinitionPreflightService {
                 if (nodeOperationPolicyBpmnValidator != null) {
                     nodeOperationPolicyBpmnValidator.validate(bpmnXml);
                 }
-                if (historyReturnPolicy != null) historyReturnPolicy.validate(bpmnXml);
                 if (cancellationStatusValidator != null) {
                     cancellationStatusValidator.validate(config);
                 }
-                bpmnPublishSanitizer.sanitize(
+                String sanitizedBpmn = bpmnPublishSanitizer.sanitize(
                         bpmnXml,
                         config.getProcessKey(),
                         config.getId());
+                if (historyReturnPolicy != null) historyReturnPolicy.validate(sanitizedBpmn);
             } catch (RuntimeException exception) {
                 addIssue(issues, stableCode(exception, "BPMN_EXECUTABLE_INVALID"),
                         Severity.BLOCKER, elementIdFrom(exception), null,

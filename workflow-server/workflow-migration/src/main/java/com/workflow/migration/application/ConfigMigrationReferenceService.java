@@ -43,6 +43,21 @@ public class ConfigMigrationReferenceService {
 
     /** 导出 ID 语义字段为带类型的编码引用，并补充真实依赖清单。 */
     Map<String, Object> exportReferences(Map<String, Object> snapshot) {
+        return prepareReferences(snapshot, ConfigMigrationOpaqueReferences.Mode.EXPORT);
+    }
+
+    /**
+     * 发布时冻结有明确契约的引用和依赖。代码及未声明参数的可移植性在导出副本时检查，
+     * 避免目录撞号回滚同一环境的发布，也避免日后因源端编码变更丢失已明确的引用。
+     *
+     * @param snapshot 当前发布内容，作为不可变迁移资产的输入
+     * @return 已转换显式引用的内部快照，真正打包时仍须经过导出检查
+     */
+    Map<String, Object> captureReferences(Map<String, Object> snapshot) {
+        return prepareReferences(snapshot, ConfigMigrationOpaqueReferences.Mode.CAPTURE);
+    }
+
+    private Map<String, Object> prepareReferences(Map<String, Object> snapshot, ConfigMigrationOpaqueReferences.Mode mode) {
         List<Map<String, Object>> dependencies = dependencies(snapshot);
         if (snapshot.get("bpmnXml") instanceof String xml) {
             ConfigMigrationBpmnReferences.formReferences(xml).forEach(form -> dependencies.add(Map.of(
@@ -87,18 +102,19 @@ public class ConfigMigrationReferenceService {
         // 每个导出副本独立缓存目录检查；不会扫描整张身份表，也不持有跨请求的过期 ID。
         Map<String, String> checkedIds = new HashMap<>();
         result = ConfigMigrationOpaqueReferences.rewrite(result, identity, parameterReferenceProviders,
-                id -> checkedIds.computeIfAbsent(id, this::sourceIdentityType), true);
+                id -> checkedIds.computeIfAbsent(id, this::sourceIdentityType), mode);
         result.put("dependencies", ConfigMigrationAssignmentSupport.mergeDependencies(dependencies));
         return result;
     }
 
     /** 分析和执行共用解析器；在任何业务写入之前即可校验全部身份与动作引用。 */
     Map<String, Object> importReferences(Map<String, Object> snapshot, BiFunction<String, String, String> mapping) {
+        ConfigMigrationFieldOptionReferences.validate(snapshot);
         if (snapshot.get("bpmnXml") instanceof String xml) ConfigMigrationBpmnReferences.formReferences(xml);
         BiFunction<String, String, String> identity =
                 (type, value) -> targetId(type, mapping.apply(type, code(type, value)));
         Map<String, Object> parameters = ConfigMigrationOpaqueReferences.rewrite(snapshot, identity,
-                parameterReferenceProviders, unused -> "", false);
+                parameterReferenceProviders, unused -> "", ConfigMigrationOpaqueReferences.Mode.IMPORT);
         Map<String, Object> result = rewrite(
                 ConfigMigrationValueReferences.rewrite(parameters, identity, false), identity, UnaryOperator.identity());
         List<Map<String, Object>> actions = new ArrayList<>();

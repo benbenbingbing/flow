@@ -25,6 +25,7 @@ import com.workflow.process.configuration.infrastructure.persistence.record.Assi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -117,6 +118,8 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
     public static final String TASK_SLA_POLICY = "TASK_SLA_POLICY"; // 资产类型：SLA策略
     public static final String COMPLETE = "COMPLETE"; // 快照完整度：完整
 
+    static final String CALLED_PROCESS_DEPENDENCY_SOURCE = "调用子流程";
+
     private static final int SNAPSHOT_SCHEMA_VERSION = 3;
     private static final DateTimeFormatter TAG_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final Set<String> TECHNICAL_KEYS = Set.of(
@@ -155,6 +158,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
     private final FlowActionMapper flowActionMapper;
     private final EntityFlowStatusMappingMapper statusMappingMapper;
     private final EntityPublishHistoryMapper entityHistoryMapper;
+    private final EntityPublishedSnapshotService entityPublishedSnapshots;
     private final ProcessVersionHistoryMapper processHistoryMapper;
     private final WorkCalendarMapper workCalendarMapper;
     private final WorkCalendarPeriodMapper workCalendarPeriodMapper;
@@ -906,16 +910,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                         (left, right) -> left,
                         LinkedHashMap::new));
         // 系统 UI 包不导出实体结构，但固定条件和默认值仍需源字段类型，不能借目标同名字段猜测。
-        Map<String, String> referenceFields = new LinkedHashMap<>();
-        fieldsByCode.forEach((code, field) -> {
-            Map<String, Object> contract = portableMap(field);
-            if (StringUtils.hasText(field.getRefEntityId())) {
-                EntityDefinition referenced = entityMapper.selectById(field.getRefEntityId());
-                contract.put("refEntityCode", referenced == null ? null : referenced.getEntityCode());
-            }
-            referenceFields.put(code, ConfigMigrationValueReferences.fieldType(contract));
-        });
-        snapshot.put(ConfigMigrationValueReferences.FIELD_TYPES, referenceFields);
+        snapshot.put(ConfigMigrationValueReferences.FIELD_TYPES, fieldReferenceTypes(fieldsByCode.values()));
         Set<String> referencedFields = new LinkedHashSet<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();
@@ -1277,12 +1272,26 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         snapshot.put("definition", definition);
         List<Map<String, Object>> fields = new ArrayList<>();
         Map<String, String> fieldCodesById = new LinkedHashMap<>();
+        Map<String, UiExtensionDefinition> optionDefinitions = new LinkedHashMap<>();
+        Set<String> dataSourceIds = new LinkedHashSet<>();
         for (EntityField field : fieldMapper.findByEntityId(entity.getId())) {
             fieldCodesById.put(field.getId(), field.getFieldCode());
             Map<String, Object> fieldSnapshot = portableMap(field);
             if (StringUtils.hasText(field.getRefEntityId())) {
                 EntityDefinition referenced = entityMapper.selectById(field.getRefEntityId());
                 fieldSnapshot.put("refEntityCode", referenced == null ? null : referenced.getEntityCode());
+            }
+            // 表单继承实体字段的候选接口。实体即使尚未配置表单，也必须冻结接口定义及确切版本。
+            String optionsId = field.getOptionsInterfaceId();
+            if (StringUtils.hasText(optionsId)) {
+                UiExtensionDefinition options = optionDefinitions.computeIfAbsent(optionsId, extensionDefinitionMapper::selectById);
+                if (options == null || !StringUtils.hasText(options.getExtensionKey()) || options.getVersion() == null) {
+                    throw new IllegalStateException("字段候选接口缺少稳定编码或版本: " + field.getFieldCode());
+                }
+                fieldSnapshot.remove(ConfigMigrationFieldOptionReferences.LOCAL_ID);
+                fieldSnapshot.put(ConfigMigrationFieldOptionReferences.KEY,
+                        Map.of("extensionKey", options.getExtensionKey(), "version", options.getVersion()));
+                dataSourceIds.add(optionsId);
             }
             fieldSnapshot.put("fileItems", portableList(fileItemMapper.findByFieldId(field.getId())));
             fields.add(fieldSnapshot);
@@ -1303,7 +1312,6 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         snapshot.put("codeRule", portableCodeRule);
         List<Map<String, Object>> forms = new ArrayList<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
-        Set<String> dataSourceIds = new LinkedHashSet<>();
         List<Map<String, Object>> entityEventBindings = releaseOverrides.isEmpty()
                 ? portableEventBindings(eventBindingSnapshotService.snapshotOwner("ENTITY", entity.getId()))
                 : releasedOwnerBindings(mapValue(parseJson(releaseOverrides.values().iterator().next()
@@ -1361,6 +1369,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
             List<Map<String, Object>> nodeSnapshots = new ArrayList<>();
             for (EntityFormNode node : nodes) {
                 Map<String, Object> nodeSnapshot = portableMap(node);
+                portableFieldOptionBinding(nodeSnapshot, node, optionDefinitions);
                 nodeSnapshot.put(
                         "parentNodeKey",
                         nodeKeysById.get(node.getParentId()));
@@ -1520,6 +1529,24 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         }
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
+    }
+
+    /**
+     * 已发布的表单会投影字段继承的 FIELD_OPTIONS。记录其确切版本，避免同编码的其他版本
+     * 在表单恢复时覆盖字段接口，也支持仅迁移表单的批次。
+     */
+    private void portableFieldOptionBinding(Map<String, Object> snapshot, EntityFormNode node,
+            Map<String, UiExtensionDefinition> optionDefinitions) {
+        if (optionDefinitions.isEmpty() || !StringUtils.hasText(node.getDataSourceBindingsDocument())) return;
+        Map<String, Object> bindings = mapValue(parseJson(node.getDataSourceBindingsDocument(), Map.of()));
+        Map<String, Object> binding = mapValue(bindings.get("FIELD_OPTIONS"));
+        UiExtensionDefinition definition = optionDefinitions.get(text(binding.get("extensionId")));
+        if (definition == null) return;
+        binding.remove("extensionId");
+        binding.put("extensionCode", definition.getExtensionKey());
+        binding.put(ConfigMigrationFieldOptionReferences.FORM_BINDING_VERSION, definition.getVersion());
+        bindings.put("FIELD_OPTIONS", binding);
+        snapshot.put("dataSourceBindingsDocument", writeJson(bindings));
     }
 
     /**
@@ -2223,6 +2250,14 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
      */
     private Map<String, Object> buildProcessSnapshot(ProcessDefinitionConfig config, ProcessVersionHistory history) {
         Map<String, Object> snapshot = baseSnapshot(PROCESS, config.getProcessKey(), config.getProcessName());
+        // 记录发布时的实体字段契约，后续导出历史流程时避免读取已经变更的实体草稿。
+        List<EntityDefinition> bindings = entityMapper.findAllByProcessDefinitionId(config.getId());
+        if (bindings.size() == 1) {
+            var entity = entityPublishedSnapshots.findLatestByEntityCode(bindings.get(0).getEntityCode());
+            if (entity != null && entity.getFields() != null) {
+                snapshot.put(ConfigMigrationValueReferences.FIELD_TYPES, fieldReferenceTypes(entity.getFields()));
+            }
+        }
         Map<String, Object> definition = new LinkedHashMap<>();
         definition.put("processKey", config.getProcessKey());
         definition.put("processName", config.getProcessName());
@@ -2323,6 +2358,26 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
     }
 
     /**
+     * 将实体字段转换为迁移所需的值类型。历史引用字段以目标实体编码识别目录类型，
+     * 以便流程及系统实体 UI 快照只携带语义，无需附带源表的结构或本地 ID。
+     *
+     * @param fields 已发布实体字段，或系统实体的受管字段
+     * @return 按字段编码索引的迁移值类型
+     */
+    private Map<String, String> fieldReferenceTypes(Collection<EntityField> fields) {
+        Map<String, String> types = new LinkedHashMap<>();
+        for (EntityField field : fields) {
+            Map<String, Object> contract = portableMap(field);
+            if (StringUtils.hasText(field.getRefEntityId())) {
+                EntityDefinition referenced = entityMapper.selectById(field.getRefEntityId());
+                contract.put("refEntityCode", referenced == null ? null : referenced.getEntityCode());
+            }
+            types.put(field.getFieldCode(), ConfigMigrationValueReferences.fieldType(contract));
+        }
+        return types;
+    }
+
+    /**
      * 整理基础快照数据，供调用方遍历或继续处理。
      *
      * @param assetType 资产类型标识，决定后续基础快照采用的处理分支
@@ -2374,7 +2429,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         if (existing != null) {
             return existing;
         }
-        snapshot = subFormReferences.exportReferences(referenceService.exportReferences(snapshot));
+        snapshot = subFormReferences.exportReferences(referenceService.captureReferences(snapshot));
         // 引用转换会追加依赖，最终快照、摘要数量和依赖表必须使用同一份业务键合并结果。
         dependencies = deduplicateDependencies(castList(snapshot.get("dependencies")));
         snapshot.put("dependencies", dependencies);
@@ -2666,7 +2721,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         while (matcher.find()) {
             String calledElement = matcher.group(1);
             if (!calledElement.startsWith("${")) {
-                addDependency(dependencies, PROCESS, calledElement, true, "调用子流程");
+                addDependency(dependencies, PROCESS, calledElement, true, CALLED_PROCESS_DEPENDENCY_SOURCE);
             }
         }
     }

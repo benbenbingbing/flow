@@ -14,6 +14,7 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.task.application.operation.NodeHistoryReturnPolicy;
 
 import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
@@ -63,6 +64,7 @@ public class ProcessDefinitionService {
     private final ProcessDefinitionPreflightService preflightService;
     /** 绑定实体目录，用于让流程删除与实体绑定共用同一行锁门闩。 */
     private final EntityCodeCatalogPort entityCodeCatalogPort;
+    private final NodeHistoryReturnPolicy historyReturnPolicy;
     
     /**
      * 查询所有启用的流程定义。
@@ -258,10 +260,27 @@ public class ProcessDefinitionService {
             captureArguments = true,
             captureResult = true)
     public ProcessDefinitionDTO save(ProcessDefinitionDTO dto) {
+        return saveWithReturnDefault(dto, true);
+    }
+
+    /** 配置包迁移复用来源 BPMN 的默认策略。缺少标记的旧包按关闭创建。 */
+    @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.CREATE,
+            operation = "创建流程定义",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "PROCESS_DEFINITION",
+            captureArguments = true,
+            captureResult = true)
+    public ProcessDefinitionDTO saveImportedDefinition(ProcessDefinitionDTO dto) {
+        return saveWithReturnDefault(dto, ProcessReturnPolicyBpmn.hasAutomaticDefault(dto.getBpmnXml()));
+    }
+
+    private ProcessDefinitionDTO saveWithReturnDefault(ProcessDefinitionDTO dto, boolean automaticReturn) {
         ProcessDefinitionConfig config = convertToEntity(dto);
-        config.setBpmnXml(
-                ProcessBpmnSynchronousExecutionNormalizer.normalize(
-                        config.getBpmnXml()));
+        config.setBpmnXml(ProcessReturnPolicyBpmn.withDefault(
+                ProcessBpmnSynchronousExecutionNormalizer.normalize(config.getBpmnXml()), automaticReturn));
         config.setVersion(0); // 初始版本为0，表示从未发布
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
         config.setDraftRevision(1L);
@@ -309,9 +328,9 @@ public class ProcessDefinitionService {
             throw draftConflict(existing);
         }
 
-        String normalizedBpmnXml =
+        String normalizedBpmnXml = ProcessReturnPolicyBpmn.preserveDefault(existing.getBpmnXml(),
                 ProcessBpmnSynchronousExecutionNormalizer.normalize(
-                        dto.getBpmnXml());
+                        dto.getBpmnXml()));
         String nextDraftHash = ProcessDraftHashSupport.hash(
                 existing.getProcessKey(),
                 dto.getProcessName(),
@@ -542,6 +561,19 @@ public class ProcessDefinitionService {
         // 清理历史版本中平台注入的顺序流动作监听器；运行时已由统一事件监听器接管
         runtimeBpmnXml = flowActionDesignPort.prepareBpmnForPublish(id, runtimeBpmnXml);
 
+        // 只替换部署扩展。设计稿与历史设计快照保留节点显式设置，供下次编辑和版本还原。
+        if (runtimeBpmnXml != null && (runtimeBpmnXml.contains(NodeHistoryReturnPolicy.PROPERTY)
+                || runtimeBpmnXml.contains(NodeHistoryReturnPolicy.DEFAULT_PROPERTY)
+                || runtimeBpmnXml.contains(NodeHistoryReturnPolicy.SNAPSHOT_PROPERTY))) {
+            var previous = config.getVersion() == null || config.getVersion() < 1 ? null
+                    : versionHistoryMapper.findByProcessConfigIdAndVersion(id, config.getVersion())
+                            .map(ProcessVersionHistory::getDeploymentId)
+                            .map(deploymentId -> flowableDeploymentService.readProcess(deploymentId, config.getProcessKey()))
+                            .orElse(null);
+            String targets = historyReturnPolicy.compile(runtimeBpmnXml, config.getProcessKey(), previous);
+            runtimeBpmnXml = ProcessReturnPolicyBpmn.withPublishedSnapshot(runtimeBpmnXml, config.getProcessKey(), targets);
+        }
+
         nodeSyncService.syncBpmnNodeBindings(id, designBpmnXml);
 
         ProcessPublishHistoryService.PublishedNodeForms publishedNodeForms =
@@ -606,9 +638,9 @@ public class ProcessDefinitionService {
         }
         
         // 使用目标版本的XML作为新版本的起点
-        config.setBpmnXml(
+        config.setBpmnXml(ProcessReturnPolicyBpmn.preserveDefault(config.getBpmnXml(),
                 ProcessBpmnSynchronousExecutionNormalizer.normalize(
-                        targetVersion.getBpmnXml()));
+                        targetVersion.getBpmnXml())));
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
         config.setDraftRevision(revisionOf(config) + 1);
         config.setDraftHash(ProcessDraftHashSupport.hash(config));

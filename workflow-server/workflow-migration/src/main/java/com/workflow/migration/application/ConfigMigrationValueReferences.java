@@ -47,6 +47,18 @@ final class ConfigMigrationValueReferences {
      */
     static Map<String, Object> rewrite(Map<String, Object> snapshot,
             BiFunction<String, String, String> identity, boolean exporting) {
+        Map<String, String> fields = fieldTypes(snapshot);
+        Map<String, Object> result = object(walk(snapshot, fields, "", "$[" + text(snapshot.get("businessKey")) + "]",
+                identity, exporting));
+        if (exporting) {
+            result.put(FIELD_TYPES, fields);
+            result.put(PROTOCOL, PROTOCOL_VERSION);
+        }
+        return result;
+    }
+
+    /** 历史快照也使用当前平台内置变量语义，已冻结的自定义字段类型仍取自发布快照。 */
+    static Map<String, String> fieldTypes(Map<String, Object> snapshot) {
         Map<String, String> fields = new LinkedHashMap<>(SYSTEM_FIELDS);
         object(snapshot.get(FIELD_TYPES)).forEach((key, value) ->
                 fields.put(key, SYSTEM_FIELDS.getOrDefault(key, checkedType(text(value)))));
@@ -55,13 +67,7 @@ final class ConfigMigrationValueReferences {
             // 系统字段的数据库类型可能是 STRING，但 create_by 等运行时契约仍然是用户 ID。
             if (!name.isBlank()) fields.put(name, SYSTEM_FIELDS.getOrDefault(name, fieldType(field)));
         }
-        Map<String, Object> result = object(walk(snapshot, fields, "", "$[" + text(snapshot.get("businessKey")) + "]",
-                identity, exporting));
-        if (exporting) {
-            result.put(FIELD_TYPES, fields);
-            result.put(PROTOCOL, PROTOCOL_VERSION);
-        }
-        return result;
+        return fields;
     }
 
     private static Object walk(Object value, Map<String, String> fields, String inheritedType,

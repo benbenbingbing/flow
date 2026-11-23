@@ -1,12 +1,30 @@
 package com.workflow.migration.application;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
+import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
+import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetDependencyMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetMapper;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAssetDependency;
+import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -83,4 +101,84 @@ class ConfigMigrationDependencyPublishTest {
         assertEquals(dependencies, ConfigMigrationAssignmentSupport.mergeDependencies(dependencies));
         assertEquals(savedSnapshot, subForms.exportReferences(references.exportReferences(savedSnapshot)));
     }
+
+    @ParameterizedTest(name = "实体绑定={0}，标记导出={1}")
+    @CsvSource({"PUBLISHED, true", "PUBLISHED, false", "DRAFT_ONLY, true", "UNBOUND, true", "AMBIGUOUS, true"})
+    void publishingUsesOnlyConfirmedEntityFieldTypesForGatewayVariables(Binding binding, boolean markForExport) throws Exception {
+        var assets = mock(ConfigMigrationAssetService.class, CALLS_REAL_METHODS);
+        var assetMapper = mock(ConfigMigrationAssetMapper.class);
+        var entities = mock(EntityDefinitionMapper.class);
+        var publications = mock(EntityPublishedSnapshotService.class);
+        var users = mock(SysUserMapper.class);
+        var references = new ConfigMigrationReferenceService(users, null, null, null, null, null);
+        when(users.selectById("1")).thenReturn(new SysUser());
+        var entity = new EntityDefinition();
+        entity.setEntityCode("expense");
+        var fields = new EntityPublishedSnapshot();
+        var memo = new EntityField();
+        memo.setFieldCode("memo");
+        memo.setFieldType(EntityField.FieldType.STRING);
+        var reviewer = new EntityField();
+        reviewer.setFieldCode("reviewer");
+        reviewer.setFieldType(EntityField.FieldType.USER);
+        fields.setFields(List.of(memo, reviewer));
+        when(entities.findAllByProcessDefinitionId("42")).thenReturn(switch (binding) {
+            case PUBLISHED, DRAFT_ONLY -> List.of(entity);
+            case UNBOUND -> List.of();
+            case AMBIGUOUS -> List.of(entity, new EntityDefinition());
+        });
+        when(publications.findLatestByEntityCode("expense")).thenReturn(binding == Binding.PUBLISHED ? fields : null);
+        ReflectionTestUtils.setField(assets, "objectMapper", json);
+        ReflectionTestUtils.setField(assets, "assetMapper", assetMapper);
+        ReflectionTestUtils.setField(assets, "referenceService", references);
+        ReflectionTestUtils.setField(assets, "subFormReferences",
+                new ConfigMigrationSubFormReferences(null, null, null, references, null, json));
+        ReflectionTestUtils.setField(assets, "assetDependencyService", mock(ConfigMigrationAssetDependencyService.class));
+        ReflectionTestUtils.setField(assets, "entityMapper", entities);
+        ReflectionTestUtils.setField(assets, "entityPublishedSnapshots", publications);
+        ReflectionTestUtils.setField(assets, "nodeFormMapper", mock(ProcessNodeFormMapper.class));
+        ReflectionTestUtils.setField(assets, "nodeConfigMapper", mock(NodeConfigMapper.class));
+        ReflectionTestUtils.setField(assets, "nodeApprovalMapper", mock(ProcessNodeApprovalMapper.class));
+        ReflectionTestUtils.setField(assets, "flowActionMapper", mock(FlowActionMapper.class));
+        ReflectionTestUtils.setField(assets, "statusMappingMapper", mock(EntityFlowStatusMappingMapper.class));
+        var config = new ProcessDefinitionConfig();
+        config.setId("42");
+        config.setProcessKey("expense_review");
+        var history = new ProcessVersionHistory();
+        history.setId("history-v1");
+        history.setVersion(1);
+        history.setBpmnXml(ConfigMigrationAssignmentSupportTest.bpmn("""
+                <bpmn:sequenceFlow id="route" sourceRef="start" targetRef="end">
+                  <bpmn:conditionExpression>${memo == '1'}</bpmn:conditionExpression>
+                </bpmn:sequenceFlow>
+                """));
+        var request = new ConfigMigrationPublishRequest();
+        request.setMarkForExport(markForExport);
+        var asset = assets.recordProcess(config, history, request);
+        verify(assetMapper).insert(asset);
+        assertEquals(markForExport, asset.getMarkForExport());
+        verifyNoInteractions(users);
+        var captured = json.readValue(asset.getSnapshotJson(), new TypeReference<Map<String, Object>>() { });
+        var fieldTypes = ConfigMigrationReferenceSupport.object(captured.get(ConfigMigrationValueReferences.FIELD_TYPES));
+        if (binding != Binding.PUBLISHED) {
+            assertFalse(fieldTypes.containsKey("memo"));
+            if (binding == Binding.DRAFT_ONLY) verify(publications).findLatestByEntityCode("expense");
+            else verifyNoInteractions(publications);
+            // 缺少可靠字段类型时仍可发布。导出遇到目录撞号时保留人工确认，避免从草稿猜测类型。
+            var error = assertThrows(IllegalArgumentException.class, () -> references.exportReferences(captured));
+            assertTrue(error.getMessage().contains("固定 USER ID"));
+            verify(users).selectById("1");
+            return;
+        }
+        assertEquals("VALUE", fieldTypes.get("memo"));
+        assertEquals("USER", fieldTypes.get("reviewer"));
+        assertEquals(history.getBpmnXml(), references.exportReferences(captured).get("bpmnXml"));
+
+        captured.put("bpmnXml", history.getBpmnXml().replace("memo", "reviewer"));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> references.exportReferences(captured))
+                .getMessage().contains("固定 USER ID"));
+        verifyNoInteractions(users);
+    }
+
+    private enum Binding { PUBLISHED, DRAFT_ONLY, UNBOUND, AMBIGUOUS }
 }

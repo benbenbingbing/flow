@@ -551,6 +551,7 @@ public class ConfigMigrationPackageService {
             ConfigMigrationAsset asset = selected.get(queuedKey);
             Map<String, Object> selectedSnapshot = packageCodec.selectSnapshot(
                     asset.getSnapshotJson(), selections.get(asset.getId()));
+            ConfigMigrationFieldOptionReferences.validate(selectedSnapshot);
             for (Map<String, Object> dependency :
                     documents.readMapList(selectedSnapshot.get("dependencies"))) {
                 if (!Boolean.parseBoolean(String.valueOf(dependency.getOrDefault("required", false)))) {

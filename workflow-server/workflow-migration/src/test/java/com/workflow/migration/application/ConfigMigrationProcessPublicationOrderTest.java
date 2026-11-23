@@ -1,11 +1,13 @@
 package com.workflow.migration.application;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -47,5 +49,41 @@ class ConfigMigrationProcessPublicationOrderTest {
         assertThrows(IllegalArgumentException.class, () ->
                 ConfigMigrationImportApplyService.processPublicationOrder(Map.of("self", Set.of("self"))));
         assertEquals(List.of(), ConfigMigrationImportApplyService.processPublicationOrder(Map.of()));
+    }
+
+    @Test
+    void bpmnOnlySelectionChecksOwnerInTargetWithoutTreatingItAsAProcessCall() {
+        List<Map<String, Object>> dependencies = selectedBpmnDependencies("z_child");
+        var owner = dependencies.stream().filter(dependency -> "a_parent".equals(dependency.get("key")))
+                .findFirst().orElseThrow();
+        assertEquals(Boolean.TRUE, owner.get("targetOnly"));
+        assertEquals(Set.of("z_child"), processCalls(dependencies));
+    }
+
+    @Test
+    void bpmnOnlySelectionStillRejectsSelfCallWhenItSharesTheOwnerDependency() {
+        Set<String> calls = processCalls(selectedBpmnDependencies("a_parent"));
+        assertEquals(Set.of("a_parent"), calls);
+        assertThrows(IllegalArgumentException.class, () ->
+                ConfigMigrationImportApplyService.processPublicationOrder(Map.of("a_parent", calls)));
+    }
+
+    /** 使用实际 BPMN 分区投影，验证包内生成的归属依赖及同键合并。 */
+    private List<Map<String, Object>> selectedBpmnDependencies(String calledKey) {
+        var codec = new ConfigMigrationPackageCodec(new ObjectMapper(), null);
+        var snapshot = Map.<String, Object>of(
+                "assetType", "PROCESS",
+                "businessKey", "a_parent",
+                "definition", Map.of("processKey", "a_parent"),
+                "bpmnXml", "<callActivity id=\"call\" calledElement=\"" + calledKey + "\"/>",
+                "dependencies", List.of(Map.of("type", "PROCESS", "key", calledKey, "required", true,
+                        "source", ConfigMigrationAssetService.CALLED_PROCESS_DEPENDENCY_SOURCE)));
+        var selected = codec.selectSnapshot(snapshot, Map.of("full", false, "sections", List.of("bpmnXml")));
+        return ConfigMigrationAssignmentSupport.maps(selected.get("dependencies"));
+    }
+
+    private Set<String> processCalls(List<Map<String, Object>> dependencies) {
+        return dependencies.stream().filter(ConfigMigrationImportApplyService::isProcessCallDependency)
+                .map(dependency -> (String) dependency.get("key")).collect(Collectors.toSet());
     }
 }

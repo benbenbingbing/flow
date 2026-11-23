@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 const field = { id: 'amount-field', fieldCode: 'amount', fieldName: '金额', fieldLabel: '金额', fieldType: 'DECIMAL', componentType: 'number', showInList: true, isQuery: true, sortOrder: 0 }
 const entity = { id: 'entity-test', entityCode: 'test', entityName: '测试实体', storageMode: 'DYNAMIC', lifecycleMode: 'WORKFLOW', status: 'DRAFT', fields: [field] }
-const form = { id: 'form-test', formName: '测试表单', formKey: 'main', entityId: 'entity-test', entityCode: 'test', revision: 3, fields: [field], viewConfig: '{}', rendererMode: 'DEFAULT', configHash: 'form-release' }
+const form = { id: 'form-test', formName: '测试表单', formKey: 'main', entityId: 'entity-test', entityCode: 'test', isDefault: true, revision: 3, fields: [field], viewConfig: '{}', rendererMode: 'DEFAULT', configHash: 'form-release' }
 const column = { ...field, id: 'column-amount', fieldId: field.id, revision: 1, orderKey: 1000000 }
 const config = { id: 'list-test', listName: '测试列表', listKey: 'main', entityId: 'entity-test', entityCode: 'test', revision: 3, viewConfig: '{}', fields: [column], releaseId: 'list-release', publishedVersion: 1 }
 async function mock(page, { failScope = false } = {}) {
@@ -107,4 +107,24 @@ for (const mode of ['entity', 'form', 'entities', 'data', 'related', 'events', '
   await expect(page.locator('.el-loading-mask:visible')).toHaveCount(0)
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
   await page.screenshot({ path: `../../.codex-artifacts/frontend-refactor/pc-designer-${mode}.png`, fullPage: true, animations: 'disabled' })
+})
+
+test('自动回退默认值随流程继承，只有主动修改才写入节点', async ({ page }) => {
+  const state = await mock(page)
+  await page.goto('/tests/e2e/designer-fixture.html?view=node&returnDefault=auto')
+  await page.getByRole('tab', { name: '高级', exact: true }).click()
+  const group = page.locator('.settings-section').filter({ has: page.getByText('选择节点回退', { exact: true }) })
+  await expect(group.getByText('自动（默认）')).toBeVisible()
+  const apply = page.getByRole('button', { name: '应用到画布' })
+  await apply.click()
+  await expect(page.getByText('已应用到画布，请点击「保存草稿」完成保存')).toBeVisible()
+  await expect(page.getByTestId('task-return-config')).toHaveText('继承默认')
+
+  await group.getByRole('button', { name: /选择节点回退/ }).click()
+  await group.getByText('自动', { exact: true }).click()
+  await page.getByRole('option', { name: '禁用', exact: true }).click()
+  await apply.click()
+  await expect(page.getByTestId('task-return-config')).toHaveText('{"mode":"OFF","targetNodeIds":[]}')
+  expect(state.errors).toEqual([])
+  expect(state.unexpected).toEqual([])
 })

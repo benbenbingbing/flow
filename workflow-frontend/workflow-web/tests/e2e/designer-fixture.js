@@ -31,12 +31,17 @@ if (mode === 'node') {
   const moddle = (await import('/src/assets/flowable.json')).default
   const Panel = (await import('/src/components/NodeConfigPanel.vue')).default
   const { updateBpmnExtensionProperty } = await import('/src/components/node-config/bpmnExtensionProperties.js')
+  const { TASK_RETURN_PROPERTY, TASK_RETURN_DEFAULT_PROPERTY, taskReturnProperty } = await import('/src/components/node-config/taskReturnConfiguration.js')
   component = { setup() {
-    const canvas = ref(), element = shallowRef(), value = ref('before'); let modeler
+    const canvas = ref(), element = shallowRef(), value = ref('before'), returnConfig = ref(); let modeler
     const read = () => { value.value = element.value.businessObject.extensionElements?.values?.find(x => x.$type === 'flowable:Properties')?.values?.find(x => x.name === 'test')?.value || '' }
     onMounted(async () => {
       modeler = new Modeler({ container: canvas.value, moddleExtensions: { flowable: moddle } })
       await modeler.createDiagram()
+      if (new URLSearchParams(location.search).get('returnDefault') === 'auto') {
+        updateBpmnExtensionProperty(modeler.get('canvas').getRootElement(), modeler.get('moddle'),
+          modeler.get('modeling'), TASK_RETURN_DEFAULT_PROPERTY, 'HISTORY')
+      }
       const shape = modeler.get('elementFactory').createShape({ type: 'bpmn:UserTask' })
       modeler.get('modeling').createShape(shape, { x: 300, y: 200 }, modeler.get('canvas').getRootElement())
       modeler.get('modeling').updateProperties(shape, { name: '审批节点', 'flowable:assignee': 'fixture' })
@@ -50,7 +55,9 @@ if (mode === 'node') {
       h('button', { onClick: () => { modeler.get('commandStack').undo(); read() } }, '撤销'),
       h('button', { onClick: () => { modeler.get('commandStack').redo(); read() } }, '重做'),
       h('output', { 'data-testid': 'extension-value' }, value.value),
-      element.value && h(Panel, { element: element.value, processId: 'process-test' })])
+      h('output', { 'data-testid': 'task-return-config' }, returnConfig.value ?? '继承默认'),
+      element.value && h(Panel, { element: element.value, processId: 'process-test',
+        onSave: () => { returnConfig.value = taskReturnProperty(element.value.businessObject, TASK_RETURN_PROPERTY) } })])
   } }
   path = '/node'
 }

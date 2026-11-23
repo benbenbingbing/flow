@@ -1067,6 +1067,18 @@ public class ConfigMigrationImportApplyService {
     private void applyEntityConfiguration(EntityContext context, boolean rollbackMode, boolean deferUi) {
         Map<String, Object> snapshot = context.snapshot();
         EntityDefinition entity = context.entity();
+        if (snapshot.containsKey("extensions")) {
+            applyExtensions(mapList(snapshot.get("extensions")));
+        }
+        if (snapshot.containsKey("interfaceExtensions") || snapshot.containsKey("dataSources")) {
+            // 所有目标实体已建好，先恢复接口定义，字段及其继承的表单绑定才能使用同一目标接口。
+            Map<String, String> dataSourceIds = applyInterfaceExtensions(entity, interfaceExtensionValues(snapshot));
+            for (String section : List.of("forms", "lists", "eventBindings")) {
+                if (snapshot.containsKey(section)) {
+                    snapshot.put(section, rewriteInterfaceReferences(snapshot.get(section), dataSourceIds));
+                }
+            }
+        }
         if (snapshot.containsKey("fields")) {
             List<EntityFieldDTO> fields = toEntityFieldDtos(entity, snapshot, rollbackMode);
             EntityDefinitionDTO dto = new EntityDefinitionDTO();
@@ -1093,34 +1105,6 @@ public class ConfigMigrationImportApplyService {
             EntityCodeRule codeRule = convert(mapValue(codeRuleValue), EntityCodeRule.class);
             codeRule.setEntityCode(entity.getEntityCode());
             codeGeneratorService.saveRule(codeRule);
-        }
-        if (snapshot.containsKey("extensions")) {
-            applyExtensions(mapList(snapshot.get("extensions")));
-        }
-        if (snapshot.containsKey("interfaceExtensions")
-                || snapshot.containsKey("dataSources")) {
-            List<Map<String, Object>> interfaces = interfaceExtensionValues(snapshot);
-            Map<String, String> dataSourceIds =
-                    applyInterfaceExtensions(
-                            entity,
-                            interfaces);
-            snapshot.put(
-                    "forms",
-                    rewriteInterfaceReferences(
-                            snapshot.get("forms"),
-                            dataSourceIds));
-            snapshot.put(
-                    "lists",
-                    rewriteInterfaceReferences(
-                            snapshot.get("lists"),
-                            dataSourceIds));
-            if (snapshot.containsKey("eventBindings")) {
-                snapshot.put(
-                        "eventBindings",
-                        rewriteInterfaceReferences(
-                                snapshot.get("eventBindings"),
-                                dataSourceIds));
-            }
         }
         if (snapshot.containsKey("eventBindings")) {
             restoreEventBindings(
@@ -1178,6 +1162,15 @@ public class ConfigMigrationImportApplyService {
         for (Map<String, Object> value : mapList(snapshot.get("fields"))) {
             EntityFieldDTO field = convert(value, EntityFieldDTO.class);
             incomingCodes.add(field.getFieldCode());
+            ConfigMigrationFieldOptionReferences.Ref options = ConfigMigrationFieldOptionReferences.read(value);
+            if (options != null) {
+                UiExtensionDefinition target = findInterfaceExtension(options.code(), options.version());
+                if (target == null) {
+                    throw new IllegalStateException("字段候选接口未恢复: " + field.getFieldCode()
+                            + " / " + options.code() + "@" + options.version());
+                }
+                field.setOptionsInterfaceId(target.getId());
+            }
             String refEntityCode = text(value.get("refEntityCode"), null);
             if (StringUtils.hasText(refEntityCode)) {
                 EntityDefinition referenced = entityMapper.findByEntityCode(mappedKey("ENTITY", refEntityCode))
@@ -1598,12 +1591,7 @@ public class ConfigMigrationImportApplyService {
         int version = integerObject(value.get("version")) == null
                 ? 1 : integerObject(value.get("version"));
         // 导入包已指定实现版本，必须命中该版本的唯一键，不能因数据库行序变化覆盖另一个版本。
-        UiExtensionDefinition existing = extensionDefinitionMapper.selectOne(
-                new LambdaQueryWrapper<UiExtensionDefinition>()
-                        .eq(UiExtensionDefinition::getExtensionType, "INTERFACE")
-                        .eq(UiExtensionDefinition::getExtensionKey, extensionKey)
-                        .eq(UiExtensionDefinition::getVersion, version)
-                        .eq(UiExtensionDefinition::getDeleted, 0));
+        UiExtensionDefinition existing = findInterfaceExtension(extensionKey, version);
         UiExtensionDefinitionSaveRequest request =
                 new UiExtensionDefinitionSaveRequest();
         request.setId(existing == null ? null : existing.getId());
@@ -1659,6 +1647,15 @@ public class ConfigMigrationImportApplyService {
                         ? "DISABLED" : "ACTIVE"
                 : text(value.get("status"), "ACTIVE"));
         return dataSourceService.save(request);
+    }
+
+    /** 同版本接口复用目标 ID；同编码的其他版本和源环境 ID 均不能用于字段绑定。 */
+    private UiExtensionDefinition findInterfaceExtension(String extensionKey, int version) {
+        return extensionDefinitionMapper.selectOne(new LambdaQueryWrapper<UiExtensionDefinition>()
+                .eq(UiExtensionDefinition::getExtensionType, "INTERFACE")
+                .eq(UiExtensionDefinition::getExtensionKey, extensionKey)
+                .eq(UiExtensionDefinition::getVersion, version)
+                .eq(UiExtensionDefinition::getDeleted, 0));
     }
 
     /**
@@ -1755,6 +1752,18 @@ public class ConfigMigrationImportApplyService {
                     entries.entrySet()) {
                 if ("childFormReleaseRef".equals(entry.getKey())) {
                     rewritten.put(entry.getKey(), entry.getValue());
+                } else if (ConfigMigrationFieldOptionReferences.FORM_BINDING_VERSION.equals(entry.getKey())) {
+                    // 版本是迁移坐标，运行配置只保存解析后的本地接口 ID。
+                } else if ("extensionCode".equals(entry.getKey()) && entry.getValue() instanceof String code
+                        && entries.containsKey(ConfigMigrationFieldOptionReferences.FORM_BINDING_VERSION)) {
+                    int version = ConfigMigrationPackageValidation.positiveVersion(
+                            entries.get(ConfigMigrationFieldOptionReferences.FORM_BINDING_VERSION),
+                            ConfigMigrationFieldOptionReferences.FORM_BINDING_VERSION);
+                    UiExtensionDefinition target = findInterfaceExtension(code, version);
+                    if (target == null) {
+                        throw new IllegalStateException("表单引用的候选接口版本不存在: " + code + "@" + version);
+                    }
+                    rewritten.put("extensionId", target.getId());
                 } else if (isInterfaceExtensionCodeKey(entry.getKey())
                         && entry.getValue() instanceof String code) {
                     String id = StringUtils.hasText(legacyOperationCode)
@@ -2579,7 +2588,7 @@ public class ConfigMigrationImportApplyService {
 
         ProcessDefinitionDTO saved;
         if (existing == null) {
-            saved = processService.save(dto);
+            saved = processService.saveImportedDefinition(dto);
         } else {
             saved = processService.update(existing.getId(), dto);
         }
@@ -3313,13 +3322,30 @@ public class ConfigMigrationImportApplyService {
             byKey.put(key, context);
             Set<String> children = new LinkedHashSet<>();
             for (Map<String, Object> dependency : mapList(context.snapshot().get("dependencies"))) {
-                if (ConfigMigrationAssetService.PROCESS.equals(dependency.get("type"))) {
+                if (isProcessCallDependency(dependency)) {
                     children.add(mappedKey(ConfigMigrationAssetService.PROCESS, text(dependency.get("key"), "")));
                 }
             }
             dependencies.put(key, children);
         }
         return processPublicationOrder(dependencies).stream().map(byKey::get).toList();
+    }
+
+    /**
+     * 细粒度迁移用 targetOnly 要求所属流程已存在，预检处理这类依赖，发布排序只处理调用关系。
+     * 依赖合并后若同一流程同时有存在性要求和真实调用，仍保留调用边用于检测循环。
+     *
+     * @param dependency 流程快照中的一条依赖记录
+     * @return 是否应作为流程调用边参与发布排序
+     */
+    static boolean isProcessCallDependency(Map<String, Object> dependency) {
+        if (!ConfigMigrationAssetService.PROCESS.equals(dependency.get("type"))) {
+            return false;
+        }
+        String callSource = ConfigMigrationAssetService.CALLED_PROCESS_DEPENDENCY_SOURCE;
+        return !Boolean.TRUE.equals(dependency.get(ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY))
+                || callSource.equals(dependency.get("source"))
+                || (dependency.get("sources") instanceof Collection<?> sources && sources.contains(callSource));
     }
 
     /**

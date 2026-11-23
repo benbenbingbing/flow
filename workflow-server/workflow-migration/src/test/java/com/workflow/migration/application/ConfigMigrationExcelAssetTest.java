@@ -42,7 +42,7 @@ class ConfigMigrationExcelAssetTest {
         doReturn(latest).when(service).findLatest("ENTITY", "employee");
         Map<String, Object> excel = Map.of("schemaVersion", 1, "schemes", List.of(), "defaults", Map.of("schemaVersion", 1));
         when(port.exportPublished("employee")).thenReturn(excel);
-        when(references.exportReferences(any())).thenAnswer(call -> call.getArgument(0));
+        when(references.captureReferences(any())).thenAnswer(call -> call.getArgument(0));
         when(subforms.exportReferences(any())).thenAnswer(call -> call.getArgument(0));
         service.recordPublished("e");
         var written = ArgumentCaptor.forClass(ConfigMigrationAsset.class); verify(assets).insert(written.capture());

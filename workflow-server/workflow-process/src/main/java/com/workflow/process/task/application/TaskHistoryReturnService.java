@@ -76,9 +76,12 @@ public class TaskHistoryReturnService {
     private final ObjectMapper json;
     private final IdentityDirectoryPort identities;
 
-    public record Request(@NotBlank @Size(max = 200) String requestId,
-                          @NotBlank @Size(max = 128) String targetActivityInstanceId,
-                          @NotBlank @Size(max = 2000) String comment,
+    public record Request(@NotBlank(message = "回退请求标识不能为空")
+                          @Size(max = 200, message = "回退请求标识不能超过 200 个字符") String requestId,
+                          @NotBlank(message = "请选择回退目标")
+                          @Size(max = 128, message = "回退目标标识不能超过 128 个字符") String targetActivityInstanceId,
+                          @NotBlank(message = "请填写回退意见")
+                          @Size(max = 2000, message = "回退意见不能超过 2000 个字符") String comment,
                           String formId, String formConfigHash) {}
 
     public record Target(String activityInstanceId, String nodeId, String nodeName, boolean resubmit) {}
@@ -188,7 +191,7 @@ public class TaskHistoryReturnService {
         var node = process == null ? null : process.getFlowElement(source.getTaskDefinitionKey());
         if (!(node instanceof UserTask) || !NodeHistoryReturnPolicy.supports(node)
                 || !NodeHistoryReturnPolicy.supportsRootScope(process)) return Map.of();
-        var config = policy.read(node);
+        var config = policy.readPublished(process, node);
         if (config.mode() == NodeHistoryReturnPolicy.Mode.OFF
                 || addSigns.isAddSignSourceTask(source.getId()) || !hasSingleExecution(source)) return Map.of();
 

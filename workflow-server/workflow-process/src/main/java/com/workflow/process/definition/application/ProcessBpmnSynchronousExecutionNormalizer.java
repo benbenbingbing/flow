@@ -217,7 +217,7 @@ public final class ProcessBpmnSynchronousExecutionNormalizer {
      * @return 解析后的流程BPMN{@code synchronous}执行{@code normalizer}结果，供调用方继续处理
      * @throws Exception 下游操作失败时向调用方传递
      */
-    private static Document parse(String bpmnXml) throws Exception {
+    static Document parse(String bpmnXml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         factory.setFeature(
@@ -257,7 +257,7 @@ public final class ProcessBpmnSynchronousExecutionNormalizer {
      * @return 写入后的流程BPMN{@code synchronous}执行{@code normalizer}文本，供调用方比较或展示
      * @throws Exception 下游操作失败时向调用方传递
      */
-    private static String write(Document document) throws Exception {
+    static String write(Document document) throws Exception {
         TransformerFactory factory = TransformerFactory.newInstance();
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");

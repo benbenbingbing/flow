@@ -66,7 +66,8 @@ class ProcessDefinitionServicePublishTest {
                 actionDesignPort,
                 migrationAssetHandler,
                 preflightService,
-                entityCodeCatalogPort);
+                entityCodeCatalogPort,
+                mock(com.workflow.process.task.application.operation.NodeHistoryReturnPolicy.class));
 
         String designXml = """
                 <bpmn:definitions

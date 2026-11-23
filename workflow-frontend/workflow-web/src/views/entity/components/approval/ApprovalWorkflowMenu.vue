@@ -1,7 +1,7 @@
 <template>
   <el-dropdown v-if="items.length" trigger="click" placement="top-start"
     @visible-change="visible => { if (visible) refresh() }" @command="openOperation">
-    <el-button aria-label="更多操作" :icon="MoreFilled" :disabled="submitting" />
+    <el-button text aria-label="更多操作" :icon="MoreFilled" :disabled="submitting" />
     <template #dropdown>
       <el-dropdown-menu>
         <el-dropdown-item v-for="item in items" :key="item.key" :command="item.key">

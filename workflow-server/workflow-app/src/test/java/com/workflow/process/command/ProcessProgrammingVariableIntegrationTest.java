@@ -967,8 +967,9 @@ class ProcessProgrammingVariableIntegrationTest {
                 .processInstanceId(returned).variableName("_rejected_").singleResult().getValue());
     }
 
-    @Test
-    void historyReturnReopensTaskAndDispatchesOnlyOnSourceWithIdempotentReplay() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void historyReturnReopensTaskAndDispatchesOnlyOnSourceWithIdempotentReplay(boolean published) {
         var xml = """
                 <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:flowable="http://flowable.org/bpmn" targetNamespace="return-selection">
@@ -995,7 +996,17 @@ class ProcessProgrammingVariableIntegrationTest {
         var policy = new com.workflow.process.task.application.operation.NodeHistoryReturnPolicy(new ObjectMapper());
         policy.validate(xml);
         assertThrows(IllegalArgumentException.class, () -> policy.validate(xml.replace("exclusiveGateway", "parallelGateway")));
-        engine.getRepositoryService().createDeployment().addString("selection.bpmn20.xml", xml).deploy();
+        String deployedXml = xml;
+        if (published) {
+            String snapshot = policy.compile(xml, "returnSelection", null);
+            deployedXml = xml.replace("<process id=\"returnSelection\" isExecutable=\"true\">", """
+                    <process id="returnSelection" isExecutable="true">
+                      <extensionElements><flowable:properties>
+                        <flowable:property name="publishedTaskReturnTargets" value='%s'/>
+                      </flowable:properties></extensionElements>
+                    """.formatted(snapshot));
+        }
+        engine.getRepositoryService().createDeployment().addString("selection.bpmn20.xml", deployedXml).deploy();
         var taskService = engine.getTaskService();
         var runtime = engine.getRuntimeService();
         engine.getIdentityService().setAuthenticatedUserId("alice");
@@ -1033,7 +1044,7 @@ class ProcessProgrammingVariableIntegrationTest {
 
         var targets = returns.targets(review.getId());
         assertEquals(List.of("edit"), targets.stream().map(target -> target.nodeId()).toList());
-        assertTrue(targets.get(0).resubmit());
+        assertEquals(!published, targets.get(0).resubmit());
         var request = new com.workflow.process.task.application.TaskHistoryReturnService.Request(
                 "history-selection", targets.get(0).activityInstanceId(), "请补充材料", null, null);
         var stages = new java.util.ArrayList<String>();
@@ -1063,15 +1074,17 @@ class ProcessProgrammingVariableIntegrationTest {
         var reopened = taskService.createTaskQuery().processInstanceId(id).singleResult();
         assertEquals("edit", reopened.getTaskDefinitionKey());
         org.junit.jupiter.api.Assertions.assertNotEquals(edit.getId(), reopened.getId());
-        assertTrue(returns.canResubmit(reopened.getId()));
+        assertEquals(!published, returns.canResubmit(reopened.getId()));
         assertEquals(List.of("prepare"), returns.targets(reopened.getId()).stream().map(target -> target.nodeId()).toList());
         assertEquals("keep", runtime.getVariable(id, "businessValue"));
-        assertCode("TASK_ACTION_NOT_ALLOWED", () -> port.complete(new com.workflow.contracts.process.task.model.CompleteTaskCommand(
-                new CommandMeta("invalid-reopen-completion"), reopened.getId(), "approve", null)));
+        if (!published) {
+            assertCode("TASK_ACTION_NOT_ALLOWED", () -> port.complete(new com.workflow.contracts.process.task.model.CompleteTaskCommand(
+                    new CommandMeta("invalid-reopen-completion"), reopened.getId(), "approve", null)));
+        }
         var submission = new com.workflow.process.task.api.request.TaskCompleteRequest();
         submission.setRequestId("history-selection-resubmit");
         submission.setTaskId(reopened.getId());
-        submission.setAction("resubmit");
+        submission.setAction(published ? "approve" : "resubmit");
         port.completeHttp(submission);
         assertEquals("approve", runtime.getVariable(id, "approved"));
         var nextReview = taskService.createTaskQuery().processInstanceId(id).singleResult();

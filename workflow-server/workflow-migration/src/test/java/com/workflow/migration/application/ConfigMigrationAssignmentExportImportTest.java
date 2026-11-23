@@ -14,10 +14,13 @@ import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.migration.infrastructure.persistence.mapper.*;
 import com.workflow.migration.infrastructure.persistence.record.*;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import org.flowable.engine.ProcessEngine;
+import org.flowable.engine.ProcessEngineConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -29,6 +32,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import static com.workflow.migration.application.ConfigMigrationAssignmentSupportTest.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -130,6 +134,123 @@ class ConfigMigrationAssignmentExportImportTest {
 
         when(userMapper.selectByUsername("alice.prod")).thenReturn(null);
         assertThrows(IllegalStateException.class, () -> service.requireResolvedDependencies(List.of(item)));
+    }
+
+    @ParameterizedTest(name = "旧发布快照={0}，目标登录名={1}")
+    @CsvSource({"true, alice", "true, alice.prod", "false, alice", "false, alice.prod"})
+    void packagedConditionsRouteAndSkipWithTargetAccount(boolean legacySnapshot, String targetLogin) throws Exception {
+        var asset = asset(List.of(dependency("USER", "alice")));
+        var snapshot = documents.readMap(asset.getSnapshotJson());
+        // 对照故障流程的两个连线及原始表达式，给每个分支加一个实际办理任务。
+        String source = """
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:flowable="http://flowable.org/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  targetNamespace="http://workflow.test">
+                  <process id="approval" isExecutable="true">
+                    <startEvent id="start"/>
+                    <userTask id="initial" flowable:assignee="alice" flowable:skipExpression="${status == '1'}"/>
+                    <exclusiveGateway id="route"/>
+                    <userTask id="equal" flowable:assignee="alice"/>
+                    <userTask id="different" flowable:assignee="alice"/>
+                    <endEvent id="end"/>
+                    <sequenceFlow id="to-initial" sourceRef="start" targetRef="initial"/>
+                    <sequenceFlow id="to-route" sourceRef="initial" targetRef="route"/>
+                    <sequenceFlow id="Flow_1ump0qa" sourceRef="route" targetRef="equal">
+                      <conditionExpression xsi:type="tFormalExpression">${name == '1'}</conditionExpression>
+                    </sequenceFlow>
+                    <sequenceFlow id="Flow_0g4twn6" sourceRef="route" targetRef="different">
+                      <conditionExpression xsi:type="tFormalExpression">${name != '1'}</conditionExpression>
+                    </sequenceFlow>
+                    <sequenceFlow id="equal-to-end" sourceRef="equal" targetRef="end"/>
+                    <sequenceFlow id="different-to-end" sourceRef="different" targetRef="end"/>
+                  </process>
+                </definitions>
+                """;
+        snapshot.put("bpmnXml", source);
+        var references = (ConfigMigrationReferenceService) ReflectionTestUtils.getField(service, "referenceService");
+        asset.setSnapshotJson(json.writeValueAsString(legacySnapshot ? snapshot : references.captureReferences(snapshot)));
+        asset.setContentHash(packageCodec.hashSnapshot(documents.readMap(asset.getSnapshotJson())));
+        when(assetService.getRequired(asset.getId())).thenReturn(asset);
+        lenient().when(userMapper.selectById("1")).thenReturn(user("1", "alice"));
+        ConfigExportRequest request = new ConfigExportRequest();
+        request.setAssetIds(List.of(asset.getId()));
+        service.exportPackage(request);
+        var captured = ArgumentCaptor.forClass(ConfigExportPackage.class);
+        verify(exportPackageMapper).insert(captured.capture());
+        var portable = packageCodec.decode(captured.getValue().getPackageData()).assets().get(0).snapshot();
+        String packagedBpmn = (String) portable.get("bpmnXml");
+        assertEquals(source, packagedBpmn);
+        verifyNoInteractions(userMapper);
+
+        // 目标环境的旧主键已分配给另一个账号，办理人只能由登录名或显式映射解析。
+        lenient().when(userMapper.selectById("1")).thenReturn(user("1", "different.account"));
+        when(userMapper.selectByUsername(targetLogin)).thenReturn(user("target-id-77", targetLogin));
+        if (!"alice".equals(targetLogin)) {
+            ConfigEnvironmentMapping mapping = new ConfigEnvironmentMapping();
+            mapping.setTargetKey(targetLogin);
+            when(environmentMappingMapper.selectOne(any())).thenReturn(mapping);
+        }
+        references.validateAssignments(portable, (type, key) -> "USER".equals(type) && "alice".equals(key) ? targetLogin : key);
+        var importer = mock(ConfigMigrationImportApplyService.class, CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(importer, "userMapper", userMapper);
+        ReflectionTestUtils.setField(importer, "environmentMappingMapper", environmentMappingMapper);
+        String targetXml = ReflectionTestUtils.invokeMethod(importer, "resolvePortableBpmn", packagedBpmn, portable);
+        var engine = ProcessEngineConfiguration.createStandaloneInMemProcessEngineConfiguration()
+                .setJdbcUrl("jdbc:h2:mem:portable_assignee_" + UUID.randomUUID())
+                .setDatabaseSchemaUpdate(ProcessEngineConfiguration.DB_SCHEMA_UPDATE_TRUE)
+                .setAsyncExecutorActivate(false)
+                .buildProcessEngine();
+        try {
+            engine.getRepositoryService().createDeployment().addString("approval.bpmn20.xml", targetXml).deploy();
+            // 两条连线各自覆盖跳过与办理首个节点。即使条件为真，未启用跳过开关时仍生成首个待办。
+            verifyTaskSequence(engine, targetLogin, Map.of("name", "1", "status", "1", "_FLOWABLE_SKIP_EXPRESSION_ENABLED", true), "equal");
+            verifyTaskSequence(engine, targetLogin, Map.of("name", "2", "status", "1", "_FLOWABLE_SKIP_EXPRESSION_ENABLED", true), "different");
+            verifyTaskSequence(engine, targetLogin, Map.of("name", "2", "status", "0", "_FLOWABLE_SKIP_EXPRESSION_ENABLED", true), "initial", "different");
+            verifyTaskSequence(engine, targetLogin, Map.of("name", "1", "status", "1"), "initial", "equal");
+        } finally {
+            engine.close();
+        }
+        verify(userMapper, never()).selectById(any());
+    }
+
+    @ParameterizedTest(name = "目标登录名缺失，存在账号映射={0}")
+    @ValueSource(booleans = {false, true})
+    void targetCannotRouteToAccountThatReusesTheSourceId(boolean hasMapping) throws Exception {
+        ConfigImportItem item = prepareImport(List.of(dependency("USER", "alice")));
+        var snapshot = documents.readMap(item.getSnapshotJson());
+        snapshot.put("bpmnXml", bpmn("<bpmn:userTask id=\"review\" flowable:assignee=\"alice\"/>"));
+        item.setSnapshotJson(json.writeValueAsString(snapshot));
+        lenient().when(userMapper.selectById("1")).thenReturn(user("1", "different.account"));
+        if (hasMapping) {
+            ConfigEnvironmentMapping mapping = new ConfigEnvironmentMapping();
+            mapping.setTargetKey("alice.prod");
+            when(environmentMappingMapper.selectOne(any())).thenReturn(mapping);
+        }
+
+        assertEquals(true, service.analyze("import-people").get("blocked"));
+        assertEquals("UNRESOLVED", item.getMappingStatus());
+        assertThrows(IllegalStateException.class, () -> service.requireResolvedDependencies(List.of(item)));
+        verify(userMapper, atLeastOnce()).selectByUsername(hasMapping ? "alice.prod" : "alice");
+        verify(userMapper, never()).selectById(any());
+    }
+
+    private void verifyTaskSequence(ProcessEngine engine, String login, Map<String, Object> variables, String... nodes) {
+        var instance = engine.getRuntimeService().startProcessInstanceByKey("approval", variables);
+        for (String node : nodes) {
+            var task = engine.getTaskService().createTaskQuery().processInstanceId(instance.getId()).singleResult();
+            assertNotNull(task, node);
+            assertEquals(node, task.getTaskDefinitionKey());
+            assertEquals(login, task.getAssignee());
+            engine.getTaskService().complete(task.getId());
+        }
+        assertNull(engine.getRuntimeService().createProcessInstanceQuery().processInstanceId(instance.getId()).singleResult());
+    }
+
+    private SysUser user(String id, String username) {
+        var user = new SysUser();
+        user.setId(id);
+        user.setUsername(username);
+        return user;
     }
 
     @Test

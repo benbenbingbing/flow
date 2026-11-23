@@ -1,11 +1,23 @@
 export const TASK_RETURN_PROPERTY = 'taskReturnConfig'
+export const TASK_RETURN_DEFAULT_PROPERTY = 'taskReturnDefault'
 
-export function readTaskReturnConfiguration(value) {
+export function readTaskReturnConfiguration(value, defaultMode = 'OFF') {
   const config = value ? JSON.parse(value) : {}
   return {
-    mode: config.mode || 'OFF',
+    mode: config.mode || defaultMode,
     targetNodeIds: Array.isArray(config.targetNodeIds) ? config.targetNodeIds : [],
-    resubmitNodeId: config.resubmitNodeId || ''
+    explicit: Boolean(value)
+  }
+}
+
+/** 回退设置兼容两种容器。同名设置优先读取新版 Flowable 扩展。 */
+export function taskReturnProperty(node, name) {
+  const containers = node?.extensionElements?.values || []
+  for (const type of ['flowable:Properties', 'camunda:Properties']) {
+    for (const container of containers.filter(item => item.$type === type)) {
+      const property = container.values?.find(item => item.name === name)
+      if (property) return property.value
+    }
   }
 }
 
@@ -39,14 +51,12 @@ export function taskReturnNodeOptions(source, isMultiInstance) {
 }
 
 export function validateTaskReturnConfiguration(config, options, supportedSource) {
-  if (config.mode === 'OFF') return ''
+  if (!config.explicit || config.mode === 'OFF') return ''
   if (!supportedSource || !['HISTORY', 'FIXED'].includes(config.mode)) return '当前节点不支持配置选择节点回退'
   if (config.mode === 'FIXED' && !config.targetNodeIds.length) return '请至少指定一个回退目标'
   const validIds = new Set(options.map(option => option.value))
-  if (config.targetNodeIds.some(id => !validIds.has(id))
-      || (config.resubmitNodeId && (!validIds.has(config.resubmitNodeId)
-        || (config.mode === 'FIXED' && !config.targetNodeIds.includes(config.resubmitNodeId))))) {
-    return '请更新无效的回退目标或发起人重提节点'
+  if (config.mode === 'FIXED' && config.targetNodeIds.some(id => !validIds.has(id))) {
+    return '请更新无效的回退目标'
   }
   return ''
 }

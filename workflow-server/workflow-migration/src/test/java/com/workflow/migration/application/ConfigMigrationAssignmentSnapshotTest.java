@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
@@ -44,6 +45,7 @@ class ConfigMigrationAssignmentSnapshotTest {
     void newlyPublishedSnapshotUsesLoginAndSeparatesGroupAndRole() {
         ConfigMigrationAssetService service = mock(ConfigMigrationAssetService.class, CALLS_REAL_METHODS);
         ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper().findAndRegisterModules());
+        ReflectionTestUtils.setField(service, "entityMapper", mock(EntityDefinitionMapper.class));
         NodeConfigMapper nodes = mock(NodeConfigMapper.class);
         AssigneeConfigMapper assignees = mock(AssigneeConfigMapper.class);
         SysUserMapper users = mock(SysUserMapper.class);

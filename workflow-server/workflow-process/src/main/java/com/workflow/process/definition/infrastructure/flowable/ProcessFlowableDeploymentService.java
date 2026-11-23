@@ -44,4 +44,14 @@ public class ProcessFlowableDeploymentService {
                 config.getProcessKey(), version, deployment.getId());
         return deployment;
     }
+
+    /** 按部署 ID 读取上一版的模型，供发布复用候选清单。已清理的部署返回空。 */
+    public org.flowable.bpmn.model.Process readProcess(String deploymentId, String processKey) {
+        var definition = repositoryService.createProcessDefinitionQuery().deploymentId(deploymentId)
+                .processDefinitionKey(processKey).singleResult();
+        if (definition == null) return null;
+        var model = repositoryService.getBpmnModel(definition.getId());
+        return model == null ? null : model.getProcesses().stream().filter(process -> processKey.equals(process.getId()))
+                .findFirst().orElse(null);
+    }
 }
