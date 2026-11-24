@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper;
 
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.record.IdentitySourceSnapshot;
-import com.workflow.port.system.identity.model.IdentityObjectType;
+import com.workflow.port.system.model.identity.IdentityObjectType;
 import org.apache.ibatis.annotations.*;
 
 /** 原文独立于用户、组织列表和来源绑定；写入方必须先持有目录事务锁。 */
@@ -59,6 +59,10 @@ public interface IdentitySourceSnapshotMapper {
         WHERE source_key = #{sourceKey}
         """)
     int update(IdentitySourceSnapshot snapshot);
+
+    /** 随绑定迁移原文的归属键，保留原采集时间、版本和当前状态。 */
+    @Update("UPDATE sys_identity_source_snapshot SET source_key = #{newKey} WHERE source_key = #{oldKey}")
+    int move(@Param("oldKey") String oldKey, @Param("newKey") String newKey);
 
     /** 无原文的业务更新只能使旧原文过期，不改写旧记录的采集人和采集时间。 */
     @Update("UPDATE sys_identity_source_snapshot SET is_current = 0 WHERE source_key = #{key} AND is_current = 1")

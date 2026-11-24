@@ -1,8 +1,8 @@
 package com.workflow.admin.identity.extension.application;
 
 import com.workflow.admin.identity.provisioning.application.IdentityAccessService;
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -84,7 +84,7 @@ public class IdentityExtensionService {
             Map<String, Object> fields = new LinkedHashMap<>();
             try { for (var f : descriptor.fields()) fields.put(f.field().getName(), f.field().get(value)); }
             catch (IllegalAccessException e) { throw new IllegalStateException(e); }
-            if (result.put(code, normalize(descriptor, fields)) != null) fail("INVALID_MODEL", "同一扩展不能重复提交");
+            if (result.put(code, normalize(descriptor, fields)) != null) fail("INVALID_MODEL", "扩展「%s」在本条记录中重复提交".formatted(code));
         }
         return result;
     }
@@ -98,16 +98,17 @@ public class IdentityExtensionService {
         }
     }
 
+    /** 读取调用方已授权的已登记用户扩展。管理页面继续通过 readAll 执行用户权限校验。 */
     public <T extends UserExtension> Optional<T> findUserExtension(String id, Class<T> type) {
         return find(IdentityObjectType.USER, id, type);
     }
+    /** 读取调用方已授权的已登记组织扩展。 */
     public <T extends OrganizationExtension> Optional<T> findOrganizationExtension(String id, Class<T> type) {
         return find(IdentityObjectType.ORGANIZATION, id, type);
     }
     private <T> Optional<T> find(IdentityObjectType target, String id, Class<T> type) {
         var descriptor = registry.require(target, type);
-        String actor = access.requireObject(target, id);
-        access.requirePermission(actor, descriptor.annotation().readPermission());
+        if (persistence.findObject(target, id) == null) return Optional.empty();
         var value = read(descriptor, id);
         if (value == null) return Optional.empty();
         try {
@@ -132,32 +133,36 @@ public class IdentityExtensionService {
     }
 
     private Map<String, Object> normalize(IdentityExtensionRegistry.Descriptor descriptor, Map<String, Object> fields) {
+        String code = descriptor.annotation().code();
         Set<String> known = new HashSet<>();
         descriptor.fields().forEach(f -> known.add(f.field().getName()));
-        if (!known.containsAll(fields.keySet())) fail("INVALID_MODEL", "包含未声明的扩展字段");
+        if (!known.containsAll(fields.keySet())) fail("INVALID_MODEL", "扩展「%s」包含未声明的字段".formatted(code));
         Map<String, Object> result = new LinkedHashMap<>();
         for (var property : descriptor.fields()) {
             String name = property.field().getName();
+            String field = code + "." + name;
             Object value = fields.get(name);
-            if (value == null && property.definition().required()) fail("INVALID_MODEL", "扩展字段必填：" + name);
+            if (value == null && property.definition().required()) fail("INVALID_MODEL", "扩展字段 %s 为必填项".formatted(field));
             if (value != null) {
                 Class<?> type = property.field().getType();
                 if (type == String.class && !(value instanceof String)
                         || type == Boolean.class && !(value instanceof Boolean)
                         || Number.class.isAssignableFrom(type) && !(value instanceof Number) && !(stringNumber(type) && value instanceof String)
-                        || value instanceof Map || value instanceof Collection) fail("INVALID_MODEL", "扩展字段类型错误：" + name);
+                        || value instanceof Map || value instanceof Collection) fail("INVALID_MODEL", "扩展字段 %s 的类型应为 %s".formatted(field, type.getSimpleName()));
                 try {
                     // Jackson 默认允许把小数截断为整数；资料保存必须拒绝精度丢失和越界。
                     if (type == Integer.class) value = new BigDecimal(value.toString()).intValueExact();
                     else if (type == Long.class) value = new BigDecimal(value.toString()).longValueExact();
                     else value = mapper.convertValue(value, type);
-                } catch (IllegalArgumentException | ArithmeticException e) { fail("INVALID_MODEL", "扩展字段值错误：" + name); }
+                } catch (IllegalArgumentException | ArithmeticException e) { fail("INVALID_MODEL", "扩展字段 %s 的值无法转换为 %s，请检查格式或取值范围".formatted(field, type.getSimpleName())); }
                 if (value instanceof String text) {
-                    if (text.codePointCount(0, text.length()) > property.definition().maxLength()) fail("INVALID_MODEL", "扩展字段超长：" + name);
-                    if (property.definition().required() && text.isBlank()) fail("INVALID_MODEL", "扩展字段不能为空白：" + name);
-                    if (property.control() == ExtensionControl.SELECT && !List.of(property.definition().options()).contains(text)) fail("INVALID_MODEL", "扩展选项非法：" + name);
+                    int length = text.codePointCount(0, text.length());
+                    int max = property.definition().maxLength();
+                    if (length > max) fail("INVALID_MODEL", "扩展字段 %s 最多 %d 个字符，本次提交了 %d 个字符".formatted(field, max, length));
+                    if (property.definition().required() && text.isBlank()) fail("INVALID_MODEL", "扩展字段 %s 不能为空白".formatted(field));
+                    if (property.control() == ExtensionControl.SELECT && !List.of(property.definition().options()).contains(text)) fail("INVALID_MODEL", "扩展字段 %s 的值不在配置的选项中".formatted(field));
                 }
-                if (value instanceof Double n && !Double.isFinite(n)) fail("INVALID_MODEL", "数字必须有限：" + name);
+                if (value instanceof Double n && !Double.isFinite(n)) fail("INVALID_MODEL", "扩展字段 %s 须为有限数值".formatted(field));
             }
             result.put(name, value);
         }

@@ -1,10 +1,10 @@
 package com.workflow.port.entity;
 
-import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchResult;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchResult;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
 
 /**
  * 跨模块实体写入的稳定调用端口。

@@ -4,6 +4,8 @@
 
 本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132、V133 的 MySQL 增量脚本及执行限制见下文。
 
+`sys_user` 的认证模式和密码列注释反映当前应用行为。外部账号初始使用 `EXTERNAL_ONLY`，有权限的重置将认证模式切换为 `EXTERNAL_AND_LOCAL_PASSWORD`。现有列可保存新增模式值，本次只更新空库列用途注释。
+
 ## 2026-11-18 同步 V144 合并流程发起时机
 
 同时检查 SQL 和 Java 迁移，原最高版本为工作区已有的 V143；本轮新增 [`V144__merge_process_started_into_start_after.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V144__merge_process_started_into_start_after.sql)，将全部旧 `PROCESS_STARTED` 配置迁到 `PROCESS_START_EXECUTED`（发起后），不按处理器用途转到发起前。`PROCESS_COMPLETED` 改称流程正常结束后；当前20项标准时机（流程7、用户任务节点12、连线1），见[发起边界及顺序](../flow-action-timing-extension.md#v144-合并发起时机)。
@@ -390,7 +392,7 @@ MySQL、OceanBase MySQL、PostgreSQL 和人大金仓使用 `smallint` 表示父�
 
 | 对象 | 空库最终状态及用途 |
 | --- | --- |
-| `sys_user.authentication_mode` | `varchar(32)`，非空，默认 `LOCAL_PASSWORD`；外部账号使用 `EXTERNAL_ONLY`，禁止本地密码登录和重置。 |
+| `sys_user.authentication_mode` | `varchar(32)`，非空，默认 `LOCAL_PASSWORD`；外部账号初始使用 `EXTERNAL_ONLY`。 |
 | `sys_user.password` | 允许 `NULL`，保留长度 100；对应 `entity_field` 的 `is_required` 初始化为 `0`，允许创建无本地口令的外部账号。 |
 | `sys_identity_write_lock` | 以 `lock_key` 为主键，初始化固定 `directory` 行，供身份写入事务串行化组织树校验和首次来源绑定。 |
 | `sys_identity_source_binding` | 保存用户及组织的稳定来源键、版本、快照摘要和启用状态；`source_key` 为主键，`(object_type, local_id)` 唯一，来源与本地许可默认启用，绑定状态默认 `ACTIVE`。 |

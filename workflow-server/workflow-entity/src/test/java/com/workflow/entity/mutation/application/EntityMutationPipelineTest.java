@@ -1,13 +1,13 @@
 package com.workflow.entity.mutation.application;
 
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

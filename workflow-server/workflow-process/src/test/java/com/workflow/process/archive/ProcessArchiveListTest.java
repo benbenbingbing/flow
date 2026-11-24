@@ -17,7 +17,7 @@ class ProcessArchiveListTest {
         var service = new ProcessArchiveService(mock(ProcessVersionHistoryMapper.class), entities, mapper, new ObjectMapper());
         when(mapper.list("expense", "record")).thenReturn(List.of(
                 new ProcessArchiveMapper.Header("archive", "历史流程", "APPROVED", "source", "source-id")));
-        assertEquals("archive", service.list("expense", "record").get(0).get("id"));
+        assertEquals("archive", service.listForUser("expense", "record").get(0).get("id"));
         var order = inOrder(entities, mapper);
         order.verify(entities).requireReadable("expense", "record");
         order.verify(mapper).list("expense", "record");
@@ -29,7 +29,18 @@ class ProcessArchiveListTest {
         var mapper = mock(ProcessArchiveMapper.class);
         doThrow(new ForbiddenException("无权访问")).when(entities).requireReadable("expense", "record");
         var service = new ProcessArchiveService(mock(ProcessVersionHistoryMapper.class), entities, mapper, new ObjectMapper());
-        assertThrows(ForbiddenException.class, () -> service.list("expense", "record"));
+        assertThrows(ForbiddenException.class, () -> service.listForUser("expense", "record"));
         verifyNoInteractions(mapper);
+    }
+
+    @Test void portListsCallerAuthorizedArchivesWithoutEntityPermissionCheck() {
+        var entities = mock(EntityHistoryImportPort.class);
+        var mapper = mock(ProcessArchiveMapper.class);
+        var service = new ProcessArchiveService(mock(ProcessVersionHistoryMapper.class), entities, mapper, new ObjectMapper());
+        when(mapper.list("expense", "record")).thenReturn(List.of(
+                new ProcessArchiveMapper.Header("archive", "历史流程", "APPROVED", "source", "source-id")));
+
+        assertEquals("archive", service.list("expense", "record").get(0).get("id"));
+        verifyNoInteractions(entities);
     }
 }

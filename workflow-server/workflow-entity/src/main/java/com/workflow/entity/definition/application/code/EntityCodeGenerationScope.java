@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.application.code;
 
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
 
 /**
  * 仅由聚合写入器建立的同步调用作用域，向嵌套子表取号传递可信身份与变更幂等键。

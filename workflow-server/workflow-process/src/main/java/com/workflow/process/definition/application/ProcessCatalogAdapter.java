@@ -2,13 +2,11 @@ package com.workflow.process.definition.application;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.workflow.core.error.ForbiddenException;
 import com.workflow.port.process.ProcessDefinitionConfigPort;
 import com.workflow.port.process.model.ProcessPage;
 import com.workflow.port.process.model.ProcessPageRequest;
 import com.workflow.port.process.model.ProcessSort;
 import com.workflow.port.process.model.ProcessValues;
-import com.workflow.port.system.CurrentActorPort;
 import com.workflow.port.process.model.ProcessCatalogItem;
 import com.workflow.port.process.model.ProcessBindingState;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
@@ -37,7 +35,6 @@ public class ProcessCatalogAdapter implements ProcessDefinitionConfigPort {
     private final ProcessDefinitionConfigMapper processMapper;
     /** 流程发布版本 Mapper */
     private final ProcessVersionHistoryMapper versionHistoryMapper;
-    private final CurrentActorPort authorization;
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.status.application.ProcessCancellationRequirements cancellationRequirements;
@@ -46,10 +43,9 @@ public class ProcessCatalogAdapter implements ProcessDefinitionConfigPort {
     @org.springframework.beans.factory.annotation.Autowired
     private org.flowable.engine.RuntimeService runtimeService;
 
-    /** 分页先限定发布状态和权限，更新时间相同的记录按主键稳定排序。 */
+    /** 分页先限定发布状态，更新时间相同的记录按主键稳定排序。 */
     @Override
     public ProcessPage<ProcessCatalogItem> pagePublished(String keyword, ProcessPageRequest request) {
-        requireDefinitionView();
         var page = request == null ? ProcessPageRequest.defaults() : request;
         var query = Wrappers.<ProcessDefinitionConfig>lambdaQuery()
                 .select(ProcessDefinitionConfig::getId, ProcessDefinitionConfig::getProcessKey,
@@ -70,16 +66,9 @@ public class ProcessCatalogAdapter implements ProcessDefinitionConfigPort {
 
     @Override
     public Optional<ProcessCatalogItem> findPublishedByKey(String processKey) {
-        requireDefinitionView();
         return processMapper.findByProcessKey(ProcessValues.required(processKey, "processKey"))
                 .filter(config -> config.getStatus() == ProcessDefinitionConfig.ProcessStatus.PUBLISHED)
                 .map(this::catalogItem);
-    }
-
-    private void requireDefinitionView() {
-        if (!authorization.hasPermission("process:definition:view")) {
-            throw new ForbiddenException("没有流程定义查看权限");
-        }
     }
 
     private ProcessCatalogItem catalogItem(ProcessDefinitionConfig config) {

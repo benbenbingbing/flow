@@ -74,6 +74,20 @@ class SystemEntityReadServiceTest {
     }
 
     @Test
+    void internalMenuQueryUsesCallerAuthorizationAndKeepsFieldProjection() {
+        when(definitionMapper.findByEntityCode("sys_menu")).thenReturn(Optional.of(systemEntity("sys_menu")));
+        when(fieldMapper.findByEntityId("entity-1")).thenReturn(List.of(field("id"), field("menu_name")));
+        when(businessMapper.selectRecords(any())).thenReturn(List.of(Map.of("id", "1", "menu_name", "测试菜单")));
+
+        assertThrows(ForbiddenException.class, () -> service.findByIds("sys_menu", List.of("1")));
+
+        UserContext.clear();
+        var port = new com.workflow.entity.data.infrastructure.adapter.SystemEntityQueryAdapter(service);
+        assertEquals(List.of("1"), port.findByIds("sys_menu", List.of("1")).stream()
+                .map(com.workflow.port.entity.model.EntityRecordData::getId).toList());
+    }
+
+    @Test
     void batchLookupUsesOneBoundQueryAndPreservesInputOrder() {
         when(definitionMapper.findByEntityCode("sys_user")).thenReturn(Optional.of(systemEntity("sys_user")));
         when(fieldMapper.findByEntityId("entity-1"))

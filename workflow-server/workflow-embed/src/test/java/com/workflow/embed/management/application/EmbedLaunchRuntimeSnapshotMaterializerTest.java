@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.embed.EmbedPublishedListDependencyPort;
-import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure.ListCoordinate;
 import com.workflow.port.entity.EntityFormPort;
 import com.workflow.embed.domain.EmbedReleaseSnapshot;
 import com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResource;

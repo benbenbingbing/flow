@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.authorization.application.PermissionUtil;
-import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.model.history.HistoryIdentity;
 import com.workflow.port.migration.EntityHistoryImportPort;
 import com.workflow.port.migration.ProcessArchiveInstancePort;
-import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.migration.model.history.HistoryImportModels.*;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
 import lombok.RequiredArgsConstructor;
@@ -94,6 +94,8 @@ public class HistoryImportService {
         Plan plan = read(batch.plan(), Plan.class);
         var entityInput = batch.entities() == null ? new Input(List.of(), List.of(), List.of()) : read(batch.entities(), Input.class);
         var historyInput = batch.history() == null ? new Input(List.of(), List.of(), List.of()) : read(batch.history(), Input.class);
+        // 有流程历史的预检需要读取发布图；实体数据导入仍只要求其自身的权限。
+        if (!historyInput.instances().isEmpty()) require("history-import:read");
         var validated = planner.validate(plan, new Input(entityInput.entities(), historyInput.instances(), historyInput.events()));
         String document = encode(validated), hash = HistoryIdentity.hash(batch.plan(), document);
         mapper.deleteGroups(id);

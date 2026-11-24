@@ -1,6 +1,6 @@
 package com.workflow.port.embed;
 
-import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure;
 import java.time.Instant;
 
 /**

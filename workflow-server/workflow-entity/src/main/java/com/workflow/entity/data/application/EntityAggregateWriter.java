@@ -2,9 +2,9 @@ package com.workflow.entity.data.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.error.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
@@ -129,7 +129,7 @@ public class EntityAggregateWriter {
             historyWriteGuard.requireWritable(command.entityCode(), command.recordId());
         Object internalMode = command.payload().get(EntityMutationSystemFields.MODE_KEY);
         if (internalMode != null && command.context().sourceType()
-                != com.workflow.port.entity.mutation.model.EntityMutationSourceType.PROCESS_RUNTIME) {
+                != com.workflow.port.entity.model.mutation.EntityMutationSourceType.PROCESS_RUNTIME) {
             throw new IllegalArgumentException("流程运行态字段只能由流程引擎维护");
         }
         // 作用域只来自可信变更命令，嵌套取号使用同一身份；异常路径也必须恢复线程状态。
@@ -231,7 +231,7 @@ public class EntityAggregateWriter {
                 .get(EntityMutationSystemFields.MODE_KEY));
         if (EntityMutationSystemFields.CALL_PROCESS_START.equals(mode)) {
             // 系统模式不能从普通表单/业务动作进入，实例身份必须来自可信引擎上下文。
-            if (command.context().sourceType() != com.workflow.port.entity.mutation.model.EntityMutationSourceType.PROCESS_RUNTIME
+            if (command.context().sourceType() != com.workflow.port.entity.model.mutation.EntityMutationSourceType.PROCESS_RUNTIME
                     || command.context().processInstanceId() == null) {
                 throw new IllegalArgumentException("子流程绑定只允许流程引擎调用");
             }

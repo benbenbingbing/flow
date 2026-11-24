@@ -12,11 +12,11 @@ import com.workflow.admin.auth.application.LoginThrottleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditResult;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditResult;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.admin.auth.api.request.ChangePasswordDTO;
 import com.workflow.admin.auth.api.request.LoginDTO;
@@ -117,7 +117,7 @@ public class AuthController {
                     "用户已被禁用");
             return Result.error("用户名或密码错误");
         }
-        if ("EXTERNAL_ONLY".equals(user.getAuthenticationMode()) || !passwordMatches) {
+        if (SysUser.EXTERNAL_ONLY.equals(user.getAuthenticationMode()) || !passwordMatches) {
             loginThrottleService.recordFailure(
                     loginDTO.getUsername(),
                     clientAddress);

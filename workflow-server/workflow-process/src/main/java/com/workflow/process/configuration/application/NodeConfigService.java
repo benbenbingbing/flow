@@ -16,9 +16,9 @@ import com.workflow.process.configuration.infrastructure.persistence.record.Node
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

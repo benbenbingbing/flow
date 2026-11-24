@@ -1,6 +1,6 @@
 package com.workflow.process.coordination.application;
 
-import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.model.outbox.OutboxPublishRequest;
 import com.workflow.port.platform.WorkflowOutboxEventPort;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Operation;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.ProcessState;

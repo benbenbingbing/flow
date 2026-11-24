@@ -1,6 +1,6 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.IdentityHandoverUser;
+import com.workflow.port.system.model.identity.IdentityHandoverUser;
 import java.util.List;
 import java.util.Optional;
 

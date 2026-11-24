@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.embed.application.port.EmbedMaintenancePort;
 import com.workflow.embed.application.port.EmbedMaintenancePort.CounterCursor;
 import com.workflow.embed.application.port.EmbedMaintenancePort.CounterObservation;

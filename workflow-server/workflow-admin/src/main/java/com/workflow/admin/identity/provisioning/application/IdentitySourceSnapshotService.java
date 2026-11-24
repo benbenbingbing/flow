@@ -4,14 +4,16 @@ import com.fasterxml.jackson.core.*;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentitySourceSnapshotMapper;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.record.IdentitySourceSnapshot;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.*;
+import com.workflow.port.platform.model.audit.*;
 import com.workflow.port.platform.SystemOperationLogPort;
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+
+import static com.workflow.core.logging.LogValue.safe;
 
 /** 来源原文只保留一份；接受写入时与基础资料共用目录锁、事务和必需审计。 */
 @Service
@@ -35,9 +37,16 @@ public class IdentitySourceSnapshotService {
             String raw = rawValues.get(i);
             int bytes = raw == null ? 0 : raw.getBytes(StandardCharsets.UTF_8).length;
             total += bytes;
-            if (bytes > properties.getRawDataMaxBytes() || batch && total > properties.getRawDataMaxBatchBytes()) {
-                throw new IdentityWriteException("RAW_DATA_TOO_LARGE", batch ? "models[" + i + "].rawDataJson" : "rawDataJson",
-                        "来源原文超过 UTF-8 字节上限");
+            String field = batch ? "models[" + i + "].rawDataJson" : "rawDataJson";
+            if (bytes > properties.getRawDataMaxBytes()) {
+                String location = batch ? "第 " + (i + 1) + " 条数据的 rawDataJson" : "rawDataJson";
+                throw new IdentityWriteException("RAW_DATA_TOO_LARGE", field,
+                        "%s 为 %d 个 UTF-8 字节，单条最多 %d 字节".formatted(location, bytes, properties.getRawDataMaxBytes()));
+            }
+            if (batch && total > properties.getRawDataMaxBatchBytes()) {
+                throw new IdentityWriteException("RAW_DATA_TOO_LARGE", field,
+                        "处理到第 %d 条时，来源原文累计为 %d 个 UTF-8 字节，每批最多 %d 字节"
+                                .formatted(i + 1, total, properties.getRawDataMaxBatchBytes()));
             }
         }
     }
@@ -46,7 +55,7 @@ public class IdentitySourceSnapshotService {
     public String validate(String raw, IdentityAccessService.Writer writer) {
         if (raw == null) {
             if (writer.source().isRawDataRequired()) {
-                throw new IdentityWriteException("RAW_DATA_REQUIRED", "rawDataJson", "该来源必须提供原始 JSON 对象");
+                throw new IdentityWriteException("RAW_DATA_REQUIRED", "rawDataJson", "该来源要求在 rawDataJson 中提供字段映射前的原始 JSON 对象");
             }
             return null;
         }
@@ -56,7 +65,7 @@ public class IdentitySourceSnapshotService {
             if (parser.nextToken() != null) throw new IllegalArgumentException();
         } catch (Exception e) {
             // 解析异常可能包含来源内容；只返回固定业务错误，不保留原始异常为 cause。
-            throw new IdentityWriteException("INVALID_RAW_DATA", "rawDataJson", "来源原文必须是无重复字段的单个合法 JSON 对象");
+            throw new IdentityWriteException("INVALID_RAW_DATA", "rawDataJson", "rawDataJson 须为单个合法 JSON 对象，且字段名不能重复");
         }
         return raw;
     }
@@ -87,6 +96,19 @@ public class IdentitySourceSnapshotService {
                 .operationName("来源原文留存").riskLevel(AuditRiskLevel.HIGH).result(AuditResult.SUCCESS).required(true)
                 .targetType(type == IdentityObjectType.USER ? "SYS_USER" : "SYS_ORGANIZATION").targetId(id)
                 .summary("sourceKey=" + sourceKey + ", rawHash=" + hash + ", rawBytes=" + snapshot.getRawBytes()).build());
+    }
+
+    /** 目标键若已留有孤立原文，其本地归属不可验证，阻止修复直接继承或覆盖它。 */
+    public void requireVacantKey(IdentityObjectType type, ExternalIdentityKey key) {
+        if (snapshots.metadata(IdentitySourceStore.hash(type, key)) != null) {
+            throw new IdentityWriteException("SOURCE_BINDING_CONFLICT", "key", "来源「%s」的外部 ID「%s」下已有未关联的原文，请先核对原文归属"
+                    .formatted(safe(key.sourceCode()), safe(key.externalId())));
+        }
+    }
+
+    /** 在目录锁和来源事务内随绑定移动原文；没有原文的绑定也可以改绑。 */
+    public void move(String oldKey, String newKey) {
+        snapshots.move(oldKey, newKey);
     }
 
     /**

@@ -16,9 +16,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.openapi.api.request.CreateIntegrationApplicationRequest;

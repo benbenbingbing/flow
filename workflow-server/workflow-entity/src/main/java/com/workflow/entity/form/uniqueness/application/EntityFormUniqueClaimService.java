@@ -1,7 +1,7 @@
 package com.workflow.entity.form.uniqueness.application;
 
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.form.application.PublishedFormUniqueRuleService;
 import com.workflow.entity.form.application.model.FormUniqueCandidate;

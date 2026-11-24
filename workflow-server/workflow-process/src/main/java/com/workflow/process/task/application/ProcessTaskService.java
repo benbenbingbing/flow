@@ -350,8 +350,14 @@ public class ProcessTaskService {
         completeTask(taskId, "return", comment, "退回", true);
     }
 
-    /** 写事务中锁定源待办，与加签和认领串行更新任务投影。 */
-    public boolean lockPendingHistoryReturnSource(String taskId) {
+    /** 跳过后待办保留原任务 ID、处理原因与结束时间，关闭关联 SLA。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void markTaskSkipped(String taskId, String reason) {
+        completeTask(taskId, ProcessTask.ACTION_SKIP, reason, "跳过", true);
+    }
+
+    /** 干预事务中锁定源待办，与加签和认领串行更新任务投影。 */
+    public boolean lockPendingTaskForIntervention(String taskId) {
         ProcessTask source = taskMapper.selectByTaskIdForUpdate(taskId);
         return source != null && ProcessTask.STATUS_TODO.equals(source.getStatus());
     }
@@ -359,7 +365,7 @@ public class ProcessTaskService {
     private void completeTask(String taskId, String action, String comment, String actionLabel, boolean requireMirror) {
         ProcessTask task = taskMapper.selectByTaskId(taskId);
         if (task == null) {
-            if (requireMirror) throw new IllegalStateException("回退源任务镜像不存在");
+            if (requireMirror) throw new IllegalStateException("干预的待办镜像不存在");
             log.warn("待办任务不存在: taskId={}", LogValue.safe(taskId));
             return;
         }
@@ -389,7 +395,7 @@ public class ProcessTaskService {
         task.setUpdateTime(LocalDateTime.now());
 
         int updated = taskMapper.updateById(task);
-        if (requireMirror && updated != 1) throw new IllegalStateException("回退源任务镜像更新失败");
+        if (requireMirror && updated != 1) throw new IllegalStateException("干预的待办镜像更新失败");
         if (taskSlaRuntimeService != null) {
             taskSlaRuntimeService.complete(taskId);
         }
@@ -482,9 +488,9 @@ public class ProcessTaskService {
         synchronizeFlowableTasks(processInstanceId, false);
     }
 
-    /** 回退成功必须同时刷新实体任务摘要，失败时由外层命令回滚引擎和投影。 */
+    /** 干预成功必须同时刷新实体任务摘要，失败时由外层命令回滚引擎和投影。 */
     @Transactional(rollbackFor = Exception.class)
-    public void syncTasksAfterHistoryReturn(String processInstanceId) {
+    public void syncTasksAfterIntervention(String processInstanceId) {
         synchronizeFlowableTasks(processInstanceId, true);
     }
 
@@ -529,7 +535,7 @@ public class ProcessTaskService {
             }
         }
         
-        // 回退必须让摘要失败传播，旧入口继续保留既有容错约定。
+        // 任务干预必须让摘要失败传播，避免待办和实体摘要不同步。
         if (requireSummary) {
             updateEntityCurrentTask(processInstanceId);
             return;

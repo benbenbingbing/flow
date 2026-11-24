@@ -1,6 +1,6 @@
 package com.workflow.storage;
 
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
@@ -12,13 +12,24 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.contracts.storage.model.StoredFile;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
+import com.workflow.port.platform.StorageFileObjectPort;
 import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.storage.application.FileStorageFactory;
+import com.workflow.storage.application.StorageFileObjectAdapter;
+import com.workflow.storage.application.StoredFileUploadService;
 import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.storage.application.StoredFileAccessService;
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -27,6 +38,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
@@ -104,6 +117,54 @@ class StoredFileAccessServiceTest {
         assertEquals(registration.response(), replay.replay());
         assertEquals(java.util.Set.of("fileId", "originalName", "size"), replay.replay().keySet());
         assertEquals("s3://files/first.txt", service.requireRead(replay.replay().get("fileId")));
+    }
+
+    @Test
+    void filePortUsesCallerAuthorizationAndPreservesOwnershipForWebReads() throws Exception {
+        var provider = mock(FileStorageProvider.class);
+        var factory = mock(FileStorageFactory.class);
+        when(factory.getStrategy()).thenReturn(provider);
+        when(provider.upload(any())).thenReturn(stored("s3://files/report.txt"));
+        byte[] content = "report".getBytes(StandardCharsets.UTF_8);
+        var upload = new StorageFileObjectPort.Upload("report.txt", "text/plain", content.length,
+                () -> new ByteArrayInputStream(content));
+        var port = new StorageFileObjectAdapter(factory, service, new StoredFileUploadService(factory, service));
+
+        UserContext.clear();
+        var first = port.upload(upload, "report", "owner");
+        assertEquals(first, port.upload(upload, "report", "owner"));
+        assertEquals(first, port.getMetadata(first.fileId()));
+        verify(provider, times(1)).upload(any());
+        when(provider.open("s3://files/report.txt"))
+                .thenReturn(new StoredFile(new ByteArrayInputStream(content), "internal", "text/plain", content.length));
+        try (var file = port.open(first.fileId())) {
+            assertEquals(first, file.metadata());
+            assertEquals("report", new String(file.stream().readAllBytes(), StandardCharsets.UTF_8));
+        }
+
+        UserContext.setCurrentUser("other", "other");
+        assertEquals(first, port.getMetadata(first.fileId()));
+        assertThrows(ForbiddenException.class, () -> service.requireRead(first.fileId()));
+    }
+
+    @Test
+    void removesRegisteredObjectIfEnclosingBusinessTransactionRollsBack() {
+        var provider = mock(FileStorageProvider.class);
+        var factory = mock(FileStorageFactory.class);
+        when(factory.getStrategy()).thenReturn(provider);
+        when(provider.upload(any())).thenReturn(stored("s3://files/uncommitted.txt"));
+        when(provider.delete("s3://files/uncommitted.txt")).thenReturn(true);
+        var uploads = new StoredFileUploadService(factory, service);
+        var file = new com.workflow.contracts.storage.model.FileUpload("report.txt", "text/plain", 1L,
+                () -> new ByteArrayInputStream(new byte[]{1}));
+        var tx = new TransactionTemplate(new DataSourceTransactionManager(database));
+        var id = tx.execute(status -> {
+            var response = uploads.store(file, null);
+            status.setRollbackOnly();
+            return response.get("fileId");
+        });
+        verify(provider).delete("s3://files/uncommitted.txt");
+        assertThrows(ForbiddenException.class, () -> service.requireDetails(id));
     }
 
     @Test

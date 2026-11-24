@@ -2,9 +2,9 @@ package com.workflow.admin.authorization.role.application;
 
 import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;

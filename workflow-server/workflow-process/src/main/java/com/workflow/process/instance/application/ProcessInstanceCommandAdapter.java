@@ -1,7 +1,7 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.port.process.error.ProcessOperationException;
-import com.workflow.port.process.instance.model.*;
+import com.workflow.port.process.model.instance.*;
 import com.workflow.port.process.model.ProcessCommandReceipt;
 import com.workflow.process.command.application.ProcessCommandExecutor;
 import com.workflow.process.command.application.ProcessCommandFailures;
@@ -26,24 +26,50 @@ public class ProcessInstanceCommandAdapter {
     private final RuntimeService runtime;
     private final HistoryService history;
 
-    /** 撤回仍由原任务应用服务校验所有活动节点、发起人和实体目标状态，不能只删除引擎实例。 */
+    /** 撤回仍由原任务应用服务校验所有活动节点和实体目标状态，不能只删除引擎实例。 */
     public ProcessCommandReceipt withdraw(WithdrawProcessCommand command) {
+        return withdraw(command, false);
+    }
+
+    /** 用户入口沿用当前身份的对象授权，同时复用命令事务和回执。 */
+    public ProcessCommandReceipt withdrawForUser(WithdrawProcessCommand command) {
+        requireInitiator(command.processInstanceId(), false);
+        return withdraw(command, true);
+    }
+
+    private ProcessCommandReceipt withdraw(WithdrawProcessCommand command, boolean checkAccess) {
         access.requireActor();
         return ProcessCommandFailures.translate(command.processInstanceId(), () -> commands.execute(command.meta(),
                 "PROCESS_WITHDRAW", command, Boolean.class, () -> {
                     requireActive(command.processInstanceId());
-                    taskActions.withdrawProcess(command.processInstanceId(), actorKey(command.processInstanceId()), command.reason());
+                    if (checkAccess) {
+                        taskActions.withdrawProcess(command.processInstanceId(), actorKey(command.processInstanceId()), command.reason());
+                    } else {
+                        taskActions.withdrawForPort(command.processInstanceId(), operatorId(), command.reason());
+                    }
                     return new ProcessCommandExecutor.Outcome<>(command.processInstanceId(), null, true, true);
                 }).receipt());
     }
 
     /** 原终止服务的错误 Result 必须变为异常，才能阻止回执与外层事务被误当作成功提交。 */
     public ProcessCommandReceipt terminate(TerminateProcessCommand command) {
+        return terminate(command, false);
+    }
+
+    /** 用户入口沿用当前身份的对象授权，同时复用命令事务和回执。 */
+    public ProcessCommandReceipt terminateForUser(TerminateProcessCommand command) {
+        requireInitiator(command.processInstanceId(), true);
+        return terminate(command, true);
+    }
+
+    private ProcessCommandReceipt terminate(TerminateProcessCommand command, boolean checkAccess) {
         access.requireActor();
         return ProcessCommandFailures.translate(command.processInstanceId(), () -> commands.execute(command.meta(),
                 "PROCESS_TERMINATE", command, Boolean.class, () -> {
                     requireActive(command.processInstanceId());
-                    var result = termination.terminateProcess(command.processInstanceId(), actorKey(command.processInstanceId()), command.reason());
+                    var result = checkAccess
+                            ? termination.terminateProcess(command.processInstanceId(), actorKey(command.processInstanceId()), command.reason())
+                            : termination.terminateForPort(command.processInstanceId(), operatorId(), command.reason());
                     if (result.getCode() != 200) throw new ProcessOperationException(
                             result.getErrorCode() != null ? result.getErrorCode() : result.getCode() == 403
                                     ? "PROCESS_ACCESS_DENIED" : "PROCESS_OPERATION_FAILED",
@@ -63,13 +89,46 @@ public class ProcessInstanceCommandAdapter {
             var result = commands.execute(command.meta(), "RECEIVE_TASK_TRIGGER", command, String.class, () -> {
                 requireActive(command.processInstanceId());
                 var request = new ReceiveTaskTriggerRequest();
-                request.setExecutionId(command.executionId()); request.setActivityId(command.activityId());
-                request.setMessageRef(command.messageRef()); request.setVariables(command.variables());
-                String executionId = instances.triggerReceiveTask(command.processInstanceId(), request);
+                request.setExecutionId(command.executionId());
+                request.setActivityId(command.activityId());
+                request.setMessageRef(command.messageRef());
+                request.setVariables(command.variables());
+                String executionId = instances.triggerReceiveTaskForPort(command.processInstanceId(), request);
                 return new ProcessCommandExecutor.Outcome<>(command.processInstanceId(), null, true, executionId);
             });
             return new ReceiveTaskTriggerResult(result.receipt(), result.value());
         });
+    }
+
+    /** 用户入口沿用当前身份的对象授权，同时复用命令事务和回执。 */
+    public ReceiveTaskTriggerResult triggerReceiveTaskForUser(TriggerReceiveTaskCommand command) {
+        return ProcessCommandFailures.translate(command.processInstanceId(), () -> {
+            // 回执可能由已授权的后台任务创建，用户入口要先完成自己的对象授权。
+            instances.requireSignalAccess(command.processInstanceId());
+            return triggerReceiveTask(command);
+        });
+    }
+
+    /** 结束后的重试同样要核对历史发起人，后台命令回执不能替代用户入口授权。 */
+    private void requireInitiator(String instanceId, boolean preferHistoricalStarter) {
+        var actor = access.requireActor();
+        var live = runtime.createProcessInstanceQuery().processInstanceId(instanceId).singleResult();
+        String starter = live == null ? null : live.getStartUserId();
+        if (preferHistoricalStarter || starter == null || starter.isBlank()) {
+            var archived = history.createHistoricProcessInstanceQuery().processInstanceId(instanceId).singleResult();
+            if (live == null && archived == null) {
+                throw new ProcessOperationException("PROCESS_NOT_FOUND", "流程实例不存在", instanceId);
+            }
+            if (archived != null) starter = archived.getStartUserId();
+        }
+        if (starter == null || !starter.equals(actor.userId()) && !starter.equals(actor.username())) {
+            throw new ProcessOperationException("PROCESS_ACCESS_DENIED", "只有发起人可以撤回或终止流程", instanceId);
+        }
+    }
+
+    private String operatorId() {
+        var actor = access.requireActor();
+        return actor.userId() != null && !actor.userId().isBlank() ? actor.userId() : actor.username();
     }
 
     /** ID 和用户名仅用于匹配同一真实操作人，不允许请求声明另一个发起人身份。 */

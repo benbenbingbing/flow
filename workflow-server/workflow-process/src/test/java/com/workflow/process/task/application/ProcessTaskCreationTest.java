@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.NullSource;
-import com.workflow.port.system.identity.model.IdentityGroup;
+import com.workflow.port.system.model.identity.IdentityGroup;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;

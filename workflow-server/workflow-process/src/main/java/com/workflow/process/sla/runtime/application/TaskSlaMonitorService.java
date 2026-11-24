@@ -37,6 +37,13 @@ public class TaskSlaMonitorService {
             String processKey,
             String assignee,
             String keyword) {
+        return page(requestedPage, requestedSize, status, processKey, null, assignee, keyword);
+    }
+
+    /** 附带实例范围的监控查询，列表和计数使用相同条件。 */
+    @Transactional(readOnly = true)
+    public PageResult<ProcessTaskSla> page(int requestedPage, int requestedSize, String status, String processKey,
+                                          String processInstanceId, String assignee, String keyword) {
         int page = Math.max(1, requestedPage);
         int size = Math.min(200, Math.max(1, requestedSize));
         long offset = (long) (page - 1) * size;
@@ -44,6 +51,7 @@ public class TaskSlaMonitorService {
                 slaMapper.findMonitorPage(
                         status,
                         processKey,
+                        processInstanceId,
                         assignee,
                         keyword,
                         offset,
@@ -51,6 +59,7 @@ public class TaskSlaMonitorService {
                 slaMapper.countMonitor(
                         status,
                         processKey,
+                        processInstanceId,
                         assignee,
                         keyword),
                 page,
@@ -64,12 +73,21 @@ public class TaskSlaMonitorService {
      */
     @Transactional(readOnly = true)
     public Map<String, Long> statistics() {
+        return statistics(null, null);
+    }
+
+    /** SLA 状态计数可以限定到指定流程或实例。 */
+    @Transactional(readOnly = true)
+    public Map<String, Long> statistics(String processKey, String processInstanceId) {
         Map<String, Long> result = new LinkedHashMap<>();
         result.put("RUNNING", 0L);
         result.put("BREACHED", 0L);
         result.put("PAUSED", 0L);
         result.put("COMPLETED", 0L);
-        for (Map<String, Object> row : slaMapper.statusStatistics()) {
+        for (Map<String, Object> raw : slaMapper.statusStatistics(processKey, processInstanceId)) {
+            // Oracle 等驱动可能使用大写列标签，读取聚合列时按大小写无关匹配。
+            var row = new java.util.TreeMap<String, Object>(String.CASE_INSENSITIVE_ORDER);
+            row.putAll(raw);
             result.put(
                     String.valueOf(row.get("status")),
                     ((Number) row.get("total")).longValue());

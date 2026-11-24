@@ -1,6 +1,6 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.dictionary.model.DictionaryEntry;
+import com.workflow.port.system.model.dictionary.DictionaryEntry;
 
 import java.util.List;
 import java.util.Optional;

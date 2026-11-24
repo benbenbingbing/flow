@@ -1,9 +1,9 @@
 package com.workflow.entity.data;
 
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
 import com.workflow.integration.database.api.sql.BoundSqlStatement;
 import com.workflow.integration.database.api.write.DatabaseInsertDialect;
 import com.workflow.integration.database.api.write.DatabaseRowLockPlan;

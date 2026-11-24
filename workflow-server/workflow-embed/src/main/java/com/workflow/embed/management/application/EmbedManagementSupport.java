@@ -1,12 +1,12 @@
 package com.workflow.embed.management.application;
 
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditResult;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditResult;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
 import java.time.LocalDateTime;

@@ -1,6 +1,6 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.GroupMemberFilter;
+import com.workflow.port.system.model.identity.GroupMemberFilter;
 import java.util.List;
 
 /** 身份模块提供组内标签查询；流程模块不得直接读取成员或标签持久化表。 */

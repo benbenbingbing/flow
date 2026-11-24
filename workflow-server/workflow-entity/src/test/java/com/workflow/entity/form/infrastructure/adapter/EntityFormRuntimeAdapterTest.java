@@ -1,7 +1,7 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.form.model.EntityFormBinding;
+import com.workflow.port.entity.model.form.EntityFormBinding;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;

@@ -1,8 +1,8 @@
 package com.workflow.entity.mutation.application;
 
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;

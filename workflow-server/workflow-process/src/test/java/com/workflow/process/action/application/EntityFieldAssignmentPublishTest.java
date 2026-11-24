@@ -83,7 +83,7 @@ class EntityFieldAssignmentPublishTest {
         var mapper = mock(com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper.class);
         var catalog = mock(com.workflow.port.process.ProcessActionDefinitionPort.class);
         when(catalog.requireSelectable(any(), any(), any())).thenReturn(
-                new com.workflow.port.process.action.model.FlowActionDefinitionDescriptor("definition",
+                new com.workflow.port.process.model.action.FlowActionDefinitionDescriptor("definition",
                         EntityFieldAssignmentFlowActionHandler.BEAN_NAME, "实体字段赋值"));
         var service = new FlowActionService(mapper, validator, catalog);
         var draft = action("left", "flag", "false");

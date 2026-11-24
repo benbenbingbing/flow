@@ -2,15 +2,16 @@ package com.workflow.process.task.application;
 
 import com.workflow.port.process.ProcessTaskPort;
 import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.ProcessCommandReceipt;
 import com.workflow.port.process.model.ProcessPage;
 import com.workflow.port.process.model.ProcessValues;
 import com.workflow.core.error.ForbiddenException;
-import com.workflow.port.process.query.model.*;
-import com.workflow.port.process.task.model.*;
-import com.workflow.port.process.task.model.TaskInterventionModels.AddSignPreview;
-import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnCommand;
-import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnResult;
-import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnTarget;
+import com.workflow.port.process.model.query.*;
+import com.workflow.port.process.model.task.*;
+import com.workflow.port.process.model.task.TaskInterventionModels.AddSignPreview;
+import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturnCommand;
+import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturnResult;
+import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturnTarget;
 import com.workflow.process.query.application.ProcessQueryAdapter;
 import java.util.List;
 import java.util.Optional;
@@ -76,6 +77,16 @@ public class ProcessTaskAdapter implements ProcessTaskPort {
     @Override
     public TaskCommandResult complete(CompleteTaskCommand command) {
         return commands.complete(command);
+    }
+
+    @Override
+    public ProcessCommandReceipt skip(SkipTaskCommand command) {
+        return interventions.skip(command);
+    }
+
+    @Override
+    public ProcessCommandReceipt skip(SkipTaskCommand command, String operatorId) {
+        return interventions.skip(command, operatorId);
     }
 
     @Override

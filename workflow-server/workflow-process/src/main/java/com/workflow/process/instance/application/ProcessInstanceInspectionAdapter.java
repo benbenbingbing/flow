@@ -1,8 +1,8 @@
 package com.workflow.process.instance.application;
 
-import com.workflow.port.process.instance.model.ProcessRuntimeViews.InstanceCapabilities;
-import com.workflow.port.process.instance.model.ProcessRuntimeViews.Progress;
-import com.workflow.port.process.query.model.ActionCapability;
+import com.workflow.port.process.model.instance.ProcessRuntimeViews.InstanceCapabilities;
+import com.workflow.port.process.model.instance.ProcessRuntimeViews.Progress;
+import com.workflow.port.process.model.query.ActionCapability;
 import com.workflow.process.query.application.ProcessQueryAdapter;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.command.application.ProcessInvocationAccess;
@@ -25,7 +25,7 @@ public class ProcessInstanceInspectionAdapter {
     private final NodeOperationCapabilityService operations;
 
     public Progress getProgress(String processInstanceId) {
-        var progress = instances.getProcessProgress(processInstanceId);
+        var progress = instances.getProgressForPort(processInstanceId);
         return new Progress(progress.getProcessInstanceId(), progress.getProcessDefinitionId(), progress.getProcessVersion(),
                 progress.getStatus(), progress.getEndType(), progress.getEndReason(), progress.getActiveNodes(),
                 progress.getCompletedNodes(), progress.getCancelledNodes(), progress.getTerminatedNodes(),
@@ -34,7 +34,9 @@ public class ProcessInstanceInspectionAdapter {
 
     public InstanceCapabilities getInstanceCapabilities(String processInstanceId) {
         var caller = callers.requireActor();
-        var instance = queries.requireInstance(processInstanceId);
+        var instance = queries.findReadableInstance(processInstanceId).orElseThrow(
+                () -> new com.workflow.port.process.error.ProcessOperationException(
+                        "PROCESS_NOT_FOUND", "流程实例不存在", processInstanceId));
         String starter = instance.startUserId();
         String actorKey = Objects.equals(starter, caller.username()) ? caller.username() : caller.userId();
         var withdraw = capability(operations.canWithdrawProcess(processInstanceId, actorKey), "WITHDRAW_UNAVAILABLE");

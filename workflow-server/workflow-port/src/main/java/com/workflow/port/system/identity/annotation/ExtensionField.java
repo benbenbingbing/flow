@@ -1,6 +1,6 @@
 package com.workflow.port.system.identity.annotation;
 
-import com.workflow.port.system.identity.model.ExtensionControl;
+import com.workflow.port.system.model.identity.ExtensionControl;
 import java.lang.annotation.*;
 
 /** 扩展字段及通用表单描述；列名只供服务端注册，不能由客户端指定。 */

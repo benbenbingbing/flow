@@ -47,7 +47,7 @@ public class ProcessTaskController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.port.process.ProcessInstancePort instanceCommands;
+    private com.workflow.process.instance.application.ProcessInstanceCommandAdapter instanceCommands;
 
 
     private final ProcessTaskService processTaskService;
@@ -177,7 +177,7 @@ public class ProcessTaskController {
     @PostMapping("/claim/{taskId}")
     public Result<Void> claimTask(@PathVariable String taskId) {
         try {
-            taskCommands.claim(new com.workflow.port.process.task.model.ClaimTaskCommand(
+            taskCommands.claimForUser(new com.workflow.port.process.model.task.ClaimTaskCommand(
                     com.workflow.process.command.application.ProcessHttpCommands.meta(null), taskId));
         } catch (FlowableOptimisticLockingException | FlowableTaskAlreadyClaimedException exception) {
             throw taskStateChanged();
@@ -340,7 +340,7 @@ public class ProcessTaskController {
             if (currentUser == null || currentUser.isBlank()) {
                 throw new ForbiddenException("用户未登录");
             }
-            instanceCommands.withdraw(new com.workflow.port.process.instance.model.WithdrawProcessCommand(
+            instanceCommands.withdrawForUser(new com.workflow.port.process.model.instance.WithdrawProcessCommand(
                     com.workflow.process.command.application.ProcessHttpCommands.meta(params.get("requestId")), processInstanceId, reason));
             return Result.success();
         } catch (com.workflow.port.process.error.ProcessOperationException e) {

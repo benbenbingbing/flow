@@ -1,11 +1,11 @@
 package com.workflow.port.process;
 
-import com.workflow.port.process.instance.model.ProcessInterventionModels.*;
+import com.workflow.port.process.model.instance.ProcessInterventionModels.*;
 import java.util.List;
 
 /** 查询动作执行记录，重试或登记人工处置结果。 */
 public interface ProcessActionExecutionPort {
-    /** 读操作。查找流程内的动作执行状态和失败摘要；沿用平台超级管理员权限。 */
+    /** 读操作。查找流程内的动作执行状态和失败摘要，调用方负责授权。 */
     List<ActionExecution> listExecutions(String processInstanceId);
 
     /** 写操作。通过平台动作重放机制重新执行所选记录。 */

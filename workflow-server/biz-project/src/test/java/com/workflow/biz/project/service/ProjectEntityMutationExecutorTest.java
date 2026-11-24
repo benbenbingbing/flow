@@ -2,8 +2,8 @@ package com.workflow.biz.project.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.entity.model.EntityRecordData;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

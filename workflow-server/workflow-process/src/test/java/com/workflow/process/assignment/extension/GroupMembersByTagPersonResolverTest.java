@@ -1,6 +1,6 @@
 package com.workflow.process.assignment.extension;
 
-import com.workflow.port.system.identity.model.GroupMemberFilter;
+import com.workflow.port.system.model.identity.GroupMemberFilter;
 import com.workflow.port.system.SysUserGroupTagPort;
 import com.workflow.contracts.process.assignment.model.*;
 import org.junit.jupiter.api.Test;

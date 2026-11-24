@@ -6,7 +6,7 @@ import com.workflow.core.result.Result;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.organization.application.SysOrganizationService;
-import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.port.system.model.identity.position.OrganizationBusinessLevelView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

@@ -4,6 +4,8 @@
 - 日期为 2026-11-23
 - 补充 [ADR-0010](0010-group-platform-contracts-by-use.md) 的领域目录规则，更新 [ADR-0009](0009-flatten-platform-port-packages.md) 的包名。
 
+> 配套模型、异常和上下文的目录规则由 [ADR-0012](0012-group-port-supporting-types-by-role.md) 更新。
+
 ## 背景
 
 领域目录已经能帮助业务开发者选对查找范围。打开领域后还需要展开 `port`，才能看见具体接口。两个契约制品共用 Java 前缀，也让接口和扩展点的归属难以从包名判断。

@@ -168,4 +168,4 @@ MySQL 存量库另提供可直接执行的 [V131 手工升级 SQL](../sql/upgrad
 - 查询检查管理权限与对象范围，普通列表查询和审计记录避免加载或输出原文。
 - 实际迁移与七种初始化脚本结构一致，验证结果明确区分静态检查和目标数据库执行结果。
 
-相关实现依据见 [身份写入设计](identity-write-and-extension-design.md)、[保存模型](../../workflow-server/workflow-port/src/main/java/com/workflow/port/system/identity/model/UserSaveModel.java)、[身份写入服务](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityWriteService.java) 和 [来源访问校验](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityAccessService.java)。
+相关实现依据见 [身份写入设计](identity-write-and-extension-design.md)、[保存模型](../../workflow-server/workflow-port/src/main/java/com/workflow/port/system/model/identity/UserSaveModel.java)、[身份写入服务](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityWriteService.java) 和 [来源访问校验](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/provisioning/application/IdentityAccessService.java)。

@@ -1,6 +1,6 @@
 package com.workflow.port.embed;
 
-import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure.ListCoordinate;
 import java.util.List;
 
 /**

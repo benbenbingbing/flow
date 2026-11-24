@@ -23,7 +23,7 @@ public interface EntityRecordVersionPort {
     Map<String, Object> previewRestore(String entityCode, String recordId, int version);
 
     /**
-     * 为当前可读的业务记录创建手工版本。调用方须有留档权限，重试使用相同幂等键。
+     * 为调用方已授权的记录创建手工版本。重试使用相同幂等键。
      * triggerCode 由实体已启用的版本策略解释，reason 记录留档目的。
      */
     Version capture(String entityCode, String recordId, String idempotencyKey, String triggerCode, String reason);

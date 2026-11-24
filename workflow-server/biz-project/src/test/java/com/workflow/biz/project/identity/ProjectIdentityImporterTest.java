@@ -3,7 +3,7 @@ package com.workflow.biz.project.identity;
 import com.workflow.port.system.SysUserPort;
 import com.workflow.port.system.SysOrganizationPort;
 
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.model.identity.*;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import static org.junit.jupiter.api.Assertions.*;

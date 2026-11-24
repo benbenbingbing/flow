@@ -32,9 +32,9 @@ import org.springframework.web.servlet.HandlerMapping;
 
 class EmbedDelegatedRuntimePolicyTest {
 
-    private com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.Scope sessionScope;
+    private com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext.Scope sessionScope;
     @org.junit.jupiter.api.BeforeEach
-    void openSession() { sessionScope=com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.openSession("session-1","release-1"); }
+    void openSession() { sessionScope=com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext.openSession("session-1","release-1"); }
     @org.junit.jupiter.api.AfterEach
     void closeSession() {sessionScope.close();}
 
@@ -482,7 +482,7 @@ class EmbedDelegatedRuntimePolicyTest {
         assertEquals("customer", target.entityCode());
         assertEquals("child-list-release", target.listReleaseId());
         verify(targetResolver).authorize(session, "VIEW", "record-1");
-        assertEquals("customers", com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext
+        assertEquals("customers", com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext
                 .authorizedListTarget().orElseThrow().listKey());
     }
 

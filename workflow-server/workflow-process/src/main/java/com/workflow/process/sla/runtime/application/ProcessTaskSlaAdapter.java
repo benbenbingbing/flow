@@ -1,39 +1,51 @@
 package com.workflow.process.sla.runtime.application;
 
-import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.process.instance.model.ProcessRuntimeViews.TaskSla;
+import com.workflow.port.process.model.ProcessPage;
+import com.workflow.port.process.model.instance.ProcessRuntimeViews.TaskSla;
 import com.workflow.port.process.ProcessTaskSlaPort;
 import com.workflow.process.sla.runtime.infrastructure.persistence.record.ProcessTaskSla;
-import com.workflow.process.task.application.TaskActionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import java.util.Map;
+import java.util.Objects;
 
-/** 每次调用先验证真实任务办理权限，再使用发布策略内的计时事务。 */
+/** 按已发布 SLA 策略处理计时和监控，调用方负责授权。 */
 @Component
 @RequiredArgsConstructor
 public class ProcessTaskSlaAdapter implements ProcessTaskSlaPort {
-    private final TaskActionService tasks;
     private final TaskSlaRuntimeService sla;
+    private final TaskSlaMonitorService monitor;
 
     @Override public TaskSla read(String taskId) {
-        tasks.requireTaskAccess(taskId);
         var detail = sla.detail(taskId);
         return detail == null ? null : project(detail.sla());
     }
 
     @Override public TaskSla acknowledge(String taskId) {
-        tasks.requireTaskAccess(taskId);
-        return project(sla.acknowledge(taskId, UserContext.requireUsernameOrId()));
+        return project(sla.acknowledge(taskId));
     }
 
     @Override public TaskSla pause(String taskId, String reason, String pauseType) {
-        tasks.requireTaskAccess(taskId);
         return project(sla.pause(taskId, reason, pauseType));
     }
 
     @Override public TaskSla resume(String taskId) {
-        tasks.requireTaskAccess(taskId);
         return project(sla.resume(taskId));
+    }
+
+    @Override
+    public ProcessPage<MonitorItem> pageMonitor(MonitorQuery query) {
+        Objects.requireNonNull(query, "SLA 查询条件不能为空");
+        var page = monitor.page(query.pageNumber(), query.pageSize(), query.status(), query.processKey(),
+                query.processInstanceId(), query.assigneeId(), query.keyword());
+        return new ProcessPage<>(page.getRecords().stream().map(row -> new MonitorItem(row.getProcessInstanceId(),
+                row.getProcessKey(), row.getNodeName(), row.getCurrentAssigneeId(), project(row))).toList(),
+                page.getTotal(), Math.toIntExact(page.getPageNum()), Math.toIntExact(page.getPageSize()));
+    }
+
+    @Override
+    public Map<String, Long> countMonitorByStatus(String processKey, String processInstanceId) {
+        return Map.copyOf(monitor.statistics(processKey, processInstanceId));
     }
 
     private TaskSla project(ProcessTaskSla row) {

@@ -1,6 +1,6 @@
 package com.workflow.admin.audit.infrastructure.web;
 
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.port.system.CurrentActorPort;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;

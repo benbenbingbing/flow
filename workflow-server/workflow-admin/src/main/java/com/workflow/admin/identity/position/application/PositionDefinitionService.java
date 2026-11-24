@@ -10,9 +10,9 @@ import com.workflow.admin.identity.position.infrastructure.persistence.mapper.Sy
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.SysPosition;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.core.result.PageResult;
 import lombok.RequiredArgsConstructor;

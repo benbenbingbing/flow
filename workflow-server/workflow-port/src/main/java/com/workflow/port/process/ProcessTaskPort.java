@@ -1,12 +1,14 @@
 package com.workflow.port.process;
 
 import com.workflow.port.process.model.ProcessPage;
-import com.workflow.port.process.query.model.*;
-import com.workflow.port.process.task.model.*;
-import com.workflow.port.process.task.model.TaskInterventionModels.AddSignPreview;
-import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnCommand;
-import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnResult;
-import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnTarget;
+import com.workflow.port.process.model.ProcessCommandReceipt;
+import com.workflow.port.process.error.ProcessOperationException;
+import com.workflow.port.process.model.query.*;
+import com.workflow.port.process.model.task.*;
+import com.workflow.port.process.model.task.TaskInterventionModels.AddSignPreview;
+import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturnCommand;
+import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturnResult;
+import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturnTarget;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,7 +29,7 @@ public interface ProcessTaskPort {
     /** 查询操作可用性提示，命令执行时仍重新校验。 */
     TaskCapabilities getTaskCapabilities(String taskId);
 
-    /** 认领给当前候选身份；同一人已认领可返回未变化，他人已认领则冲突，本地加签不能认领。 */
+    /** 认领调用方已授权的任务给当前执行身份；同一人已认领可返回未变化，他人已认领则冲突。 */
     TaskCommandResult claim(ClaimTaskCommand command);
 
     /**
@@ -37,6 +39,21 @@ public interface ProcessTaskPort {
      * @return 实际任务结果和实例生命周期；登记延后完成不等于主流程已经推进
      */
     TaskCommandResult complete(CompleteTaskCommand command);
+
+    /**
+     * 跳过调用方已授权的活动待办，流程沿当前节点的已发布连线继续，条件使用实例当前变量。
+     * 连线无法推进时，本次待办状态、日志与回执一并回滚。
+     * @param command 本次待办的任务 ID、跳过原因及用于重试的请求 ID
+     * @return 幂等回执，可用来核对实际处理的实例及任务
+     * @throws ProcessOperationException 缺少审计操作人、任务状态已变化，或处于会签、加签、委托及回退重提等不支持的状态
+     */
+    ProcessCommandReceipt skip(SkipTaskCommand command);
+
+    /**
+     * 跳过调用方已授权的活动待办，后台调用可以直接指定审计归属。
+     * @param operatorId 写入流程历史并隔离幂等回执的操作人标识
+     */
+    ProcessCommandReceipt skip(SkipTaskCommand command, String operatorId);
 
     /** 将任务转给合法接收人，同步引擎、本地待办和日志；不得同时提交下一节点审批人选择。 */
     TaskCommandResult transfer(TransferTaskCommand command);

@@ -1,7 +1,7 @@
 package com.workflow.port.process;
 
 import com.workflow.port.process.model.ProcessPage;
-import com.workflow.port.process.query.model.*;
+import com.workflow.port.process.model.query.*;
 
 /** 读取当前身份可见的流程任务历史与操作日志。 */
 public interface ProcessHistoryPort {

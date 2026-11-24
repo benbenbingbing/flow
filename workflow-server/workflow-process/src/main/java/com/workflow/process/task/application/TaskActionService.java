@@ -17,9 +17,9 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
@@ -585,11 +585,21 @@ public class TaskActionService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void claimTask(String taskId) {
+        claimTask(taskId, true);
+    }
+
+    /** 调用方授权认领目标，实际认领人和并发冲突仍由原 Flowable 路径处理。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void claimTaskForPort(String taskId) {
+        claimTask(taskId, false);
+    }
+
+    private void claimTask(String taskId, boolean checkAccess) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
             throw taskAlreadyCompleted();
         }
-        requireTaskProcessingAccess(task);
+        if (checkAccess) requireTaskProcessingAccess(task);
         claimTaskForCurrentUser(task, currentTaskIdentity());
     }
 
@@ -861,6 +871,18 @@ public class TaskActionService {
             targetType = "PROCESS_INSTANCE",
             targetIdArg = 0)
     public void withdrawProcess(String processInstanceId, String userId, String reason) {
+        withdrawProcess(processInstanceId, userId, reason, true);
+    }
+
+    /** 撤回调用方已授权的流程，保留发布节点规则、结束记录及事务约束。 */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.WITHDRAW,
+            operation = "撤回流程", risk = AuditRiskLevel.HIGH, targetType = "PROCESS_INSTANCE", targetIdArg = 0)
+    public void withdrawForPort(String processInstanceId, String operatorId, String reason) {
+        withdrawProcess(processInstanceId, operatorId, reason, false);
+    }
+
+    private void withdrawProcess(String processInstanceId, String userId, String reason, boolean checkInitiator) {
         // 验证流程实例是否存在
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
@@ -870,23 +892,25 @@ public class TaskActionService {
             throw new RuntimeException("流程实例不存在或已结束");
         }
 
-        // 发起人信息在运行时缺失时回退到历史表；仍无法确认则失败关闭。
-        String startUserId = processInstance.getStartUserId();
-        if (!StringUtils.hasText(startUserId)) {
-            HistoricProcessInstance historic = historyService
-                    .createHistoricProcessInstanceQuery()
-                    .processInstanceId(processInstanceId)
-                    .singleResult();
-            startUserId = historic == null ? null : historic.getStartUserId();
-        }
-        if (!StringUtils.hasText(startUserId) || !startUserId.equals(userId)) {
-            throw new RuntimeException("只有发起人才能撤回流程");
+        if (checkInitiator) {
+            // 用户入口从运行时或历史确认发起人，缺少可匹配身份时拒绝。
+            String startUserId = processInstance.getStartUserId();
+            if (!StringUtils.hasText(startUserId)) {
+                HistoricProcessInstance historic = historyService.createHistoricProcessInstanceQuery()
+                        .processInstanceId(processInstanceId).singleResult();
+                startUserId = historic == null ? null : historic.getStartUserId();
+            }
+            if (!StringUtils.hasText(startUserId) || !startUserId.equals(userId)) {
+                throw new RuntimeException("只有发起人才能撤回流程");
+            }
         }
 
         // 与 PC 列表及移动端能力查询共用撤回门禁；不再绑定“允许终止”。
-        nodeOperationCapabilityService.requireWithdrawAllowed(processInstanceId,
-                com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
-                        .ofReason(reason));
+        var operationContext = checkInitiator
+                ? com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext.ofReason(reason)
+                : com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+                        .forAuthorizedOperation(reason, userId);
+        nodeOperationCapabilityService.requireWithdrawAllowed(processInstanceId, operationContext);
 
         var parameters = new java.util.LinkedHashMap<String, Object>();
         parameters.put("reason", reason);

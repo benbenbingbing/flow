@@ -2,9 +2,9 @@ package com.workflow.admin.dictionary.application;
 
 import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;

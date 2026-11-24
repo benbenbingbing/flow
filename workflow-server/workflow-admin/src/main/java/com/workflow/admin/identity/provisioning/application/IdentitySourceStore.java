@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.provisioning.application;
 
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.*;
 import lombok.RequiredArgsConstructor;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
 import org.springframework.stereotype.Component;
@@ -9,6 +9,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+
+import static com.workflow.core.logging.LogValue.safe;
 
 /** 来源定位与数据库目录锁；所有写入路径共享锁，防止并发建树和首次创建产生交叉状态。 */
 @Component
@@ -29,11 +31,15 @@ public class IdentitySourceStore {
     public Map<String, Object> findLocal(IdentityObjectType type, String localId) {
         return persistence.findLocal(type, localId);
     }
-    public String resolveOrganization(String source, String externalId) {
+    /** 解析用户归属引用，错误字段保留调用方提交的来源字段名，便于区分部门和所属组织。 */
+    public String resolveOrganization(String source, String externalId, String field) {
         if (externalId == null) return null;
         var row = find(IdentityObjectType.ORGANIZATION, new ExternalIdentityKey(source, externalId));
         if (row == null || !"ACTIVE".equals(row.get("binding_status"))) {
-            throw new IdentityWriteException("REFERENCE_NOT_FOUND", "organization", "引用的来源组织不存在或已退休");
+            String label = "departmentExternalId".equals(field) ? "部门" : "所属组织";
+            String problem = row == null ? "尚无来源绑定，请先同步该引用对象" : "的来源绑定已退役，请检查引用是否仍有效";
+            throw new IdentityWriteException("REFERENCE_NOT_FOUND", field,
+                    "来源「%s」的%s外部 ID「%s」%s".formatted(safe(source), label, safe(externalId), problem));
         }
         return (String) row.get("local_id");
     }

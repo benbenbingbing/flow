@@ -104,11 +104,18 @@ public interface ProcessTaskSlaMapper extends BaseMapper<ProcessTaskSla> {
      */
     default List<ProcessTaskSla> findMonitorPage(
             String status, String processKey, String assignee, String keyword, long offset, int limit) {
-        var wrapper = monitorFilter(status, processKey, assignee, keyword);
+        return findMonitorPage(status, processKey, null, assignee, keyword, offset, limit);
+    }
+
+    /** 实例筛选必须在数据库分页前应用，避免并行任务或其他实例混入。 */
+    default List<ProcessTaskSla> findMonitorPage(String status, String processKey,
+            String processInstanceId, String assignee, String keyword, long offset, int limit) {
+        var wrapper = monitorFilter(status, processKey, processInstanceId, assignee, keyword);
         wrapper.orderByAsc("CASE overall_status WHEN 'BREACHED' THEN 0 WHEN 'RUNNING' THEN 1 "
                         + "WHEN 'PAUSED' THEN 2 ELSE 3 END")
                 .orderByAsc("completion_due_at")
-                .orderByDesc("create_time");
+                .orderByDesc("create_time")
+                .orderByAsc("id");
         return selectList(new OffsetPage<>(offset, limit), wrapper);
     }
 
@@ -122,7 +129,13 @@ public interface ProcessTaskSlaMapper extends BaseMapper<ProcessTaskSla> {
      * @return 符合条件的{@code monitor}数量
      */
     default long countMonitor(String status, String processKey, String assignee, String keyword) {
-        return selectCount(monitorFilter(status, processKey, assignee, keyword));
+        return countMonitor(status, processKey, null, assignee, keyword);
+    }
+
+    /** 监控总数与分页使用同一组筛选。 */
+    default long countMonitor(String status, String processKey, String processInstanceId,
+                              String assignee, String keyword) {
+        return selectCount(monitorFilter(status, processKey, processInstanceId, assignee, keyword));
     }
 
     /**
@@ -135,10 +148,11 @@ public interface ProcessTaskSlaMapper extends BaseMapper<ProcessTaskSla> {
      * @return 处理后的{@code monitor}过滤结果，供调用方继续处理
      */
     private static QueryWrapper<ProcessTaskSla> monitorFilter(
-            String status, String processKey, String assignee, String keyword) {
+            String status, String processKey, String processInstanceId, String assignee, String keyword) {
         return Wrappers.<ProcessTaskSla>query()
                 .eq(status != null && !status.isEmpty(), "overall_status", status)
                 .eq(processKey != null && !processKey.isEmpty(), "process_key", processKey)
+                .eq(processInstanceId != null && !processInstanceId.isEmpty(), "process_instance_id", processInstanceId)
                 .eq(assignee != null && !assignee.isEmpty(), "current_assignee_id", assignee)
                 .and(keyword != null && !keyword.isEmpty(), text -> text
                         .like("node_name", keyword)
@@ -152,7 +166,12 @@ public interface ProcessTaskSlaMapper extends BaseMapper<ProcessTaskSla> {
      * @return 流程任务SLA集合，供调用方遍历或展示
      */
     default List<Map<String, Object>> statusStatistics() {
-        return selectMaps(Wrappers.<ProcessTaskSla>query()
+        return statusStatistics(null, null);
+    }
+
+    /** 汇总同一流程或实例，关联维度为空时保留后台原有的全局统计。 */
+    default List<Map<String, Object>> statusStatistics(String processKey, String processInstanceId) {
+        return selectMaps(monitorFilter(null, processKey, processInstanceId, null, null)
                 .select("overall_status AS status", "COUNT(*) AS total")
                 .groupBy("overall_status"));
     }

@@ -339,7 +339,7 @@ class PermissionSqlBuilderTest {
             public String toSql(
                     String entityCode,
                     EntityActionRule.RuleNode node,
-                    com.workflow.port.system.identity.model.IdentityUser user) {
+                    com.workflow.port.system.model.identity.IdentityUser user) {
                 return "customer_level = 'VIP'";
             }
         };

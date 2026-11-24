@@ -21,7 +21,7 @@
 - `com.workflow.admin.audit.infrastructure.aop/web/config`：切面、HTTP 元数据和事务装配。
 - `com.workflow.admin.audit.infrastructure.persistence.mapper/record`：日志持久化；`SystemOperationLog` 是表映射记录。
 - `com.workflow.admin.audit.infrastructure`：审计差异计算与载荷脱敏。
-- `com.workflow.port.platform.audit` 提供审计注解与事件。跨模块审计入口为 `com.workflow.port.platform.SystemOperationLogPort`。
+- 审计注解在 `com.workflow.port.platform.audit.annotation`，审计事件在 `com.workflow.port.platform.model.audit`。跨模块审计入口为 `com.workflow.port.platform.SystemOperationLogPort`。
 
 系统审计记录“谁在什么时候对什么执行了什么操作”；流程操作日志、动作执行日志和数据权限审计仍由对应领域模块维护。
 普通成功操作在业务事务提交后写入 Outbox，并在入队失败时有限重试和发布技术监控事件；标记为必需的高风险操作在当前事务写入 Outbox，写入失败会回滚业务。

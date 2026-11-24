@@ -3,10 +3,9 @@ package com.workflow.migration.history;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.entity.mutation.model.*;
+import com.workflow.port.entity.model.mutation.*;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.migration.history.*;
-import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.migration.model.history.HistoryImportModels.*;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.*;
@@ -189,8 +188,9 @@ class HistoryImportTransactionTest {
         doThrow(new ForbiddenException("权限收回")).when(records)
                 .requireAccessibleById(eq("expense"), anyString(), isNull());
         String id = jdbc.queryForObject("SELECT id FROM process_archive_instance", String.class);
-        assertThrows(ForbiddenException.class, () -> archives.list("expense", "000"));
-        assertThrows(ForbiddenException.class, () -> archives.detail(id));
+        assertThrows(ForbiddenException.class, () -> archives.listForUser("expense", "000"));
+        assertThrows(ForbiddenException.class, () -> archives.detailForUser(id));
+        assertEquals(2, ((List<?>) archives.detail(id).get("events")).size());
     }
     @Test void entityViewerCanReadImportedHistoryWithoutImportManagementPermissions() throws Exception {
         execute(batch(true, "历史业务数据"), false);
@@ -198,14 +198,14 @@ class HistoryImportTransactionTest {
         String archiveId = jdbc.queryForObject("SELECT id FROM process_archive_instance", String.class);
         // 普通查看者不持有导入权限；实体查看和数据范围仍由真实实体读取服务校验。
         permissions.when(() -> PermissionUtil.hasPermission(anyString())).thenReturn(false);
-        assertEquals(archiveId, archives.list("expense", recordId).get(0).get("id"));
-        assertEquals(2, ((List<?>) archives.detail(archiveId).get("events")).size());
+        assertEquals(archiveId, archives.listForUser("expense", recordId).get(0).get("id"));
+        assertEquals(2, ((List<?>) archives.detailForUser(archiveId).get("events")).size());
         assertThrows(ForbiddenException.class, () -> service.catalog());
         assertThrows(ForbiddenException.class, () -> service.create(plan));
         doThrow(new ForbiddenException("没有实体查看权限")).when(access)
                 .requireStandardPermission("expense", EntityPermissionAction.VIEW);
-        assertThrows(ForbiddenException.class, () -> archives.list("expense", recordId));
-        assertThrows(ForbiddenException.class, () -> archives.detail(archiveId));
+        assertThrows(ForbiddenException.class, () -> archives.listForUser("expense", recordId));
+        assertThrows(ForbiddenException.class, () -> archives.detailForUser(archiveId));
     }
     @Test void concurrentSameGroupRequestsCommitOnlyOnce() throws Exception {
         var batch = batch(false, "并发记录");

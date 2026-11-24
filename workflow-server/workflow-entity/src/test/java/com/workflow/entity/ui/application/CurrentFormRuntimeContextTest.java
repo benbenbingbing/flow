@@ -2,7 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import org.junit.jupiter.api.AfterEach;

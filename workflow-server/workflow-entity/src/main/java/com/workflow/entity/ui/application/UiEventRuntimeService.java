@@ -16,11 +16,11 @@ import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditResult;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditResult;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.core.error.BusinessConflictException;
@@ -146,6 +146,22 @@ public class UiEventRuntimeService {
     public UiEventExecutionResult execute(
             UiEventExecuteRequest request,
             Function<Map<String, Object>, Object> defaultHandler) {
+        return execute(request, defaultHandler, true);
+    }
+
+    /** 实体应用服务已授权本次变更，事件仍须绑定到有效的发布配置并执行标准处理器。 */
+    public UiEventExecutionResult executeAuthorizedMutation(UiEventExecuteRequest request,
+            Function<Map<String, Object>, Object> defaultHandler) {
+        if (request == null || !Set.of(UiDataSourceUsages.DATA_CREATE, UiDataSourceUsages.DATA_UPDATE,
+                        UiDataSourceUsages.DATA_DELETE, UiDataSourceUsages.DATA_BATCH_DELETE)
+                .contains(normalize(request.getEventCode()))) {
+            throw new IllegalArgumentException("此入口仅接受实体变更事件");
+        }
+        return execute(request, Objects.requireNonNull(defaultHandler), false);
+    }
+
+    private UiEventExecutionResult execute(UiEventExecuteRequest request,
+            Function<Map<String, Object>, Object> defaultHandler, boolean checkPermission) {
         long startedAt = System.nanoTime();
         try {
             // 在条件、映射及不可变复制之前统一限制原始业务树；字段名不承担身份校验。
@@ -157,7 +173,10 @@ public class UiEventRuntimeService {
             UiEventBindingService.ResolvedEventChain chain =
                     bindingService.resolvePublished(request);
             requireExecutableFormButtonChain(request, chain);
-            requireExecutionPermission(request, chain);
+            if (chain == null || !StringUtils.hasText(chain.entityCode())) {
+                throw new IllegalArgumentException("UI 事件未关联有效实体");
+            }
+            if (checkPermission) requireExecutionPermission(request, chain);
             bindListFixedFilters(request, chain);
             canonicalizeFormButtonRequest(request);
             bindTrustedPinnedExecution(request, chain);

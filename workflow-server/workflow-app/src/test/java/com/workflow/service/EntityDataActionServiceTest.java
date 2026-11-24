@@ -20,11 +20,11 @@ import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionActionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -792,14 +792,45 @@ class EntityDataActionServiceTest {
         }
 
         @Test
+        void portUpdateUsesCallerAuthorizedTargetAndPersistsThroughTheStandardMutation() {
+                var record = row("1", "A-1");
+                when(dynamicService.findById("asset", "1")).thenReturn(record);
+                when(capabilityService.evaluateMutationForPort("asset", null, "edit", record))
+                                .thenReturn(EntityActionCapabilityDTO.allowed());
+                var values = Map.<String, Object>of("name", "Updated");
+                when(formSubmissionService.applyDefaultFormWithRelease(eq("asset"), eq("1"), eq("edit"),
+                                eq(values), any())).thenReturn(
+                                        new PublishedFormSubmissionService.DefaultFormApplication(
+                                                values, null, null, null, null, null, null));
+                when(mutationPort.execute(any())).thenReturn(new EntityMutationResult(
+                                "trace", "asset", "1", EntityMutationOperationType.UPDATE,
+                                Map.of("id", "1", "entityCode", "asset"), null, null, true, false));
+
+                String expectedRevision = "a".repeat(64);
+                assertEquals("1", service.updateFromPort("asset", "1", null,
+                                Map.of("data", values), "trace", expectedRevision).getId());
+
+                verify(dynamicService, never()).findAccessibleById("asset", "1", null);
+                verify(capabilityService, never()).requireStandardPermission("asset", EntityPermissionAction.UPDATE);
+                var command = ArgumentCaptor.forClass(EntityMutationCommand.class);
+                verify(mutationPort).execute(command.capture());
+                assertEquals(expectedRevision, command.getValue().expectedRevision());
+                assertEquals(values, command.getValue().payload().get("data"));
+        }
+
+        @Test
         void portDeleteUsesStandardMutationWithRevisionFromAuthorizedRow() {
                 EntityDataDTO record = row("1", "A-1");
-                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(record);
+                when(dynamicService.findById("asset", "1")).thenReturn(record);
+
+                when(capabilityService.evaluateMutationForPort("asset", null, "delete", record))
+                                .thenReturn(EntityActionCapabilityDTO.allowed());
 
                 service.deleteFromPort("asset", "1", null);
 
                 var command = ArgumentCaptor.forClass(EntityMutationCommand.class);
-                verify(capabilityService).requireRowActionForConfig("asset", null, "delete", record);
+                verify(capabilityService).evaluateMutationForPort("asset", null, "delete", record);
+                verify(dynamicService, never()).findAccessibleById("asset", "1", null);
                 verify(mutationPort).execute(command.capture());
                 assertEquals(EntityMutationOperationType.DELETE, command.getValue().operationType());
                 assertEquals(Map.of(), command.getValue().payload());
@@ -809,8 +840,8 @@ class EntityDataActionServiceTest {
         @Test
         void portBatchDeleteRechecksEachRevisionInOneAtomicBatchAndDeduplicatesIds() {
                 EntityDataDTO record = row("1", "A-1");
-                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(record);
-                when(capabilityService.evaluateRowActionForConfig("asset", null, "batchDelete", record))
+                when(dynamicService.findById("asset", "1")).thenReturn(record);
+                when(capabilityService.evaluateMutationForPort("asset", null, "batchDelete", record))
                                 .thenReturn(EntityActionCapabilityDTO.allowed());
 
                 service.batchDeleteFromPort("asset", List.of("1", "1"), null);
@@ -828,11 +859,11 @@ class EntityDataActionServiceTest {
         void portBatchDeleteRejectsAllRowsWhenAnyRowIsDenied() {
                 var permitted = row("1", "A-1");
                 var blocked = row("2", "A-2");
-                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(permitted);
-                when(dynamicService.findAccessibleById("asset", "2", null)).thenReturn(blocked);
-                when(capabilityService.evaluateRowActionForConfig("asset", null, "batchDelete", permitted))
+                when(dynamicService.findById("asset", "1")).thenReturn(permitted);
+                when(dynamicService.findById("asset", "2")).thenReturn(blocked);
+                when(capabilityService.evaluateMutationForPort("asset", null, "batchDelete", permitted))
                                 .thenReturn(EntityActionCapabilityDTO.allowed());
-                when(capabilityService.evaluateRowActionForConfig("asset", null, "batchDelete", blocked))
+                when(capabilityService.evaluateMutationForPort("asset", null, "batchDelete", blocked))
                                 .thenReturn(EntityActionCapabilityDTO.hidden("记录已进入审批"));
 
                 assertThrows(ForbiddenException.class,

@@ -76,8 +76,23 @@ public class EntityRelationGraphReadService {
             Limits requestedLimits,
             EntityRelationGraphAuthorizationPlan authorization) {
         PublishedRelationPath verified = pathResolver.validate(path);
-        List<Grant> grants = validateAuthorization(
-                verified, authorization);
+        var scopes = validateAuthorization(verified, authorization).stream().map(Grant::dataScopePlan).toList();
+        return traverse(verified, sourceRecordIds, requestedLimits, scopes);
+    }
+
+    /** 对调用方已授权的来源和发布路径做有界查询，不读取当前登录用户。 */
+    @Transactional(readOnly = true)
+    public EntityRelationGraph readForPort(
+            PublishedRelationPath path, Collection<String> sourceRecordIds, Limits limits) {
+        var verified = pathResolver.validate(path);
+        // 调用方负责路径上的数据授权。范围只使用固定谓词，所有业务 ID 仍按绑定参数传入。
+        var scope = new DataScopePlan(true, "1=1", Map.of(), List.of(), List.of(), "调用方授权", null);
+        return traverse(verified, sourceRecordIds, limits,
+                java.util.Collections.nCopies(verified.hops().size() + 1, scope));
+    }
+
+    private EntityRelationGraph traverse(PublishedRelationPath verified, Collection<String> sourceRecordIds,
+            Limits requestedLimits, List<DataScopePlan> scopes) {
         Limits limits = normalizeLimits(requestedLimits);
         List<String> sourceIds = normalizeIds(
                 sourceRecordIds,
@@ -95,7 +110,7 @@ public class EntityRelationGraphReadService {
         List<TraversalRow> currentRows = requireAccessibleSources(
                 verified,
                 sourceIds,
-                grants.get(0).dataScopePlan(),
+                scopes.get(0),
                 projectedFieldsAtDepth(verified, 0),
                 limits);
         Map<RecordRef, Node> nodes = new LinkedHashMap<>();
@@ -127,7 +142,7 @@ public class EntityRelationGraphReadService {
                     hop,
                     currentRows,
                     terminal,
-                    grants.get(index + 1).dataScopePlan(),
+                    scopes.get(index + 1),
                     limits,
                     edges.size());
             terminalTotal = loaded.total();

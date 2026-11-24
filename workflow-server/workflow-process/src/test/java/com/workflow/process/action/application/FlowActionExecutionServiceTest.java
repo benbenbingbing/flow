@@ -6,7 +6,7 @@ import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionTraceFields;
 import com.workflow.port.platform.SystemOperationLogPort;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionExecutionMapper;

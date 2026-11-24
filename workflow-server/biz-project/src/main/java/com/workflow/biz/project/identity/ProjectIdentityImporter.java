@@ -3,7 +3,7 @@ package com.workflow.biz.project.identity;
 import com.workflow.port.system.SysUserPort;
 import com.workflow.port.system.SysOrganizationPort;
 
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.model.identity.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.List;
@@ -35,10 +35,16 @@ public class ProjectIdentityImporter {
 
     /** 显式指定本次提交的主表字段组，传 null 保留现值，携带时整组替换。 */
     public IdentitySaveResult saveUser(DirectoryUser user, String rawDataJson, IdentityMainFields mainFields) {
+        return saveUser(user, rawDataJson, mainFields, null);
+    }
+
+    /** 受控修复可附带已核实的本地用户 ID；存在旧绑定时同时提供旧外部 ID。 */
+    public IdentitySaveResult saveUser(DirectoryUser user, String rawDataJson, IdentityMainFields mainFields,
+                                       IdentityBindingChange bindingChange) {
         // 零散可查询资料写主表槽位；独立业务扩展仍按原注册及建表约定接入。
         return users.saveUser(new UserSaveModel(new ExternalIdentityKey(SOURCE, user.externalId()), user.version(),
                 new UserBaseData(user.account(), user.displayName(), user.email(), user.phone(), null,
-                        user.organizationId(), user.departmentId(), user.enabled()), List.of(), rawDataJson, mainFields));
+                        user.organizationId(), user.departmentId(), user.enabled()), List.of(), rawDataJson, mainFields, bindingChange));
     }
 
     /** 保存业务组织快照；父级允许后到，框架保存来源引用并在祖先补齐后自动关联组织树。 */
@@ -53,9 +59,15 @@ public class ProjectIdentityImporter {
 
     /** 显式指定本次提交的主表字段组，字段用途由业务约定，传 null 保留现值。 */
     public IdentitySaveResult saveOrganization(DirectoryOrganization unit, String rawDataJson, IdentityMainFields mainFields) {
+        return saveOrganization(unit, rawDataJson, mainFields, null);
+    }
+
+    /** 受控修复复用现有组织主键，改绑由平台在组织树事务中迁移来源引用。 */
+    public IdentitySaveResult saveOrganization(DirectoryOrganization unit, String rawDataJson, IdentityMainFields mainFields,
+                                               IdentityBindingChange bindingChange) {
         return organizations.saveOrganization(new OrganizationSaveModel(new ExternalIdentityKey(SOURCE, unit.externalId()), unit.version(),
                 new OrganizationBaseData(unit.code(), unit.name(), unit.type(), unit.parentId(), null,
-                        null, null, null, null, 0, unit.enabled()), List.of(), rawDataJson, mainFields));
+                        null, null, null, null, 0, unit.enabled()), List.of(), rawDataJson, mainFields, bindingChange));
     }
 
     /**

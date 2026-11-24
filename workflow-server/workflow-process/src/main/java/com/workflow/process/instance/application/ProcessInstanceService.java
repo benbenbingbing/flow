@@ -82,9 +82,14 @@ public class ProcessInstanceService {
      */
     public ProcessProgressDTO getProcessProgress(String processInstanceId) {
         processInstanceAccessService.requireReadAccess(processInstanceId);
-        ProcessProgressDTO progress = processProgressRuntimeService.getProcessProgress(processInstanceId);
+        ProcessProgressDTO progress = getProgressForPort(processInstanceId);
         progress.setRounds(processRoundService.listReadableRounds(processInstanceId));
         return progress;
+    }
+
+    /** 读取供 Port 投影的流程进度。调用方负责授权，跨轮次读取使用单独接口。 */
+    public ProcessProgressDTO getProgressForPort(String processInstanceId) {
+        return processProgressRuntimeService.getProcessProgress(processInstanceId);
     }
 
     /** 首屏表单与进度各自重新鉴权，避免拆分接口后可直接绕过实例参与范围。 */
@@ -116,6 +121,18 @@ public class ProcessInstanceService {
     public String triggerReceiveTask(
             String processInstanceId,
             ReceiveTaskTriggerRequest request) {
+        requireSignalAccess(processInstanceId);
+        return triggerReceiveTaskForPort(processInstanceId, request);
+    }
+
+    /** 用户入口在查询幂等回执或推进接收节点前确认信号权限。 */
+    void requireSignalAccess(String processInstanceId) {
+        processInstanceAccessService.requireSignalAccess(processInstanceId);
+    }
+
+    /** 推进调用方已授权的接收节点。变量赋值和引擎推进在同一个事务内执行。 */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public String triggerReceiveTaskForPort(String processInstanceId, ReceiveTaskTriggerRequest request) {
         Execution execution = requireWaitingReceiveTask(processInstanceId, request);
         Map<String, Object> variables = WorkflowReservedVariables
                 .sanitizeRuntimeMutation(request.getVariables());
@@ -128,7 +145,6 @@ public class ProcessInstanceService {
 
     /** 预检与实际触发共用接收节点与消息校验，只在命令入口写变量和推进流程。 */
     Execution requireWaitingReceiveTask(String processInstanceId, ReceiveTaskTriggerRequest request) {
-        processInstanceAccessService.requireSignalAccess(processInstanceId);
         if (request == null) {
             throw new IllegalArgumentException("接收任务触发参数不能为空");
         }

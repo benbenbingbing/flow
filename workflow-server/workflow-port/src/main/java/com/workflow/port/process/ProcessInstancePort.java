@@ -1,16 +1,16 @@
 package com.workflow.port.process;
 
-import com.workflow.port.process.instance.model.*;
-import com.workflow.port.process.instance.model.ProcessRuntimeViews.InstanceCapabilities;
-import com.workflow.port.process.instance.model.ProcessRuntimeViews.Progress;
+import com.workflow.port.process.model.instance.*;
+import com.workflow.port.process.model.instance.ProcessRuntimeViews.InstanceCapabilities;
+import com.workflow.port.process.model.instance.ProcessRuntimeViews.Progress;
 import com.workflow.port.process.model.ProcessCommandReceipt;
 import com.workflow.port.process.model.ProcessPage;
-import com.workflow.port.process.query.model.*;
-import com.workflow.port.process.query.model.ActionCapability;
+import com.workflow.port.process.model.query.*;
+import com.workflow.port.process.model.query.ActionCapability;
 import java.util.List;
 import java.util.Optional;
 
-/** 查询实例与进度，以及在当前身份权限允许时撤回、终止或触发接收节点。 */
+/** 按调用方授权查询实例与进度，并提供撤回、终止和接收节点命令。 */
 public interface ProcessInstancePort {
     /** 读取运行或历史实例，只有目标不存在才返回 empty。 */
     Optional<ProcessInstanceView> findInstance(String processInstanceId);
@@ -18,13 +18,13 @@ public interface ProcessInstancePort {
     /** 读取必需的实例；不存在抛 PROCESS_NOT_FOUND。 */
     ProcessInstanceView requireInstance(String processInstanceId);
 
-    /** 按实际身份范围及明确筛选条件分页，返回准确的总数。 */
+    /** 按指定范围和条件分页。ALL 由调用方授权，其他选项沿用当前用户视角。 */
     ProcessPage<ProcessInstanceView> pageInstances(ProcessInstanceQuery query);
 
-    /** 返回与锚点属于同一业务记录且逐轮授权通过的流程轮次。 */
+    /** 返回与锚点属于同一业务记录的流程轮次。 */
     List<ProcessRoundView> listRounds(String anchorProcessInstanceId);
 
-    /** 从业务记录定位已登记流程轮次，按轮次倒序，仅返回当前身份可读的实例。 */
+    /** 从业务记录定位已登记流程轮次，按轮次倒序，调用方负责范围授权。 */
     List<ProcessRoundView> listRoundsByRecord(String entityCode, String entityRecordId);
 
     /** 返回活动执行位置，包括接收任务；并行分支保留独立 executionId。 */
@@ -39,7 +39,7 @@ public interface ProcessInstancePort {
     /** 验证指定的接收分支和消息标识；并行分支可通过 executionId 精确定位。 */
     ActionCapability previewReceive(String processInstanceId, String executionId, String activityId, String messageRef);
 
-    /** 按发起人和活动节点规则撤回，持久化 WITHDRAWN 结束类型。 */
+    /** 按调用方授权和活动节点规则撤回，持久化 WITHDRAWN 结束类型。 */
     ProcessCommandReceipt withdraw(WithdrawProcessCommand command);
 
     /** 按平台规则终止，持久化 TERMINATED 结束类型。 */

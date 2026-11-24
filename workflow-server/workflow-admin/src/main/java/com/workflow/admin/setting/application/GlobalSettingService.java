@@ -5,9 +5,9 @@ import com.workflow.admin.setting.api.request.GlobalSettingRequests;
 import com.workflow.admin.setting.api.response.GlobalSettingView;
 import com.workflow.admin.setting.api.response.MobileThemeView;
 
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditAction;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;

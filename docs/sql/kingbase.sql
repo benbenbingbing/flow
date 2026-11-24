@@ -7006,8 +7006,8 @@ COMMENT ON COLUMN "sys_user"."ext5" IS '扩展字段5：供接入业务约定用
 COMMENT ON COLUMN "sys_user"."id" IS '主键ID：用户ID。';
 COMMENT ON COLUMN "sys_user"."username" IS '用户名。';
 COMMENT ON COLUMN "sys_user"."nickname" IS '昵称。';
-COMMENT ON COLUMN "sys_user"."password" IS '本地口令哈希；外部账号允许 NULL，登录及重置必须同时检查 authentication_mode';
-COMMENT ON COLUMN "sys_user"."authentication_mode" IS '认证策略由框架维护；LOCAL_PASSWORD 使用本地密码，EXTERNAL_ONLY 禁止本地密码登录或重置';
+COMMENT ON COLUMN "sys_user"."password" IS '本地口令哈希；外部账号在首次设置本地口令前为空';
+COMMENT ON COLUMN "sys_user"."authentication_mode" IS '认证模式；LOCAL_PASSWORD 为本地账号，EXTERNAL_ONLY 为仅外部认证，EXTERNAL_AND_LOCAL_PASSWORD 为已开通本地密码登录的外部账号';
 COMMENT ON COLUMN "sys_user"."email" IS '邮箱。';
 COMMENT ON COLUMN "sys_user"."phone" IS '手机号。';
 COMMENT ON COLUMN "sys_user"."avatar" IS '头像。';

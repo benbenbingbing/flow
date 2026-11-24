@@ -1,6 +1,6 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.IdentityDirectoryModels.*;
+import com.workflow.port.system.model.identity.IdentityDirectoryModels.*;
 import java.util.List;
 
 /** 查询当前身份有权查看的角色目录。 */

@@ -1,6 +1,5 @@
 package com.workflow.process.archive;
 
-import com.workflow.port.migration.ProcessArchiveInstancePort;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.security.AuthenticatedApi;
 import lombok.RequiredArgsConstructor;
@@ -12,9 +11,9 @@ import org.springframework.web.bind.annotation.*;
 @AuthenticatedApi(objectAuthorization = true)
 @RequiredArgsConstructor
 public class ProcessArchiveController {
-    private final ProcessArchiveInstancePort archives;
+    private final ProcessArchiveService archives;
     @GetMapping
-    public ApiResponse<?> list(@RequestParam String entityCode, @RequestParam String recordId) { return ApiResponse.success(archives.list(entityCode, recordId)); }
+    public ApiResponse<?> list(@RequestParam String entityCode, @RequestParam String recordId) { return ApiResponse.success(archives.listForUser(entityCode, recordId)); }
     @GetMapping("/{id}")
-    public ApiResponse<?> detail(@PathVariable String id) { return ApiResponse.success(archives.detail(id)); }
+    public ApiResponse<?> detail(@PathVariable String id) { return ApiResponse.success(archives.detailForUser(id)); }
 }

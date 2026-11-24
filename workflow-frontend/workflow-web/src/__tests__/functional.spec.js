@@ -774,7 +774,8 @@ const pageFeatureExpectations = {
   'src/views/EntityListConfigDesign.vue': ['saveListMetadata', 'saveCurrentField', 'saveListAction'],
   'src/views/entity/EntityDataList.vue': ['handleSearch', 'handleReset', 'handleCreate', 'handleEdit', 'handleDelete', 'handleExport'],
   'src/views/entity/components/EntityDataFormDialog.vue': ['openCreate', 'openEdit', 'handleSubmit', 'resetForm'],
-  'src/views/Home.vue': ['loadTaskOperations', 'openAddSignDialog', 'submitAddSign', 'handleCancelAddSign', 'openCcDialog', 'submitCc', 'loadCcList', 'readCc'],
+  'src/views/Home.vue': ['loadTaskOperations', 'openAddSignDialog', 'submitAddSign', 'handleCancelAddSign', 'openCcDialog', 'onCcCompleted', 'loadCcList', 'readCc'],
+  'src/components/workflow/WorkflowCcDialog.vue': ['submitCc', '确认知会'],
   'src/views/system/Menu.vue': ['handleAddTopLevel', 'handleAddChild', 'handleEdit', 'handleDelete', 'handleStatusChange', 'handleVisibleChange', 'handleSortChange'],
   'src/views/system/User.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleResetPassword'],
   'src/views/system/Role.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleAssignMenu', 'handleSaveMenus', '确认绕过数据范围'],
@@ -1064,27 +1065,28 @@ assert.ok(
   homeSource.includes("row.status === 'RUNNING' && row.canTerminate === true"),
   '我发起的流程只能在运行中且服务端明确允许时展示终止按钮'
 )
-for (const formName of ['transferForm', 'addSignForm', 'ccForm']) {
+for (const formName of ['transferForm', 'addSignForm']) {
   assert.ok(
     new RegExp(`:title="${formName}\\.processName"[\\s\\S]*?${formName}\\.processName \\|\\| '-'`).test(homeSource)
       && new RegExp(`:title="${formName}\\.code"[\\s\\S]*?${formName}\\.code \\|\\| '-'`).test(homeSource),
     `${formName} 应使用无输入框文本展示流程名称和流程编码`
   )
 }
+const ccDialogSource = readFileSync('src/components/workflow/WorkflowCcDialog.vue', 'utf8')
 assert.equal(
-  (homeSource.match(/width="min\(680px, 92vw\)"/g) || []).length,
+  ((homeSource + ccDialogSource).match(/width="min\(680px, 92vw\)"/g) || []).length,
   3,
   '转办、加签和知会弹窗应使用统一的加宽响应式尺寸'
 )
-assert.equal(
-  (homeSource.match(/processName: row\.processName \|\| ''/g) || []).length,
-  2,
-  '加签和知会弹窗应保存当前待办的流程名称'
+assert.ok(
+  homeSource.includes("processName: row.processName || ''") && homeSource.includes("code: row.code || ''"),
+  '加签弹窗应保存当前待办的流程名称和流程编码'
 )
-assert.equal(
-  (homeSource.match(/code: row\.code \|\| ''/g) || []).length,
-  2,
-  '加签和知会弹窗应保存当前待办的流程编码'
+assert.ok(
+  homeSource.includes('<WorkflowCcDialog v-model="ccDialogTask"') && homeSource.includes('ccDialogTask.value = row')
+    && /:title="task\?\.processName"[\s\S]*?task\?\.processName \|\| '-'/.test(ccDialogSource)
+    && /:title="task\?\.code"[\s\S]*?task\?\.code \|\| '-'/.test(ccDialogSource),
+  '首页知会应在共享弹窗中以只读文本显示当前待办的流程名称和流程编码'
 )
 assert.ok(
   homeSource.includes("transferForm.processName = row.processName || ''")
@@ -1104,8 +1106,8 @@ assert.ok(
   '任务加签必须支持多个 username'
 )
 assert.ok(
-  /v-model="ccForm\.userIds"[\s\S]*?multiple[\s\S]*?value-key="code"/.test(
-    homeSource
+  /v-model="userIds"[\s\S]*?multiple[\s\S]*?value-key="code"/.test(
+    ccDialogSource
   ),
   '人工知会必须支持多个 username'
 )

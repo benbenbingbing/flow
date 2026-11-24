@@ -4,7 +4,7 @@ import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import lombok.RequiredArgsConstructor;
 
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.port.system.CurrentActorPort;
 import org.springframework.stereotype.Component;
 

@@ -5,7 +5,7 @@ import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.model.outbox.OutboxPublishRequest;
 import com.workflow.port.platform.WorkflowOutboxEventPort;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 基于关系数据库的 Outbox 发布器。
@@ -29,6 +30,18 @@ public class DatabaseOutboxPublisher implements WorkflowOutboxEventPort {
     private final ObjectMapper objectMapper;
     private final JdbcWriteAttempt writeAttempt;
     private final JdbcLockedRow lockedRows;
+
+    /** 读取业务页使用的最小状态投影，避免将事件内容或消费异常详情返回给调用入口。 */
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<DeliveryStatus> findStatus(String topic, String eventKey) {
+        if (topic == null || topic.isBlank() || eventKey == null || eventKey.isBlank()) {
+            throw new IllegalArgumentException("Outbox topic 和 eventKey 不能为空");
+        }
+        return Optional.ofNullable(mapper.findDeliveryStatus(topic.trim(), eventKey.trim()))
+                .map(row -> new DeliveryStatus(State.valueOf(row.status()), row.retryCount(), row.maxRetries(),
+                        row.nextRetryTime(), row.processedTime()));
+    }
 
     /**
      * 发布数据库待发送事件{@code publisher}；后续由接收方或异步任务继续处理。

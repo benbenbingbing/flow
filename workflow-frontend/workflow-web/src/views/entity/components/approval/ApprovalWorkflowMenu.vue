@@ -11,14 +11,13 @@
     </template>
   </el-dropdown>
 
+  <WorkflowCcDialog v-model="ccDialogTask" :before-submit="requireFreshCcOperation" @completed="onCcCompleted" />
+
   <el-dialog v-if="operation" v-model="dialogOpen" :title="operation.label" width="440px"
     append-to-body :close-on-click-modal="false" :close-on-press-escape="!submitting" :show-close="!submitting">
     <el-form label-position="top">
       <el-alert v-if="operation.key === 'return' && dirty" title="当前未提交的表单修改不会随退回保存"
         type="warning" :closable="false" show-icon class="operation-message" />
-      <el-alert v-if="['withdraw', 'terminate'].includes(operation.key)"
-        :title="`确认${operation.label}当前流程？`" type="warning" :closable="false"
-        show-icon class="operation-message" />
       <el-form-item v-if="operation.key === 'return'" label="回退目标" required>
         <el-select v-model="targetId" filterable placeholder="请选择回退节点">
           <el-option v-for="target in targets" :key="target.activityInstanceId"
@@ -28,7 +27,7 @@
       <el-form-item v-if="operation.key === 'transfer'" label="接手人" required>
         <UserSelector v-model="transferTo" value-key="code" title="选择接手人" />
       </el-form-item>
-      <el-form-item v-if="['cc', 'addSign'].includes(operation.key)" label="人员" required>
+      <el-form-item v-if="operation.key === 'addSign'" label="人员" required>
         <UserSelector v-model="userIds" multiple value-key="code" />
       </el-form-item>
       <el-form-item v-if="operation.key === 'addSign'" label="加签方式" required>
@@ -44,25 +43,28 @@
     </el-form>
     <template #footer>
       <el-button :disabled="submitting" @click="dialogOpen = false">取消</el-button>
-      <el-button :type="operation.key === 'terminate' ? 'danger' : 'primary'"
-        :loading="submitting" @click="submit">确认{{ operation.label }}</el-button>
+      <el-button type="primary" :loading="submitting" @click="submit">确认{{ operation.label }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MoreFilled } from '@element-plus/icons-vue'
 import { createBusinessTraceKey } from '@flow/workflow-api'
 import { getApprovalMenuActions, isTaskClaimable } from '@flow/workflow-core/workflow-task-actions'
 import { ADD_SIGN_TYPE_OPTIONS, resolveAllowedAddSignTypes } from '@flow/workflow-core/workflow-operation-guards'
 import {
-  addSignTask, ccTask, completeTask, getProcessOperations, getTaskOperations,
+  addSignTask, completeTask, getProcessOperations, getTaskOperations,
   getTaskReturnTargets, previewAddSign, returnTask, terminateProcess, withdrawProcess
 } from '@/api/processTask'
 import { showRequestError } from '@/shared/request'
 import UserSelector from '@/components/UserSelector.vue'
+import WorkflowCcDialog from '@/components/workflow/WorkflowCcDialog.vue'
+import {
+  confirmProcessTermination, INITIATOR_TERMINATION_REASON, promptProcessWithdrawal
+} from '@/components/workflow/processOperationPrompts.js'
 
 const props = defineProps({
   task: { type: Object, default: null },
@@ -77,6 +79,7 @@ const taskOperations = ref({})
 const instanceOperations = ref({})
 const operation = ref(null)
 const dialogOpen = ref(false)
+const ccDialogTask = ref(null)
 const targets = ref([])
 const targetId = ref('')
 const transferTo = ref('')
@@ -118,14 +121,30 @@ watch(() => [props.active, props.task?.taskId, props.instanceId], () => {
   taskOperations.value = {}
   instanceOperations.value = {}
   dialogOpen.value = false
+  ccDialogTask.value = null
   emit('history-resubmit', false)
   void refresh()
 }, { immediate: true })
 
+onBeforeUnmount(() => {
+  // 确认框由 Element Plus 独立挂载，面板卸载后不能再使用它的确认结果提交。
+  dialogSession++
+  revision++
+})
+
 async function openOperation(key) {
+  if (submitting.value) return
   if (!await refresh()) return
   const item = items.value.find(action => action.key === key)
   if (!item) return
+  if (key === 'cc') {
+    ccDialogTask.value = props.task
+    return
+  }
+  if (key === 'withdraw' || key === 'terminate') {
+    await handleProcessOperation(item)
+    return
+  }
   try {
     const current = revision
     targets.value = key === 'return' ? await getTaskReturnTargets(props.task.taskId) : []
@@ -147,6 +166,48 @@ async function openOperation(key) {
   }
 }
 
+/** 核对确认框仍属于当前流程，并在写入前刷新实例能力。 */
+async function handleProcessOperation({ key, label }) {
+  const instanceId = props.instanceId
+  const currentSession = dialogSession
+  submitting.value = true
+  try {
+    let reason = null
+    if (key === 'withdraw') {
+      reason = await promptProcessWithdrawal()
+    } else if (await confirmProcessTermination()) {
+      reason = INITIATOR_TERMINATION_REASON
+    }
+    if (reason === null || currentSession !== dialogSession) return
+    if (!await refresh() || currentSession !== dialogSession) return
+    if (!items.value.some(item => item.key === key)) throw new Error(`当前已无法${label}`)
+    if (key === 'withdraw') {
+      await withdrawProcess({ processInstanceId: instanceId, reason })
+    } else {
+      await terminateProcess(instanceId, reason)
+    }
+    if (currentSession !== dialogSession) return
+    ElMessage.success(`${label}成功`)
+    emit('completed', key)
+  } catch (error) {
+    if (currentSession === dialogSession) showRequestError(error, `${label}失败`)
+  } finally {
+    submitting.value = false
+  }
+}
+
+/** 知会弹窗提交时重新确认当前审批任务仍允许人工知会。 */
+async function requireFreshCcOperation() {
+  if (!await refresh()) return false
+  if (!items.value.some(item => item.key === 'cc')) throw new Error('当前已无法知会')
+  return true
+}
+
+function onCcCompleted() {
+  emit('completed', 'cc')
+  void refresh()
+}
+
 async function submit() {
   if (submitting.value || !operation.value) return
   const { key, label } = operation.value
@@ -154,12 +215,11 @@ async function submit() {
     ElMessage.warning('请选择回退目标并填写意见')
     return
   }
-  if (key === 'transfer' && !transferTo.value || ['cc', 'addSign'].includes(key) && !userIds.value.length) {
+  if (key === 'transfer' && !transferTo.value || key === 'addSign' && !userIds.value.length) {
     ElMessage.warning('请选择人员')
     return
   }
   const taskId = props.task?.taskId
-  const instanceId = props.instanceId
   const currentSession = dialogSession
   const returnPayload = key === 'return' ? {
     targetActivityInstanceId: targetId.value,
@@ -179,12 +239,6 @@ async function submit() {
     if (returnPayload) {
       if (!replay) returnIntent = { fingerprint, key: createBusinessTraceKey() }
       await returnTask(taskId, { ...returnPayload, requestId: returnIntent.key })
-    } else if (key === 'withdraw') {
-      await withdrawProcess({ processInstanceId: instanceId, reason: comment.value })
-    } else if (key === 'terminate') {
-      await terminateProcess(instanceId, comment.value)
-    } else if (key === 'cc') {
-      await ccTask(taskId, { userIds: userIds.value, comment: comment.value })
     } else if (key === 'transfer') {
       await completeTask({ taskId, action: 'transfer', transferTo: transferTo.value, comment: comment.value,
         formId: props.formReference.formId, formConfigHash: props.formReference.configHash })
@@ -198,7 +252,7 @@ async function submit() {
     dialogOpen.value = false
     ElMessage.success(`${label}成功`)
     emit('completed', key)
-    if (key === 'cc' || key === 'addSign') void refresh()
+    if (key === 'addSign') void refresh()
   } catch (error) {
     if (currentSession !== dialogSession) return
     showRequestError(error, `${label}失败`)

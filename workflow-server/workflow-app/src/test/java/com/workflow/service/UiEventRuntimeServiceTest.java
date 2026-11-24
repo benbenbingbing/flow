@@ -1,7 +1,7 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;

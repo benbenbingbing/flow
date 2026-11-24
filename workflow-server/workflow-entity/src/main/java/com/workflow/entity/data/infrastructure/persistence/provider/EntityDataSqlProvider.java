@@ -624,12 +624,22 @@ public class EntityDataSqlProvider {
      * @return 拼接后的统计 SQL
      */
     public String countByConditionWithPermission(Map<String, Object> params, ProviderContext context) {
+        return aggregateByCondition("COUNT(*)", params, context);
+    }
+
+    /** 与计数共用记录范围；汇总列来自发布结构，并按当前方言引用。 */
+    public String sumByCondition(Map<String, Object> params, ProviderContext context) {
+        String column = requireIdentifier((String) params.get("column"), "汇总字段", context);
+        return aggregateByCondition("COALESCE(SUM(" + column + "), 0)", params, context);
+    }
+
+    private String aggregateByCondition(String expression, Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
         @SuppressWarnings("unchecked")
         Map<String, Object> condition = (Map<String, Object>) params.get("condition");
         String permissionSql = (String) params.get("permissionSql");
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT COUNT(*) FROM ").append(tableName)
+        sql.append("SELECT ").append(expression).append(" FROM ").append(tableName)
                 .append(" WHERE deleted = 0");
         if (permissionSql != null && !permissionSql.isBlank()) {
             sql.append(" AND (").append(permissionSql).append(")");

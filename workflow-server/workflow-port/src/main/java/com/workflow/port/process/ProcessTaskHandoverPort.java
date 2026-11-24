@@ -1,6 +1,6 @@
 package com.workflow.port.process;
 
-import com.workflow.port.process.instance.model.ProcessInterventionModels.*;
+import com.workflow.port.process.model.instance.ProcessInterventionModels.*;
 import com.workflow.port.process.model.ProcessPage;
 
 /** 查询可交接待办并在授权范围内交接任务。 */

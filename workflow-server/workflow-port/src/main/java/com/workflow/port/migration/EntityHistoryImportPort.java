@@ -2,7 +2,7 @@ package com.workflow.port.migration;
 
 import java.util.List;
 import java.util.Map;
-import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.migration.model.history.HistoryImportModels.*;
 
 /** 实体模块负责历史实体创建与来源去重，调用方不得直接写动态业务表。 */
 public interface EntityHistoryImportPort {

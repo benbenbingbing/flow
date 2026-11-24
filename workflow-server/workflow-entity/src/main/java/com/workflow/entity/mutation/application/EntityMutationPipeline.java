@@ -1,22 +1,22 @@
 package com.workflow.entity.mutation.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.AuditEventIds;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditResult;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
-import com.workflow.port.platform.audit.model.AuditSourcePointer;
-import com.workflow.port.platform.audit.context.OperationContext;
-import com.workflow.port.platform.audit.context.OperationContextHolder;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditEventIds;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditResult;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditSourcePointer;
+import com.workflow.port.platform.context.audit.OperationContext;
+import com.workflow.port.platform.context.audit.OperationContextHolder;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchResult;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchResult;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -197,7 +197,7 @@ public class EntityMutationPipeline
      * @return 审计后的动作结果，供调用方继续处理
      */
     private AuditAction auditAction(
-            com.workflow.port.entity.mutation.model.EntityMutationOperationType type) {
+            com.workflow.port.entity.model.mutation.EntityMutationOperationType type) {
         return switch (type) {
             case CREATE -> AuditAction.CREATE;
             case UPDATE, STATUS_CHANGE, APPLY_CHANGE ->

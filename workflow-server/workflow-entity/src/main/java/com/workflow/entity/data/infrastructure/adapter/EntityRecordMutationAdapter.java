@@ -1,13 +1,13 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
 import com.workflow.port.entity.EntityProcessStatePort;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.entity.data.application.EntityMutationSystemFields;
-import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.error.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.mutation.application.EntityMutationIsolationExecutor;
 import lombok.RequiredArgsConstructor;

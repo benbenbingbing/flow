@@ -1,7 +1,7 @@
 package com.workflow.process.form.infrastructure.adapter;
 
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
 import com.workflow.port.entity.UiFormContextPort;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;

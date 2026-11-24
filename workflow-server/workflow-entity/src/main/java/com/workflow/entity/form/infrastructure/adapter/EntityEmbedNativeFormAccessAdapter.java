@@ -3,7 +3,7 @@ package com.workflow.entity.form.infrastructure.adapter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.embed.EmbedFormPermissionPort;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -280,8 +280,8 @@ public class EntityEmbedNativeFormAccessAdapter
             return null;
         }
         // Target 由 Embed 认证会话及发布快照恢复；这里的历史列表坐标不会接收浏览器输入。
-        if (com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.currentSession().isPresent()) {
-            com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext.authorizeListTarget(
+        if (com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext.currentSession().isPresent()) {
+            com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext.authorizeListTarget(
                     target.entityCode(),target.listKey(),target.listReleaseId(),target.listReleaseVersion());
         }
         return new EntityListRuntimeContext(null, Map.of());

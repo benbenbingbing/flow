@@ -119,6 +119,39 @@ public class EntityFormActionService {
     public void requireBuiltInMutationAction(
             FormActionResolveRequest request,
             String actionKey) {
+        requireMutationActionReference(request, actionKey);
+        FormActionRuntimeDTO action = resolve(request).stream()
+                .filter(item -> actionKey.equals(item.getKey()))
+                .filter(item -> "built-in".equals(item.getType()))
+                .findFirst()
+                .orElseThrow(EntityFormActionService::unavailableMutationAction);
+        requireMutationActionEnabled(action.isVisible(), action.isEnabled(), action.getReason());
+    }
+
+    /**
+     * 核对编程提交指定的发布表单和内置动作。行已由调用方授权，仍执行发布规则和流程状态校验。
+     */
+    public void requireBuiltInMutationForPort(
+            FormActionResolveRequest request, String actionKey, EntityDataDTO row) {
+        requireMutationActionReference(request, actionKey);
+        String mode = requireMode(request.getMode());
+        if (!Set.of("create", "edit").contains(mode) || !BUILT_IN_MODES.get(actionKey).contains(mode)) {
+            throw unavailableMutationAction();
+        }
+        RuntimeSource source = loadSource(request.getFormId(), request.getConfigHash(), request.getRuntimeContext());
+        EntityDefinition definition = requireDefinition(source.form());
+        requireEntityCode(request.getEntityCode(), definition);
+        var actionBar = configPolicy.actionBar(source.viewConfig());
+        var overrides = mapOrEmpty(actionBar.get("builtInOverrides"));
+        var button = applyOverride(defaultBuiltIn(actionKey, mode), mapOrEmpty(overrides.get(actionKey)), mode);
+        if (definition.getStorageMode() == EntityDefinition.StorageMode.SYSTEM || !enabledForMode(button, mode)) {
+            throw unavailableMutationAction();
+        }
+        var capability = builtInCapability(actionKey, definition, mode, row, button, false);
+        requireMutationActionEnabled(capability.isVisible(), capability.isEnabled(), capability.getReason());
+    }
+
+    private void requireMutationActionReference(FormActionResolveRequest request, String actionKey) {
         if (request == null
                 || !Set.of("save", "saveAndStart", "restartProcess", "submitApproval")
                 .contains(actionKey)) {
@@ -127,19 +160,17 @@ public class EntityFormActionService {
         if (!StringUtils.hasText(request.getFormId()) || !StringUtils.hasText(request.getConfigHash())) {
             throw new BusinessForbiddenException("FORM_CONFIGURATION_HASH_REQUIRED", "表单操作缺少配置摘要，请重新加载后核对");
         }
-        FormActionRuntimeDTO action = resolve(request).stream()
-                .filter(item -> actionKey.equals(item.getKey()))
-                .filter(item -> "built-in".equals(item.getType()))
-                .findFirst()
-                .orElseThrow(() -> new BusinessForbiddenException(
-                        "FORM_BUILT_IN_ACTION_NOT_AVAILABLE",
-                        "当前发布表单未开放该操作"));
-        if (!action.isVisible() || !action.isEnabled()) {
+    }
+
+    private static BusinessForbiddenException unavailableMutationAction() {
+        return new BusinessForbiddenException("FORM_BUILT_IN_ACTION_NOT_AVAILABLE", "当前发布表单未开放该操作");
+    }
+
+    private void requireMutationActionEnabled(boolean visible, boolean enabled, String reason) {
+        if (!visible || !enabled) {
             throw new BusinessForbiddenException(
                     "FORM_BUILT_IN_ACTION_DENIED",
-                    StringUtils.hasText(action.getReason())
-                            ? action.getReason()
-                            : "当前表单操作不可执行");
+                    StringUtils.hasText(reason) ? reason : "当前表单操作不可执行");
         }
     }
 
@@ -237,7 +268,8 @@ public class EntityFormActionService {
                             definition,
                             normalizedMode,
                             authorizedRow,
-                            button);
+                            button,
+                            true);
             result.add(toRuntime(
                     source.form().getId(),
                     button,
@@ -649,7 +681,8 @@ public class EntityFormActionService {
             EntityDefinition definition,
             String mode,
             EntityDataDTO row,
-            Map<String, Object> button) {
+            Map<String, Object> button,
+            boolean checkPermission) {
         if ("close".equals(key) || "reset".equals(key)) {
             return evaluateOverrideRule(
                     definition.getEntityCode(),
@@ -667,8 +700,9 @@ public class EntityFormActionService {
             if (!workflowReady(definition)) {
                 return EntityActionCapabilityDTO.hidden("实体流程尚未就绪");
             }
-            EntityActionCapabilityDTO restart = capabilityService.evaluateRestartAction(
-                    definition.getEntityCode(), row);
+            EntityActionCapabilityDTO restart = checkPermission
+                    ? capabilityService.evaluateRestartAction(definition.getEntityCode(), row)
+                    : capabilityService.evaluateRestartAction(definition.getEntityCode(), row, false);
             if (!restart.isVisible() || !restart.isEnabled()) {
                 return restart;
             }
@@ -677,6 +711,9 @@ public class EntityFormActionService {
             // 打开审批表单不会抢占候选任务；提交按钮需使用可审批身份，并继续叠加发布覆盖条件。
             return capabilityService.evaluateApprovalAction(
                     definition.getEntityCode(), row, approvalRule(), readRule(button));
+        }
+        if (!checkPermission) {
+            return capabilityService.evaluateConfiguredConditions(definition.getEntityCode(), readRule(button), row);
         }
         EntityPermissionAction action = switch (key) {
             case "save", "saveAndStart", "restartProcess" ->

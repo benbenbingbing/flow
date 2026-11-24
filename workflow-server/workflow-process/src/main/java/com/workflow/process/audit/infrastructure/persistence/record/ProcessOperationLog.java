@@ -25,7 +25,7 @@ public class ProcessOperationLog {
     private String taskId;
     
     /**
-     * 操作类型：START/CLAIM/COMPLETE/TRANSFER/DELEGATE/REJECT/RETURN/CC/TERMINATE/WITHDRAW
+     * 操作类型用于历史筛选及展示，例如 START、COMPLETE、RETURN，以及记录人工跳过的 SKIP。
      */
     private String operationType;
     

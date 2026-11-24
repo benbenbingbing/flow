@@ -14,7 +14,7 @@ import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
 import com.workflow.port.system.SysUserLookupPort;
-import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.model.identity.IdentityUser;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
@@ -631,7 +631,7 @@ class ProjectCustomBackendExtensionsTest {
                         "Project",
                         permissionCode));
 
-        var user = new com.workflow.port.system.identity.model.IdentityUser("USER-1", "demo", null, null, null);
+        var user = new com.workflow.port.system.model.identity.IdentityUser("USER-1", "demo", null, null, null);
         PermissionMatchConfig.MatchConditionDTO match =
                 new PermissionMatchConfig.MatchConditionDTO();
         match.setScopeType(

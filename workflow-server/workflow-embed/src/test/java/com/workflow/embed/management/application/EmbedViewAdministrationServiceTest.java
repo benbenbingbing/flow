@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.embed.management.api.error.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;

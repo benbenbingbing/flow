@@ -1,7 +1,7 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.process.status.application.ProcessEndReason;
-import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
 import com.workflow.process.instance.api.response.ProcessFormRuntimeDTO;
@@ -725,14 +725,14 @@ public class ProcessProgressRuntimeService {
                                     nodeForm,
                                     UiRuntimePurpose.ACTIVE_TASK.equals(purpose)
                                             && StringUtils.hasText(requestedTaskId)
-                                            ? com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.activeTask(
+                                            ? com.workflow.port.entity.context.ui.UiRuntimeResolutionContext.activeTask(
                                                             published.history().getId(),
                                                             nodeForm.getNodeId(),
                                                             requestedTaskId,
                                                             progress.getProcessInstanceId(),
                                                             entityCode,
                                                             entityDataId)
-                                            : new com.workflow.port.entity.ui.context.UiRuntimeResolutionContext(
+                                            : new com.workflow.port.entity.context.ui.UiRuntimeResolutionContext(
                                                             UiRuntimePurpose.HISTORICAL,
                                                             published.history().getId(),
                                                             nodeForm.getNodeId(), null, progress.getProcessInstanceId(), entityCode, entityDataId));
@@ -754,19 +754,19 @@ public class ProcessProgressRuntimeService {
             // 3b. 映射表中没有表单绑定，使用默认表单兜底。
             if (formConfigs.isEmpty()) {
                 // 默认表单同样返回任务或实例定位信息，后续请求仍按真实流程身份重新鉴权。
-                com.workflow.port.entity.ui.context.UiRuntimeResolutionContext defaultFormContext = null;
+                com.workflow.port.entity.context.ui.UiRuntimeResolutionContext defaultFormContext = null;
                 if (published != null) {
                     String historyId = published.history().getId();
                     defaultFormContext = "RUNNING".equals(progress.getStatus())
                             && StringUtils.hasText(requestedTaskId)
-                            ? com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.activeTask(
+                            ? com.workflow.port.entity.context.ui.UiRuntimeResolutionContext.activeTask(
                                     historyId,
                                     targetNodeId,
                                     requestedTaskId,
                                     progress.getProcessInstanceId(),
                                     entityCode,
                                     entityDataId)
-                            : new com.workflow.port.entity.ui.context.UiRuntimeResolutionContext(
+                            : new com.workflow.port.entity.context.ui.UiRuntimeResolutionContext(
                                     UiRuntimePurpose.HISTORICAL, historyId, targetNodeId, null,
                                     progress.getProcessInstanceId(), entityCode, entityDataId);
                 }

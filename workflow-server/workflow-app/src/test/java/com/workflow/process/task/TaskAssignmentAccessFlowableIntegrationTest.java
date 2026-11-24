@@ -8,7 +8,7 @@ import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGr
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.port.entity.EntityProcessStatePort;
-import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.model.identity.IdentityUser;
 import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;

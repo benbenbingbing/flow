@@ -166,7 +166,7 @@
                 <el-button link type="primary" :icon="MoreFilled" aria-label="更多用户操作" />
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-if="row.authenticationMode !== 'EXTERNAL_ONLY'" @click="handleResetPassword(row)">重置密码</el-dropdown-item>
+                    <el-dropdown-item @click="handleResetPassword(row)">重置密码</el-dropdown-item>
                     <el-dropdown-item v-if="canAssignPosition" @click="openPositionAssignment(row)">设置职务</el-dropdown-item>
                     <el-dropdown-item divided :disabled="row.username === 'admin'" @click="handleDelete(row)">
                       <span :class="{ 'danger-action': row.username !== 'admin' }">删除用户</span>
@@ -754,8 +754,11 @@ const submitBatchRoles = async () => {
 // 重置密码
 const handleResetPassword = async (row: any) => {
   try {
+    const loginNotice = row.authenticationMode === 'EXTERNAL_ONLY'
+      ? '重置后，该账号也可以使用本地密码登录。'
+      : ''
     const { value } = await ElMessageBox.prompt(
-      `为用户「${row.username}」设置一次性密码。密码不会在响应或日志中回显。`,
+      `为用户「${row.username}」设置临时密码。${loginNotice}密码不会在响应或日志中回显。`,
       '重置密码',
       {
         type: 'warning',

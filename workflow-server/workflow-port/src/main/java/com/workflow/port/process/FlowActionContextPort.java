@@ -1,8 +1,8 @@
 package com.workflow.port.process;
 
 import com.workflow.port.entity.model.EntityRecordData;
-import com.workflow.port.process.query.model.ProcessInstanceView;
-import com.workflow.port.process.query.model.ProcessTaskView;
+import com.workflow.port.process.model.query.ProcessInstanceView;
+import com.workflow.port.process.model.query.ProcessTaskView;
 import java.util.List;
 import java.util.Map;
 

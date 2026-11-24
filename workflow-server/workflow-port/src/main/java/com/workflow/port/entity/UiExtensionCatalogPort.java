@@ -1,6 +1,6 @@
 package com.workflow.port.entity;
 
-import com.workflow.port.entity.ui.model.UiExtensionCatalogItem;
+import com.workflow.port.entity.model.ui.UiExtensionCatalogItem;
 
 import java.util.List;
 

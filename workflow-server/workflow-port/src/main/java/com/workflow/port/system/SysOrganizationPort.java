@@ -1,18 +1,27 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.*;
-import com.workflow.port.system.identity.model.IdentityDirectoryModels.*;
-import com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException;
-import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
-import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
-import com.workflow.port.system.identity.position.model.OrganizationUnitStateView;
+import com.workflow.port.system.model.identity.*;
+import com.workflow.port.system.model.identity.IdentityDirectoryModels.*;
+import com.workflow.port.system.error.identity.position.OrganizationPositionDirectoryException;
+import com.workflow.port.system.model.identity.position.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.model.identity.position.OrganizationBusinessLevelView;
+import com.workflow.port.system.model.identity.position.OrganizationUnitStateView;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** 组织资料查询、来源同步和流程选人所需的组织状态。 */
 public interface SysOrganizationPort {
     /** 查找已完成父链关联的组织或部门。 */
     Optional<Organization> findOrganization(String organizationId);
+
+    /** 按来源外部 ID 解析本地组织 ID。未绑定、已退休或已删除的映射为空。 */
+    default Optional<String> findOrganizationIdBySource(String sourceCode, String externalId) {
+        return Optional.ofNullable(findOrganizationIdsBySource(sourceCode, java.util.Collections.singletonList(externalId)).get(externalId));
+    }
+
+    /** 同一授权来源最多查 100 个外部 ID，按输入顺序去重，无映射的 ID 跳过。 */
+    Map<String, String> findOrganizationIdsBySource(String sourceCode, List<String> externalIds);
 
     /** 按父 ID 延迟展开组织树；空值时返回根层。 */
     List<Organization> listOrganizationChildren(String parentId, String type);

@@ -3,7 +3,7 @@ package com.workflow.process.query.application;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.port.process.error.ProcessOperationException;
 import com.workflow.port.process.model.*;
-import com.workflow.port.process.query.model.*;
+import com.workflow.port.process.model.query.*;
 import com.workflow.port.process.ProcessHistoryPort;
 import com.workflow.port.process.ProcessNextApprovalPort;
 import com.workflow.core.error.ForbiddenException;
@@ -64,8 +64,16 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
     private final TaskApprovalQueryService approvalQueries;
     private final NodeOperationDecisionService decisions;
 
-    /** 存在但不可见时抛授权异常；只有实际缺失才返回 empty。 */
+    /** 读取指定实例，实际缺失时返回空。Port 调用方决定实例访问范围。 */
     public Optional<ProcessInstanceView> findInstance(String instanceId) {
+        ProcessValues.required(instanceId, "processInstanceId");
+        var instance = historic(instanceId);
+        if (instance == null) return Optional.empty();
+        return Optional.of(projection.instance(instance));
+    }
+
+    /** 流程动作宿主仍按签发范围或当前身份校验实例访问。 */
+    public Optional<ProcessInstanceView> findReadableInstance(String instanceId) {
         ProcessValues.required(instanceId, "processInstanceId");
         var instance = historic(instanceId);
         if (instance == null) return Optional.empty();
@@ -79,11 +87,11 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
     }
 
     /**
-     * MY_STARTED 兼容 ID/用户名；PARTICIPATED 不因管理员角色扩大，READABLE 复用详情读取范围。
+     * ALL 由调用方限定查询目标。MY_STARTED、PARTICIPATED 和 READABLE 保留当前用户视角。
      * 历史数据尚无统一权限投影，按有序批次扫描并在分页前过滤，避免一次加载全库对象。
      */
     public ProcessPage<ProcessInstanceView> pageInstances(ProcessInstanceQuery query) {
-        var actor = access.requireActor();
+        var actor = query.scope() == ProcessInstanceScope.ALL ? null : access.requireActor();
         var source = history.createHistoricProcessInstanceQuery();
         if (hasText(query.processKey())) source.processDefinitionKey(query.processKey());
         // Flowable 时间比较不统一支持 [from,to)，因此在扫描中执行精确边界过滤。
@@ -98,6 +106,7 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
             for (var item : batch) {
                 if (!time.inRange(time.instant(item.getStartTime()), query.from(), query.to())) continue;
                 boolean visible = switch (query.scope()) {
+                    case ALL -> true;
                     case MY_STARTED -> item.getStartUserId() != null
                             && (item.getStartUserId().equals(actor.userId()) || item.getStartUserId().equals(actor.username()));
                     case PARTICIPATED -> legacy(item.getId(), () -> instanceAccess.isParticipant(item));
@@ -117,7 +126,7 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
         return new ProcessPage<>(page, total, query.page().pageNumber(), query.page().pageSize());
     }
 
-    /** 同一业务记录的每轮单独授权；动作范围只覆盖当前一轮，不借关联读取其他实例。 */
+    /** 通过流程查关联轮次；调用方负责确认目标业务记录及其轮次的访问范围。 */
     public List<ProcessRoundView> listRounds(String anchor) {
         var instance = requireInstance(anchor);
         var link = links.findByProcessInstanceId(anchor);
@@ -125,9 +134,8 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
         return linkedRounds(link.getEntityCode(), link.getEntityRecordId());
     }
 
-    /** 业务记录可读性不能替代流程访问权限，复用每轮检查并跳过范围外实例。 */
+    /** 按已授权的业务记录查询完整的流程轮次。 */
     public List<ProcessRoundView> listRoundsByRecord(String entityCode, String entityRecordId) {
-        access.requireActor();
         return linkedRounds(ProcessValues.required(entityCode, "entityCode"),
                 ProcessValues.required(entityRecordId, "entityRecordId"));
     }
@@ -139,34 +147,49 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
                 .eq(EntityProcessLink::getEntityRecordId, entityRecordId)
                 .orderByDesc(EntityProcessLink::getGeneration))) {
             if (!hasText(candidate.getProcessInstanceId())) continue;
-            try {
-                findInstance(candidate.getProcessInstanceId()).ifPresent(view -> result.add(round(view,
-                        candidate.getGeneration() == null ? 1 : candidate.getGeneration())));
-            } catch (ProcessOperationException denied) {
-                // 只跳过明确的范围拒绝，数据库、历史反序列化等故障必须继续向外传播。
-                if (!Set.of("PROCESS_ACCESS_DENIED", "PROCESS_ACTOR_REQUIRED").contains(denied.getErrorCode())) throw denied;
-            }
+            findInstance(candidate.getProcessInstanceId()).ifPresent(view -> result.add(round(view,
+                    candidate.getGeneration() == null ? 1 : candidate.getGeneration())));
         }
         return List.copyOf(result);
     }
 
     /** 本地加签按子任务、父编排和源任务共同判断存活，不能只看 taskId 前缀。 */
     public Optional<ProcessTaskView> findActiveTask(String taskId) {
+        return findActiveTask(taskId, false);
+    }
+
+    /** 供动作上下文读取任务，按任务实际所属流程授权。 */
+    public Optional<ProcessTaskView> findReadableActiveTask(String taskId) {
+        return findActiveTask(taskId, true);
+    }
+
+    private Optional<ProcessTaskView> findActiveTask(String taskId, boolean checkAccess) {
         ProcessValues.required(taskId, "taskId");
         var task = tasks.createTaskQuery().taskId(taskId).singleResult();
         if (task != null) {
-            access.requireRead(task.getProcessInstanceId());
+            if (checkAccess) access.requireRead(task.getProcessInstanceId());
             return Optional.of(engineTaskView(task));
         }
         var mirror = processTasks.getTaskByTaskId(taskId);
         if (mirror == null || !isActiveLocal(mirror)) return Optional.empty();
-        access.requireRead(mirror.getProcessInstanceId());
+        if (checkAccess) access.requireRead(mirror.getProcessInstanceId());
         return Optional.of(projection.mirror(mirror));
     }
 
     /** 返回全部活动分支及已激活的本地加签任务；排序稳定，不隐式挑选第一项。 */
     public List<ProcessTaskView> listActiveTasks(String instanceId) {
         requireInstance(instanceId);
+        return activeTasks(instanceId);
+    }
+
+    /** 供动作上下文按当前授权范围读取指定实例的活动任务。 */
+    public List<ProcessTaskView> listReadableActiveTasks(String instanceId) {
+        findReadableInstance(instanceId).orElseThrow(() -> new ProcessOperationException(
+                "PROCESS_NOT_FOUND", "流程实例不存在", instanceId));
+        return activeTasks(instanceId);
+    }
+
+    private List<ProcessTaskView> activeTasks(String instanceId) {
         var result = new ArrayList<ProcessTaskView>();
         tasks.createTaskQuery().processInstanceId(instanceId).list().stream().map(this::engineTaskView).forEach(result::add);
         processTasks.getTasksByProcessInstance(instanceId).stream().filter(this::isActiveLocal)
@@ -200,7 +223,7 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
             visible = source.stream().filter(item -> matches(query.processInstanceId(), item.getProcessInstanceId()))
                     .peek(item -> { names.put(item.getProcessInstanceId(), item.getProcessName()); keys.put(item.getProcessInstanceId(), item.getProcessKey()); })
                     .map(item -> query.scope() == ProcessTaskScope.MY_TODO
-                            ? findActiveTask(item.getTaskId()).orElse(null) : projection.mirror(item))
+                            ? findReadableActiveTask(item.getTaskId()).orElse(null) : projection.mirror(item))
                     .filter(Objects::nonNull).toList();
         }
         var matching = visible.stream().filter(task -> {
@@ -305,7 +328,7 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
                         ? decision.reasonCode() : "TASK_STATE_RESTRICTED", allowed ? null : decision != null && !decision.allowed()
                         ? decision.message() : "当前任务状态不允许该操作"));
             });
-            var task = findActiveTask(taskId).orElseThrow(() -> new ProcessOperationException("TASK_NOT_FOUND", "任务不存在", taskId));
+            var task = findReadableActiveTask(taskId).orElseThrow(() -> new ProcessOperationException("TASK_NOT_FOUND", "任务不存在", taskId));
             actions.put("claim", new ActionCapability(task.canClaim(), task.canClaim() ? null : "TASK_NOT_CLAIMABLE", null));
             var reject = policy.get("reject");
             List<String> targets = reject == null || !reject.allowed() ? List.of() : reject.rule().allowedRejectTargets().stream().sorted().toList();
@@ -331,9 +354,8 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
 
     @Override
     public NextApprovalPreview previewNextApproval(NextApprovalQuery query) {
-        access.requireActor();
         return legacy(query.taskId(), () -> {
-            var preview = approvalQueries.preview(query.taskId(), previewRequest(query));
+            var preview = approvalQueries.previewForPort(query.taskId(), previewRequest(query));
             return new NextApprovalPreview(preview.getTaskId(), preview.getProcessDefinitionId(),
                     ApprovalPreviewStatus.valueOf(preview.getStatus().name()), preview.getScopeKey(), preview.getNodes().stream()
                     .map(node -> new NextApprovalNode(node.getNodeId(), node.getNodeName(), node.isVisible(), node.isEditable(),
@@ -344,14 +366,13 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
 
     @Override
     public ProcessPage<ApproverOption> pageNextApproverOptions(NextApproverOptionsQuery query) {
-        access.requireActor();
         return legacy(query.approval().taskId(), () -> {
             var request = new NextApproverOptionsRequest();
             request.setAction(query.approval().actionCode()); request.setActionLabel(query.approval().actionLabel());
             request.setComment(query.approval().comment()); request.setFormData(query.approval().formData());
             request.setScopeKey(query.scopeKey()); request.setTargetNodeId(query.targetNodeId()); request.setKeyword(query.keyword());
             request.setPageNum(query.page().pageNumber()); request.setPageSize(query.page().pageSize());
-            var result = approvalQueries.options(query.approval().taskId(), request);
+            var result = approvalQueries.optionsForPort(query.approval().taskId(), request);
             return new ProcessPage<>(result.getRecords().stream().map(this::candidate).toList(), result.getTotal(),
                     (int) result.getPageNum(), (int) result.getPageSize());
         });

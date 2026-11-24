@@ -1,10 +1,10 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.mutation.model.EntitySubmissionCommand;
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntitySubmissionCommand;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.port.system.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;

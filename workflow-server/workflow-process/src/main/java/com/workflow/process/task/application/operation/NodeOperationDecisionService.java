@@ -587,6 +587,12 @@ public class NodeOperationDecisionService {
                     null, null, Instant.now(), true);
         }
 
+        /** 调用方已完成权限授权，继续按发布规则核验原因及业务条件。 */
+        public static CheckContext forAuthorizedOperation(String reason, String operatorId) {
+            return new CheckContext(reason, Set.of(), null, null, Map.of(),
+                    Set.of("*"), operatorId, Instant.now(), true);
+        }
+
         /**
          * 处理目标，并将结果传给后续步骤。
          *

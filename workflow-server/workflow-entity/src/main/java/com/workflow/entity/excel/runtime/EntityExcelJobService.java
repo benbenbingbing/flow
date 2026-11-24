@@ -3,7 +3,7 @@ package com.workflow.entity.excel.runtime;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataActionService;

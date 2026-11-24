@@ -20,8 +20,8 @@ import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictIt
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.port.system.identity.annotation.*;
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import org.junit.jupiter.api.*;
@@ -47,7 +47,6 @@ import com.workflow.admin.identity.infrastructure.adapter.IdentityMembershipMana
 import com.workflow.admin.identity.infrastructure.adapter.SystemIdentityAdapter;
 import com.workflow.admin.identity.position.infrastructure.adapter.OrganizationPositionDirectoryAdapter;
 import com.workflow.core.error.ForbiddenException;
-import com.workflow.port.system.CurrentActorPort;
 import com.workflow.port.system.SysUserPort;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -64,6 +63,7 @@ class IdentityWriteIntegrationTest {
     SysUserService users;
     SystemOperationLogPort audit;
     IdentityAccessService access;
+    IdentityPersistenceMapper persistence;
     IdentityWriteProperties.Source source;
     SysOrganizationServiceImpl organizations;
     IdentityWriteProperties properties;
@@ -107,7 +107,7 @@ class IdentityWriteIntegrationTest {
         var factory = new MybatisSqlSessionFactoryBean();
         factory.setDataSource(dataSource); factory.setConfiguration(configuration);
         var session = new SqlSessionTemplate(factory.getObject());
-        var persistence = session.getMapper(IdentityPersistenceMapper.class);
+        persistence = session.getMapper(IdentityPersistenceMapper.class);
         var organizationMapper = session.getMapper(SysOrganizationMapper.class);
         actualOrganizationMapper = organizationMapper;
         actualUserMapper = session.getMapper(SysUserMapper.class);
@@ -146,18 +146,154 @@ class IdentityWriteIntegrationTest {
     }
 
     @Test
-    void userPortReadsSourceWritesAndStillChecksDirectoryPermission() {
-        var actor = mock(CurrentActorPort.class);
-        var directory = new IdentityDirectoryQueryAdapter(actor, users, actualUserMapper, null, null, null);
+    void userPortReadsDirectoryWithoutWebPermissions() {
+        var directory = new IdentityDirectoryQueryAdapter(users, actualUserMapper, null, null, null);
         SysUserPort port = new SystemIdentityAdapter(directory, service, extensions,
                 mock(OrganizationPositionDirectoryAdapter.class), mock(IdentityMembershipManagementAdapter.class),
-                mock(IdentityDirectoryAdapter.class));
+                mock(IdentityDirectoryAdapter.class), new IdentitySourceLookupService(persistence));
         var saved = tx.execute(status -> port.saveUser(user("E1", 1L, "alice", null, List.of())));
-        assertThrows(ForbiddenException.class, () -> port.findUsersByIds(List.of(saved.localId())));
-        when(actor.hasPermission("system:user:view")).thenReturn(true);
         var result = port.findUsersByIds(List.of(saved.localId()));
         assertEquals(List.of(saved.localId()), result.stream().map(IdentityUser::id).toList());
         assertEquals("alice", result.get(0).username());
+        UserContext.clear();
+        clearInvocations(access);
+        assertEquals(saved.localId(), port.findUserIdBySource("erp", "E1").orElseThrow());
+        verifyNoInteractions(access);
+        assertEquals(Map.of("E1", saved.localId()), port.findUserIdsBySource("erp", List.of("e1", "E1", "E1")));
+        assertTrue(port.findUserIdsBySource("other", List.of("E1")).isEmpty());
+        jdbc.update("UPDATE sys_user SET deleted = 1 WHERE id = ?", saved.localId());
+        assertTrue(port.findUserIdBySource("erp", "E1").isEmpty());
+    }
+
+    @Test
+    void organizationSourceLookupSuppliesLocalIdAndSkipsRetiredMapping() {
+        var saved = tx.execute(status -> service.saveOrganization(organization("ORG", null)));
+        var lookup = new IdentitySourceLookupService(persistence);
+        assertEquals(Map.of("ORG", saved.localId()),
+                lookup.findIds(IdentityObjectType.ORGANIZATION, "erp", List.of("ORG", "missing")));
+        store.retire(IdentityObjectType.ORGANIZATION, saved.localId());
+        assertTrue(lookup.findIds(IdentityObjectType.ORGANIZATION, "erp", List.of("ORG")).isEmpty());
+        assertThrows(IdentityWriteException.class,
+                () -> lookup.findIds(IdentityObjectType.ORGANIZATION, "erp", List.of("ORG", " ")));
+    }
+
+    @Test
+    void supplementsDeletedUserBindingWithoutCreatingUserOrAssigningDefaultRole() {
+        var original = save(user("wrong", 1L, "alice", null, List.of()));
+        jdbc.update("INSERT INTO sys_user_role (id, user_id, role_id) VALUES ('existing-role', ?, 'role')", original.localId());
+        jdbc.update("UPDATE sys_user SET status = '1' WHERE id = ?", original.localId());
+        jdbc.update("DELETE FROM sys_identity_source_binding WHERE local_id = ?", original.localId());
+        source.setDefaultRoleCode("missing-role");
+        var corrected = user("correct", 2L, "alice", "current@example.com", List.of());
+        assertEquals("IDENTITY_CODE_CONFLICT", assertThrows(IdentityWriteException.class, () -> save(corrected)).code());
+
+        var repair = new UserSaveModel(corrected.key(), corrected.sourceVersion(), corrected.base(), corrected.extensions(),
+                null, null, new IdentityBindingChange(original.localId(), null));
+        var repaired = tx.execute(s -> service.saveUsers(List.of(repair))).get(0);
+        assertEquals(original.localId(), repaired.localId());
+        assertEquals(IdentitySaveOutcome.UPDATED, repaired.outcome());
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(repair).outcome());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
+        assertEquals("existing-role", jdbc.queryForObject("SELECT id FROM sys_user_role WHERE user_id = ?", String.class, original.localId()));
+        assertEquals("current@example.com", actualUserMapper.selectById(original.localId()).getEmail());
+        assertEquals("1", actualUserMapper.selectById(original.localId()).getStatus());
+        assertFalse(IdentitySourceStore.flag(store.find(IdentityObjectType.USER, corrected.key()).get("local_allowed")));
+    }
+
+    @Test
+    void movesUserBindingAtSameVersionPreservingOriginalSnapshotAndExtensions() {
+        var original = user("wrong", 5L, "alice", null, List.of(first("original")));
+        var saved = save(raw(original, "{\"account\":\"alice\"}"));
+        store.localStatus(IdentityObjectType.USER, saved.localId(), "1");
+        var corrected = new ExternalIdentityKey("erp", "correct");
+        var change = new IdentityBindingChange(saved.localId(), original.key().externalId());
+
+        var stale = new UserSaveModel(corrected, 4L, original.base(), original.extensions(), null, null, change);
+        assertEquals(IdentitySaveOutcome.STALE_IGNORED, save(stale).outcome());
+        assertNull(store.find(IdentityObjectType.USER, corrected));
+        var repair = new UserSaveModel(corrected, 5L, original.base(), original.extensions(), null, null, change);
+        assertEquals(IdentitySaveOutcome.UPDATED, save(repair).outcome());
+        assertEquals(IdentitySaveOutcome.UNCHANGED, save(repair).outcome());
+        assertNull(store.find(IdentityObjectType.USER, original.key()));
+        var binding = store.find(IdentityObjectType.USER, corrected);
+        assertEquals(saved.localId(), binding.get("local_id"));
+        assertFalse(IdentitySourceStore.flag(binding.get("local_allowed")));
+        assertEquals(1L, jdbc.queryForObject("SELECT row_version FROM biz_test_first", Long.class));
+        assertEquals("{\"account\":\"alice\"}", jdbc.queryForObject(
+                "SELECT raw_json FROM sys_identity_source_snapshot WHERE source_key = ?", String.class, binding.get("source_key")));
+        assertEquals("IDENTITY_CODE_CONFLICT", assertThrows(IdentityWriteException.class, () -> save(original)).code());
+    }
+
+    @Test
+    void rejectsRepairWhenNewKeyOrLocalObjectBelongsToAnotherBinding() {
+        var original = save(user("U1", 1L, "alice", null, List.of()));
+        var occupied = user("U2", 1L, "bob", null, List.of());
+        var other = save(occupied);
+        var occupiedRepair = new UserSaveModel(occupied.key(), 2L, user("U1", 1L, "alice", null, List.of()).base(),
+                List.of(), null, null, new IdentityBindingChange(original.localId(), "U1"));
+        assertEquals("SOURCE_BINDING_CONFLICT", assertThrows(IdentityWriteException.class, () -> save(occupiedRepair)).code());
+        var newKey = new ExternalIdentityKey("erp", "U3");
+        var invalidSupplement = new UserSaveModel(newKey, 2L, occupied.base(), List.of(), null, null,
+                new IdentityBindingChange(other.localId(), null));
+        assertEquals("SOURCE_BINDING_CONFLICT", assertThrows(IdentityWriteException.class, () -> save(invalidSupplement)).code());
+        assertNull(store.find(IdentityObjectType.USER, newKey));
+    }
+
+    @Test
+    void movesOrganizationBindingWithExistingAndWaitingChildren() {
+        var parent = organization("wrong", null);
+        var root = tx.execute(s -> service.saveOrganization(parent));
+        var linked = tx.execute(s -> service.saveOrganization(organization("linked", "wrong")));
+        var waiting = tx.execute(s -> service.saveOrganization(organization("waiting", "correct")));
+        var corrected = new ExternalIdentityKey("erp", "correct");
+        var repair = new OrganizationSaveModel(corrected, parent.sourceVersion(), parent.base(), List.of(), null, null,
+                new IdentityBindingChange(root.localId(), parent.key().externalId()));
+
+        assertEquals(IdentitySaveOutcome.UPDATED, tx.execute(s -> service.saveOrganization(repair)).outcome());
+        assertNull(store.find(IdentityObjectType.ORGANIZATION, parent.key()));
+        for (String childId : List.of(linked.localId(), waiting.localId())) {
+            var child = actualOrganizationMapper.selectById(childId);
+            assertEquals(root.localId(), child.getParentId());
+            assertTrue(child.isHierarchyReady());
+            var binding = store.findLocal(IdentityObjectType.ORGANIZATION, childId);
+            assertEquals("correct", binding.get("parent_external_id"));
+            assertEquals(IdentitySourceStore.hash(IdentityObjectType.ORGANIZATION, corrected), binding.get("parent_source_key"));
+        }
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM sys_organization", Integer.class));
+    }
+
+    @Test
+    void rollsBackOrganizationRekeyAndSnapshotWhenNewKeyMakesParentCycle() {
+        var original = organization("wrong", "parent");
+        var root = tx.execute(s -> service.saveOrganization(new OrganizationSaveModel(original.key(), 1L,
+                original.base(), List.of(), "{}")));
+        tx.execute(s -> service.saveOrganization(organization("parent", "correct")));
+        var corrected = new ExternalIdentityKey("erp", "correct");
+        var repair = new OrganizationSaveModel(corrected, 1L, original.base(), List.of(), null, null,
+                new IdentityBindingChange(root.localId(), "wrong"));
+
+        var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveOrganization(repair)));
+        assertEquals("INVALID_ORG_HIERARCHY", error.code());
+        assertNull(store.find(IdentityObjectType.ORGANIZATION, corrected));
+        assertEquals(root.localId(), store.find(IdentityObjectType.ORGANIZATION, original.key()).get("local_id"));
+        assertEquals(IdentitySourceStore.hash(IdentityObjectType.ORGANIZATION, original.key()),
+                jdbc.queryForObject("SELECT source_key FROM sys_identity_source_snapshot", String.class));
+    }
+
+    @Test
+    void supplementsDeletedOrganizationBindingBeforeResolvingBatchChildren() {
+        var original = organization("wrong", null);
+        var saved = tx.execute(s -> service.saveOrganization(original));
+        jdbc.update("DELETE FROM sys_identity_source_binding WHERE local_id = ?", saved.localId());
+        var repair = new OrganizationSaveModel(new ExternalIdentityKey("erp", "correct"), 2L,
+                original.base(), List.of(), null, null, new IdentityBindingChange(saved.localId(), null));
+        var childModel = organization("child", "correct");
+
+        var results = tx.execute(s -> service.saveOrganizations(List.of(childModel, repair)));
+        assertEquals(IdentitySaveOutcome.UPDATED, results.get(1).outcome());
+        assertEquals(saved.localId(), results.get(1).localId());
+        assertEquals(saved.localId(), actualOrganizationMapper.selectById(results.get(0).localId()).getParentId());
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM sys_organization", Integer.class));
     }
 
     @Test
@@ -205,6 +341,41 @@ class IdentityWriteIntegrationTest {
         assertEquals("Java", jdbc.queryForObject("SELECT value_text FROM biz_test_second", String.class));
         assertEquals("old", jdbc.queryForObject("SELECT external_account FROM sys_identity_source_binding", String.class));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
+    }
+
+    @Test
+    void resetEnablesLocalPasswordAndPreservesExternalBindingAndCredentialsAcrossSync() {
+        var original = save(user("E1", 1L, "alice", null, List.of()));
+        var refreshSessions = mock(com.workflow.admin.auth.infrastructure.persistence.mapper.AuthRefreshSessionMapper.class);
+        var credentials = new SysUserService(actualUserMapper, null, null, refreshSessions,
+                null, null, null);
+        String id = original.localId();
+        String temporaryPassword = "TemporaryPassword1";
+
+        tx.executeWithoutResult(status -> credentials.resetPassword(id, temporaryPassword));
+
+        var reset = actualUserMapper.selectById(id);
+        assertEquals(SysUser.EXTERNAL_AND_LOCAL_PASSWORD, reset.getAuthenticationMode());
+        assertTrue(reset.getPasswordResetRequired());
+        assertTrue(credentials.passwordMatches(temporaryPassword, reset.getPassword()));
+        assertEquals(1L, reset.getTokenVersion());
+        verify(refreshSessions).revokeByUserId(eq(id), any(), eq("TOKEN_VERSION_CHANGED"));
+
+        var corrected = user("E2", 2L, "alice", "current@example.com", List.of());
+        var repair = new UserSaveModel(corrected.key(), corrected.sourceVersion(), corrected.base(), corrected.extensions(),
+                null, null, new IdentityBindingChange(id, "E1"));
+        assertEquals(id, save(repair).localId());
+        var synced = actualUserMapper.selectById(id);
+        assertEquals(SysUser.EXTERNAL_AND_LOCAL_PASSWORD, synced.getAuthenticationMode());
+        assertEquals(reset.getPassword(), synced.getPassword());
+        assertTrue(synced.getPasswordResetRequired());
+
+        tx.executeWithoutResult(status -> credentials.changePassword(id, temporaryPassword, "UpdatedPassword2"));
+
+        var changed = actualUserMapper.selectById(id);
+        assertEquals(SysUser.EXTERNAL_AND_LOCAL_PASSWORD, changed.getAuthenticationMode());
+        assertFalse(changed.getPasswordResetRequired());
+        assertTrue(credentials.passwordMatches("UpdatedPassword2", changed.getPassword()));
     }
 
     /** 两个独立空库同步相同来源快照后，配置引用所用的用户名和组织编码一致。 */
@@ -341,13 +512,72 @@ class IdentityWriteIntegrationTest {
         var userError = assertThrows(IdentityWriteException.class, () -> save(otherUser));
         assertEquals("IDENTITY_CODE_CONFLICT", userError.code());
         assertEquals("account", userError.field());
+        assertTrue(userError.getMessage().contains("用户名「alice」已被占用"));
         var otherOrganization = new OrganizationSaveModel(new ExternalIdentityKey("other", "ORG-1"), 1L,
                 originalOrganization.base(), List.of());
         var orgError = assertThrows(IdentityWriteException.class,
                 () -> tx.execute(s -> service.saveOrganization(otherOrganization)));
         assertEquals("IDENTITY_CODE_CONFLICT", orgError.code());
         assertEquals("externalCode", orgError.field());
+        assertTrue(orgError.getMessage().contains("组织编码「ORG-1」已被占用"));
         assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM sys_identity_source_binding", Integer.class));
+    }
+
+    @Test
+    void identifiesMissingDepartmentAndTheOriginalUserBatchRow() {
+        tx.execute(s -> service.saveOrganization(organization("root", null)));
+        var invalidUser = new UserSaveModel(new ExternalIdentityKey("erp", "E2"), 1L,
+                UserBaseData.builder().account("bob").nickname("Bob").enabled(true)
+                        .organizationExternalId("root").departmentExternalId("missing-dept").build(), List.of());
+
+        var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveUsers(List.of(
+                user("E1", 1L, "alice", null, List.of()), invalidUser))));
+        assertEquals("REFERENCE_NOT_FOUND", error.code());
+        assertEquals("models[1].departmentExternalId", error.field());
+        assertTrue(error.getMessage().contains("第 2 条数据（来源「erp」，外部 ID「E2」）"));
+        assertTrue(error.getMessage().contains("部门外部 ID「missing-dept」尚无来源绑定"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
+    }
+
+    @Test
+    void identifiesUserAndIncorrectOrganizationTypeWhenMembershipFails() {
+        tx.execute(s -> service.saveOrganization(organization("root", null)));
+        tx.execute(s -> service.saveOrganization(organization("dept", "root")));
+        doCallRealMethod().when(users).validateProvisionedMembership(any());
+        var model = new UserSaveModel(new ExternalIdentityKey("erp", "E1"), 1L,
+                UserBaseData.builder().account("alice").nickname("Alice").enabled(true)
+                        .organizationExternalId("dept").build(), List.of());
+
+        var error = assertThrows(IdentityWriteException.class, () -> save(model));
+        assertEquals("INVALID_MODEL", error.code());
+        assertTrue(error.getMessage().contains("用户名「alice」"));
+        assertTrue(error.getMessage().contains("所属组织外部 ID「dept」"));
+        assertTrue(error.getMessage().contains("所属组织指向了部门"));
+    }
+
+    @Test
+    void identifiesOrganizationCodeAndDomainReasonInBatchValidation() {
+        var invalidRoot = new OrganizationSaveModel(new ExternalIdentityKey("erp", "DEPT-1"), 1L,
+                OrganizationBaseData.builder().name("独立部门").externalCode("DEPT-CODE")
+                        .type(OrganizationUnitType.DEPARTMENT).enabled(true).build(), List.of());
+        var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveOrganizations(List.of(
+                organization("root", null), invalidRoot))));
+        assertEquals("INVALID_MODEL", error.code());
+        assertEquals("models[1].base", error.field());
+        assertTrue(error.getMessage().contains("第 2 条数据"));
+        assertTrue(error.getMessage().contains("组织编码「DEPT-CODE」"));
+        assertTrue(error.getMessage().contains("部门必须隶属于一个组织或上级部门"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_organization", Integer.class));
+    }
+
+    @Test
+    void identifiesDuplicateSourceKeyDuringBatchPreflight() {
+        var first = user("E1", 1L, "alice", null, List.of());
+        var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveUsers(List.of(first, first))));
+        assertEquals("INVALID_MODEL", error.code());
+        assertEquals("models[1].key.externalId", error.field());
+        assertTrue(error.getMessage().contains("第 2 条数据（来源「erp」，外部 ID「E1」）"));
+        assertTrue(error.getMessage().contains("重复提交"));
     }
 
     /** 省略或留空默认角色时，沿用已有来源接入的无初始角色行为。 */
@@ -433,6 +663,7 @@ class IdentityWriteIntegrationTest {
         assertEquals(IdentitySaveOutcome.STALE_IGNORED, save(user("E1", 3L, "old", null, List.of())).outcome());
         var error = assertThrows(IdentityWriteException.class, () -> save(user("E1", 4L, "different", null, List.of())));
         assertEquals("SOURCE_VERSION_CONFLICT", error.code());
+        assertTrue(error.getMessage().contains("外部 ID「E1」的版本 4 已同步"));
         assertEquals("name", jdbc.queryForObject("SELECT external_account FROM sys_identity_source_binding", String.class));
     }
 
@@ -820,6 +1051,7 @@ class IdentityWriteIntegrationTest {
         var error = assertThrows(IdentityWriteException.class, () -> tx.execute(s -> service.saveUsers(List.of(
                 raw(first, "{}"), raw(user("E2", 1L, "bob", null, List.of()), "{}")))));
         assertEquals("RAW_DATA_TOO_LARGE", error.code()); assertEquals("models[1].rawDataJson", error.field());
+        assertTrue(error.getMessage().contains("累计为 4 个 UTF-8 字节，每批最多 3 字节"));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_user", Integer.class));
     }
 

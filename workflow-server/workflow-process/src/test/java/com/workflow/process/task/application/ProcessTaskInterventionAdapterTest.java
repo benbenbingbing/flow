@@ -1,8 +1,8 @@
 package com.workflow.process.task.application;
 
 import com.workflow.port.process.model.CommandMeta;
-import com.workflow.port.process.task.model.TaskFormReference;
-import com.workflow.port.process.task.model.TaskInterventionModels.HistoryReturnCommand;
+import com.workflow.port.process.model.task.TaskFormReference;
+import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturnCommand;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,7 +14,7 @@ class ProcessTaskInterventionAdapterTest {
     @Test
     void returnsToTheExactActivityOccurrenceAndUsesTheOriginalRequestId() {
         var history = mock(TaskHistoryReturnService.class);
-        var port = new ProcessTaskInterventionAdapter(history, mock(TaskAddSignService.class));
+        var port = new ProcessTaskInterventionAdapter(history, mock(TaskAddSignService.class), mock(TaskSkipService.class));
         when(history.targets("task")).thenReturn(List.of(
                 new TaskHistoryReturnService.Target("activity-first", "review", "Review", false),
                 new TaskHistoryReturnService.Target("activity-second", "review", "Review", false)));

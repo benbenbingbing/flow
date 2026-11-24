@@ -1,8 +1,8 @@
 package com.workflow.port.platform.audit.annotation;
 
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditAction;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditAction;
 import com.workflow.port.platform.SystemOperationLogPort;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

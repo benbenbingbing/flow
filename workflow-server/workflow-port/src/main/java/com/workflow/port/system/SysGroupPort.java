@@ -1,6 +1,6 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.IdentityGroup;
+import com.workflow.port.system.model.identity.IdentityGroup;
 import java.util.Optional;
 
 /** 供平台内部解析系统用户组定义。 */

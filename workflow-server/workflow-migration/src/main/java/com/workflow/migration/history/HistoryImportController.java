@@ -1,6 +1,6 @@
 package com.workflow.migration.history;
 
-import com.workflow.port.migration.history.model.HistoryImportModels.Plan;
+import com.workflow.port.migration.model.history.HistoryImportModels.Plan;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.security.AuthenticatedApi;
 import lombok.RequiredArgsConstructor;

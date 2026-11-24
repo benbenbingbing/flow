@@ -4,8 +4,8 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.process.form.api.response.FormConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.ui.model.UiRuntimePurpose;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.process.task.api.response.TaskDetailDTO;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;

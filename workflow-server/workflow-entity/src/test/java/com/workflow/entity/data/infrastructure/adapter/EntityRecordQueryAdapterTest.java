@@ -30,7 +30,7 @@ class EntityRecordQueryAdapterTest {
         host.setData(new LinkedHashMap<>(Map.of("amount", 100)));
         host.setExtData(new LinkedHashMap<>(Map.of("total", 200)));
         host.setRuntimeContext(Map.of("taskId", "host-only-context"));
-        when(records.findVisibleById("project", "project-1")).thenReturn(host);
+        when(records.findByIdForPort("project", "project-1")).thenReturn(host);
 
         var result = adapter.findById("project", "project-1");
 
@@ -48,17 +48,17 @@ class EntityRecordQueryAdapterTest {
     @Test
     void preservesHostQueryConditionsAndMissingRecordSemantics() {
         Map<String, Object> condition = Map.of("project_id", "project-1");
-        when(records.findByCondition("member", condition)).thenReturn(List.of());
+        when(records.findByConditionForPort("member", condition)).thenReturn(List.of());
 
         assertTrue(adapter.findByCondition("member", condition).isEmpty());
         assertNull(adapter.findById("project", "missing"));
-        verify(records).findByCondition(eq("member"), same(condition));
+        verify(records).findByConditionForPort(eq("member"), same(condition));
     }
 
     @Test
-    void doesNotTurnAnAuthorizationFailureIntoAMissingRecord() {
-        var denied = new IllegalStateException("无权读取目标实体");
-        when(records.findVisibleById("restricted", "record-1")).thenThrow(denied);
+    void propagatesReadFailuresWithoutReturningMissingRecord() {
+        var denied = new IllegalStateException("读取失败");
+        when(records.findByIdForPort("restricted", "record-1")).thenThrow(denied);
 
         assertSame(denied, assertThrows(IllegalStateException.class,
                 () -> adapter.findById("restricted", "record-1")));
@@ -67,7 +67,7 @@ class EntityRecordQueryAdapterTest {
     @Test
     void checksThePublishedListBeforeReadingAnyRecords() {
         doThrow(new ForbiddenException("disabled list")).when(actions)
-                .requirePublishedQueryPermission("project", "private-list", true);
+                .requirePublishedListForPort("project", "private-list");
 
         assertThrows(ForbiddenException.class, () -> adapter.findById("project", "private-list", "row"));
 
@@ -75,18 +75,18 @@ class EntityRecordQueryAdapterTest {
     }
 
     @Test
-    void batchesIdsAndPreservesOrderWithoutReturningInvisibleRows() {
+    void batchesIdsAndPreservesOrderWithoutReturningMissingRows() {
         var first = new EntityDataDTO();
         first.setId("first");
         var last = new EntityDataDTO();
         last.setId("last");
         var condition = Map.<String, Object>of("id_op", "IN", "id", List.of("first", "missing", "last"));
-        when(records.findByCondition("project", condition)).thenReturn(List.of(last, first));
+        when(records.findByConditionForPort("project", condition)).thenReturn(List.of(last, first));
 
         var result = adapter.findByIds("project", List.of("first", "missing", "first", "last"));
 
         assertEquals(List.of("first", "last"), result.stream().map(row -> row.getId()).toList());
-        verify(records).findByCondition("project", condition);
+        verify(records).findByConditionForPort("project", condition);
         verifyNoMoreInteractions(records);
     }
 
@@ -95,11 +95,11 @@ class EntityRecordQueryAdapterTest {
         var record = new EntityDataDTO();
         record.setId("record-1");
         var condition = Map.<String, Object>of("process_instance_id", "run_%", "process_instance_id_op", "EQ");
-        when(records.findByCondition("project", condition)).thenReturn(List.of(record));
+        when(records.findByConditionForPort("project", condition)).thenReturn(List.of(record));
 
         assertThrows(IllegalArgumentException.class, () -> adapter.findByProcessInstance("project", " "));
         assertEquals("record-1", adapter.findByProcessInstance("project", "run_%").getId());
-        verify(records).findByCondition("project", condition);
+        verify(records).findByConditionForPort("project", condition);
         verifyNoMoreInteractions(records);
     }
 }

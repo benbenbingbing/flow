@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.workflow.port.embed.EmbedRequestUserScopePort.Scope;
 import com.workflow.port.embed.EmbedRequestUserScopePort;
-import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;

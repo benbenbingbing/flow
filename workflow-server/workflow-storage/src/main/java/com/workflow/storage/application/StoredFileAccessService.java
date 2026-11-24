@@ -1,5 +1,6 @@
 package com.workflow.storage.application;
 
+import com.workflow.contracts.storage.model.FileUpload;
 import com.workflow.storage.application.error.FileUploadIdempotencyException;
 
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
@@ -10,6 +11,7 @@ import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper;
+import com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter;
 import com.workflow.core.database.mybatis.ParameterizedSql;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,15 +56,25 @@ public class StoredFileAccessService {
     public UploadClaim prepareUpload(
             String idempotencyKey,
             MultipartFile file) {
+        return prepareUpload(idempotencyKey, MultipartFileUploadAdapter.from(file));
+    }
+
+    /** 以文件内容和公开元数据生成幂等摘要，HTTP 和 Java 上传共享同一登记键。 */
+    public UploadClaim prepareUpload(String idempotencyKey, FileUpload file) {
+        return prepareUploadForOwner(idempotencyKey, file, currentUserId());
+    }
+
+    /** 用已授权的归属账号登记上传，以同一账号和幂等键隔离重复请求。 */
+    UploadClaim prepareUploadForOwner(String idempotencyKey, FileUpload file, String owner) {
+        if (!StringUtils.hasText(owner)) throw new IllegalArgumentException("文件归属账号不能为空");
         if (idempotencyKey == null) {
-            return UploadClaim.unkeyed(currentUserId());
+            return UploadClaim.unkeyed(owner);
         }
         if (!IDEMPOTENCY_KEY.matcher(idempotencyKey).matches()) {
             throw new FileUploadIdempotencyException(
                     400,
                     "Idempotency-Key 必须为 1 到 128 个非空格可打印 ASCII 字符");
         }
-        String owner = currentUserId();
         String requestHash = requestHash(file);
         StoredUpload existing = findByIdempotencyKey(
                 owner,
@@ -95,6 +107,12 @@ public class StoredFileAccessService {
             Map<String, String> stored,
             MultipartFile file,
             UploadClaim claim) {
+        return register(stored, MultipartFileUploadAdapter.from(file), claim);
+    }
+
+    /** 登记文件所有权。并发重放返回胜出的文件 ID，调用方清理重复上传的对象。 */
+    @Transactional
+    public UploadRegistration register(Map<String, String> stored, FileUpload file, UploadClaim claim) {
         if (claim.replay() != null) {
             return new UploadRegistration(claim.replay(), false);
         }
@@ -121,9 +139,9 @@ public class StoredFileAccessService {
                     claim.ownerUserId(),
                     claim.idempotencyKey(),
                     claim.requestHash(),
-                    file.getOriginalFilename(),
-                    file.getContentType(),
-                    file.getSize(),
+                    file.originalFilename(),
+                    file.contentType(),
+                    file.size(),
                     now,
                     now)));
         } catch (DuplicateKeyException exception) {
@@ -134,7 +152,7 @@ public class StoredFileAccessService {
         }
         if (inserted == 1) {
             // 存储策略的 url / filename 只用于登记和清理，禁止进入面向前端的响应。
-            return new UploadRegistration(uploadResponse(fileId, file.getOriginalFilename(), file.getSize()), true);
+            return new UploadRegistration(uploadResponse(fileId, file.originalFilename(), file.size()), true);
         }
         if (claim.idempotencyKey() == null) {
             throw new IllegalStateException("文件登记失败");
@@ -159,6 +177,22 @@ public class StoredFileAccessService {
     @Transactional(readOnly = true)
     public String requireRead(String fileId) {
         return requireOwnerOrAdministrator(fileId);
+    }
+
+    /** 读取已授权文件的登记信息，存储地址仅供后端打开文件流。 */
+    @Transactional(readOnly = true)
+    public StoredFileMapper.StoredFileDetails requireDetails(String fileId) {
+        var details = fileMapper.findDetails(fileId);
+        requireOwnership(details == null ? null : details.ownerUserId());
+        return details;
+    }
+
+    /** 读取已登记且未逻辑删除的文件。Port 调用方负责确认文件访问权限。 */
+    @Transactional(readOnly = true)
+    public StoredFileMapper.StoredFileDetails requireRegisteredDetails(String fileId) {
+        var details = fileMapper.findDetails(fileId);
+        if (details == null) throw new java.util.NoSuchElementException("文件不存在");
+        return details;
     }
 
     /**
@@ -197,14 +231,17 @@ public class StoredFileAccessService {
      */
     private String requireOwnerOrAdministrator(String fileId) {
         var reference = fileMapper.findReference(fileId);
-        if (reference == null) {
+        requireOwnership(reference == null ? null : reference.ownerUserId());
+        return reference.storageUrl();
+    }
+
+    private void requireOwnership(String ownerUserId) {
+        if (ownerUserId == null) {
             throw new ForbiddenException("文件不存在或无权访问");
         }
-        if (reference.ownerUserId().equals(currentUserId())
-                || currentActor.isAdministrator()) {
-            return reference.storageUrl();
+        if (!ownerUserId.equals(currentUserId()) && !currentActor.isAdministrator()) {
+            throw new ForbiddenException("无权访问该文件");
         }
-        throw new ForbiddenException("无权访问该文件");
     }
 
     /**
@@ -280,13 +317,13 @@ public class StoredFileAccessService {
      * @return 处理后的请求哈希文本，供调用方比较或展示
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      */
-    private String requestHash(MultipartFile file) {
+    private String requestHash(FileUpload file) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            updateDigest(digest, file.getOriginalFilename());
-            updateDigest(digest, file.getContentType());
-            updateDigest(digest, String.valueOf(file.getSize()));
-            try (InputStream input = file.getInputStream()) {
+            updateDigest(digest, file.originalFilename());
+            updateDigest(digest, file.contentType());
+            updateDigest(digest, String.valueOf(file.size()));
+            try (InputStream input = file.openStream()) {
                 byte[] buffer = new byte[8192];
                 int read;
                 while ((read = input.read(buffer)) != -1) {

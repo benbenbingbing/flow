@@ -1,9 +1,9 @@
 package com.workflow.process.assignment.application;
 
-import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.model.identity.position.InitiatorOrganizationSnapshot;
 import com.workflow.port.system.SysOrganizationPort;
-import com.workflow.port.system.identity.position.model.OrganizationUnitSnapshot;
-import com.workflow.port.process.assignment.error.PersonResolutionException;
+import com.workflow.port.system.model.identity.position.OrganizationUnitSnapshot;
+import com.workflow.port.process.error.assignment.PersonResolutionException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

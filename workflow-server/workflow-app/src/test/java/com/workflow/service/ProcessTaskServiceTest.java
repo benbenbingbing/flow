@@ -94,6 +94,23 @@ class ProcessTaskServiceTest {
         );
     }
 
+    @Test
+    void markTaskSkippedPersistsDistinctStatusAndReason() {
+        var task = new ProcessTask();
+        task.setStatus(ProcessTask.STATUS_TODO);
+        when(taskMapper.selectByTaskId("task-1")).thenReturn(task);
+        when(taskMapper.updateById(task)).thenReturn(1);
+
+        service.markTaskSkipped("task-1", "已线下复核");
+
+        verify(taskMapper).updateById(task);
+        Assertions.assertEquals(ProcessTask.STATUS_SKIP, task.getStatus());
+        Assertions.assertEquals(ProcessTask.ACTION_SKIP, task.getAction());
+        Assertions.assertEquals("跳过", task.getActionLabel());
+        Assertions.assertEquals("已线下复核", task.getComment());
+        Assertions.assertNotNull(task.getEndTime());
+    }
+
     /**
      * 测试同步任务：当流程无活跃任务时，清除实体的当前任务（更新为 null）。
      */
@@ -241,7 +258,7 @@ class ProcessTaskServiceTest {
         when(flowableTask.getAssignee()).thenReturn("user-1");
         when(identityDirectoryPort.getDisplayName("user-1")).thenReturn("张三(alice)");
         when(identityDirectoryPort.findUser("alice")).thenReturn(java.util.Optional.of(
-                new com.workflow.port.system.identity.model.IdentityUser("user-1", "alice", "张三", null, null)));
+                new com.workflow.port.system.model.identity.IdentityUser("user-1", "alice", "张三", null, null)));
 
         List<ProcessTask> result = service.getTodoList("alice");
 

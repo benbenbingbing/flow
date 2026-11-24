@@ -14,7 +14,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.port.system.CurrentActorPort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;

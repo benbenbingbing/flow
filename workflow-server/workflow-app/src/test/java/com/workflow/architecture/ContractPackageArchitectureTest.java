@@ -12,7 +12,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  * 保护共享契约的角色分包。
  *
  * <p>平台 Port 必须是领域根包的顶层接口。SPI 保留自己的命名空间和扩展点包。
- * 配套模型按功能分包，强绑定的值对象和异常可以嵌套在接口内。</p>
+ * 配套契约先按类型归集再按业务分包，强绑定的值对象和异常可以嵌套在接口内。</p>
  */
 @AnalyzeClasses(
         packages = "com.workflow",
@@ -35,6 +35,19 @@ class ContractPackageArchitectureTest {
                     .and().doNotHaveSimpleName("package-info")
                     .should().beInterfaces()
                     .andShould().haveSimpleNameEndingWith("Port");
+
+    // 一级分类为浏览者提供稳定入口，业务功能包放在 model、context 或 error 之下。
+    @ArchTest
+    static final ArchRule PORT_SUPPORTING_TYPES_USE_ROLE_PACKAGES =
+            classes()
+                    .that().resideInAPackage("com.workflow.port.*.*..")
+                    .and().areTopLevelClasses()
+                    .and().doNotHaveSimpleName("package-info")
+                    .should().resideInAnyPackage(
+                            "com.workflow.port.*.model..",
+                            "com.workflow.port.*.context..",
+                            "com.workflow.port.*.error..",
+                            "com.workflow.port.*..annotation");
 
     @ArchTest
     static final ArchRule PORT_NAMES_INDICATE_THE_BUSINESS_OBJECT =
@@ -61,7 +74,7 @@ class ContractPackageArchitectureTest {
     @ArchTest
     static final ArchRule MODELS_DO_NOT_DEPEND_ON_PORTS_OR_SPI =
             noClasses()
-                    .that().resideInAnyPackage("com.workflow.port..model..", "com.workflow.contracts..model..")
+                    .that().resideInAnyPackage("com.workflow.port.*.model..", "com.workflow.contracts..model..")
                     .should().dependOnClassesThat()
                     .resideInAnyPackage(
                             "com.workflow.port.*",

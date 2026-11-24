@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchResult;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchResult;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
 import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
 import com.workflow.core.error.BusinessForbiddenException;
@@ -127,14 +127,14 @@ class UiViewCompositionActionServiceTest {
                 org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(invocation ->
                         new UiViewCompositionActionReceiptService.AcquireResult(
-                                new com.workflow.port.entity.mutation.model.EntityMutationCommand(
+                                new com.workflow.port.entity.model.mutation.EntityMutationCommand(
                                         "batch-receipt",
                                         "source_entity",
                                         "source-1",
-                                        com.workflow.port.entity.mutation.model.EntityMutationOperationType.UPDATE,
+                                        com.workflow.port.entity.model.mutation.EntityMutationOperationType.UPDATE,
                                         Map.of(),
-                                        com.workflow.port.entity.mutation.model.EntityMutationContext.builder(
-                                                com.workflow.port.entity.mutation.model.EntityMutationSourceType.FORM,
+                                        com.workflow.port.entity.model.mutation.EntityMutationContext.builder(
+                                                com.workflow.port.entity.model.mutation.EntityMutationSourceType.FORM,
                                                 "TEST",
                                                 "测试")
                                                 .trace(

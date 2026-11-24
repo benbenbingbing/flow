@@ -10,7 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext;
 import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedNativeFormTarget;

@@ -13,7 +13,7 @@ import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;

@@ -10,8 +10,8 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.port.process.ProcessDefinitionConfigPort;
 import com.workflow.port.process.ProcessRecordPermissionPort;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
 import com.workflow.port.process.ProcessTaskPermissionPort;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;

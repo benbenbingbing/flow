@@ -217,10 +217,10 @@ class EmbedRuntimeReadFacadeTest {
     void nativeListBootstrapWithoutDefaultFormReturnsNullFormCoordinates()
             throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        var closure = new com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure(
+        var closure = new com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure(
                 1,
-                List.of(new com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode(
-                        new com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate(
+                List.of(new com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure.ListNode(
+                        new com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure.ListCoordinate(
                                 "work_order", "supplier_open", "list-1",
                                 "list-release-7", 7),
                         true, null, List.of())));

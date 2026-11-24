@@ -30,7 +30,7 @@
 | 实体写入与来源映射 | workflow-server/workflow-entity/src/main/java/com/workflow/entity/history/EntityHistoryImportService.java |
 | 只读策略 | 同目录 EntityHistoryWriteGuard.java |
 | 档案存取 | workflow-server/workflow-process/src/main/java/com/workflow/process/archive/ProcessArchiveService.java |
-| 跨模块契约 | [迁移端口](../workflow-server/workflow-port/src/main/java/com/workflow/port/migration/) 和 [历史导入模型](../workflow-server/workflow-port/src/main/java/com/workflow/port/migration/history/model/) |
+| 跨模块契约 | [迁移端口](../workflow-server/workflow-port/src/main/java/com/workflow/port/migration/) 和 [历史导入模型](../workflow-server/workflow-port/src/main/java/com/workflow/port/migration/model/history/) |
 | 管理页面 | workflow-frontend/workflow-web/src/views/system/HistoryImport.vue |
 | 档案组件 | workflow-frontend/workflow-web/src/components/ProcessArchivePanel.vue |
 

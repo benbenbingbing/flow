@@ -4,11 +4,11 @@ import com.workflow.openapi.application.security.IntegrationRateLimitService;
 import com.workflow.openapi.application.security.OpenApiConcurrencyLeaseService;
 import com.workflow.openapi.security.IntegrationClientNetworkPolicy;
 
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditResult;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditResult;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.core.error.RateLimitExceededException;
 import com.workflow.core.logging.LogValue;

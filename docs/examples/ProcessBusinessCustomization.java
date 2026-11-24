@@ -1,11 +1,11 @@
 import com.workflow.port.process.model.CommandMeta;
 import com.workflow.port.process.model.ProcessCommandReceipt;
-import com.workflow.port.process.query.model.ProcessTaskView;
-import com.workflow.port.process.task.model.CompleteTaskCommand;
-import com.workflow.port.process.task.model.TaskCommandResult;
-import com.workflow.port.process.task.model.TaskSubmission;
+import com.workflow.port.process.model.query.ProcessTaskView;
+import com.workflow.port.process.model.task.CompleteTaskCommand;
+import com.workflow.port.process.model.task.TaskCommandResult;
+import com.workflow.port.process.model.task.TaskSubmission;
 import com.workflow.port.process.ProcessTaskPort;
-import com.workflow.port.process.variable.model.ProcessVariablePatch;
+import com.workflow.port.process.model.variable.ProcessVariablePatch;
 import com.workflow.port.process.ProcessVariablePort;
 import java.util.List;
 import java.util.Map;

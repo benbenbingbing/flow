@@ -1,8 +1,8 @@
 package com.workflow.port.embed;
 
-import com.workflow.port.embed.launch.model.EmbedApplicationActor;
-import com.workflow.port.embed.launch.model.EmbedLaunchCommand;
-import com.workflow.port.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.port.embed.model.launch.EmbedApplicationActor;
+import com.workflow.port.embed.model.launch.EmbedLaunchCommand;
+import com.workflow.port.embed.model.launch.EmbedLaunchIssued;
 
 /** 为已验证应用签发一次性、短期有效的 Embed 启动信息。 */
 public interface EmbedLaunchPort {

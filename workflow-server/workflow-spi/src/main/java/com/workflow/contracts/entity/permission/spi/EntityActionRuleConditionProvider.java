@@ -2,7 +2,7 @@ package com.workflow.contracts.entity.permission.spi;
 
 import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.contracts.entity.permission.model.EntityActionRule;
-import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.model.identity.IdentityUser;
 
 /**
  * 自定义按钮规则条件扩展点。

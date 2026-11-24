@@ -1,8 +1,7 @@
 package com.workflow.migration.history;
 
-import com.workflow.port.migration.history.*;
 import com.workflow.port.migration.EntityHistoryImportPort;
-import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.migration.model.history.HistoryImportModels.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

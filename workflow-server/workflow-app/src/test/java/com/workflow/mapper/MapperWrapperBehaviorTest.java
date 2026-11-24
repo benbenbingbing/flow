@@ -6,32 +6,54 @@ import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
+import com.workflow.admin.externalsystem.application.ExternalSystemService;
+import com.workflow.admin.externalsystem.application.ExternalSystemServiceAccess;
+import com.workflow.admin.externalsystem.infrastructure.adapter.SysExternalSystemAdapter;
 import com.workflow.admin.externalsystem.infrastructure.persistence.mapper.ExternalSystemMapper;
+import com.workflow.admin.externalsystem.infrastructure.persistence.mapper.ExternalSystemParameterMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.config.database.DatabaseMybatisConfiguration;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.port.entity.model.EntityTaskSummary;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.entity.data.application.EntityQueryConditions;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.outbox.application.DatabaseOutboxPublisher;
+import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
+import com.workflow.port.platform.WorkflowOutboxEventPort;
 import com.workflow.port.process.model.ProcessPageRequest;
-import com.workflow.port.system.CurrentActorPort;
+import com.workflow.port.system.SysExternalSystemPort;
 import com.workflow.process.definition.application.ProcessCatalogAdapter;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.TaskInboxProjectionMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.process.sla.runtime.application.ProcessTaskSlaAdapter;
+import com.workflow.process.sla.runtime.application.TaskSlaMonitorService;
+import com.workflow.process.sla.runtime.infrastructure.persistence.mapper.ProcessTaskSlaMapper;
+import com.workflow.port.process.ProcessTaskSlaPort;
 import org.apache.ibatis.session.SqlSession;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /** 使用真实 Mapper 代理和临时数据库验证 Wrapper 改写后的并发条件、NULL、投影及分页行为。 */
 class MapperWrapperBehaviorTest {
@@ -48,8 +70,15 @@ class MapperWrapperBehaviorTest {
         jdbc.execute("""
                 CREATE TABLE sys_external_system (
                   id VARCHAR(64) PRIMARY KEY, system_code VARCHAR(64), system_name VARCHAR(64),
-                  status VARCHAR(16), address VARCHAR(128), description VARCHAR(128), version BIGINT,
-                  updated_by VARCHAR(64), update_time TIMESTAMP, deleted INT DEFAULT 0)
+                  status VARCHAR(16), address VARCHAR(128), description VARCHAR(128), version BIGINT NOT NULL DEFAULT 0,
+                  created_by VARCHAR(64), updated_by VARCHAR(64), create_time TIMESTAMP,
+                  update_time TIMESTAMP, deleted INT DEFAULT 0)
+                """);
+        jdbc.execute("""
+                CREATE TABLE sys_external_system_parameter (
+                  id VARCHAR(64) PRIMARY KEY, external_system_id VARCHAR(64),
+                  parameter_name_zh VARCHAR(100), parameter_name_en VARCHAR(100),
+                  parameter_value CLOB, sort_order INT, deleted INT DEFAULT 0)
                 """);
         jdbc.execute("""
                 CREATE TABLE sys_user (
@@ -90,9 +119,10 @@ class MapperWrapperBehaviorTest {
         pagination.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
         configuration.addInterceptor(pagination);
         // 同一实体的两个 BaseMapper 同时注册，覆盖生产环境的实际组合。
-        for (Class<?> type : List.of(ExternalSystemMapper.class, SysUserMapper.class, ProcessTaskMapper.class,
+        for (Class<?> type : List.of(ExternalSystemMapper.class, ExternalSystemParameterMapper.class,
+                SysUserMapper.class, ProcessTaskMapper.class,
                 TaskInboxProjectionMapper.class, ProcessDefinitionConfigMapper.class, EntityVersionConfigMapper.class,
-                EntityDataDynamicMapper.class)) {
+                EntityDataDynamicMapper.class, OutboxRecordMapper.class, ProcessTaskSlaMapper.class)) {
             configuration.addMapper(type);
         }
         var factory = new MybatisSqlSessionFactoryBean();
@@ -134,6 +164,66 @@ class MapperWrapperBehaviorTest {
         assertEquals(0, mapper.softDelete("system", 7, "actor", NOW));
         assertEquals(0, mapper.updateStatus("system", "0", 7, "actor", NOW));
         assertEquals(0, mapper.updateMutableFields("system", "revive", "0", null, null, 7, "actor", NOW));
+    }
+
+    @Test
+    void externalSystemPortReadsWithoutWebIdentityAndChecksExplicitServiceCredentials() {
+        jdbc.update("""
+                INSERT INTO sys_external_system (id, system_code, system_name, status, deleted)
+                VALUES ('main', 'erp-main', 'ERP 主系统', '0', 0),
+                       ('alt', 'erp-alt', 'ERP 备用系统', '1', 0),
+                       ('gone', 'erp-gone', 'ERP 历史系统', '1', 1)
+                """);
+        String sampleValue = "  sample-token  ";
+        jdbc.update("""
+                INSERT INTO sys_external_system_parameter (id, external_system_id, parameter_name_zh,
+                    parameter_name_en, parameter_value, sort_order, deleted)
+                VALUES ('token', 'main', '令牌', 'token', ?, 20, 0),
+                       ('tenant', 'main', '租户', 'tenant', 'workflow', 10, 0),
+                       ('old', 'main', '历史参数', 'old', 'deleted', 5, 1)
+                """, sampleValue);
+        var service = new ExternalSystemService(session.getMapper(ExternalSystemMapper.class),
+                session.getMapper(ExternalSystemParameterMapper.class));
+        var credential = "test-only-credential";
+        var properties = new MapConfigurationPropertySource(Map.of(
+                "workflow.external-system.services.erp-sync.credential-hash", new BCryptPasswordEncoder(4).encode(credential),
+                "workflow.external-system.services.erp-sync.system-codes", "erp-main,erp-alt,erp-gone"));
+        var serviceAccess = new Binder(properties).bind("workflow.external-system", Bindable.of(ExternalSystemServiceAccess.class)).get();
+        SysExternalSystemPort port = new SysExternalSystemAdapter(service, serviceAccess);
+
+        assertThrows(ForbiddenException.class, () -> port.findConfigurationForService("erp-main", "erp-sync", "invalid"));
+        assertThrows(ForbiddenException.class, () -> port.findConfigurationForService("erp-main", "unknown", credential));
+        assertThrows(ForbiddenException.class, () -> port.findConfigurationForService("other", "erp-sync", credential));
+        assertEquals(sampleValue, port.findConfigurationForService(" erp-main ", "erp-sync", credential)
+                .orElseThrow().parameters().get(1).value());
+        assertTrue(port.findConfigurationForService("erp-alt", "erp-sync", credential).isEmpty());
+        assertTrue(port.findConfigurationForService("erp-gone", "erp-sync", credential).isEmpty());
+
+        var page = port.pageSystems(1, 1, " ERP ", " erp-", "0");
+        assertEquals(1, page.total());
+        assertEquals(1, page.pageNumber());
+        assertEquals(1, page.pageSize());
+        var summary = page.records().get(0);
+        assertEquals("erp-main", summary.systemCode());
+        assertEquals(2, summary.parameterCount());
+        assertEquals(2, port.pageSystems(1, 10, null, null, null).total());
+        assertEquals(summary, port.findById(" main ").orElseThrow());
+        assertEquals(summary, port.findByCode(" erp-main ").orElseThrow());
+        assertTrue(port.findByCode("erp").isEmpty());
+        assertTrue(port.findById("gone").isEmpty());
+        assertTrue(port.findByCode("erp-gone").isEmpty());
+
+        assertEquals(summary, port.findByCode("erp-main").orElseThrow());
+        var configuration = port.findConfigurationByCode(" erp-main ").orElseThrow();
+        assertEquals(summary, configuration.system());
+        assertEquals(List.of("tenant", "token"), configuration.parameters().stream()
+                .map(SysExternalSystemPort.Parameter::nameEn).toList());
+        assertEquals(sampleValue, configuration.parameters().get(1).value());
+        assertFalse(configuration.toString().contains(sampleValue.trim()));
+        assertTrue(port.findConfigurationByCode("erp-gone").isEmpty());
+        var disabled = port.findConfigurationByCode("erp-alt").orElseThrow();
+        assertEquals("1", disabled.system().status());
+        assertTrue(disabled.parameters().isEmpty());
     }
 
     @Test
@@ -264,10 +354,8 @@ class MapperWrapperBehaviorTest {
                        ('3','disabled','Offboarding','DISABLED',0,?),
                        ('4','removed','Offboarding','PUBLISHED',1,?)
                 """, NOW, NOW, NOW, NOW);
-        var actor = org.mockito.Mockito.mock(CurrentActorPort.class);
-        org.mockito.Mockito.when(actor.hasPermission("process:definition:view")).thenReturn(true);
         var catalog = new ProcessCatalogAdapter(session.getMapper(ProcessDefinitionConfigMapper.class),
-                org.mockito.Mockito.mock(ProcessVersionHistoryMapper.class), actor);
+                mock(ProcessVersionHistoryMapper.class));
 
         var first = catalog.pagePublished("boarding", new ProcessPageRequest(1, 1, null));
         var second = catalog.pagePublished("boarding", new ProcessPageRequest(2, 1, null));
@@ -291,6 +379,81 @@ class MapperWrapperBehaviorTest {
         assertEquals(1, number("SELECT deleted FROM wf_port_delete WHERE id = '1'"));
         assertEquals("保留历史业务数据", text("SELECT name FROM wf_port_delete WHERE id = '1'"));
         assertNull(mapper.selectById("wf_port_delete", "1"));
+    }
+
+    @Test
+    void entitySumFiltersByPublishedConditionsDataScopeAndSoftDeletion() {
+        jdbc.execute("""
+                CREATE TABLE wf_port_sum (
+                  id VARCHAR(64), status VARCHAR(32), create_by VARCHAR(64),
+                  amount DECIMAL(18, 4), deleted INT DEFAULT 0)
+                """);
+        jdbc.update("""
+                INSERT INTO wf_port_sum VALUES
+                  ('1','ACTIVE','user-1', 10.1015, 0), ('2','ACTIVE','user-1', 0.0005, 0),
+                  ('3','INACTIVE','user-1', 20, 0), ('4','ACTIVE','user-2', 100, 0),
+                  ('5','ACTIVE','user-1', 1000, 1), ('6','ACTIVE','user-1', NULL, 0)
+                """);
+        var field = new EntityField();
+        field.setFieldCode("amount");
+        field.setFieldType(EntityField.FieldType.DECIMAL);
+        var filter = EntityQueryConditions.fromPublishedFields(Map.of("status", "ACTIVE", "status_op", "EQ"), List.of(field));
+        var mapper = session.getMapper(EntityDataDynamicMapper.class);
+        String scope = "create_by = #{permissionParameters.owner}";
+        var sum = mapper.sumByCondition("wf_port_sum", "amount", filter, scope, Map.of("owner", "user-1"));
+        assertEquals(0, new BigDecimal("10.102").compareTo(sum));
+        assertEquals(0, mapper.sumByCondition("wf_port_sum", "amount", filter, scope, Map.of("owner", "missing")).signum());
+    }
+
+    @Test
+    void outboxStatusProjectsOnlyStateAndRetryMetadataForExactEvent() {
+        jdbc.execute("""
+                CREATE TABLE workflow_outbox_event (
+                  topic VARCHAR(64), event_key VARCHAR(64), status VARCHAR(20), retry_count INT,
+                  max_retries INT, next_retry_time TIMESTAMP, processed_time TIMESTAMP)
+                """);
+        jdbc.update("""
+                INSERT INTO workflow_outbox_event VALUES
+                  ('erp','event-1','FAILED',2,8,?,NULL), ('other','event-1','PROCESSED',0,8,NULL,?)
+                """, NOW, NOW);
+        WorkflowOutboxEventPort outbox = new DatabaseOutboxPublisher(session.getMapper(OutboxRecordMapper.class), null, null, null);
+        var state = outbox.findStatus(" erp ", " event-1 ").orElseThrow();
+        assertEquals(WorkflowOutboxEventPort.State.FAILED, state.state());
+        assertEquals(2, state.retryCount());
+        assertEquals(NOW, state.nextRetryTime());
+        assertTrue(outbox.findStatus("erp", "missing").isEmpty());
+    }
+
+    @Test
+    void slaMonitorRequiresPermissionAndFiltersBeforeCounting() {
+        jdbc.execute("""
+                CREATE TABLE process_task_sla (
+                  id VARCHAR(64), task_id VARCHAR(64), process_instance_id VARCHAR(64),
+                  process_definition_id VARCHAR(64), process_key VARCHAR(64), node_id VARCHAR(64),
+                  node_name VARCHAR(64), business_key VARCHAR(64), entity_code VARCHAR(64),
+                  entity_data_id VARCHAR(64), policy_code VARCHAR(64), policy_version INT,
+                  policy_snapshot_json CLOB, calendar_code VARCHAR(64), calendar_version INT,
+                  calendar_snapshot_json CLOB, timezone_id VARCHAR(64), current_assignee_id VARCHAR(64),
+                  started_at TIMESTAMP, responded_at TIMESTAMP, completed_at TIMESTAMP,
+                  response_due_at TIMESTAMP, completion_due_at TIMESTAMP, response_remaining_minutes INT,
+                  completion_remaining_minutes INT, response_status VARCHAR(20), completion_status VARCHAR(20),
+                  overall_status VARCHAR(20), pause_started_at TIMESTAMP, version INT,
+                  create_time TIMESTAMP, update_time TIMESTAMP)
+                """);
+        jdbc.update("""
+                INSERT INTO process_task_sla (id, task_id, process_instance_id, process_key, overall_status, policy_version)
+                VALUES ('1','task-1','first','workflow','RUNNING',1),
+                       ('2','task-2','first','workflow','BREACHED',1),
+                       ('3','task-3','other','workflow','BREACHED',1)
+                """);
+        ProcessTaskSlaPort sla = new ProcessTaskSlaAdapter(null,
+                new TaskSlaMonitorService(session.getMapper(ProcessTaskSlaMapper.class)));
+        var query = new ProcessTaskSlaPort.MonitorQuery(1, 1, null, "workflow", "first", null, null);
+        var page = sla.pageMonitor(query);
+        assertEquals(2, page.total());
+        assertEquals("task-2", page.items().get(0).sla().taskId());
+        assertEquals(Map.of("RUNNING", 1L, "BREACHED", 1L, "PAUSED", 0L, "COMPLETED", 0L),
+                sla.countMonitorByStatus("workflow", "first"));
     }
 
     private void insertTask(long id, int deleted, Integer summaryReady, Integer identityReady) {

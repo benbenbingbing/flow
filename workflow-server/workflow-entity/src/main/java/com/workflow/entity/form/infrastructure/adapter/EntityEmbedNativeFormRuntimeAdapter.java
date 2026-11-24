@@ -1,7 +1,7 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
 import com.workflow.port.embed.EmbedPublishedFormPort;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;

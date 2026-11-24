@@ -1,7 +1,7 @@
 package com.workflow.embed.application.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure;
 import com.workflow.port.embed.EmbedListDependencySnapshotPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.EmbedRuntimeReleaseSnapshot;

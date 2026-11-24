@@ -3,22 +3,24 @@ package com.workflow.admin.identity.infrastructure.adapter;
 import com.workflow.admin.identity.extension.application.IdentityExtensionService;
 import com.workflow.admin.identity.position.infrastructure.adapter.OrganizationPositionDirectoryAdapter;
 import com.workflow.admin.identity.provisioning.application.IdentityWriteService;
+import com.workflow.admin.identity.provisioning.application.IdentitySourceLookupService;
 import com.workflow.port.system.SysOrganizationPort;
 import com.workflow.port.system.SysRolePort;
 import com.workflow.port.system.SysUserGroupPort;
 import com.workflow.port.system.SysUserPort;
 import com.workflow.port.system.SysUserRolePort;
-import com.workflow.port.system.identity.model.*;
-import com.workflow.port.system.identity.model.IdentityDirectoryModels.*;
-import com.workflow.port.system.identity.position.model.InitiatorOrganizationSnapshot;
-import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
-import com.workflow.port.system.identity.position.model.OrganizationUnitStateView;
+import com.workflow.port.system.model.identity.*;
+import com.workflow.port.system.model.identity.IdentityDirectoryModels.*;
+import com.workflow.port.system.model.identity.position.InitiatorOrganizationSnapshot;
+import com.workflow.port.system.model.identity.position.OrganizationBusinessLevelView;
+import com.workflow.port.system.model.identity.position.OrganizationUnitStateView;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** 按系统数据对象提供入口，读、同步与关系维护各自进入原授权和事务服务。 */
+/** 按系统数据对象提供入口，目录、来源映射及关系维护由调用方授权，来源写入执行配置校验和审计。 */
 @Component
 @RequiredArgsConstructor
 public class SystemIdentityAdapter implements SysUserPort, SysOrganizationPort, SysRolePort, SysUserRolePort, SysUserGroupPort {
@@ -28,6 +30,7 @@ public class SystemIdentityAdapter implements SysUserPort, SysOrganizationPort, 
     private final OrganizationPositionDirectoryAdapter organizations;
     private final IdentityMembershipManagementAdapter memberships;
     private final IdentityDirectoryAdapter groups;
+    private final IdentitySourceLookupService sources;
 
     @Override
     public UserPage pageUsers(UserQuery query) {
@@ -42,6 +45,11 @@ public class SystemIdentityAdapter implements SysUserPort, SysOrganizationPort, 
     @Override
     public List<IdentityUser> findUsersByUsernames(List<String> usernames) {
         return directory.findUsersByUsernames(usernames);
+    }
+
+    @Override
+    public Map<String, String> findUserIdsBySource(String sourceCode, List<String> externalIds) {
+        return sources.findIds(IdentityObjectType.USER, sourceCode, externalIds);
     }
 
     @Override
@@ -62,6 +70,11 @@ public class SystemIdentityAdapter implements SysUserPort, SysOrganizationPort, 
     @Override
     public Optional<Organization> findOrganization(String organizationId) {
         return directory.findOrganization(organizationId);
+    }
+
+    @Override
+    public Map<String, String> findOrganizationIdsBySource(String sourceCode, List<String> externalIds) {
+        return sources.findIds(IdentityObjectType.ORGANIZATION, sourceCode, externalIds);
     }
 
     @Override

@@ -1,6 +1,6 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 
 /** 读取当前操作人并检查其管理员身份及业务权限。 */
 public interface CurrentActorPort {

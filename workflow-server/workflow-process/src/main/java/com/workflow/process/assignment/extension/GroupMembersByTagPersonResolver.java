@@ -1,7 +1,7 @@
 package com.workflow.process.assignment.extension;
 
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.port.system.identity.model.GroupMemberFilter;
+import com.workflow.port.system.model.identity.GroupMemberFilter;
 import com.workflow.port.system.SysUserGroupTagPort;
 import com.workflow.contracts.process.assignment.model.*;
 import com.workflow.contracts.process.assignment.spi.*;
@@ -36,7 +36,7 @@ public class GroupMembersByTagPersonResolver implements PersonResolverProvider, 
         try {
             return PersonResolveResult.users(directory.resolveMembersByTags(filters(request.extraParams())));
         } catch (IllegalArgumentException error) {
-            throw new com.workflow.port.process.assignment.error.PersonResolutionException("GROUP_TAG_SCOPE_INVALID", error.getMessage());
+            throw new com.workflow.port.process.error.assignment.PersonResolutionException("GROUP_TAG_SCOPE_INVALID", error.getMessage());
         }
     }
 

@@ -14,9 +14,9 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,6 +54,19 @@ public class PositionAssignmentService {
             operation = "设置职务人员", risk = AuditRiskLevel.HIGH,
             targetType = "SYS_POSITION_ASSIGNMENT", captureArguments = true)
     public void setMembers(PositionRequests.SetMembers request) {
+        setMembers(request, true);
+    }
+
+    /** 按已授权的组织替换任职，保护集合版本并刷新负责人投影。 */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.SYSTEM, action = AuditAction.CONFIGURE,
+            operation = "设置职务人员", risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_POSITION_ASSIGNMENT", captureArguments = true)
+    public void setMembersForPort(PositionRequests.SetMembers request) {
+        setMembers(request, false);
+    }
+
+    private void setMembers(PositionRequests.SetMembers request, boolean checkScope) {
         if (request == null || !StringUtils.hasText(request.positionCode())
                 || !StringUtils.hasText(request.organizationUnitId())) {
             throw error(400, PositionErrorCode.ASSIGNMENT_INVALID, "职务和组织不能为空");
@@ -65,7 +78,7 @@ public class PositionAssignmentService {
         if (found == null) throw error(404, PositionErrorCode.POSITION_NOT_FOUND, "职务不存在");
         SysPosition position = positionMapper.selectForUpdate(found.getId());
         SysOrganization unit = organizationMapper.selectForUpdate(request.organizationUnitId());
-        scopeService.requireVisible(request.organizationUnitId());
+        if (checkScope) scopeService.requireVisible(request.organizationUnitId());
         if (position == null) throw error(404, PositionErrorCode.POSITION_NOT_FOUND, "职务不存在");
         if (unit == null) throw error(404, PositionErrorCode.ORGANIZATION_UNIT_NOT_FOUND, "组织不存在");
         List<SysPositionAssignment> current = current(position.getId(), unit.getId());
@@ -112,11 +125,24 @@ public class PositionAssignmentService {
             operation = "移除职务人员", risk = AuditRiskLevel.HIGH,
             targetType = "SYS_POSITION_ASSIGNMENT", targetIdArg = 0)
     public void remove(String id, PositionRequests.RemoveAssignment request) {
+        remove(id, request, true);
+    }
+
+    /** 删除已授权的任职关系，并按传入版本防止误删新的关系。 */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.SYSTEM, action = AuditAction.DELETE,
+            operation = "移除职务人员", risk = AuditRiskLevel.HIGH,
+            targetType = "SYS_POSITION_ASSIGNMENT", targetIdArg = 0)
+    public void removeForPort(String id, PositionRequests.RemoveAssignment request) {
+        remove(id, request, false);
+    }
+
+    private void remove(String id, PositionRequests.RemoveAssignment request, boolean checkScope) {
         SysPositionAssignment relation = assignmentMapper.selectById(id);
         if (relation == null) return; // DELETE 可重复执行，删除后没有任职墓碑。
         SysPosition position = positionMapper.selectForUpdate(relation.getPositionId());
         organizationMapper.selectForUpdate(relation.getOrganizationUnitId());
-        scopeService.requireVisible(relation.getOrganizationUnitId());
+        if (checkScope) scopeService.requireVisible(relation.getOrganizationUnitId());
         SysPositionAssignment current = assignmentMapper.selectMemberForUpdate(id);
         if (current == null) return;
         if (request == null || request.revision() == null || !request.revision().equals(current.getRevision())) {

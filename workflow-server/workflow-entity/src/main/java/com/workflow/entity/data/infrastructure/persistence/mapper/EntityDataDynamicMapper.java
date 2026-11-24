@@ -537,12 +537,14 @@ public interface EntityDataDynamicMapper {
             @Param("permissionSql") String permissionSql,
             @Param("permissionParameters") Map<String, Object> permissionParameters);
 
-    /**
-     * 统计已关联流程实例（process_instance_id 非空）的记录数量。
-     *
-     * @param tableName 数据表名
-     * @return 流程实例记录总数
-     */
+    /** 按实体查询权限和条件汇总已发布的数值列。 */
+    @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "sumByCondition")
+    @Options(statementType = StatementType.PREPARED)
+    java.math.BigDecimal sumByCondition(@Param("tableName") String tableName, @Param("column") String column,
+            @Param("condition") Map<String, Object> condition, @Param("permissionSql") String permissionSql,
+            @Param("permissionParameters") Map<String, Object> permissionParameters);
+
+    /** 统计已关联流程实例（process_instance_id 非空）的记录数量。 */
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "countProcessInstances")
     @Options(statementType = StatementType.PREPARED)
     long countProcessInstances(@Param("tableName") String tableName);

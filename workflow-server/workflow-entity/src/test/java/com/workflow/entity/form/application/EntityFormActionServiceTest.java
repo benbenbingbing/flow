@@ -439,6 +439,14 @@ class EntityFormActionServiceTest {
                 denied.getErrorCode());
         assertEquals("当前数据不满足显示条件",
                 denied.getMessage());
+
+        when(capabilityService.evaluateConfiguredConditions(eq("work_order"), any(EntityActionRule.class), isNull()))
+                .thenReturn(EntityActionCapabilityDTO.hidden("当前数据不满足显示条件"))
+                .thenReturn(EntityActionCapabilityDTO.allowed());
+        assertEquals("FORM_BUILT_IN_ACTION_DENIED",
+                assertThrows(com.workflow.core.error.BusinessForbiddenException.class,
+                        () -> service.requireBuiltInMutationForPort(request, "save", null)).getErrorCode());
+        service.requireBuiltInMutationForPort(request, "save", null);
     }
 
     @Test

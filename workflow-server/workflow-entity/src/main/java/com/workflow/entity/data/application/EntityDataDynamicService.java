@@ -184,6 +184,14 @@ public class EntityDataDynamicService implements com.workflow.port.entity.Entity
                 sortDirection);
     }
 
+    /** 使用发布字段和调用方提供的条件分页，行范围由 Port 调用方确定。 */
+    @Transactional(readOnly = true)
+    public PageResult<EntityDataDTO> pageForPort(String entityCode, Map<String, Object> condition,
+            long pageNumber, long pageSize, String sortField, String sortDirection) {
+        return findPageWithPermission(entityCode, condition, pageNumber, pageSize,
+                DataPermissionResult.allowAll(), sortField, sortDirection);
+    }
+
     /**
      * 导出专用有界查询，不执行 COUNT，也不从头扫描已导出的记录。
      * selectedIds 为 null 表示全量导出，空集合表示无选中记录；两者不能混淆。
@@ -469,13 +477,18 @@ public class EntityDataDynamicService implements com.workflow.port.entity.Entity
     public EntityDataDTO findById(
             String entityCode,
             String id) {
-        Map<String, Object> data = dynamicMapper.selectById(
-                dynamicTableService.getTableName(entityCode),
-                id);
-        if (data == null) {
-            throw new com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException(entityCode, id);
+        EntityDataDTO record = findByIdForPort(entityCode, id);
+        if (record == null) {
+            throw new com.workflow.port.entity.error.mutation.EntityMutationTargetNotFoundException(entityCode, id);
         }
-        return assembleAggregate(data, entityCode);
+        return record;
+    }
+
+    /** 按实体和主键读取未逻辑删除的记录，未命中返回 null。调用方负责授权。 */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findByIdForPort(String entityCode, String id) {
+        var data = dynamicMapper.selectById(dynamicTableService.getTableName(entityCode), id);
+        return data == null ? null : assembleAggregate(data, entityCode);
     }
 
     /**
@@ -615,6 +628,16 @@ public class EntityDataDynamicService implements com.workflow.port.entity.Entity
         return assembleAggregate(data, entityCode);
     }
 
+    /** 按主键读取含逻辑删除的当前记录，供调用方已授权的历史恢复预演使用。 */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findIncludingDeletedForPort(String entityCode, String recordId) {
+        var row = dynamicMapper.selectByIdIncludingDeleted(dynamicTableService.getTableName(entityCode), recordId);
+        if (row == null) {
+            throw new com.workflow.port.entity.error.mutation.EntityMutationTargetNotFoundException(entityCode, recordId);
+        }
+        return assembleAggregate(row, entityCode);
+    }
+
     /**
      * 按流程实例ID查询实体数据；结果供后续展示或处理。
      *
@@ -692,10 +715,18 @@ public class EntityDataDynamicService implements com.workflow.port.entity.Entity
             String entityCode,
             String listKey,
             Map<String, Object> condition) {
-        String tableName =
-                dynamicTableService.getTableName(entityCode);
-        DataPermissionResult permission =
-                getDataPermission(entityCode, listKey);
+        return findByCondition(entityCode, condition, getDataPermission(entityCode, listKey));
+    }
+
+    /** 使用发布字段匹配记录，调用方以条件限定已授权的记录。 */
+    @Transactional(readOnly = true)
+    public List<EntityDataDTO> findByConditionForPort(String entityCode, Map<String, Object> condition) {
+        return findByCondition(entityCode, condition, DataPermissionResult.allowAll());
+    }
+
+    private List<EntityDataDTO> findByCondition(String entityCode, Map<String, Object> condition,
+            DataPermissionResult permission) {
+        String tableName = dynamicTableService.getTableName(entityCode);
         EntityMultiValueRuntimeService.PreparedConditions prepared =
                 multiValueRuntimeService.prepareConditions(
                         requireDefinition(entityCode),
@@ -744,7 +775,16 @@ public class EntityDataDynamicService implements com.workflow.port.entity.Entity
     /** 计数复用发布字段和多值条件的同一解析路径，避免分页与统计的数据范围发生偏差。 */
     @Transactional(readOnly = true)
     public long countMatching(String entityCode, Map<String, Object> condition) {
-        var permission = getDataPermission(entityCode, null);
+        return countMatching(entityCode, condition, getDataPermission(entityCode, null));
+    }
+
+    /** 统计调用方指定范围内的未删除记录。 */
+    @Transactional(readOnly = true)
+    public long countMatchingForPort(String entityCode, Map<String, Object> condition) {
+        return countMatching(entityCode, condition, DataPermissionResult.allowAll());
+    }
+
+    private long countMatching(String entityCode, Map<String, Object> condition, DataPermissionResult permission) {
         var prepared = multiValueRuntimeService.prepareConditions(requireDefinition(entityCode), condition);
         permission.intersect(prepared.sqlCondition());
         if (!permission.isHasPermission()) return 0;
@@ -754,6 +794,38 @@ public class EntityDataDynamicService implements com.workflow.port.entity.Entity
                 ? dynamicMapper.countByConditionWithPermission(tableName, filters,
                         permission.getSqlCondition(), permission.getSqlParameters())
                 : dynamicMapper.countByCondition(tableName, filters);
+    }
+
+    /** 使用发布结构确认汇总列真实存在，数据库只聚合当前身份可见的未删除记录。 */
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal sumMatching(String entityCode, String fieldCode, Map<String, Object> condition) {
+        return sumMatching(entityCode, fieldCode, condition, getDataPermission(entityCode, null));
+    }
+
+    /** 汇总调用方指定范围内的主表数值字段，字段必须已发布。 */
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal sumMatchingForPort(String entityCode, String fieldCode, Map<String, Object> condition) {
+        return sumMatching(entityCode, fieldCode, condition, DataPermissionResult.allowAll());
+    }
+
+    private java.math.BigDecimal sumMatching(String entityCode, String fieldCode, Map<String, Object> condition,
+            DataPermissionResult permission) {
+        var fields = getRuntimeFields(entityCode);
+        var field = fields.stream()
+                .filter(item -> item.getFieldCode().equals(fieldCode))
+                .filter(EntityTableDefinitionFactory::isPhysicalDynamicField)
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("汇总字段必须是已发布的主表字段"));
+        var column = EntityTableDefinitionFactory.fieldColumn(field);
+        switch (column.type().kind()) {
+            case INTEGER, LONG, DECIMAL -> { }
+            default -> throw new IllegalArgumentException("汇总字段必须是数值类型");
+        }
+        var prepared = multiValueRuntimeService.prepareConditions(requireDefinition(entityCode), condition);
+        permission.intersect(prepared.sqlCondition());
+        if (!permission.isHasPermission()) return java.math.BigDecimal.ZERO;
+        return dynamicMapper.sumByCondition(dynamicTableService.getTableName(entityCode), column.name(),
+                EntityQueryConditions.fromPublishedFields(prepared.condition(), fields),
+                permission.getSqlCondition(), permission.getSqlParameters());
     }
 
     /**

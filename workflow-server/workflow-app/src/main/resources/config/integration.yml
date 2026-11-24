@@ -29,6 +29,13 @@ workflow:
     #     raw-data-required: false
     #     # 允许来源写入的 SOURCE 扩展编码清单，空列表表示只提交基础用户、组织数据。
     #     extensions: []
+  # Java 后台调用外部系统配置的授权，默认没有获准服务。
+  external-system:
+    services: {}
+    # services:
+    #   erp-sync:
+    #     credential-hash: ${ERP_SYNC_CREDENTIAL_BCRYPT}
+    #     system-codes: [erp-main]
   # 开放接口认证与访问控制配置，供第三方服务接入使用。
   open-api:
     # 是否启用开放接口能力，默认关闭，启用前需准备签名密钥和发行方信息。

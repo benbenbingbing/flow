@@ -1,6 +1,6 @@
 package com.workflow.port.system.identity.annotation;
 
-import com.workflow.port.system.identity.model.ExtensionMaintenance;
+import com.workflow.port.system.model.identity.ExtensionMaintenance;
 import java.lang.annotation.*;
 
 /** 声明独立表扩展；框架扫描已启用模块后校验并注册，不会触发业务取数。 */

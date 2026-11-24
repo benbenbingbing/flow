@@ -2,12 +2,12 @@ package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.port.entity.model.EntityRecordData;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

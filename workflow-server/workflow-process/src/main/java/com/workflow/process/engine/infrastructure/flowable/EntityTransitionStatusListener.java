@@ -1,9 +1,9 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.process.status.application.ProcessEntityStatusPolicy;
 import lombok.RequiredArgsConstructor;

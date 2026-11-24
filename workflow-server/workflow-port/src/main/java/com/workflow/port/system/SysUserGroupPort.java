@@ -1,11 +1,11 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.IdentityDirectoryModels.*;
-import com.workflow.port.system.identity.model.IdentityGroup;
-import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.model.identity.IdentityDirectoryModels.*;
+import com.workflow.port.system.model.identity.IdentityGroup;
+import com.workflow.port.system.model.identity.IdentityUser;
 import java.util.List;
 
-/** 查询用户与分组的关系，或按管理权限替换分组成员。 */
+/** 查询用户与分组的关系，或替换分组成员，由调用方授权。 */
 public interface SysUserGroupPort {
     /** 反查给定用户当前所属的有效用户组。 */
     List<IdentityGroup> listUserGroups(String userId);

@@ -2,11 +2,11 @@ package com.workflow.process.assignment.api.web;
 
 import com.workflow.port.system.SysPositionPort;
 
-import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
-import com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.port.system.model.identity.position.OrganizationBusinessLevelView;
+import com.workflow.port.system.error.identity.position.OrganizationPositionDirectoryException;
 import com.workflow.port.system.SysOrganizationPort;
-import com.workflow.port.system.identity.position.model.PositionDefinitionView;
-import com.workflow.port.process.assignment.error.PersonResolutionException;
+import com.workflow.port.system.model.identity.position.PositionDefinitionView;
+import com.workflow.port.process.error.assignment.PersonResolutionException;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.process.assignment.api.request.RelativePositionPreviewRequest;

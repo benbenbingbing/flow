@@ -10,9 +10,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
@@ -993,7 +993,7 @@ public class ConfigMigrationPackageService {
             String reason = null;
             try {
                 resolved = isDependencyResolved(dependency, type, targetKey, packageAssets);
-            } catch (IllegalArgumentException | com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException exception) {
+            } catch (IllegalArgumentException | com.workflow.port.system.error.identity.position.OrganizationPositionDirectoryException exception) {
                 resolved = false;
                 reason = exception.getMessage();
             }

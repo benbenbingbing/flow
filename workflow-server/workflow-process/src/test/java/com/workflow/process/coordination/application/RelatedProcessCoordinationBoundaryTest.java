@@ -7,7 +7,7 @@ import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.model.EntityRelationGraph.RecordRef;
 import com.workflow.entity.definition.application.model.PublishedRelationPath;
-import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.model.outbox.OutboxPublishRequest;
 import com.workflow.port.platform.WorkflowOutboxEventPort;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;

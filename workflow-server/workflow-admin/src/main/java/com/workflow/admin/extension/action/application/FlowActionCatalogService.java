@@ -1,12 +1,12 @@
 package com.workflow.admin.extension.action.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.port.process.ProcessActionDefinitionPort;
-import com.workflow.port.process.action.model.FlowActionDefinitionDescriptor;
+import com.workflow.port.process.model.action.FlowActionDefinitionDescriptor;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;

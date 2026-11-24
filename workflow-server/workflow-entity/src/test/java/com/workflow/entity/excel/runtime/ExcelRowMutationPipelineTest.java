@@ -2,7 +2,7 @@ package com.workflow.entity.excel.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.platform.SystemOperationLogPort;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.*;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;

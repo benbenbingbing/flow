@@ -1,6 +1,6 @@
 package com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper;
 
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.model.identity.*;
 import org.apache.ibatis.annotations.*;
 import java.util.Map;
 import java.util.List;
@@ -16,6 +16,12 @@ public interface IdentityPersistenceMapper {
     Map<String, Object> selectBinding(String key);
 
     default Map<String, Object> findBinding(String key) { return row(selectBinding(key)); }
+
+    /** 批量投影活动映射，不读取来源账号或原始资料。 */
+    @SelectProvider(type = IdentitySqlProvider.class, method = "findSourceIds")
+    List<SourceId> findSourceIds(@Param("type") IdentityObjectType type, @Param("keys") List<String> keys);
+
+    record SourceId(String sourceKey, String localId) { }
 
     @Select("SELECT * FROM sys_identity_source_binding WHERE object_type = #{type} AND local_id = #{id}")
     Map<String, Object> selectLocal(@Param("type") IdentityObjectType type, @Param("id") String id);
@@ -61,11 +67,27 @@ public interface IdentityPersistenceMapper {
     @Update("UPDATE sys_organization SET ext1 = #{fields.ext1,jdbcType=VARCHAR}, ext2 = #{fields.ext2,jdbcType=VARCHAR}, ext3 = #{fields.ext3,jdbcType=VARCHAR}, ext4 = #{fields.ext4,jdbcType=VARCHAR}, ext5 = #{fields.ext5,jdbcType=VARCHAR} WHERE id = #{id} AND deleted = 0")
     int updateOrganizationMainFields(@Param("id") String id, @Param("fields") IdentityMainFields fields);
 
-    @Insert("INSERT INTO sys_identity_source_binding (source_key, source_code, object_type, external_id, local_id, external_account, source_version, payload_hash, source_enabled, local_allowed, binding_status, created_at, updated_at) VALUES (#{v.source_key}, #{v.source_code}, #{v.object_type}, #{v.external_id}, #{v.local_id}, #{v.external_account}, #{v.source_version}, #{v.payload_hash}, #{v.source_enabled}, 1, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+    @Insert("INSERT INTO sys_identity_source_binding (source_key, source_code, object_type, external_id, local_id, external_account, source_version, payload_hash, source_enabled, local_allowed, binding_status, created_at, updated_at) VALUES (#{v.source_key}, #{v.source_code}, #{v.object_type}, #{v.external_id}, #{v.local_id}, #{v.external_account}, #{v.source_version}, #{v.payload_hash}, #{v.source_enabled}, #{v.local_allowed}, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
     int insertBinding(@Param("v") Map<String, Object> values);
 
     @Update("UPDATE sys_identity_source_binding SET external_account = #{v.external_account}, source_version = #{v.source_version}, payload_hash = #{v.payload_hash}, source_enabled = #{v.source_enabled}, updated_at = CURRENT_TIMESTAMP WHERE source_key = #{v.source_key}")
     int updateBinding(@Param("v") Map<String, Object> values);
+
+    /** 迁移来源键时沿用同一行的本地归属、权限、版本及首次绑定时间。 */
+    @Update("""
+            UPDATE sys_identity_source_binding SET source_key = #{newKey}, external_id = #{externalId}, updated_at = CURRENT_TIMESTAMP
+            WHERE source_key = #{oldKey} AND local_id = #{localId} AND binding_status = 'ACTIVE'
+            """)
+    int moveBinding(@Param("oldKey") String oldKey, @Param("newKey") String newKey, @Param("externalId") String externalId,
+                    @Param("localId") String localId);
+
+    /** 覆盖已关联和仍待关联的子级；本地树继续以原组织 ID 为父级。 */
+    @Update("""
+            UPDATE sys_identity_source_binding SET parent_external_id = #{externalId}, parent_source_key = #{newKey},
+                updated_at = CURRENT_TIMESTAMP WHERE object_type = 'ORGANIZATION' AND parent_source_key = #{oldKey}
+            """)
+    int moveOrganizationParentReferences(@Param("oldKey") String oldKey, @Param("newKey") String newKey,
+                                         @Param("externalId") String externalId);
 
     /** 父级外部 ID 用于追溯来源快照，哈希引用用于精确匹配后到达的父级，null 表示来源根节点。 */
     @Update("""

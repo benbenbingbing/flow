@@ -4,7 +4,7 @@ import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.admin.dictionary.application.SysDictService;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
-import com.workflow.port.system.dictionary.model.DictionaryEntry;
+import com.workflow.port.system.model.dictionary.DictionaryEntry;
 import com.workflow.port.system.SysDictPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

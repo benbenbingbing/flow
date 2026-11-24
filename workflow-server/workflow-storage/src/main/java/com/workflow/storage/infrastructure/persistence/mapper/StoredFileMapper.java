@@ -11,6 +11,13 @@ public interface StoredFileMapper {
     @Select("SELECT storage_url, owner_user_id FROM storage_file_object WHERE id = #{fileId} AND deleted = 0")
     StoredFileReference findReference(@Param("fileId") String fileId);
 
+    /** 从同一条有效登记记录校验归属并读取元数据，避免与删除操作之间重新查询。 */
+    @Select("""
+            SELECT storage_url, owner_user_id, original_name, content_type, content_length
+            FROM storage_file_object WHERE id = #{fileId} AND deleted = 0
+            """)
+    StoredFileDetails findDetails(@Param("fileId") String fileId);
+
     /** 按用户幂等键读取上传登记，冲突后追加方言当前读守卫。 */
     @SelectProvider(type = ParameterizedSqlProvider.class, method = "sql")
     StoredUploadRow findUpload(@Param("statement") ParameterizedSql statement);
@@ -24,4 +31,6 @@ public interface StoredFileMapper {
                            long contentLength, String requestHash, boolean deleted) {}
 
     record StoredFileReference(String storageUrl, String ownerUserId) {}
+    record StoredFileDetails(String storageUrl, String ownerUserId, String originalName,
+                             String contentType, long contentLength) {}
 }

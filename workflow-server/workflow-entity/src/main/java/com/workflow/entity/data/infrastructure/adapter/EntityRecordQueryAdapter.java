@@ -1,7 +1,7 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.port.entity.mutation.model.EntitySubmissionCommand;
-import com.workflow.port.entity.mutation.model.EntitySubmissionCommand.Intent;
+import com.workflow.port.entity.model.mutation.EntitySubmissionCommand;
+import com.workflow.port.entity.model.mutation.EntitySubmissionCommand.Intent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** 复用实体运行时的权限与发布态查询，只向调用方返回独立业务投影。 */
+/** 复用发布态查询，只向调用方返回独立业务投影。 */
 @Component
 public class EntityRecordQueryAdapter implements EntityRecordPort {
     private final EntityDataDynamicService records;
@@ -38,17 +38,16 @@ public class EntityRecordQueryAdapter implements EntityRecordPort {
         this.submissions = submissions;
     }
 
-    /** 不绕过实体读取策略；不存在记录保持原有 null 语义。 */
+    /** 按主键读取未删除记录，不存在时返回 null。调用方负责授权。 */
     @Override
     public EntityRecordData findById(String entityCode, String recordId) {
-        actions.getObject().requirePublishedQueryPermission(entityCode, null, true);
-        return revisionProjection(records.findVisibleById(entityCode, recordId));
+        return revisionProjection(records.findByIdForPort(entityCode, recordId));
     }
 
     @Override
     public EntityRecordData findById(String entityCode, String listKey, String recordId) {
-        actions.getObject().requirePublishedQueryPermission(entityCode, listKey, true);
-        return revisionProjection(records.findVisibleById(entityCode, recordId, listKey));
+        actions.getObject().requirePublishedListForPort(entityCode, listKey);
+        return findById(entityCode, recordId);
     }
 
     private EntityRecordData revisionProjection(EntityDataDTO record) {
@@ -58,15 +57,14 @@ public class EntityRecordQueryAdapter implements EntityRecordPort {
         return view;
     }
 
-    /** 条件白名单和数据范围过滤均由原实体服务执行。 */
+    /** 条件按已发布字段解析，调用方负责限定数据范围。 */
     @Override
     public List<EntityRecordData> findByCondition(String entityCode, Map<String, Object> condition) {
-        return records.findByCondition(entityCode, condition).stream().map(EntityRecordProjection::project).toList();
+        return records.findByConditionForPort(entityCode, condition).stream().map(EntityRecordProjection::project).toList();
     }
 
     @Override
     public List<EntityRecordData> findByIds(String entityCode, List<String> recordIds) {
-        actions.getObject().requirePublishedQueryPermission(entityCode, null, true);
         var ids = recordIds.stream().filter(org.springframework.util.StringUtils::hasText).distinct().toList();
         var result = new java.util.ArrayList<EntityRecordData>();
         // 分段限制绑定参数量，排序仍由调用方提供的 ID 顺序决定。
@@ -89,8 +87,8 @@ public class EntityRecordQueryAdapter implements EntityRecordPort {
     @Override
     public EntityRecordPage page(String entityCode, String listKey, Map<String, Object> condition,
             int pageNumber, int pageSize, String sortField, boolean descending) {
-        actions.getObject().requirePublishedQueryPermission(entityCode, listKey, false);
-        var result = records.findPage(entityCode, listKey, condition, pageNumber, pageSize,
+        actions.getObject().requirePublishedListForPort(entityCode, listKey);
+        var result = records.pageForPort(entityCode, condition, pageNumber, pageSize,
                 sortField, descending ? "DESC" : "ASC");
         return new EntityRecordPage(result.getRecords().stream().map(EntityRecordProjection::project).toList(),
                 result.getTotal(), result.getPageNum(), result.getPageSize());
@@ -98,14 +96,12 @@ public class EntityRecordQueryAdapter implements EntityRecordPort {
 
     @Override
     public long count(String entityCode, Map<String, Object> condition) {
-        actions.getObject().requirePublishedQueryPermission(entityCode, null, false);
-        return records.countMatching(entityCode, condition);
+        return records.countMatchingForPort(entityCode, condition);
     }
 
     @Override
-    public EntityRecordData findByProcessInstance(String entityCode, String processInstanceId) {
-        actions.getObject().requirePublishedQueryPermission(entityCode, null, true);
-        return EntityRecordPort.super.findByProcessInstance(entityCode, processInstanceId);
+    public java.math.BigDecimal sum(String entityCode, String fieldCode, Map<String, Object> condition) {
+        return records.sumMatchingForPort(entityCode, fieldCode, condition);
     }
 
     @Override

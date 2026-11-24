@@ -3,7 +3,7 @@ package com.workflow.entity.ui.application;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.workflow.port.entity.ui.model.UiExtensionCatalogItem;
+import com.workflow.port.entity.model.ui.UiExtensionCatalogItem;
 import com.workflow.port.entity.UiExtensionCatalogPort;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;

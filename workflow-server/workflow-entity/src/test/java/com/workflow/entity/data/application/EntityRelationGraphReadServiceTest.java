@@ -107,6 +107,25 @@ class EntityRelationGraphReadServiceTest {
     }
 
     @Test
+    void callerAuthorizedTraversalRunsWithoutUserContext() {
+        UserContext.clear();
+        var published = path(List.of(relationHop(1, "requirements", "project", "requirement", "projectId", true)));
+        when(pathResolver.validate(published)).thenReturn(published);
+        when(projectionPort.readPage(any())).thenReturn(
+                page(List.of(row("p-1", Map.of())), 1, 1, 1),
+                page(List.of(row("r-1", Map.of("projectId", "p-1"))), 1, 1, 50));
+
+        var result = service.readForPort(published, List.of("p-1"), Limits.defaults());
+
+        assertEquals(List.of("r-1"), result.terminalRecords().stream()
+                .map(EntityRelationGraph.RecordRef::recordId).toList());
+        var queries = ArgumentCaptor.forClass(ProjectionQuery.class);
+        verify(projectionPort, org.mockito.Mockito.times(2)).readPage(queries.capture());
+        assertTrue(queries.getAllValues().stream()
+                .allMatch(query -> "1=1".equals(query.dataScopePlan().sqlFragment())));
+    }
+
+    @Test
     void finalHopCanPageButIntermediateHopMustBeComplete() {
         PublishedRelationPath terminal = path(List.of(relationHop(
                 1, "requirements", "project", "requirement",

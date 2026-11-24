@@ -1,6 +1,6 @@
 package com.workflow.process.command.application;
 
-import com.workflow.port.system.identity.model.CurrentActor;
+import com.workflow.port.system.model.identity.CurrentActor;
 import com.workflow.port.system.CurrentActorPort;
 import com.workflow.port.process.error.ProcessOperationException;
 import com.workflow.core.error.ForbiddenException;

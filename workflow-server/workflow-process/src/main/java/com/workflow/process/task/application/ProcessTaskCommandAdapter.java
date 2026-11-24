@@ -3,7 +3,7 @@ package com.workflow.process.task.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.process.error.ProcessOperationException;
 import com.workflow.port.process.model.*;
-import com.workflow.port.process.task.model.*;
+import com.workflow.port.process.model.task.*;
 import com.workflow.process.cc.api.request.TaskCcRequest;
 import com.workflow.process.command.application.*;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
@@ -73,10 +73,20 @@ public class ProcessTaskCommandAdapter {
     }
 
     public TaskCommandResult claim(ClaimTaskCommand command) {
+        return claim(command, false);
+    }
+
+    /** 页面入口由当前待办身份授权，并复用认领事务。 */
+    public TaskCommandResult claimForUser(ClaimTaskCommand command) {
+        return claim(command, true);
+    }
+
+    private TaskCommandResult claim(ClaimTaskCommand command, boolean checkAccess) {
         return taskCommand(command.meta(), "TASK_CLAIM", command, command.taskId(), () -> {
             Task task = requireEngineTask(command.taskId());
             boolean changed = task.getAssignee() == null || task.getAssignee().isBlank();
-            actions.claimTask(task.getId());
+            if (checkAccess) actions.claimTask(task.getId());
+            else actions.claimTaskForPort(task.getId());
             return outcome(task, task.getId(), "TODO", changed);
         });
     }

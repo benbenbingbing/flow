@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.embed.EmbedRequestUserScopePort;
-import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Outcome;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Reason;

@@ -1,6 +1,6 @@
 package com.workflow.port.embed;
 
-import com.workflow.port.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.port.embed.model.runtime.EmbedNativeListDependencyClosure;
 
 /**
  * 在运行时按 Embed Session 固定的 View Release 读取 LIST 依赖闭包。

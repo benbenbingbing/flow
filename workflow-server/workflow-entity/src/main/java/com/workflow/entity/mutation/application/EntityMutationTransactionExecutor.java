@@ -6,11 +6,11 @@ import com.workflow.entity.version.application.EntityVersionPolicyMatcher;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.error.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;

@@ -2,7 +2,7 @@ package com.workflow.process.query.application;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.port.process.model.*;
-import com.workflow.port.process.query.model.*;
+import com.workflow.port.process.model.query.*;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;

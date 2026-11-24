@@ -4,15 +4,15 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.process.task.application.ProcessTaskService;
 
 import com.workflow.core.result.Result;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -74,13 +74,13 @@ public class ProcessRollbackService {
             targetIdArg = 0)
     public Result<Void> rejectTask(String taskId, String userId, String comment, String targetNodeId) {
         var meta = com.workflow.process.command.application.ProcessHttpCommands.meta(null);
-        var submission = com.workflow.port.process.task.model.TaskSubmission.comment(comment);
+        var submission = com.workflow.port.process.model.task.TaskSubmission.comment(comment);
         // 历史签名的 userId 不再作为授权来源；公共命令始终验证真实执行身份。
         // 未指定目标沿发布驳回连线执行，指定目标则要求实际到达该节点。
         if (targetNodeId == null || targetNodeId.isBlank()) {
-            taskCommands.complete(new com.workflow.port.process.task.model.CompleteTaskCommand(meta, taskId, "reject", submission));
+            taskCommands.complete(new com.workflow.port.process.model.task.CompleteTaskCommand(meta, taskId, "reject", submission));
         } else {
-            taskCommands.returnToNode(new com.workflow.port.process.task.model.ReturnTaskCommand(meta, taskId, targetNodeId, submission));
+            taskCommands.returnToNode(new com.workflow.port.process.model.task.ReturnTaskCommand(meta, taskId, targetNodeId, submission));
         }
         return Result.success();
     }
@@ -110,9 +110,9 @@ public class ProcessRollbackService {
                 .taskAssignee(identity).list();
         if (candidates.size() != 1) throw new com.workflow.port.process.error.ProcessOperationException(
                 "PROCESS_STATE_CHANGED", "需要唯一的重新提交待办，请使用明确的 taskId", processInstanceId);
-        taskCommands.resubmit(new com.workflow.port.process.task.model.ResubmitTaskCommand(
+        taskCommands.resubmit(new com.workflow.port.process.model.task.ResubmitTaskCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(null), candidates.get(0).getId(),
-                new com.workflow.port.process.task.model.TaskSubmission(comment, "重新提交", formData, null, null)));
+                new com.workflow.port.process.model.task.TaskSubmission(comment, "重新提交", formData, null, null)));
         return Result.success();
     }
 

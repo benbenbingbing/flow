@@ -1,6 +1,6 @@
 package com.workflow.admin.identity.extension.api.web;
 
-import com.workflow.port.system.identity.error.IdentityWriteException;
+import com.workflow.port.system.error.identity.IdentityWriteException;
 import com.workflow.core.result.Result;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;

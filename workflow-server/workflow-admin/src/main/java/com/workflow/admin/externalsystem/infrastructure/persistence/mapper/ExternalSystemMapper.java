@@ -5,6 +5,8 @@ import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemRecord;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -53,6 +55,31 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
     List<ExternalSystemRecord> selectAnyByCodePage(
             @Param("page") OffsetPage<ExternalSystemRecord> page,
             @Param("systemCode") String systemCode);
+
+    /** 单条语句读取配置和当前参数，避免并发修改时拼接不同版本的父子数据。 */
+    @Select("""
+            SELECT s.id, s.system_name, s.system_code, s.status, s.address, s.description,
+                   s.version, s.created_by, s.updated_by, s.create_time, s.update_time,
+                   p.id AS parameter_id, p.parameter_name_zh, p.parameter_name_en,
+                   p.parameter_value, p.sort_order
+            FROM sys_external_system s
+            LEFT JOIN sys_external_system_parameter p
+                   ON p.external_system_id = s.id AND p.deleted = 0
+            WHERE s.system_code = #{systemCode} AND s.deleted = 0
+            ORDER BY p.sort_order, p.parameter_name_en, p.id
+            """)
+    List<ConfigurationRow> selectConfigurationByCode(@Param("systemCode") String systemCode);
+
+    /** 左连接的一行；parameterId 为空表示系统没有活动参数。 */
+    @Getter
+    @Setter
+    class ConfigurationRow extends ExternalSystemRecord {
+        private String parameterId;
+        private String parameterNameZh;
+        private String parameterNameEn;
+        private String parameterValue;
+        private Integer sortOrder;
+    }
 
     /**
      * 锁定活动外部系统，保证父记录和参数集合在同一事务中原子更新。

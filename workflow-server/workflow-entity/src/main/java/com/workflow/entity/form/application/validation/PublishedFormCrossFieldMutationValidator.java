@@ -3,9 +3,9 @@ package com.workflow.entity.form.application.validation;
 import com.workflow.entity.form.application.context.FormCrossFieldRuntimeContext;
 import com.workflow.entity.form.application.model.PublishedFormRecordView;
 
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import lombok.RequiredArgsConstructor;

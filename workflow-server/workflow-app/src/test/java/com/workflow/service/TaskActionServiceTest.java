@@ -388,6 +388,24 @@ class TaskActionServiceTest {
     }
 
     @Test
+    void portClaimUsesCallerAuthorizationAndRecordsTheActualOperator() {
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task);
+        when(task.getId()).thenReturn("task-1");
+        when(task.getProcessInstanceId()).thenReturn("proc-1");
+
+        service.claimTaskForPort("task-1");
+
+        verify(taskService).claim("task-1", "admin");
+        verify(taskService, never()).getIdentityLinksForTask(anyString());
+        verify(processTaskService).synchronizeClaimedTask("task-1", "proc-1", "admin");
+        verify(operationLogMapper).insert(org.mockito.ArgumentMatchers
+                .<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog>argThat(
+                        log -> "admin-id".equals(log.getOperatorId())));
+    }
+
+    @Test
     void missingLoginIsStillAnAccessDenialInsteadOfAClaimConflict() {
         UserContext.clear();
         when(taskService.createTaskQuery()).thenReturn(taskQuery);

@@ -7,6 +7,7 @@ import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
+import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionActionService;
 import com.workflow.entity.excel.runtime.ExcelAtomicExecutionContext;
@@ -15,23 +16,25 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.application.mapping.EntityRecordRevision;
 import com.workflow.port.entity.EntityRecordPort.RecordCapability;
+import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
-import com.workflow.port.entity.mutation.model.EntityMutationBatchCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationBatchCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.application.mapping.EntityRecordProjection;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
 import com.workflow.entity.list.application.EntityListRuntimeContext;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -57,6 +60,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * 实体数据功能权限、数据范围与按钮规则统一执行入口。
@@ -438,7 +442,10 @@ public class EntityDataActionService {
                     dto.getFormConfigHash());
             dto.setListKey(null);
         }
-        if (excelContext == null) {
+        boolean portCall = portTraceKey != null;
+        if (portCall) {
+            requireMutationForPort(dto.getEntityCode(), config, "create", null);
+        } else if (excelContext == null) {
             capabilityService.requireToolbarActionForConfig(dto.getEntityCode(), config, "create");
         }
         FormSubmissionExecutionContext executionContext =
@@ -463,7 +470,7 @@ public class EntityDataActionService {
                 dto.getListKey(),
                 null,
                 "create",
-                actionKey(dto.getStartProcess()));
+                actionKey(dto.getStartProcess()), portCall, null);
         if (origin == null) {
             AppliedSubmissionForm applied = applySubmissionForm(
                     null,
@@ -489,8 +496,8 @@ public class EntityDataActionService {
                 executionContext.businessTraceKey());
         // 以平台新增结果作为唯一权威结果；AFTER 不能用另一条记录冒充本行已保存。
         java.util.concurrent.atomic.AtomicReference<EntityDataDTO> defaultSaved = new java.util.concurrent.atomic.AtomicReference<>();
-        var eventResult = eventRuntimeService.execute(
-                event,
+        var eventResult = executeMutationEvent(
+                event, portCall,
                 input -> {
                     if (excelContext != null) {
                         if (defaultSaved.get() != null) throw new IllegalArgumentException("Excel行新增不能重复执行");
@@ -534,7 +541,7 @@ public class EntityDataActionService {
                             dto.getListKey(),
                             null,
                             "create",
-                            actionKey(dto.getStartProcess()));
+                            actionKey(dto.getStartProcess()), portCall, null);
                     EntityDataDTO saved = mutateCreate(
                             dto,
                             applied.origin(),
@@ -655,9 +662,10 @@ public class EntityDataActionService {
                     text(formData.get("formId")),
                     text(formData.get("formConfigHash")));
         }
-        capabilityService.requireStandardPermission(
-                entityCode,
-                EntityPermissionAction.UPDATE);
+        boolean portCall = portTraceKey != null;
+        if (!portCall) {
+            capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.UPDATE);
+        }
         FormSubmissionExecutionContext executionContext =
                 submissionContext(
                         "ENTITY_UPDATE",
@@ -680,7 +688,9 @@ public class EntityDataActionService {
                 effectiveListKey,
                 id,
                 "edit",
-                updateActionKey(formData));
+                updateActionKey(formData), portCall,
+                portCall && origin != null && "FORM".equals(origin.configType())
+                        ? dynamicService.findById(entityCode, id) : null);
         if (origin == null) {
             if (isRestart(formData)) {
                 throw new com.workflow.core.error.BusinessForbiddenException(
@@ -705,13 +715,11 @@ public class EntityDataActionService {
         event.setServerIdempotencyKey(
                 executionContext.businessTraceKey());
         var defaultSaved = new java.util.concurrent.atomic.AtomicReference<EntityDataDTO>();
-        var result = eventRuntimeService.execute(
-                event,
+        var result = executeMutationEvent(
+                event, portCall,
                 input -> {
-                    EntityDataDTO row =
-                            findAccessible(entityCode, id, config);
-                    capabilityService.requireRowActionForConfig(
-                            entityCode, config, "edit", row);
+                    EntityDataDTO row = mutationTarget(entityCode, id, config, portCall);
+                    requireEditAction(entityCode, config, row, portCall);
                     AppliedSubmissionForm applied =
                             applySubmissionForm(
                                     origin,
@@ -737,7 +745,7 @@ public class EntityDataActionService {
                                 "ENTITY_SUBMISSION_INTENT_CHANGED", "发布事件不能改变 Java 更新的流程启动意图");
                     }
                     enforceFirstStart(updateRequest, portTraceKey != null);
-                    requireRestartAction(entityCode, config, row, updateRequest);
+                    requireRestartAction(entityCode, config, row, updateRequest, portCall);
                     // 发布事件可调整最终动作，不能沿用事件执行前的按钮判断。
                     requireFormMutationAction(
                             origin,
@@ -745,7 +753,7 @@ public class EntityDataActionService {
                             effectiveListKey,
                             id,
                             "edit",
-                            updateActionKey(updateRequest));
+                            updateActionKey(updateRequest), portCall, row);
                     var saved = mutateUpdate(
                             entityCode,
                             id,
@@ -806,9 +814,8 @@ public class EntityDataActionService {
             FormSubmissionExecutionContext executionContext,
             boolean javaSubmission,
             String expectedRevision) {
-        EntityDataDTO row = findAccessible(entityCode, id, config);
-        capabilityService.requireRowActionForConfig(
-                entityCode, config, "edit", row);
+        EntityDataDTO row = mutationTarget(entityCode, id, config, javaSubmission);
+        requireEditAction(entityCode, config, row, javaSubmission);
         AppliedSubmissionForm applied =
                 applySubmissionForm(
                         null,
@@ -826,7 +833,7 @@ public class EntityDataActionService {
         }
         copyRestartIntent(formData, updateRequest);
         enforceFirstStart(updateRequest, javaSubmission);
-        requireRestartAction(entityCode, config, row, updateRequest);
+        requireRestartAction(entityCode, config, row, updateRequest, javaSubmission);
         return mutateUpdate(
                 entityCode,
                 id,
@@ -952,13 +959,12 @@ public class EntityDataActionService {
                 entityCode,
                 listKey,
                 runtimeContext);
-        if (portCall) requireConfiguredListPermission(config);
-        EntityDataDTO row = findAccessible(entityCode, id, config);
-        capabilityService.requireRowActionForConfig(
-                entityCode,
-                config,
-                "delete",
-                row);
+        EntityDataDTO row = mutationTarget(entityCode, id, config, portCall);
+        if (portCall) {
+            requireMutationForPort(entityCode, config, "delete", row);
+        } else {
+            capabilityService.requireRowActionForConfig(entityCode, config, "delete", row);
+        }
         String expectedRevision = portCall ? revision(row) : null;
         EventOrigin origin = listEventOrigin(config);
         if (origin == null) {
@@ -976,7 +982,7 @@ public class EntityDataActionService {
                         id,
                         "record",
                         objectMapper.convertValue(row, Map.class)));
-        var result = eventRuntimeService.execute(event, ignored -> {
+        var result = executeMutationEvent(event, portCall, ignored -> {
             mutateDelete(entityCode, id, origin, expectedRevision);
             return Map.of("record", row);
         });
@@ -1043,7 +1049,6 @@ public class EntityDataActionService {
                 entityCode,
                 listKey,
                 runtimeContext);
-        if (portCall) requireConfiguredListPermission(config);
         if (ids == null || ids.isEmpty() || (portCall && ids.stream().noneMatch(StringUtils::hasText))) {
             throw new IllegalArgumentException("请选择需要删除的数据");
         }
@@ -1051,13 +1056,11 @@ public class EntityDataActionService {
         List<String> denied = new ArrayList<>();
         for (String id : ids.stream().filter(StringUtils::hasText).distinct().toList()) {
             if (historyWriteGuard != null) historyWriteGuard.requireWritable(entityCode, id);
-            EntityDataDTO row = findAccessible(entityCode, id, config);
+            EntityDataDTO row = mutationTarget(entityCode, id, config, portCall);
             rows.add(row);
-            var capability = capabilityService.evaluateRowActionForConfig(
-                    entityCode,
-                    config,
-                    "batchDelete",
-                    row);
+            var capability = portCall
+                    ? capabilityService.evaluateMutationForPort(entityCode, config, "batchDelete", row)
+                    : capabilityService.evaluateRowActionForConfig(entityCode, config, "batchDelete", row);
             if (!capability.isVisible() || !capability.isEnabled()) {
                 denied.add((StringUtils.hasText(row.getCode()) ? row.getCode() : row.getId())
                         + "：" + capability.getReason());
@@ -1088,8 +1091,8 @@ public class EntityDataActionService {
                                 .toList()));
         event.setSelectedIds(
                 rows.stream().map(EntityDataDTO::getId).toList());
-        var result = eventRuntimeService.execute(
-                event,
+        var result = executeMutationEvent(
+                event, portCall,
                 ignored -> {
                     mutateBatchDelete(entityCode, rows, origin, portCall);
                     return Map.of(
@@ -1103,6 +1106,29 @@ public class EntityDataActionService {
                                     .toList());
                 });
         if (portCall) requirePortDeletion(result.isDefaultExecuted());
+    }
+
+    /** 用户入口读取授权行，Port 入口用主键读取调用方已授权的目标。 */
+    private EntityDataDTO mutationTarget(String entityCode, String id, EntityListConfig config, boolean portCall) {
+        return portCall ? dynamicService.findById(entityCode, id) : findAccessible(entityCode, id, config);
+    }
+
+    private void requireEditAction(String entityCode, EntityListConfig config, EntityDataDTO row, boolean portCall) {
+        if (portCall) requireMutationForPort(entityCode, config, "edit", row);
+        else capabilityService.requireRowActionForConfig(entityCode, config, "edit", row);
+    }
+
+    private void requireMutationForPort(String entityCode, EntityListConfig config, String action, EntityDataDTO row) {
+        var capability = capabilityService.evaluateMutationForPort(entityCode, config, action, row);
+        if (!capability.isVisible() || !capability.isEnabled()) {
+            throw new ForbiddenException(capability.getReason());
+        }
+    }
+
+    private UiEventExecutionResult executeMutationEvent(
+            UiEventExecuteRequest event, boolean portCall, Function<Map<String, Object>, Object> handler) {
+        return portCall ? eventRuntimeService.executeAuthorizedMutation(event, handler)
+                : eventRuntimeService.execute(event, handler);
     }
 
     private void requirePortDeletion(boolean executed) {
@@ -1239,7 +1265,7 @@ public class EntityDataActionService {
             String id,
             EventOrigin origin,
             String expectedRevision) {
-        // 比较授权时读到的记录版本，防止状态改变后仍使用旧的删除权限判断。
+        // 比较评估删除规则时读到的记录版本，防止并发修改后按过期状态继续删除。
         mutationPort.execute(new EntityMutationCommand(null, entityCode, id, EntityMutationOperationType.DELETE,
                 Map.of(), mutationContext(origin, "DELETE_RECORD", "删除实体数据", null, entityCode, id),
                 expectedRevision));
@@ -1489,17 +1515,20 @@ public class EntityDataActionService {
         }
     }
 
-    /** Java 列表范围查询也必须通过已发布列表的入口权限；列表键本身不是授权依据。 */
-    public void requirePublishedQueryPermission(String entityCode, String listKey, boolean detail) {
-        if (detail) capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);
+    /** 流程动作查询非绑定记录时，使用当前用户的实体查看权限及行范围。 */
+    public EntityRecordData findVisibleBusinessRecord(String entityCode, String recordId) {
+        capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);
+        var row = dynamicService.findVisibleById(entityCode, recordId);
+        if (row == null) return null;
+        var record = EntityRecordProjection.project(row);
+        record.setRevision(revision(row));
+        return record;
+    }
+
+    /** 验证调用方指定的列表仍对应发布配置，列表访问和数据范围由调用方授权。 */
+    public void requirePublishedListForPort(String entityCode, String listKey) {
         if (StringUtils.hasText(listKey)) {
-            var config = resolveListConfig(entityCode, listKey, EntityListRuntimeContext.current());
-            requireConfiguredListPermission(config);
-            if (!detail && !StringUtils.hasText(config.getAccessPermissionCode())) {
-                capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.LIST);
-            }
-        } else if (!detail) {
-            capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.LIST);
+            resolveListConfig(entityCode, listKey, EntityListRuntimeContext.current());
         }
     }
 
@@ -1589,7 +1618,9 @@ public class EntityDataActionService {
             String listKey,
             String recordId,
             String mode,
-            String actionKey) {
+            String actionKey,
+            boolean portCall,
+            EntityDataDTO row) {
         if (origin == null || !"FORM".equals(origin.configType())) {
             if ("restartProcess".equals(actionKey)) {
                 throw new com.workflow.core.error.BusinessForbiddenException(
@@ -1605,8 +1636,8 @@ public class EntityDataActionService {
         request.setListKey(listKey);
         request.setMode(mode);
         request.setRecordId(recordId);
-        formActionService.requireBuiltInMutationAction(
-                request, actionKey);
+        if (portCall) formActionService.requireBuiltInMutationForPort(request, actionKey, row);
+        else formActionService.requireBuiltInMutationAction(request, actionKey);
     }
 
     /** 区分首次发起和重新发起，不能用旧的保存并发起权限代替新按钮开关。 */
@@ -1628,9 +1659,10 @@ public class EntityDataActionService {
 
     /** 表单及事件校验之后再检查已发布列表开关，缺省配置不得隐式开放重新发起。 */
     private void requireRestartAction(String entityCode, EntityListConfig config,
-            EntityDataDTO row, Map<String, Object> request) {
+            EntityDataDTO row, Map<String, Object> request, boolean portCall) {
         if (!isRestart(request)) return;
-        capabilityService.requireRowActionForConfig(entityCode, config, "restartProcess", row);
+        if (portCall) requireMutationForPort(entityCode, config, "restartProcess", row);
+        else capabilityService.requireRowActionForConfig(entityCode, config, "restartProcess", row);
         if (!StringUtils.hasText(text(request.get("previousProcessInstanceId")))
                 || !java.util.Objects.equals(row.getProcessInstanceId(),
                         text(request.get("previousProcessInstanceId")))) {

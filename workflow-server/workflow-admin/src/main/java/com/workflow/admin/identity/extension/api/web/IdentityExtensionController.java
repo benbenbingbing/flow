@@ -4,7 +4,7 @@ import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.identity.extension.application.IdentityExtensionService;
 import com.workflow.admin.identity.provisioning.application.IdentitySourceStore;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.model.identity.*;
 import com.workflow.core.result.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

@@ -1,7 +1,7 @@
 package com.workflow.admin.organization.application;
 
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.port.system.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.port.system.model.identity.position.OrganizationBusinessLevelView;
 import com.workflow.core.result.PageResult;
 
 import java.util.List;

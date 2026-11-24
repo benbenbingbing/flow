@@ -126,8 +126,15 @@ public class SystemEntityReadService {
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPage(String entityCode, Map<String, Object> filters, long pageNum,
             long pageSize, String sortField, String sortDirection, Set<String> fields) {
-        EntityDefinition definition = requireSystemEntity(entityCode);
         requirePermissions(entityCode);
+        return pageForPort(entityCode, filters, pageNum, pageSize, sortField, sortDirection, fields);
+    }
+
+    /** 使用登记的表和可读字段分页。系统实体及行访问由 Port 调用方授权。 */
+    @Transactional(readOnly = true)
+    public PageResult<EntityDataDTO> pageForPort(String entityCode, Map<String, Object> filters, long pageNum,
+            long pageSize, String sortField, String sortDirection, Set<String> fields) {
+        EntityDefinition definition = requireSystemEntity(entityCode);
         QueryMetadata metadata = metadata(definition);
         if (fields != null && !metadata.readableColumns().keySet().containsAll(fields)) {
             throw new IllegalArgumentException("投影包含不可读取的系统实体字段");
@@ -231,8 +238,14 @@ public class SystemEntityReadService {
     /** 将记录按有界 IN 批次读取，使用与普通系统列表相同的已删除过滤及字段规则。 */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findByIds(String entityCode, List<String> recordIds) {
-        EntityDefinition definition = requireSystemEntity(entityCode);
         requirePermissions(entityCode);
+        return findByIdsForPort(entityCode, recordIds);
+    }
+
+    /** 批量读取已登记系统实体的可读字段，调用方负责行访问授权。 */
+    @Transactional(readOnly = true)
+    public List<EntityDataDTO> findByIdsForPort(String entityCode, List<String> recordIds) {
+        EntityDefinition definition = requireSystemEntity(entityCode);
         QueryMetadata metadata = metadata(definition);
         if (!metadata.readableColumns().containsKey("id")) {
             throw new IllegalStateException("系统实体没有可读主键字段");
@@ -256,12 +269,22 @@ public class SystemEntityReadService {
     @Transactional(readOnly = true)
     public List<SystemEntityDefinitionPort.Summary> listReadable() {
         Set<String> permissions = PermissionUtil.getCurrentUserPermissions();
+        return listRegistered(code -> firstMissingPermission(code, permissions) == null);
+    }
+
+    /** 枚举已登记且支持查询的系统实体。调用方根据使用场景筛选目录。 */
+    @Transactional(readOnly = true)
+    public List<SystemEntityDefinitionPort.Summary> listRegisteredForPort() {
+        return listRegistered(code -> true);
+    }
+
+    private List<SystemEntityDefinitionPort.Summary> listRegistered(java.util.function.Predicate<String> visible) {
         return definitionMapper.selectList(Wrappers.<EntityDefinition>lambdaQuery()
                         .eq(EntityDefinition::getStorageMode, EntityDefinition.StorageMode.SYSTEM)
                         .orderByAsc(EntityDefinition::getEntityCode))
                 .stream()
                 .filter(definition -> isValidRegistration(definition) && fieldPolicy.isSupportedEntity(definition.getEntityCode()))
-                .filter(definition -> firstMissingPermission(definition.getEntityCode(), permissions) == null)
+                .filter(definition -> visible.test(definition.getEntityCode()))
                 .map(definition -> new SystemEntityDefinitionPort.Summary(definition.getEntityCode(),
                         definition.getEntityName(), fieldPolicy.displayField(definition.getEntityCode())))
                 .toList();
@@ -270,8 +293,14 @@ public class SystemEntityReadService {
     /** 字段目录和读取投影使用同一套字段校验，禁止通过元数据看到敏感字段。 */
     @Transactional(readOnly = true)
     public List<SystemEntityDefinitionPort.Field> describeReadableFields(String entityCode) {
-        var definition = requireSystemEntity(entityCode);
         requirePermissions(entityCode);
+        return describeReadableFieldsForPort(entityCode);
+    }
+
+    /** 返回宿主允许投影的字段目录，调用方负责系统实体访问授权。 */
+    @Transactional(readOnly = true)
+    public List<SystemEntityDefinitionPort.Field> describeReadableFieldsForPort(String entityCode) {
+        var definition = requireSystemEntity(entityCode);
         var fields = fieldMapper.findByEntityId(definition.getId());
         var readable = metadata(definition, fields).readableColumns();
         return fields.stream().filter(field -> readable.containsKey(normalize(field.getFieldCode())))
@@ -294,11 +323,17 @@ public class SystemEntityReadService {
     public EntityDataDTO findById(
             String entityCode,
             String id) {
+        requirePermissions(entityCode);
+        return findByIdForPort(entityCode, id);
+    }
+
+    /** 按已授权的系统实体及主键读取记录，继续应用字段白名单。 */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findByIdForPort(String entityCode, String id) {
         if (!StringUtils.hasText(id)) {
             throw new IllegalArgumentException("系统表记录ID不能为空");
         }
         EntityDefinition definition = requireSystemEntity(entityCode);
-        requirePermissions(entityCode);
         QueryMetadata metadata = metadata(definition);
         String idColumn = metadata.readableColumns().get("id");
         if (!StringUtils.hasText(idColumn)) {
@@ -306,7 +341,7 @@ public class SystemEntityReadService {
         }
         Map<String, Object> filters = Map.of("id", id);
         PageResult<EntityDataDTO> page =
-                findPage(entityCode, filters, 1, 1);
+                pageForPort(entityCode, filters, 1, 1, null, null, null);
         if (page.getRecords().isEmpty()) {
             throw new ForbiddenException("数据不存在或无权访问");
         }
@@ -346,6 +381,9 @@ public class SystemEntityReadService {
                         .orElseThrow(() ->
                                 new IllegalArgumentException(
                                         "实体不存在: " + entityCode));
+        if (!fieldPolicy.isSupportedEntity(entityCode)) {
+            throw new ForbiddenException("平台系统表不在通用只读访问白名单");
+        }
         if (definition.getStorageMode()
                 != EntityDefinition.StorageMode.SYSTEM) {
             throw new IllegalArgumentException(

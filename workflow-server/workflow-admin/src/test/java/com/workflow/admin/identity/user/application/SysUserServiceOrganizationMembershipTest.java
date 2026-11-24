@@ -10,6 +10,8 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,10 +35,11 @@ class SysUserServiceOrganizationMembershipTest {
             mock(PositionAssignmentQueryService.class),
             mock(PositionOrganizationScopeService.class));
 
-    @Test
-    void externalDisabledUserCanKeepInactiveMembershipWhileEditingLocalProfile() {
+    @ParameterizedTest
+    @ValueSource(strings = {SysUser.EXTERNAL_ONLY, SysUser.EXTERNAL_AND_LOCAL_PASSWORD})
+    void externalDisabledUserCanKeepInactiveMembershipWhileEditingLocalProfile(String mode) {
         SysUser existing = enabledUser("user-1", "org-a", null);
-        existing.setAuthenticationMode("EXTERNAL_ONLY");
+        existing.setAuthenticationMode(mode);
         existing.setStatus("1");
         when(userMapper.selectById("user-1")).thenReturn(existing);
         SysOrganization org = enabledUnit("org-a", "0", "org");
@@ -49,11 +52,10 @@ class SysUserServiceOrganizationMembershipTest {
     }
 
     @Test
-    void passwordResetCannotTurnExternalIdentityIntoPasswordAccount() {
+    void legacyPasswordMigrationCannotEnableLocalPasswordForExternalOnlyUser() {
         SysUser existing = enabledUser("external", null, null);
-        existing.setAuthenticationMode("EXTERNAL_ONLY");
+        existing.setAuthenticationMode(SysUser.EXTERNAL_ONLY);
         when(userMapper.selectById("external")).thenReturn(existing);
-        assertThrows(IllegalArgumentException.class, () -> service.resetPassword("external", "NewPassword123!"));
         assertThrows(IllegalArgumentException.class, () -> service.migrateLegacyPassword("external", "password"));
         verify(userMapper, never()).updateById(any(SysUser.class));
     }

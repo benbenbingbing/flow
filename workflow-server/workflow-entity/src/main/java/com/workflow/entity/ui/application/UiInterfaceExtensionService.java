@@ -577,7 +577,7 @@ public class UiInterfaceExtensionService {
                         var context = releases.authorizeRuntimeContext(bindingPoint.ownerId(), request.getRuntimeContext());
                         releases.resolveAuthorizedRuntimeFormRelease(bindingPoint.ownerId(), request.getConfigHash(), request.getRuntimeContext());
                         internal.setServerReadOnly(context != null && context.purpose()
-                                == com.workflow.port.entity.ui.model.UiRuntimePurpose.HISTORICAL);
+                                == com.workflow.port.entity.model.ui.UiRuntimePurpose.HISTORICAL);
                         if (context != null && StringUtils.hasText(context.processInstanceId())) {
                                 Map<String, Object> source = request.getRuntimeContext();
                                 boolean nested = source.containsKey("rootFormId")

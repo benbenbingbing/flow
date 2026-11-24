@@ -16,7 +16,7 @@ import java.util.Optional;
  */
 public interface ProcessDefinitionConfigPort {
 
-    /** 在流程定义查看权限下分页列出已发布且未删除的定义；keyword 可按名称或编码筛选。 */
+    /** 分页列出已发布且未删除的定义；keyword 可按名称或编码筛选。 */
     ProcessPage<ProcessCatalogItem> pagePublished(String keyword, ProcessPageRequest page);
 
     /** 按编码查已发布且未删除的定义；缺失或其他发布状态返回 empty。 */

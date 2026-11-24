@@ -3,13 +3,12 @@ package com.workflow.process.archive;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.model.history.HistoryIdentity;
 import com.workflow.port.migration.EntityHistoryImportPort;
 import com.workflow.port.migration.ProcessArchiveInstancePort;
-import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.migration.model.history.HistoryImportModels.*;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
-import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +20,7 @@ import org.xml.sax.InputSource;
 import java.io.StringReader;
 import java.util.*;
 
-/** 保存来源事实与重绘图的不可变展示档案；查看时再次执行实体数据范围授权。 */
+/** 保存不可变的历史档案。页面读取额外按当前实体的可见行和字段投影。 */
 @Service
 @RequiredArgsConstructor
 public class ProcessArchiveService implements ProcessArchiveInstancePort {
@@ -32,7 +31,6 @@ public class ProcessArchiveService implements ProcessArchiveInstancePort {
 
     @Override
     public List<ProcessTemplate> templates() {
-        require("history-import:read");
         return versions.selectList(Wrappers.<ProcessVersionHistory>lambdaQuery()
                 .eq(ProcessVersionHistory::getDeleted, 0).orderByDesc(ProcessVersionHistory::getPublishedAt))
                 .stream().limit(500).map(this::convert).toList();
@@ -40,7 +38,6 @@ public class ProcessArchiveService implements ProcessArchiveInstancePort {
 
     @Override
     public ProcessTemplate template(String id) {
-        require("history-import:read");
         var version = versions.selectById(id);
         if (version == null || Integer.valueOf(1).equals(version.getDeleted())) throw new IllegalArgumentException("流程发布版本不存在");
         return convert(version);
@@ -77,7 +74,6 @@ public class ProcessArchiveService implements ProcessArchiveInstancePort {
     @Override
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public String save(Archive archive) {
-        require("history-import:execute");
         String sourceKey = HistoryIdentity.hash(archive.sourceSystem(), archive.instance().sourceId());
         String document = encode(archive);
         String hash = HistoryIdentity.hash(document);
@@ -100,9 +96,13 @@ public class ProcessArchiveService implements ProcessArchiveInstancePort {
      * @param recordId 当前业务记录 ID，读取前重新校验当前用户的数据范围
      * @return 按迁入时间排序的档案摘要，不包含原始档案文档
      */
+    public List<Map<String, Object>> listForUser(String entityCode, String recordId) {
+        entities.requireReadable(entityCode, recordId);
+        return list(entityCode, recordId);
+    }
+
     @Override
     public List<Map<String, Object>> list(String entityCode, String recordId) {
-        entities.requireReadable(entityCode, recordId);
         return mapper.list(entityCode, recordId).stream().map(row -> Map.<String,Object>of("id", row.id(), "name", row.name(),
                 "result", row.result(), "sourceSystem", row.sourceSystem(), "sourceId", row.sourceId())).toList();
     }
@@ -114,14 +114,22 @@ public class ProcessArchiveService implements ProcessArchiveInstancePort {
      * @throws ForbiddenException 当前用户无权查看主业务记录
      * @throws IllegalArgumentException 档案不存在
      */
+    public Map<String, Object> detailForUser(String id) {
+        return detail(id, true);
+    }
+
     @Override
     public Map<String, Object> detail(String id) {
+        return detail(id, false);
+    }
+
+    private Map<String, Object> detail(String id, boolean checkAccess) {
         var document = mapper.document(id);
         if (document == null) throw new IllegalArgumentException("归档不存在");
         Archive archive;
         try { archive = json.readerFor(Archive.class).with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readValue(document); }
         catch (Exception failure) { throw new IllegalStateException("归档数据无法读取", failure); }
-        Map<String, Object> values = visibleSnapshot(archive.entityCode(), archive.recordId(), archive.data());
+        Map<String, Object> values = projectSnapshot(archive.entityCode(), archive.recordId(), archive.data(), checkAccess);
         List<Map<String, Object>> events = archive.events().stream().sorted(Comparator.comparingInt(EventRow::sequence).thenComparing(EventRow::sourceId))
                 .map(e -> {
                     Map<String, Object> item = new LinkedHashMap<>();
@@ -137,7 +145,7 @@ public class ProcessArchiveService implements ProcessArchiveInstancePort {
         List<Map<String, Object>> related = new ArrayList<>();
         if (archive.related() != null) for (var record : archive.related()) {
             try {
-                var data = visibleSnapshot(record.entityCode(), record.recordId(), record.data());
+                var data = projectSnapshot(record.entityCode(), record.recordId(), record.data(), checkAccess);
                 related.add(Map.of("entityCode", record.entityCode(), "recordId", record.recordId(), "name", record.schema().name(),
                         "data", data, "fields", record.schema().fields().stream().filter(f -> data.containsKey(f.code())).toList()));
             } catch (ForbiddenException denied) {
@@ -148,23 +156,27 @@ public class ProcessArchiveService implements ProcessArchiveInstancePort {
         return result;
     }
 
-    private Map<String, Object> visibleSnapshot(String entityCode, String recordId, Map<String, Object> snapshot) {
-        var readable = entities.readable(entityCode, recordId);
-        var currentFields = entities.schema(entityCode).fields().stream().map(Field::code).collect(java.util.stream.Collectors.toSet());
+    private Map<String, Object> projectSnapshot(
+            String entityCode, String recordId, Map<String, Object> snapshot, boolean checkAccess) {
+        Set<String> visibleFields = null;
+        if (checkAccess) {
+            var readable = entities.readable(entityCode, recordId);
+            visibleFields = entities.schema(entityCode).fields().stream().map(Field::code)
+                    .filter(readable::containsKey).collect(java.util.stream.Collectors.toSet());
+        }
         Map<String, Object> values = new LinkedHashMap<>();
-        snapshot.forEach((key, value) -> {
-            if (readable.containsKey(key) && currentFields.contains(key))
+        for (var entry : snapshot.entrySet()) {
+            if (visibleFields == null || visibleFields.contains(entry.getKey())) {
                 // 审计展示按十进制文本返回，避免浏览器 JSON number 丢失大金额的小数位。
-                values.put(key, value instanceof java.math.BigDecimal decimal ? decimal.toPlainString() : value);
-        });
+                Object value = entry.getValue();
+                values.put(entry.getKey(), value instanceof java.math.BigDecimal decimal ? decimal.toPlainString() : value);
+            }
+        }
         return values;
     }
 
     private String encode(Object value) {
         try { return json.writer().with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writeValueAsString(value); }
         catch (Exception invalid) { throw new IllegalArgumentException("归档编码失败", invalid); }
-    }
-    private void require(String permission) {
-        if (!PermissionUtil.hasPermission(permission)) throw new ForbiddenException("缺少权限: " + permission);
     }
 }

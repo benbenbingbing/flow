@@ -11,7 +11,7 @@ import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.port.process.assignment.error.PersonResolutionException;
+import com.workflow.port.process.error.assignment.PersonResolutionException;
 import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;

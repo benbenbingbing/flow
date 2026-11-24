@@ -13,7 +13,7 @@ import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.S
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.security.RequiresPermission;
-import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;

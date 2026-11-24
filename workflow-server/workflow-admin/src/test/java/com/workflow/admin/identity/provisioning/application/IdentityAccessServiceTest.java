@@ -4,8 +4,8 @@ import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.identity.position.application.PositionOrganizationScopeService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -151,5 +151,23 @@ class IdentityAccessServiceTest {
         verify(scope).requireVisible("dept");
         doThrow(new IllegalArgumentException("out of scope")).when(scope).requireVisible("dept");
         assertThrows(IllegalArgumentException.class, () -> access.requireObject(IdentityObjectType.USER, "target"));
+    }
+
+    @Test
+    void bindingRepairChecksManagementPermissionForServiceAccountAndScopeForInteractiveActor() {
+        properties.getSources().get("erp").setPermissionCheckEnabled(false);
+        var key = new ExternalIdentityKey("erp", "E1");
+        try (var permissions = mockStatic(PermissionUtil.class)) {
+            permissions.when(() -> PermissionUtil.getUserPermissions("svc")).thenReturn(Set.of());
+            var writer = access.requireSource(key);
+            assertEquals("FORBIDDEN", assertThrows(IdentityWriteException.class,
+                    () -> access.requireBindingChange(IdentityObjectType.USER, "target", writer)).code());
+            permissions.when(() -> PermissionUtil.getUserPermissions("svc")).thenReturn(Set.of("system:user:manage"));
+            access.requireBindingChange(IdentityObjectType.USER, "target", writer);
+            verifyNoInteractions(scope);
+            UserContext.setCurrentUser("svc", "service");
+            access.requireBindingChange(IdentityObjectType.USER, "target", access.requireSource(key));
+            verify(scope).requireVisible("dept");
+        }
     }
 }

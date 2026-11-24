@@ -4473,7 +4473,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 | `id` | 主键ID | `varchar(64)` | 否 | 无 | 用户ID。 | 现存 |
 | `username` | 用户名 | `varchar(50)` | 否 | 无 | 用户名。 | 现存 |
 | `nickname` | 昵称 | `varchar(50)` | 是 | `''` | 昵称。 | 现存 |
-| `password` | 密码 | `varchar(100)` | 是 | `NULL` | 本地口令哈希；外部账号允许为空，登录和重置同时检查认证策略。 | 现存 |
+| `password` | 密码 | `varchar(100)` | 是 | `NULL` | 本地口令哈希；外部账号在首次设置本地口令前为空。 | 现存 |
 | `email` | 邮箱 | `varchar(100)` | 是 | `''` | 邮箱。 | 现存 |
 | `phone` | 手机号 | `varchar(20)` | 是 | `''` | 手机号。 | 现存 |
 | `avatar` | 头像 | `varchar(255)` | 是 | `''` | 头像。 | 现存 |
@@ -4485,7 +4485,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 | `dept_id` | 部门ID | `varchar(64)` | 是 | `NULL` | 部门ID。 | 现存 |
 | `password_reset_required` | 是否必须在继续使用系统前修改密码 | `tinyint` | 否 | `'0'` | 是否必须在继续使用系统前修改密码。 | 现存 |
 | `token_version` | 令牌版本 | `bigint` | 否 | `0` | 用户令牌撤销版本；递增后此前签发的会话需按安全校验失效。 | 现存 |
-| `authentication_mode` | 认证策略 | `varchar(32)` | 否 | `'LOCAL_PASSWORD'` | 框架维护；`LOCAL_PASSWORD` 使用本地口令，`EXTERNAL_ONLY` 禁止本地密码登录和重置。 | V126 新增 |
+| `authentication_mode` | 认证策略 | `varchar(32)` | 否 | `'LOCAL_PASSWORD'` | `LOCAL_PASSWORD` 为本地账号，`EXTERNAL_ONLY` 为仅外部认证，`EXTERNAL_AND_LOCAL_PASSWORD` 为已开通本地密码登录的外部账号。 | V126 新增 |
 | `ext1` | 扩展字段1 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
 | `ext2` | 扩展字段2 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
 | `ext3` | 扩展字段3 | `varchar(500)` | 是 | `NULL` | 接入业务约定用途的来源文本，可直接用于主表查询和关联；具体格式由业务保持一致。 | V135 新增 |
@@ -4507,7 +4507,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 #### 9.5.4 业务规则
 
-password 保存本地口令哈希，外部账号可为空；authentication_mode 决定是否允许本地密码登录及重置。token_version 用于撤销此前签发的会话。外部用户与组织的来源信息保存在 `sys_identity_source_binding`，不通过追加用户或组织基础字段保存；首次绑定及组织树更新使用 `sys_identity_write_lock` 的固定 `directory` 行进行事务互斥。
+有权限的密码重置会写入 `password` 哈希，并将 `EXTERNAL_ONLY` 切换为 `EXTERNAL_AND_LOCAL_PASSWORD`。`password_reset_required` 要求用户在继续使用系统前改密，`token_version` 用于撤销此前签发的会话。外部用户与组织的来源信息保存在 `sys_identity_source_binding`，开通本地密码登录时保留原有来源绑定。首次绑定及组织树更新使用 `sys_identity_write_lock` 的固定 `directory` 行进行事务互斥。
 
 原 SQL 部分中文注释存在乱码，文档按还原后的含义表述。
 

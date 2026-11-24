@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -22,7 +24,9 @@ import com.workflow.storage.api.web.FileController;
 import com.workflow.storage.application.FileStorageFactory;
 import com.workflow.contracts.storage.spi.FileStorageProvider;
 import com.workflow.contracts.storage.model.StoredFile;
+import com.workflow.contracts.storage.model.FileUpload;
 import com.workflow.storage.application.StoredFileAccessService;
+import com.workflow.storage.application.StoredFileUploadService;
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +42,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 class FileControllerTest {
 
+    private FileController controller(FileStorageFactory factory, StoredFileAccessService access,
+                                      List<EntityFileUploadPermissionPort> authorizers) {
+        return new FileController(factory, access, authorizers, new StoredFileUploadService(factory, access));
+    }
+
     @Test
     void deletionResolvesStorageAddressAfterAuthorizationAndMarksOnlyTheFileId() {
         FileStorageFactory factory = mock(FileStorageFactory.class);
@@ -47,7 +56,7 @@ class FileControllerTest {
         when(factory.getStrategy()).thenReturn(strategy);
         when(strategy.delete("s3://files/private/object.pdf")).thenReturn(true);
 
-        assertEquals(200, new FileController(factory, access, List.of()).deleteFile("file-id").getCode());
+        assertEquals(200, controller(factory, access, List.of()).deleteFile("file-id").getCode());
 
         var ordered = inOrder(access, factory, strategy);
         ordered.verify(access).requireDelete("file-id");
@@ -70,14 +79,14 @@ class FileControllerTest {
                 "fileId", "original-file",
                 "originalName", "report.txt",
                 "size", "7");
-        when(accessService.prepareUpload("upload-01", file))
+        when(accessService.prepareUpload(eq("upload-01"), any(FileUpload.class)))
                 .thenReturn(new StoredFileAccessService.UploadClaim(
                         "user-1",
                         "upload-01",
                         "hash",
                         response));
 
-        var result = new FileController(factory, accessService, List.of())
+        var result = controller(factory, accessService, List.of())
                 .uploadFile(file, "upload-01");
 
         assertEquals(200, result.getCode());
@@ -107,18 +116,18 @@ class FileControllerTest {
                         "upload-02",
                         "hash",
                         null);
-        when(accessService.prepareUpload("upload-02", file))
+        when(accessService.prepareUpload(eq("upload-02"), any(FileUpload.class)))
                 .thenReturn(claim);
         when(factory.getStrategy()).thenReturn(strategy);
-        when(strategy.upload(org.mockito.ArgumentMatchers.any(com.workflow.contracts.storage.model.FileUpload.class))).thenReturn(current);
+        when(strategy.upload(any(FileUpload.class))).thenReturn(current);
         when(strategy.delete("s3://files/current.txt"))
                 .thenReturn(true);
-        when(accessService.register(current, file, claim))
+        when(accessService.register(eq(current), any(FileUpload.class), eq(claim)))
                 .thenReturn(new StoredFileAccessService.UploadRegistration(
                         winner,
                         false));
 
-        var result = new FileController(factory, accessService, List.of())
+        var result = controller(factory, accessService, List.of())
                 .uploadFile(file, "upload-02");
 
         assertEquals(winner, result.getData());
@@ -144,7 +153,7 @@ class FileControllerTest {
 
         StoredFileAccessService accessService = mock(StoredFileAccessService.class);
         when(accessService.requireRead("file-key")).thenReturn("s3://files/key");
-        new FileController(factory, accessService, List.of()).previewFile(
+        controller(factory, accessService, List.of()).previewFile(
                 "file-key",
                 response);
 
@@ -175,7 +184,7 @@ class FileControllerTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         when(access.requireRead("file-pdf")).thenReturn("s3://files/key.pdf");
-        new FileController(factory, access, List.of()).downloadFile("file-pdf", response);
+        controller(factory, access, List.of()).downloadFile("file-pdf", response);
 
         ContentDisposition disposition = ContentDisposition.parse(response.getHeader("Content-Disposition"));
         assertEquals("attachment", disposition.getType());
@@ -199,7 +208,7 @@ class FileControllerTest {
 
         StoredFileAccessService access = mock(StoredFileAccessService.class);
         when(access.requireRead("file-key")).thenReturn("s3://files/key");
-        new FileController(factory, access, List.of())
+        controller(factory, access, List.of())
                 .previewFile("file-key", response);
 
         assertTrue(response.getHeader("Content-Disposition").startsWith("attachment;"));
@@ -212,7 +221,7 @@ class FileControllerTest {
         FileStorageFactory factory = mock(FileStorageFactory.class);
         StoredFileAccessService access = mock(StoredFileAccessService.class);
         doThrow(new ForbiddenException("无权访问该文件")).when(access).requireRead("private-id");
-        FileController controller = new FileController(factory, access, List.of());
+        FileController controller = controller(factory, access, List.of());
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         assertThrows(ForbiddenException.class, () -> {
@@ -236,7 +245,7 @@ class FileControllerTest {
         when(strategy.open("outage"))
                 .thenThrow(new IllegalStateException("S3 unavailable"));
         StoredFileAccessService accessService = mock(StoredFileAccessService.class);
-        FileController controller = new FileController(
+        FileController controller = controller(
                 factory, accessService, List.of());
         MockHttpServletResponse missing =
                 new MockHttpServletResponse();
@@ -266,14 +275,14 @@ class FileControllerTest {
                 "content".getBytes(StandardCharsets.UTF_8));
         Map<String, String> replay = Map.of(
                 "fileId", "original-file");
-        when(accessService.prepareUpload("upload-entity-01", file))
+        when(accessService.prepareUpload(eq("upload-entity-01"), any(FileUpload.class)))
                 .thenReturn(new StoredFileAccessService.UploadClaim(
                         "user-1",
                         "upload-entity-01",
                         "hash",
                         replay));
 
-        var result = new FileController(
+        var result = controller(
                 factory, accessService, List.of(authorizer))
                 .uploadEntityFile(
                         "ZDWREQ", "create", "attachment",
@@ -285,7 +294,7 @@ class FileControllerTest {
         ordered.verify(authorizer).requireUpload(
                 "ZDWREQ", "create", "attachment");
         ordered.verify(accessService).prepareUpload(
-                "upload-entity-01", file);
+                eq("upload-entity-01"), any(FileUpload.class));
         verify(factory, never()).getStrategy();
     }
 
@@ -301,7 +310,7 @@ class FileControllerTest {
         doThrow(new ForbiddenException("没有权限"))
                 .when(authorizer)
                 .requireUpload("ZDWREQ", "create", "attachment");
-        FileController controller = new FileController(
+        FileController controller = controller(
                 factory, accessService, List.of(authorizer));
 
         assertThrows(
@@ -325,7 +334,7 @@ class FileControllerTest {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "report.txt", "text/plain", new byte[] {1});
 
-        FileController missing = new FileController(
+        FileController missing = controller(
                 factory, accessService, List.of());
         assertThrows(
                 ForbiddenException.class,
@@ -333,7 +342,7 @@ class FileControllerTest {
                         "ZDWREQ", "create", "attachment",
                         file, "upload-entity-03"));
 
-        FileController ambiguous = new FileController(
+        FileController ambiguous = controller(
                 factory, accessService, List.of(first, second));
         assertThrows(
                 ForbiddenException.class,

@@ -4,10 +4,10 @@ import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
@@ -30,7 +30,7 @@ import com.workflow.entity.version.infrastructure.persistence.record.EntityRecor
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDataset;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDatasetRow;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
-import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.model.outbox.OutboxPublishRequest;
 import com.workflow.port.platform.WorkflowOutboxEventPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -241,6 +241,18 @@ public class EntityRecordVersionService {
             String recordId,
             ManualVersionCaptureRequest request,
             String idempotencyKey) {
+        return captureManual(entityCode, recordId, request, idempotencyKey, true);
+    }
+
+    /** 为调用方已授权的记录留档，继续执行当前版本策略、写锁和幂等校验。 */
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
+    public EntityRecordVersion captureManualForPort(String entityCode, String recordId,
+            ManualVersionCaptureRequest request, String idempotencyKey) {
+        return captureManual(entityCode, recordId, request, idempotencyKey, false);
+    }
+
+    private EntityRecordVersion captureManual(String entityCode, String recordId,
+            ManualVersionCaptureRequest request, String idempotencyKey, boolean checkAccess) {
         if (!StringUtils.hasText(idempotencyKey)) {
             throw new IllegalArgumentException("手工固化必须提供 Idempotency-Key");
         }
@@ -258,11 +270,11 @@ public class EntityRecordVersionService {
                         configuration, effective.getTriggerCode())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "没有可用的手工固化触发器"));
-        dataService.findAccessibleById(
-                entityCode, recordId, null);
+        if (checkAccess) dataService.findAccessibleById(entityCode, recordId, null);
         aggregateWriter.lock(entityCode, recordId);
-        EntityDataDTO record = dataService.findAccessibleById(
-                entityCode, recordId, null);
+        // 锁定后读取最新记录；Web 入口在锁后再次核验行范围，避免等待期间归属变化。
+        EntityDataDTO record = checkAccess ? dataService.findAccessibleById(entityCode, recordId, null)
+                : dataService.findById(entityCode, recordId);
         Map<String, Object> aggregate = objectMapper.convertValue(
                 record, new TypeReference<>() { });
         Map<String, Object> extras = new LinkedHashMap<>();

@@ -41,7 +41,7 @@ class EntityTransitionStatusFlowableTest {
         engine = cfg.buildProcessEngine();
         jdbc.execute("CREATE TABLE status_write(id VARCHAR(100), status VARCHAR(30))");
         when(mutations.execute(any())).thenAnswer(call -> {
-            var command = (com.workflow.port.entity.mutation.model.EntityMutationCommand) call.getArgument(0);
+            var command = (com.workflow.port.entity.model.mutation.EntityMutationCommand) call.getArgument(0);
             jdbc.update("INSERT INTO status_write VALUES (?,?)", command.operationId(), command.payload().get("status"));
             if (rejectWrite) throw new IllegalStateException("模拟业务写入失败");
             return null;

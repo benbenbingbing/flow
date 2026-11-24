@@ -129,13 +129,13 @@ class ProcessTaskControllerTest {
                 mock(TaskListQueryService.class));
         UserContext.setCurrentUser("user-1", "admin");
 
-        var commands = mock(com.workflow.port.process.ProcessInstancePort.class);
+        var commands = mock(com.workflow.process.instance.application.ProcessInstanceCommandAdapter.class);
         ReflectionTestUtils.setField(controller, "instanceCommands", commands);
         controller.withdrawProcess(Map.of(
                 "processInstanceId", "process-1",
                 "reason", "测试撤回"));
 
-        verify(commands).withdraw(org.mockito.ArgumentMatchers.argThat(command ->
+        verify(commands).withdrawForUser(org.mockito.ArgumentMatchers.argThat(command ->
                 "process-1".equals(command.processInstanceId()) && "测试撤回".equals(command.reason())));
         verify(taskActionService, never()).withdrawProcess(any(), any(), any());
     }
@@ -178,7 +178,7 @@ class ProcessTaskControllerTest {
     @MethodSource("taskRaceExceptions")
     void manualClaimConvertsEngineRaceIntoStableConflict(RuntimeException race, String expectedCode) {
         ProcessTaskCommandAdapter service = mock(ProcessTaskCommandAdapter.class);
-        doThrow(race).when(service).claim(any());
+        doThrow(race).when(service).claimForUser(any());
 
         BusinessConflictException failure = assertThrows(BusinessConflictException.class,
                 () -> controller(service).claimTask("task-1"));
@@ -254,7 +254,7 @@ class ProcessTaskControllerTest {
         request.setAction("approve");
 
         assertEquals("审批失败: definition missing", controller(service).completeTask(request).getMessage());
-        doThrow(failure).when(service).claim(any());
+        doThrow(failure).when(service).claimForUser(any());
         assertEquals(failure, assertThrows(FlowableObjectNotFoundException.class,
                 () -> controller(service).claimTask("task-1")));
     }

@@ -3,9 +3,9 @@ package com.workflow.admin.identity.provisioning.application;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.ExternalIdentityKey;
-import com.workflow.port.system.identity.model.IdentityObjectType;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.ExternalIdentityKey;
+import com.workflow.port.system.model.identity.IdentityObjectType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +14,8 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+
+import static com.workflow.core.logging.LogValue.safe;
 
 /** 来源组织的待关联父级和派生树结构，所有入口均由 IdentityWriteService 在目录锁及同一事务内调用。 */
 @Component
@@ -38,7 +40,8 @@ public class IdentityOrganizationHierarchyService {
             return;
         }
         if (parentExternalId.isBlank() || parentExternalId.length() > 255 || parentExternalId.indexOf(0) >= 0) {
-            throw new IdentityWriteException("INVALID_MODEL", "parentExternalId", "父级外部 ID 非法");
+            throw new IdentityWriteException("INVALID_MODEL", "parentExternalId", "组织编码「%s」的父级外部 ID（parentExternalId）不能为空白，最多 255 个字符，且不能包含 NUL 字符"
+                    .formatted(safe(organization.getOrgCode())));
         }
         String parentKey = parentKey(key, parentExternalId);
         Set<String> visited = new HashSet<>();
@@ -46,7 +49,8 @@ public class IdentityOrganizationHierarchyService {
         // 沿持久化来源引用检查，即使祖先还未入库也能在后续来数闭环时拒绝跨批次循环。
         String cursor = parentKey;
         while (cursor != null) {
-            if (!visited.add(cursor)) invalid("组织来源父链存在环");
+            if (!visited.add(cursor)) invalid("组织编码「%s」的来源父链成环，请检查上级外部 ID「%s」"
+                    .formatted(safe(organization.getOrgCode()), safe(parentExternalId)));
             Map<String, Object> ancestor = persistence.findBinding(cursor);
             cursor = ancestor == null ? null : (String) ancestor.get("parent_source_key");
         }
@@ -55,7 +59,9 @@ public class IdentityOrganizationHierarchyService {
         if (binding != null) {
             parent = organizations.selectById((String) binding.get("local_id"));
             if (!"ACTIVE".equals(binding.get("binding_status")) || parent == null) {
-                throw new IdentityWriteException("REFERENCE_NOT_FOUND", "parentExternalId", "引用的来源父级已退休或缺失");
+                throw new IdentityWriteException("REFERENCE_NOT_FOUND", "parentExternalId",
+                        "组织编码「%s」引用了来源「%s」的上级外部 ID「%s」，其绑定已退役或对应的本地组织已删除"
+                                .formatted(safe(organization.getOrgCode()), safe(key.sourceCode()), safe(parentExternalId)));
             }
             validateTypes(organization, parent);
         }
@@ -83,7 +89,7 @@ public class IdentityOrganizationHierarchyService {
         queue.add(organization);
         while (!queue.isEmpty()) {
             SysOrganization parent = queue.removeFirst();
-            if (!visited.add(parent.getId())) invalid("组织本地父链存在环");
+            if (!visited.add(parent.getId())) invalid("组织编码「%s」的本地父链成环".formatted(safe(parent.getOrgCode())));
             Map<String, SysOrganization> children = new LinkedHashMap<>();
             for (SysOrganization child : organizations.selectChildren(parent.getId())) children.put(child.getId(), child);
             Map<String, Object> binding = store.findLocal(IdentityObjectType.ORGANIZATION, parent.getId());
@@ -99,11 +105,19 @@ public class IdentityOrganizationHierarchyService {
                 child.setHierarchyReady(parent.isHierarchyReady());
                 child.setLevel(parent.isHierarchyReady() ? parent.getLevel() + 1 : null);
                 child.setPath(parent.isHierarchyReady() ? parent.getPath() + child.getId() + "/" : null);
-                if (child.getPath() != null && child.getPath().length() > 500) invalid("组织路径超过最大长度");
+                if (child.getPath() != null && child.getPath().length() > 500) invalid("组织编码「%s」的路径超过 500 个字符，请检查组织层级深度"
+                        .formatted(safe(child.getOrgCode())));
                 organizations.updateProvisionedHierarchy(child);
                 queue.addLast(child);
             }
         }
+    }
+
+    /** 组织快照相同时只补齐新键下的待关联子树，已有基础资料及扩展不必重写。 */
+    public void reconcileAfterBindingMove(ExternalIdentityKey key, String parentExternalId, String id) {
+        SysOrganization organization = organizations.selectById(id);
+        prepare(organization, key, parentExternalId);
+        reconcile(key, parentExternalId, organization);
     }
 
     /** 同来源哈希同时编码 sourceCode 和外部 ID，不能使用数据库大小写不敏感的文本相等判断替代。 */
@@ -114,7 +128,8 @@ public class IdentityOrganizationHierarchyService {
 
     /** 后到父级也须校验已有子级的类型，避免把已接收的组织挂到部门下面。 */
     private void validateTypes(SysOrganization child, SysOrganization parent) {
-        if ("org".equals(child.getType()) && !"org".equals(parent.getType())) invalid("组织不能放在部门下");
+        if ("org".equals(child.getType()) && !"org".equals(parent.getType())) invalid("组织编码「%s」不能挂到部门「%s」下"
+                .formatted(safe(child.getOrgCode()), safe(parent.getOrgCode())));
     }
 
     private void invalid(String message) {

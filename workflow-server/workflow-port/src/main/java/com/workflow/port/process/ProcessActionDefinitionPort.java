@@ -1,6 +1,6 @@
 package com.workflow.port.process;
 
-import com.workflow.port.process.action.model.FlowActionDefinitionDescriptor;
+import com.workflow.port.process.model.action.FlowActionDefinitionDescriptor;
 
 /**
  * 读取管理员维护的流程动作目录。

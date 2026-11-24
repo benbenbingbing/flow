@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.*;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.port.system.identity.model.GroupMemberFilter;
+import com.workflow.port.system.model.identity.GroupMemberFilter;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.junit.jupiter.api.*;
 import org.springframework.aop.framework.ProxyFactory;

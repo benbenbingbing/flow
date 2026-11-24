@@ -697,6 +697,7 @@ const openApprove = async (
     name: row.currentTaskName || row.name || '任务审批',
     startUserName: row.startUserName,
     processName: row.processName,
+    code: row.code,
     entityCode: row.entityCode,
     ...(row.canClaim === undefined ? {} : { canClaim: row.canClaim }),
     claimRequired: row.claimRequired,

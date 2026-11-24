@@ -1,6 +1,6 @@
 package com.workflow.port.entity;
 
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import java.util.Map;
 
 /** 将客户端业务定位信息重新解析为服务端已授权的流程上下文，不接受客户端授权结论。 */

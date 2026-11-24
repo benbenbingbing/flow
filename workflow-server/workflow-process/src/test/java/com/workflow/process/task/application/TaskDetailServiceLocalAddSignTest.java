@@ -2,8 +2,8 @@ package com.workflow.process.task.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.ForbiddenException;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
@@ -101,7 +101,7 @@ class TaskDetailServiceLocalAddSignTest {
         when(formRuntimeService.getByBinding(
                 org.mockito.ArgumentMatchers.same(binding),
                 org.mockito.ArgumentMatchers.any(
-                        com.workflow.port.entity.ui.context.UiRuntimeResolutionContext.class)))
+                        com.workflow.port.entity.context.ui.UiRuntimeResolutionContext.class)))
                 .thenReturn(form);
 
         var detail = service.getTaskDetail("addsign-1");

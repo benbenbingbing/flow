@@ -1,6 +1,6 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.model.identity.IdentityUser;
 import java.util.Collection;
 import java.util.Optional;
 

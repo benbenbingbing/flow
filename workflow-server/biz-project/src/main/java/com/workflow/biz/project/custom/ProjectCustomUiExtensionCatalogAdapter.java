@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.port.entity.ui.model.UiExtensionCatalogItem;
+import com.workflow.port.entity.model.ui.UiExtensionCatalogItem;
 import com.workflow.port.entity.UiExtensionCatalogPort;
 import lombok.extern.slf4j.Slf4j;
 

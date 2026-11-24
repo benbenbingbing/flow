@@ -2,11 +2,11 @@ package com.workflow.process.engine.infrastructure.flowable;
 
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import lombok.RequiredArgsConstructor;

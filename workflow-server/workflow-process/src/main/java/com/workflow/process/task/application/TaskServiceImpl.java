@@ -3,9 +3,9 @@ package com.workflow.process.task.application;
 import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.workbench.api.response.TaskStatisticsVO;
@@ -139,14 +139,14 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
      * 完成任务。兼容旧调用签名，办理语义统一走公共任务命令，包含发布表单和加签分流。
      */
     public void completeTask(String taskId, String action, String comment, String transferTo, String actionLabel) {
-        var submission = new com.workflow.port.process.task.model.TaskSubmission(comment, actionLabel, null, null, null);
+        var submission = new com.workflow.port.process.model.task.TaskSubmission(comment, actionLabel, null, null, null);
         var meta = com.workflow.process.command.application.ProcessHttpCommands.meta(null);
         if ("transfer".equalsIgnoreCase(action)) {
-            taskCommands.transfer(new com.workflow.port.process.task.model.TransferTaskCommand(meta, taskId, transferTo, submission));
+            taskCommands.transfer(new com.workflow.port.process.model.task.TransferTaskCommand(meta, taskId, transferTo, submission));
         } else if ("resubmit".equalsIgnoreCase(action)) {
-            taskCommands.resubmit(new com.workflow.port.process.task.model.ResubmitTaskCommand(meta, taskId, submission));
+            taskCommands.resubmit(new com.workflow.port.process.model.task.ResubmitTaskCommand(meta, taskId, submission));
         } else {
-            taskCommands.complete(new com.workflow.port.process.task.model.CompleteTaskCommand(meta, taskId,
+            taskCommands.complete(new com.workflow.port.process.model.task.CompleteTaskCommand(meta, taskId,
                     action == null ? "approve" : action, submission));
         }
     }
@@ -371,8 +371,8 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
     public void resubmitTask(String taskId, String comment, Map<String, Object> formData) {
-        taskCommands.resubmit(new com.workflow.port.process.task.model.ResubmitTaskCommand(
+        taskCommands.resubmit(new com.workflow.port.process.model.task.ResubmitTaskCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(null), taskId,
-                new com.workflow.port.process.task.model.TaskSubmission(comment, "重新提交", formData, null, null)));
+                new com.workflow.port.process.model.task.TaskSubmission(comment, "重新提交", formData, null, null)));
     }
 }

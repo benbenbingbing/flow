@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** 仅查询平台白名单内的系统实体，字段与数据权限由宿主维护。 */
+/** 仅查询平台白名单内的系统实体，字段白名单由宿主维护，访问授权由调用方负责。 */
 public interface SystemEntityRecordPort {
     /** 按主键查询系统数据；不存在或不可见时与平台详情使用相同错误语义。 */
     EntityRecordData requireById(String entityCode, String recordId);

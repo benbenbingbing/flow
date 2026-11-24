@@ -7,13 +7,13 @@ import com.workflow.entity.version.application.EntityRelatedVersionCaptureServic
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.error.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.application.EntityAggregateWriter;
@@ -300,7 +300,7 @@ class EntityMutationTransactionExecutorTest {
         before.setUpdateTime(timestamp);
         var locked = record("concurrent edit");
         locked.setUpdateTime(timestamp);
-        when(queryService.findVisibleById("asset", "record-1")).thenReturn(before);
+        when(queryService.findByIdForPort("asset", "record-1")).thenReturn(before);
         var actions = mock(EntityDataActionService.class);
         var queryPort = new EntityRecordQueryAdapter(queryService, new ObjectMapper().findAndRegisterModules(),
                 new StaticListableBeanFactory(Map.of("actions", actions)).getBeanProvider(EntityDataActionService.class), mock(EntitySubmissionAdapter.class));

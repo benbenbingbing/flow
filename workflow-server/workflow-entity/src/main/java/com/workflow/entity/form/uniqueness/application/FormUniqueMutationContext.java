@@ -1,7 +1,7 @@
 package com.workflow.entity.form.uniqueness.application;
 
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
-import com.workflow.port.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationSourceType;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;

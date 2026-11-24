@@ -4,9 +4,9 @@ import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
@@ -310,16 +310,16 @@ public class SysUserService {
         if (identityManagement != null) {
             identityManagement.protectUser(user, existing);
             if (existing != null && user.getStatus() != null) {
-                user.setStatus(identityManagement.status(com.workflow.port.system.identity.model.IdentityObjectType.USER, user.getId(), user.getStatus()));
+                user.setStatus(identityManagement.status(com.workflow.port.system.model.identity.IdentityObjectType.USER, user.getId(), user.getStatus()));
             } else if (existing != null) {
                 user.setStatus(existing.getStatus());
             }
         }
         // 认证模式由服务端维护，任何普通保存均不能切换外部账号的登录方式。
-        user.setAuthenticationMode(existing == null ? "LOCAL_PASSWORD" : null);
+        user.setAuthenticationMode(existing == null ? SysUser.LOCAL_PASSWORD : null);
         // 外部停用人员的本地资料仍可编辑，不要求其保留的组织引用处于启用状态。
         validateOrganizationMembership(user, existing, existing == null
-                || !"EXTERNAL_ONLY".equals(existing.getAuthenticationMode()) || "0".equals(user.getStatus()));
+                || !SysUser.isExternallyProvisioned(existing.getAuthenticationMode()) || "0".equals(user.getStatus()));
 
         // 校验用户名唯一性
         if (StringUtils.hasText(user.getUsername())) {
@@ -367,7 +367,7 @@ public class SysUserService {
         }
         
         if (identityManagement != null) identityManagement.saveExtensions(
-                com.workflow.port.system.identity.model.IdentityObjectType.USER, user.getId(), user.getExtensions());
+                com.workflow.port.system.model.identity.IdentityObjectType.USER, user.getId(), user.getExtensions());
         return user;
     }
 
@@ -406,21 +406,27 @@ public class SysUserService {
             return;
         }
         SysOrganization organization = orgMapper.selectById(orgId);
-        if (organization == null
-                || !SysOrganization.Type.ORG.getValue().equals(organization.getType())
-                || requireActive && !SysOrganization.Status.ENABLED.getValue().equals(
-                    organization.getStatus())) {
-            throw new IllegalArgumentException("orgId 必须指向启用的组织节点");
+        if (organization == null) {
+            throw new IllegalArgumentException("所属组织不存在或已删除");
+        }
+        if (!SysOrganization.Type.ORG.getValue().equals(organization.getType())) {
+            throw new IllegalArgumentException("所属组织指向了部门，请选择组织节点");
+        }
+        if (requireActive && !SysOrganization.Status.ENABLED.getValue().equals(organization.getStatus())) {
+            throw new IllegalArgumentException("所属组织已停用，启用的用户须隶属于启用的组织");
         }
         if (!StringUtils.hasText(deptId)) {
             return;
         }
         SysOrganization department = orgMapper.selectById(deptId);
-        if (department == null
-                || !SysOrganization.Type.DEPT.getValue().equals(department.getType())
-                || requireActive && !SysOrganization.Status.ENABLED.getValue().equals(
-                    department.getStatus())) {
-            throw new IllegalArgumentException("deptId 必须指向启用的部门节点");
+        if (department == null) {
+            throw new IllegalArgumentException("所属部门不存在或已删除");
+        }
+        if (!SysOrganization.Type.DEPT.getValue().equals(department.getType())) {
+            throw new IllegalArgumentException("所属部门指向了组织，请选择部门节点");
+        }
+        if (requireActive && !SysOrganization.Status.ENABLED.getValue().equals(department.getStatus())) {
+            throw new IllegalArgumentException("所属部门已停用，启用的用户须隶属于启用的部门");
         }
         Set<String> visited = new HashSet<>();
         String currentId = department.getId();
@@ -441,7 +447,7 @@ public class SysUserService {
             }
             currentId = parentId;
         }
-        throw new IllegalArgumentException("deptId 不在 orgId 的组织范围内");
+        throw new IllegalArgumentException("指定部门不在所属组织的下级范围内，请核对组织和部门的对应关系");
     }
 
     /**
@@ -516,7 +522,7 @@ public class SysUserService {
         
         // 逻辑删除用户
         userMapper.deleteById(id);
-        if (identityManagement != null) identityManagement.retire(com.workflow.port.system.identity.model.IdentityObjectType.USER, id);
+        if (identityManagement != null) identityManagement.retire(com.workflow.port.system.model.identity.IdentityObjectType.USER, id);
         log.info("删除用户：{}", user.getUsername());
     }
     
@@ -540,7 +546,7 @@ public class SysUserService {
     public void updateStatus(String id, String status) {
         if (identityManagement != null) {
             identityManagement.lock();
-            status = identityManagement.status(com.workflow.port.system.identity.model.IdentityObjectType.USER, id, status);
+            status = identityManagement.status(com.workflow.port.system.model.identity.IdentityObjectType.USER, id, status);
         }
         // 不能禁用超级管理员
         if ("1".equals(status)) {
@@ -619,10 +625,11 @@ public class SysUserService {
     }
     
     /**
-     * 重置为管理员通过安全输入提交的新密码。
+     * 设置临时密码、标记下次登录必须改密并撤销现有会话。外部账号同时开通本地密码登录。
      *
      * @param id 用户ID
-     * @param newPassword 新密码，作为 {@code validateNewPassword} 的输入影响后续处理
+     * @param newPassword 符合密码策略且不同于当前密码的临时密码
+     * @throws IllegalArgumentException 用户不存在或新密码不符合要求
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -638,7 +645,6 @@ public class SysUserService {
         if (existing == null) {
             throw new IllegalArgumentException("用户不存在");
         }
-        requireLocalPassword(existing);
         validateNewPassword(newPassword);
         if (passwordMatches(newPassword, existing.getPassword())) {
             throw new IllegalArgumentException("新密码不能与当前密码相同");
@@ -648,6 +654,10 @@ public class SysUserService {
         update.setPassword(passwordEncoder.encode(newPassword));
         update.setPasswordResetRequired(true);
         update.setUpdateTime(LocalDateTime.now());
+        // 首次设密与模式切换一起提交，保留外部来源属性供后续同步和绑定修复使用。
+        if (SysUser.EXTERNAL_ONLY.equals(existing.getAuthenticationMode())) {
+            update.setAuthenticationMode(SysUser.EXTERNAL_AND_LOCAL_PASSWORD);
+        }
         userMapper.updateById(update);
         revokeSessions(id);
     }
@@ -734,10 +744,10 @@ public class SysUserService {
                 "TOKEN_VERSION_CHANGED");
     }
 
-    /** 外部账号无本地密码；重置、改密和历史迁移都不能隐式改变认证策略。 */
+    /** 改密和历史密码迁移只处理已支持本地密码的账号。 */
     private void requireLocalPassword(SysUser user) {
-        if (user == null || "EXTERNAL_ONLY".equals(user.getAuthenticationMode())) {
-            throw new IllegalArgumentException("外部账号不支持本地密码操作");
+        if (user == null || SysUser.EXTERNAL_ONLY.equals(user.getAuthenticationMode())) {
+            throw new IllegalArgumentException("账号尚未开通本地密码登录");
         }
     }
 

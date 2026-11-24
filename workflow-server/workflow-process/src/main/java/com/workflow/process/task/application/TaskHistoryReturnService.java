@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.port.process.error.ProcessOperationException;
 import com.workflow.port.process.model.CommandMeta;
-import com.workflow.port.process.task.model.TaskFormReference;
+import com.workflow.port.process.model.task.TaskFormReference;
 import com.workflow.process.action.application.FlowActionOperationDispatcher;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -118,7 +118,7 @@ public class TaskHistoryReturnService {
         taskActions.requireTaskAccess(taskId);
         Candidate selected = requireCandidate(source, request.targetActivityInstanceId());
         // 加签入口也锁源待办。等锁后用当前读检查加签记录，避免存储快照漏掉刚提交的编排。
-        if (!mirrors.lockPendingHistoryReturnSource(taskId) || addSigns.hasOpenAddSignForUpdate(taskId)) {
+        if (!mirrors.lockPendingTaskForIntervention(taskId) || addSigns.hasOpenAddSignForUpdate(taskId)) {
             throw changed(taskId);
         }
         String instanceId = source.getProcessInstanceId();
@@ -167,7 +167,7 @@ public class TaskHistoryReturnService {
             throw new ProcessOperationException("TASK_ACTION_NOT_ALLOWED", "回退目标未生成可办理的待办", taskId);
         }
         mirrors.completeTaskAfterHistoryReturn(taskId, request.comment().strip());
-        mirrors.syncTasksAfterHistoryReturn(instanceId);
+        mirrors.syncTasksAfterIntervention(instanceId);
         recordReturn(source, next, selected, request.comment().strip(), operator);
         parameters.put("targetTaskId", next.getId());
         event.setOperationParameters(Map.copyOf(parameters));

@@ -1,18 +1,30 @@
 package com.workflow.process.task.application;
 
-import com.workflow.port.process.task.model.AddSignType;
-import com.workflow.port.process.task.model.TaskInterventionModels.*;
+import com.workflow.port.process.model.ProcessCommandReceipt;
+import com.workflow.port.process.model.task.AddSignType;
+import com.workflow.port.process.model.task.SkipTaskCommand;
+import com.workflow.port.process.model.task.TaskInterventionModels.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-/** 复用页面的任务干预服务，使 Java 调用与现有配置、锁和幂等规则一致。 */
+/** 将 Java 调用交给各任务干预服务，统一使用运行时状态、锁和幂等规则。 */
 @Component
 @RequiredArgsConstructor
 public class ProcessTaskInterventionAdapter {
     private final TaskHistoryReturnService history;
     private final TaskAddSignService addSign;
+    private final TaskSkipService skips;
+
+    public ProcessCommandReceipt skip(SkipTaskCommand command) {
+        return skips.skip(command);
+    }
+
+    /** 执行后台跳过并登记调用方提供的审计操作人。 */
+    public ProcessCommandReceipt skip(SkipTaskCommand command, String operatorId) {
+        return skips.skip(command, operatorId);
+    }
 
     public List<HistoryReturnTarget> listHistoryReturnTargets(String taskId) {
         return history.targets(taskId).stream().map(target -> new HistoryReturnTarget(target.activityInstanceId(),

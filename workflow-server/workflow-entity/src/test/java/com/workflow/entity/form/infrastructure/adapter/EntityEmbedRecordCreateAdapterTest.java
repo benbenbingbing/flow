@@ -15,11 +15,11 @@ import static org.mockito.Mockito.when;
 
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.port.embed.EmbedRecordCreatePort;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationOperationType;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
-import com.workflow.port.entity.mutation.model.EntityMutationResult;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.model.mutation.EntityMutationResult;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

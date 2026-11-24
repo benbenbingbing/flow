@@ -1,9 +1,9 @@
 package com.workflow.migration.history;
 
-import com.workflow.port.migration.history.*;
+import com.workflow.port.migration.model.history.HistoryIdentity;
 import com.workflow.port.migration.EntityHistoryImportPort;
 import com.workflow.port.migration.ProcessArchiveInstancePort;
-import com.workflow.port.migration.history.model.HistoryImportModels.*;
+import com.workflow.port.migration.model.history.HistoryImportModels.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;

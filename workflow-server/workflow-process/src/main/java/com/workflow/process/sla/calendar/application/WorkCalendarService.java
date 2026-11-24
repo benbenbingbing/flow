@@ -266,13 +266,14 @@ public class WorkCalendarService {
     @Transactional(readOnly = true)
     public WorkCalendarSnapshot findPublishedSnapshotByCode(
             String calendarCode) {
-        WorkCalendar calendar =
-                calendarMapper.findLatestPublished(calendarCode);
-        if (calendar == null) {
-            throw new IllegalArgumentException(
-                    "工作日历未发布: " + calendarCode);
-        }
-        return snapshot(calendar);
+        return findPublishedSnapshot(calendarCode)
+                .orElseThrow(() -> new IllegalArgumentException("工作日历未发布: " + calendarCode));
+    }
+
+    /** 对接业务查询时允许缺失，调用方可以区分未发布和成功读取。 */
+    @Transactional(readOnly = true)
+    public java.util.Optional<WorkCalendarSnapshot> findPublishedSnapshot(String calendarCode) {
+        return java.util.Optional.ofNullable(calendarMapper.findLatestPublished(calendarCode)).map(this::snapshot);
     }
 
     /**

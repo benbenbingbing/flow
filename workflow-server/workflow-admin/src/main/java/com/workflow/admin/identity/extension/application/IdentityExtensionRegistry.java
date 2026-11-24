@@ -2,8 +2,8 @@ package com.workflow.admin.identity.extension.application;
 
 import com.workflow.admin.identity.provisioning.application.IdentityWriteProperties;
 import com.workflow.port.system.identity.annotation.*;
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;

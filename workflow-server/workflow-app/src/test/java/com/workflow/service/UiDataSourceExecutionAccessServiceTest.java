@@ -31,7 +31,7 @@ import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.entity.ui.context.UiInvocationContext;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -1156,7 +1156,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 .thenReturn(new ResolvedEntityFormRelease(
                         form, "release-1", 1, false,
                         "release-1", effectiveHash, null,
-                        com.workflow.port.entity.ui.model.UiRuntimePurpose.NEW_INSTANCE));
+                        com.workflow.port.entity.model.ui.UiRuntimePurpose.NEW_INSTANCE));
 
         UiExtensionDefinition extension = definition("REGISTERED_PROVIDER", "GLOBAL", null);
         extension.setExtensionType("INTERFACE");

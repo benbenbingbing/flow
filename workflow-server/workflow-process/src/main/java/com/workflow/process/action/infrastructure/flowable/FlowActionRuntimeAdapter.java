@@ -3,15 +3,16 @@ package com.workflow.process.action.infrastructure.flowable;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.process.FlowActionContextPort;
 import com.workflow.port.entity.model.EntityRecordData;
-import com.workflow.port.entity.EntityRecordPort;
+import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.port.process.model.ProcessLifecycle;
-import com.workflow.port.process.query.model.ProcessInstanceView;
-import com.workflow.port.process.query.model.ProcessTaskView;
+import com.workflow.port.process.model.query.ProcessInstanceView;
+import com.workflow.port.process.model.query.ProcessTaskView;
 import com.workflow.process.query.application.ProcessQueryAdapter;
-import com.workflow.port.process.variable.model.ProcessVariablePatch;
-import com.workflow.port.process.variable.model.VariableReadMode;
+import com.workflow.port.process.model.variable.ProcessVariablePatch;
+import com.workflow.port.process.model.variable.VariableReadMode;
 import com.workflow.port.process.ProcessVariablePort;
 import com.workflow.process.command.application.ProcessInvocationScope;
+import com.workflow.process.command.application.ProcessInvocationAccess;
 import com.workflow.process.action.application.PublishedFlowActionInvocation;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
 import com.workflow.process.variable.application.ProcessVariableReader;
@@ -31,34 +32,42 @@ public class FlowActionRuntimeAdapter implements FlowActionContextPort {
     private final ProcessQueryAdapter queries;
     private final ProcessVariablePort variables;
     private final ProcessVariableReader reader;
-    private final EntityRecordPort entityDataDynamicService;
+    private final ProcessInvocationAccess access;
+    private final EntityDataActionService entityReads;
     private final ProcessEntityRecordReader processRecords;
     private final ObjectMapper objectMapper;
 
     /** 引擎监听器在引擎装配期间依赖此适配器，延迟取得端口以避免反向初始化流程引擎。 */
     public FlowActionRuntimeAdapter(@Lazy ProcessQueryAdapter queries, @Lazy ProcessVariablePort variables,
-                                   @Lazy ProcessVariableReader reader, EntityRecordPort entityDataDynamicService,
+                                   @Lazy ProcessVariableReader reader, @Lazy EntityDataActionService entityReads,
                                    ProcessEntityRecordReader processRecords,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper, @Lazy ProcessInvocationAccess access) {
         this.queries = queries; this.variables = variables; this.reader = reader;
-        this.entityDataDynamicService = entityDataDynamicService; this.objectMapper = objectMapper;
+        this.entityReads = entityReads; this.objectMapper = objectMapper;
         this.processRecords = processRecords;
+        this.access = access;
     }
 
     /** 空运行态仍是有效结果；仅实例结束时才允许公共变量读取回退历史。 */
     @Override
     public Map<String, Object> getVariables(String processInstanceId) {
-        return variables.getProcessVariables(processInstanceId, VariableReadMode.RUNTIME_OR_HISTORY);
+        var result = variables.getProcessVariables(processInstanceId, VariableReadMode.RUNTIME_OR_HISTORY);
+        access.requireRead(processInstanceId);
+        return result;
     }
 
     @Override
     public Map<String, Object> getLiveVariables(String processInstanceId) {
-        return variables.getProcessVariables(processInstanceId, VariableReadMode.RUNTIME_ONLY);
+        var result = variables.getProcessVariables(processInstanceId, VariableReadMode.RUNTIME_ONLY);
+        access.requireRead(processInstanceId);
+        return result;
     }
 
     @Override
     public Object getVariable(String processInstanceId, String name) {
-        return variables.getProcessVariable(processInstanceId, name, VariableReadMode.RUNTIME_OR_HISTORY).value();
+        var value = variables.getProcessVariable(processInstanceId, name, VariableReadMode.RUNTIME_OR_HISTORY);
+        access.requireRead(processInstanceId);
+        return value.value();
     }
 
     /** 快捷写入按本次动作内调用顺序获得稳定键，重试不能生成随机 requestId。 */
@@ -78,23 +87,23 @@ public class FlowActionRuntimeAdapter implements FlowActionContextPort {
     /** 保留原快捷方法只返回运行实例的语义；需要已结束实例时使用历史方法。 */
     @Override
     public ProcessInstanceView getProcessInstance(String processInstanceId) {
-        return queries.findInstance(processInstanceId).filter(view -> view.lifecycle() != ProcessLifecycle.ENDED).orElse(null);
+        return queries.findReadableInstance(processInstanceId).filter(view -> view.lifecycle() != ProcessLifecycle.ENDED).orElse(null);
     }
 
     @Override
     public ProcessInstanceView getHistoricProcessInstance(String processInstanceId) {
-        return queries.findInstance(processInstanceId).orElse(null);
+        return queries.findReadableInstance(processInstanceId).orElse(null);
     }
 
     @Override
     public List<ProcessTaskView> getActiveTasks(String processInstanceId) {
-        return queries.listActiveTasks(processInstanceId);
+        return queries.listReadableActiveTasks(processInstanceId);
     }
 
     /** 已经完成的触发任务返回 null，避免把后继任务误认为触发任务。 */
     @Override
     public ProcessTaskView getTask(String taskId) {
-        return taskId == null || taskId.isBlank() ? null : queries.findActiveTask(taskId).orElse(null);
+        return taskId == null || taskId.isBlank() ? null : queries.findReadableActiveTask(taskId).orElse(null);
     }
 
     /**
@@ -117,7 +126,7 @@ public class FlowActionRuntimeAdapter implements FlowActionContextPort {
         if (PublishedFlowActionInvocation.matchesRecord(entityCode, entityDataId)) {
             return processRecords.findById(entityCode, entityDataId);
         }
-        return entityDataDynamicService.findById(entityCode, entityDataId);
+        return entityReads.findVisibleBusinessRecord(entityCode, entityDataId);
     }
 
     /**

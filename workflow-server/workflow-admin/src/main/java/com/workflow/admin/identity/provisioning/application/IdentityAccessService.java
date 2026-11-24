@@ -4,12 +4,14 @@ import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.identity.position.application.PositionOrganizationScopeService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.system.identity.error.IdentityWriteException;
-import com.workflow.port.system.identity.model.*;
+import com.workflow.port.system.error.identity.IdentityWriteException;
+import com.workflow.port.system.model.identity.*;
 import lombok.RequiredArgsConstructor;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
 import org.springframework.stereotype.Component;
 import java.util.*;
+
+import static com.workflow.core.logging.LogValue.safe;
 
 /** 来源权限与资料对象范围统一校验，页面隐藏不代替服务端授权。 */
 @Component
@@ -30,13 +32,11 @@ public class IdentityAccessService {
      * @throws IdentityWriteException 来源键非法、来源未登记、权限配置缺失、操作人无效或缺少必需权限
      */
     public Writer requireSource(ExternalIdentityKey key) {
-        if (key == null || key.sourceCode() == null || !key.sourceCode().matches("[a-z][a-z0-9_-]{0,63}")
-                || key.externalId() == null || key.externalId().isBlank() || key.externalId().length() > 255
-                || key.externalId().indexOf(0) >= 0) fail("INVALID_MODEL", "key", "来源键非法");
+        validateKey(key);
         var config = properties.getSources().get(key.sourceCode());
         if (config == null || config.isPermissionCheckEnabled()
                 && (config.getWritePermission() == null || config.getWritePermission().isBlank())) {
-            fail("SOURCE_NOT_ALLOWED", "key.sourceCode", "来源未配置或没有写入授权");
+            fail("SOURCE_NOT_ALLOWED", "key.sourceCode", "同步来源「%s」未配置或未授权写入，请检查来源配置".formatted(safe(key.sourceCode())));
         }
         String actor = UserContext.getUserId();
         if (actor == null) actor = config.getServiceUserId();
@@ -45,8 +45,25 @@ public class IdentityAccessService {
         if (config.isPermissionCheckEnabled()) requirePermission(actor, config.getWritePermission());
         return new Writer(actor, config);
     }
+
+    /** 映射查询与写入共享来源键规则，避免同一外部 ID 在读写两端判定不同。 */
+    static void validateKey(ExternalIdentityKey key) {
+        if (key == null) fail("INVALID_MODEL", "key", "同步来源键（key）不能为空");
+        if (key.sourceCode() == null || !key.sourceCode().matches("[a-z][a-z0-9_-]{0,63}")) {
+            fail("INVALID_MODEL", "key", "来源编码（sourceCode）须以小写字母开头，最多 64 个字符，仅支持小写字母、数字、下划线和连字符");
+        }
+        if (key.externalId() == null || key.externalId().isBlank() || key.externalId().length() > 255 || key.externalId().indexOf(0) >= 0) {
+            fail("INVALID_MODEL", "key", "外部 ID（externalId）不能为空白，最多 255 个字符，且不能包含 NUL 字符");
+        }
+    }
     public void requirePermission(String actor, String permission) {
         if (!hasPermission(actor, permission)) fail("FORBIDDEN", "permission", "没有所需权限：" + permission);
+    }
+
+    /** 修复会改变本地对象的来源归属，服务账号也须有管理权限，交互操作同时受现有组织范围约束。 */
+    public void requireBindingChange(IdentityObjectType target, String id, Writer writer) {
+        requirePermission(writer.actorId(), target == IdentityObjectType.USER ? "system:user:manage" : "system:organization:manage");
+        if (UserContext.getUserId() != null) requireObject(target, id);
     }
     public boolean hasPermission(String actor, String permission) {
         if (actor == null || permission == null || permission.isBlank()) return false;
@@ -55,7 +72,8 @@ public class IdentityAccessService {
     }
     public String requireObject(IdentityObjectType target, String id) {
         var row = persistence.findObject(target, id);
-        if (row == null) fail("OBJECT_NOT_FOUND", "id", "目标记录不存在");
+        if (row == null) fail("OBJECT_NOT_FOUND", "id", "localId「%s」对应的本地%s已删除或不存在"
+                .formatted(safe(id), target == IdentityObjectType.USER ? "用户" : "组织"));
         String actor = UserContext.getUserId();
         if (actor == null) {
             var binding = store.findLocal(target, id);

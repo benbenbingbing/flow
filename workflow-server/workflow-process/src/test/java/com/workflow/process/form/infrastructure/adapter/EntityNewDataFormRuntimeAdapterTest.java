@@ -1,7 +1,7 @@
 package com.workflow.process.form.infrastructure.adapter;
 
 import com.workflow.port.entity.EntityFormPort.ResolvedForm;
-import com.workflow.port.entity.ui.model.UiRuntimePurpose;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.application.UiConfigReleaseService;

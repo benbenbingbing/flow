@@ -1,6 +1,6 @@
 package com.workflow.process.action.application;
 
-import com.workflow.port.process.action.model.FlowActionDefinitionDescriptor;
+import com.workflow.port.process.model.action.FlowActionDefinitionDescriptor;
 import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.process.action.api.request.FlowActionSaveRequest;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;

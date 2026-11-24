@@ -1,6 +1,6 @@
 package com.workflow.openapi.api.web;
 
-import com.workflow.port.embed.launch.model.EmbedApplicationActor;
+import com.workflow.port.embed.model.launch.EmbedApplicationActor;
 import com.workflow.port.embed.EmbedLaunchPort;
 import com.workflow.openapi.api.annotation.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;

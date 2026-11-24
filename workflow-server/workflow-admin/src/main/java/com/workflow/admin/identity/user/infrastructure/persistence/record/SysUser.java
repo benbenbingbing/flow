@@ -22,10 +22,14 @@ import java.util.List;
 @Data
 @TableName("sys_user")
 public class SysUser {
+    public static final String LOCAL_PASSWORD = "LOCAL_PASSWORD";
+    public static final String EXTERNAL_ONLY = "EXTERNAL_ONLY";
+    public static final String EXTERNAL_AND_LOCAL_PASSWORD = "EXTERNAL_AND_LOCAL_PASSWORD";
+
     /** 同次管理保存提交的本地扩展组，未携带的组保持原值。 */
     @TableField(exist = false)
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
-    private java.util.Map<String, com.workflow.port.system.identity.model.IdentityExtensionEdit> extensions;
+    private java.util.Map<String, com.workflow.port.system.model.identity.IdentityExtensionEdit> extensions;
 
     /** 扩展字段1：由接入业务约定用途，来源同步维护，供主表条件查询和详情读取。 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
@@ -50,16 +54,21 @@ public class SysUser {
     /** 授权后的资料与版本，供通用表单回填；不接受客户端指定读取结果。 */
     @TableField(exist = false)
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-    private java.util.Map<String, com.workflow.port.system.identity.model.IdentityExtensionValue> extensionValues;
+    private java.util.Map<String, com.workflow.port.system.model.identity.IdentityExtensionValue> extensionValues;
 
     /** 来源维护标识，用于页面只读基础信息和展示独立的本地停用状态。 */
     @TableField(exist = false)
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-    private com.workflow.port.system.identity.model.IdentitySourceInfo sourceInfo;
+    private com.workflow.port.system.model.identity.IdentitySourceInfo sourceInfo;
 
-    /** LOCAL_PASSWORD 或 EXTERNAL_ONLY；由框架创建策略决定，不能通过管理请求切换。 */
+    /** 认证模式同时记录账号来源和本地密码登录能力，由创建或有权限的密码重置入口维护。 */
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private String authenticationMode;
+
+    /** 外部预配账号开通本地密码后，资料维护和来源绑定仍遵循外部账号规则。 */
+    public static boolean isExternallyProvisioned(String mode) {
+        return EXTERNAL_ONLY.equals(mode) || EXTERNAL_AND_LOCAL_PASSWORD.equals(mode);
+    }
 
     
     /** 主键ID（雪花算法分配） */

@@ -4,7 +4,7 @@ import com.workflow.embed.security.EmbedDelegatedRuntimePolicy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.port.embed.context.runtime.EmbedDelegatedRequestContext;
 import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;

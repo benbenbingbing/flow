@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.model.identity.IdentityUser;
 import com.workflow.core.logging.LogValue;
 import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.contracts.entity.permission.model.EntityActionRule;

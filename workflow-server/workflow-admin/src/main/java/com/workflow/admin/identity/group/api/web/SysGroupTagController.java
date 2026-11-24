@@ -43,7 +43,7 @@ public class SysGroupTagController {
 
     /** 设计器实时预览当前目录，带出昵称供辨认人员，不生成任务或修改流程。 */
     @PostMapping("/tag-preview")
-    public Result<List<SysGroupTagService.MemberPreview>> preview(@RequestBody List<com.workflow.port.system.identity.model.GroupMemberFilter> filters) {
+    public Result<List<SysGroupTagService.MemberPreview>> preview(@RequestBody List<com.workflow.port.system.model.identity.GroupMemberFilter> filters) {
         return Result.success(service.preview(filters));
     }
 

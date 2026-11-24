@@ -5,8 +5,8 @@ import com.workflow.contracts.process.action.model.FlowActionTraceFields;
 import com.workflow.contracts.process.action.model.FlowActionScopeType;
 import com.workflow.port.process.FlowActionContextPort;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
-import com.workflow.port.process.query.model.ProcessInstanceView;
-import com.workflow.port.process.query.model.ProcessTaskView;
+import com.workflow.port.process.model.query.ProcessInstanceView;
+import com.workflow.port.process.model.query.ProcessTaskView;
 import lombok.Data;
 
 import com.workflow.port.entity.model.EntityRecordData;

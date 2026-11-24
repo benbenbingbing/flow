@@ -1,8 +1,8 @@
 package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
-import com.workflow.port.entity.mutation.model.EntityMutationContext;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationContext;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -31,8 +31,8 @@ import com.workflow.process.instance.application.ProcessEntityVariableService;
 import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.process.instance.application.ProcessEntityRecordReader;
 
-import com.workflow.port.entity.ui.model.UiRuntimePurpose;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -433,7 +433,7 @@ class NodeFormSubmissionServiceTest {
                 Map.of("data", Map.of("amount", 88)),
                 updateCaptor.getValue().payload());
         assertEquals(
-                com.workflow.port.entity.mutation.model.EntityMutationSourceType.APPROVAL_TASK,
+                com.workflow.port.entity.model.mutation.EntityMutationSourceType.APPROVAL_TASK,
                 updateCaptor.getValue().context().sourceType());
         assertEquals(
                 List.of(new FormUniqueMutationContext.Reference(
@@ -585,7 +585,7 @@ class NodeFormSubmissionServiceTest {
                 commandCaptor.capture());
         EntityMutationCommand command = commandCaptor.getValue();
         assertEquals(
-                com.workflow.port.entity.mutation.model.EntityMutationSourceType.APPROVAL_TASK,
+                com.workflow.port.entity.model.mutation.EntityMutationSourceType.APPROVAL_TASK,
                 command.context().sourceType());
         assertEquals(
                 Map.of("data", Map.of(

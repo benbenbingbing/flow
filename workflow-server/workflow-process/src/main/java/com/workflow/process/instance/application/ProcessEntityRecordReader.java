@@ -1,7 +1,7 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.port.entity.model.EntityRecordData;
-import com.workflow.port.entity.mutation.error.EntityMutationTargetNotFoundException;
+import com.workflow.port.entity.error.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.mapping.EntityRecordProjection;
 import lombok.RequiredArgsConstructor;

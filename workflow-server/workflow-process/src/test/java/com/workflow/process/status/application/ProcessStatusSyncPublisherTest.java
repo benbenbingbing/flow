@@ -1,6 +1,6 @@
 package com.workflow.process.status.application;
 
-import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.model.outbox.OutboxPublishRequest;
 import com.workflow.port.platform.WorkflowOutboxEventPort;
 import org.junit.jupiter.api.Test;
 

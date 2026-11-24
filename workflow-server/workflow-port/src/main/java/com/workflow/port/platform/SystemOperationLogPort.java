@@ -1,6 +1,6 @@
 package com.workflow.port.platform;
 
-import com.workflow.port.platform.audit.model.SystemAuditEvent;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
 
 /**
  * 系统审计写入端口。

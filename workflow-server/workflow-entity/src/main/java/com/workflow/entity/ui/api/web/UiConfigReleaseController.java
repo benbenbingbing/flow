@@ -3,9 +3,9 @@ package com.workflow.entity.ui.api.web;
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 
 import com.workflow.core.result.Result;

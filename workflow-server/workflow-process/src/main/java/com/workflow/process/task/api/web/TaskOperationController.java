@@ -106,7 +106,7 @@ public class TaskOperationController {
     public Result<Map<String, Object>> manualCc(
             @PathVariable String taskId,
             @Valid @RequestBody TaskCcRequest request) {
-        return Result.success(Map.of("created", taskCommands.addCc(new com.workflow.port.process.task.model.ManualCcCommand(
+        return Result.success(Map.of("created", taskCommands.addCc(new com.workflow.port.process.model.task.ManualCcCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(request.getRequestId()), taskId,
                 request.getUserIds(), request.getComment())).created()));
     }
@@ -121,7 +121,7 @@ public class TaskOperationController {
     public Result<Void> cancel(@PathVariable String addSignId,
             @RequestBody(required = false) Map<String, String> request) {
         Map<String, String> values = request == null ? Map.of() : request;
-        taskCommands.cancelAddSign(new com.workflow.port.process.task.model.CancelAddSignCommand(
+        taskCommands.cancelAddSign(new com.workflow.port.process.model.task.CancelAddSignCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(values.get("requestId")),
                 addSignId, values.get("reason")));
         return Result.success();

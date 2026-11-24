@@ -1,6 +1,8 @@
 package com.workflow.port.platform;
 
-import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.model.outbox.OutboxPublishRequest;
+import java.time.LocalDateTime;
+import java.util.Optional;
 
 /**
  * 事务 Outbox 发布端口。
@@ -28,4 +30,20 @@ public interface WorkflowOutboxEventPort {
             OutboxPublishRequest request) {
         publish(request);
     }
+
+    /**
+     * 按发布时的主题和幂等键查投递状态。调用方须先校验关联业务对象的访问权限。
+     * 不存在或已超过保留期被清理时返回空。
+     */
+    default Optional<DeliveryStatus> findStatus(String topic, String eventKey) {
+        throw new UnsupportedOperationException("当前实现未提供 Outbox 状态查询");
+    }
+
+    enum State {
+        PENDING, PROCESSING, PROCESSED, FAILED, DEAD
+    }
+
+    /** 时间为 Outbox 持久化时间，用于解释重试进度；PROCESSED 表示消费者已成功返回。 */
+    record DeliveryStatus(State state, int retryCount, int maxRetries,
+                          LocalDateTime nextRetryTime, LocalDateTime processedTime) { }
 }

@@ -1,8 +1,8 @@
 package com.workflow.process.task.application;
 
-import com.workflow.port.process.task.model.AddSignType;
-import com.workflow.port.process.task.model.TaskInterventionModels.AddSignPreview;
-import com.workflow.port.process.task.model.TaskInterventionModels.AddSignUser;
+import com.workflow.port.process.model.task.AddSignType;
+import com.workflow.port.process.model.task.TaskInterventionModels.AddSignPreview;
+import com.workflow.port.process.model.task.TaskInterventionModels.AddSignUser;
 
 import com.workflow.process.action.application.FlowActionOperationDispatcher;
 import static com.workflow.contracts.process.action.model.FlowActionTriggerTiming.*;
@@ -12,9 +12,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.process.task.api.request.TaskAddSignRequest;
 import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
@@ -317,7 +317,7 @@ public class TaskAddSignService {
         return findOpenBySourceTask(taskId) != null;
     }
 
-    /** 选择回退持有源待办锁时读取最新加签状态，避免使用锁前的事务快照。 */
+    /** 干预持有源待办锁时读取最新加签状态，避免使用锁前的事务快照。 */
     public boolean hasOpenAddSignForUpdate(String taskId) {
         return findOpenBySourceTaskForUpdate(taskId) != null;
     }

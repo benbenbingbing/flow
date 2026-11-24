@@ -2,7 +2,7 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.port.entity.mutation.model.EntityMutationCommand;
+import com.workflow.port.entity.model.mutation.EntityMutationCommand;
 import com.workflow.port.entity.TrustedEntityRecordMutationPort;
 import com.workflow.port.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.process.action.context.FlowActionContext;

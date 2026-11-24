@@ -47,7 +47,18 @@ public class ProcessCommandExecutor {
     @Transactional(rollbackFor = Exception.class)
     public <T> Execution<T> execute(CommandMeta meta, String commandType, Object command,
                                     Class<T> resultType, Supplier<Outcome<T>> work) {
-        String scope = access.invocationKey();
+        return execute(access.invocationKey(), meta, commandType, command, resultType, work);
+    }
+
+    /** 后台命令使用显式审计标识隔离回执。摘要限制范围长度，且与登录和发布动作的回执分开。 */
+    @Transactional(rollbackFor = Exception.class)
+    public <T> Execution<T> executeForOperator(String operatorId, CommandMeta meta, String commandType,
+            Object command, Class<T> resultType, Supplier<Outcome<T>> work) {
+        return execute("operator:" + digest(Objects.requireNonNull(operatorId)), meta, commandType, command, resultType, work);
+    }
+
+    private <T> Execution<T> execute(String scope, CommandMeta meta, String commandType, Object command,
+            Class<T> resultType, Supplier<Outcome<T>> work) {
         String id = digest(scope + "\n" + meta.requestId());
         // 同事务中的动作回调可以再次进入公共端口；应在读取自己尚未完成的回执前报告重入。
         if (executing.get() != null && executing.get().contains(id)) throw new ProcessOperationException(

@@ -1,8 +1,8 @@
 package com.workflow.storage.api.web;
 
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.port.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.port.entity.EntityFileUploadPermissionPort;
@@ -16,6 +16,7 @@ import com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter;
 import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.application.StoredFileAccessService;
+import com.workflow.storage.application.StoredFileUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -51,6 +52,7 @@ public class FileController {
     private final FileStorageFactory storageFactory;
     private final StoredFileAccessService fileAccessService;
     private final List<EntityFileUploadPermissionPort> entityUploadAuthorizationPorts;
+    private final StoredFileUploadService uploads;
 
     /**
      * 上传文件
@@ -147,30 +149,7 @@ public class FileController {
             return Result.error("请选择要上传的文件");
         }
         try {
-            StoredFileAccessService.UploadClaim claim =
-                    fileAccessService.prepareUpload(
-                            idempotencyKey,
-                            file);
-            if (claim.replay() != null) {
-                return Result.success(claim.replay());
-            }
-            FileStorageProvider strategy = storageFactory.getStrategy();
-            Map<String, String> result = strategy.upload(
-                    MultipartFileUploadAdapter.from(file));
-            try {
-                StoredFileAccessService.UploadRegistration registration =
-                        fileAccessService.register(
-                                result,
-                                file,
-                                claim);
-                if (!registration.currentObjectRegistered()) {
-                    deleteAfterFailedRegistration(strategy, result);
-                }
-                return Result.success(registration.response());
-            } catch (RuntimeException exception) {
-                deleteAfterFailedRegistration(strategy, result);
-                throw exception;
-            }
+            return Result.success(uploads.store(MultipartFileUploadAdapter.from(file), idempotencyKey));
         } catch (FileUploadIdempotencyException exception) {
             return Result.error(
                     exception.getResultCode(),
@@ -178,24 +157,6 @@ public class FileController {
         } catch (Exception e) {
             log.error("文件上传失败", e);
             return Result.error("文件上传失败，请稍后重试");
-        }
-    }
-
-    /**
-     * 删除之后失败{@code registration}；后续读取或执行将使用更新后的状态。
-     *
-     * @param strategy {@code strategy}，供本方法删除之后失败{@code registration}时使用
-     * @param stored 已存储，供本方法删除之后失败{@code registration}时使用
-     */
-    private void deleteAfterFailedRegistration(
-            FileStorageProvider strategy,
-            Map<String, String> stored) {
-        try {
-            if (!strategy.delete(stored.get("url"))) {
-                log.error("文件登记失败后的存储对象清理未成功");
-            }
-        } catch (RuntimeException cleanupException) {
-            log.error("文件登记失败后的存储对象清理失败", cleanupException);
         }
     }
 

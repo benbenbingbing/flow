@@ -4,9 +4,9 @@ import com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
 import lombok.RequiredArgsConstructor;

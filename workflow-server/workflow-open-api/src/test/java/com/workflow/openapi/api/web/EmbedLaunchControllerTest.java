@@ -6,11 +6,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.port.embed.launch.model.EmbedApplicationActor;
-import com.workflow.port.embed.launch.model.EmbedLaunchCommand;
+import com.workflow.port.embed.model.launch.EmbedApplicationActor;
+import com.workflow.port.embed.model.launch.EmbedLaunchCommand;
 import com.workflow.port.embed.EmbedLaunchPort;
-import com.workflow.port.embed.launch.model.EmbedLaunchIssued;
-import com.workflow.port.embed.launch.model.EmbedLaunchView;
+import com.workflow.port.embed.model.launch.EmbedLaunchIssued;
+import com.workflow.port.embed.model.launch.EmbedLaunchView;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.response.OpenEmbedLaunchResponse;
 import com.workflow.openapi.application.security.OpenApplicationActorResolver;

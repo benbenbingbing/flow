@@ -1,7 +1,7 @@
 package com.workflow.process.assignment.application.model;
 
-import com.workflow.port.system.identity.position.model.OrganizationUnitSnapshot;
-import com.workflow.port.system.identity.position.model.PositionHolderView;
+import com.workflow.port.system.model.identity.position.OrganizationUnitSnapshot;
+import com.workflow.port.system.model.identity.position.PositionHolderView;
 
 import java.util.List;
 

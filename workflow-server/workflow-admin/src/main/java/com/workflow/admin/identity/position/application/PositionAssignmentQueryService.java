@@ -78,6 +78,11 @@ public class PositionAssignmentQueryService {
     public PositionViews.OrganizationAssignmentMatrix byOrganization(
             String organizationUnitId) {
         scopeService.requireVisible(organizationUnitId);
+        return byOrganizationForPort(organizationUnitId);
+    }
+
+    /** 查询指定组织的任职矩阵。Port 调用方已确认组织访问范围。 */
+    public PositionViews.OrganizationAssignmentMatrix byOrganizationForPort(String organizationUnitId) {
         SysOrganization unit = organizationMapper.selectById(organizationUnitId);
         if (unit == null) {
             throw new PositionManagementException(
@@ -99,7 +104,15 @@ public class PositionAssignmentQueryService {
      * @return 处理后的用户结果，供调用方继续处理
      */
     public PositionViews.UserAssignments byUser(String userId) {
-        List<String> visibleUnitIds = scopeService.visibleUnitIds();
+        return byUser(userId, scopeService.visibleUnitIds());
+    }
+
+    /** 查询指定用户的全部任职。Port 调用方负责筛选可返回的组织。 */
+    public PositionViews.UserAssignments byUserForPort(String userId) {
+        return byUser(userId, null);
+    }
+
+    private PositionViews.UserAssignments byUser(String userId, List<String> visibleUnitIds) {
         SysUser user = userMapper.selectById(userId);
         if (user == null) {
             throw new PositionManagementException(

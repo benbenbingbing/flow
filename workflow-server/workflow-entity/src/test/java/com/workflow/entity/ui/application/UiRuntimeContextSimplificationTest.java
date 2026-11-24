@@ -1,7 +1,7 @@
 package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.port.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.port.entity.UiFormContextPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;

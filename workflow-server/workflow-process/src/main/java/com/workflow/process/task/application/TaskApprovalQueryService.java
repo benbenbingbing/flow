@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 下一审批人查询的共享编排；页面与 Java 调用必须遵守同一加签和授权约束。 */
+/** 共享下一审批人路由、加签状态和候选范围校验。 */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -29,11 +29,20 @@ public class TaskApprovalQueryService {
      * @param request 动作和本次表单补丁；省略时使用既有默认预览行为
      */
     public NextApprovalPreviewResponse preview(String taskId, NextApprovalPreviewRequest request) {
+        return preview(taskId, request, true);
+    }
+
+    /** 调用方已授权目标任务；加签编排中的路由仍须等待汇合。 */
+    public NextApprovalPreviewResponse previewForPort(String taskId, NextApprovalPreviewRequest request) {
+        return preview(taskId, request, false);
+    }
+
+    private NextApprovalPreviewResponse preview(String taskId, NextApprovalPreviewRequest request, boolean checkAccess) {
         if (addSign.isAddSignTask(taskId)) {
-            addSign.requireAddSignTaskAccess(taskId);
+            if (checkAccess) addSign.requireAddSignTaskAccess(taskId);
             return deferred(taskId, "加签子任务需等待加签编排完成");
         }
-        actions.requireTaskAccess(taskId);
+        if (checkAccess) actions.requireTaskAccess(taskId);
         if (addSign.isAddSignSourceTask(taskId)) {
             return deferred(taskId, "加签编排中的下一节点需等待加签完成");
         }
@@ -43,6 +52,11 @@ public class TaskApprovalQueryService {
     /** 查询预览范围内的候选人；scopeKey 在现有候选服务中重新核对，不能任意指定人员来源。 */
     public PageResult<NextApproverCandidateDTO> options(String taskId, NextApproverOptionsRequest request) {
         actions.requireTaskAccess(taskId);
+        return optionsForPort(taskId, request);
+    }
+
+    /** 候选查询仍会按当前路由重新验证 scopeKey 和目标节点。 */
+    public PageResult<NextApproverCandidateDTO> optionsForPort(String taskId, NextApproverOptionsRequest request) {
         return candidates.options(taskId, request);
     }
 

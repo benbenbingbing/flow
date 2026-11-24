@@ -1,13 +1,28 @@
 package com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper;
 
-import com.workflow.port.system.identity.model.IdentityObjectType;
+import com.workflow.port.system.model.identity.IdentityObjectType;
 import java.util.*;
 
 /** Mapper SQL 生成器：只插入服务端白名单标识符，所有业务值仍使用 MyBatis 参数绑定。 */
 public final class IdentitySqlProvider {
     public String findObject(Map<String, Object> args) {
-        String table = args.get("type") == IdentityObjectType.USER ? "sys_user" : "sys_organization";
-        return "SELECT * FROM " + table + " WHERE id = #{id} AND deleted = 0";
+        return "SELECT * FROM " + objectTable(args) + " WHERE id = #{id} AND deleted = 0";
+    }
+
+    /** 表名由对象类型决定，哈希键避免依赖外部 ID 列的数据库排序规则。 */
+    public String findSourceIds(Map<String, Object> args) {
+        return """
+                <script>
+                SELECT b.source_key, b.local_id FROM sys_identity_source_binding b
+                JOIN %s o ON o.id = b.local_id AND o.deleted = 0
+                WHERE b.object_type = #{type} AND b.binding_status = 'ACTIVE' AND b.source_key IN
+                <foreach collection="keys" item="key" open="(" close=")" separator=",">#{key}</foreach>
+                </script>
+                """.formatted(objectTable(args));
+    }
+
+    private String objectTable(Map<String, Object> args) {
+        return args.get("type") == IdentityObjectType.USER ? "sys_user" : "sys_organization";
     }
     /** 表名和列名仅由对象类型决定，编码参数绑定并沿用目标列的排序规则。 */
     public String countIdentityCode(Map<String, Object> args) {

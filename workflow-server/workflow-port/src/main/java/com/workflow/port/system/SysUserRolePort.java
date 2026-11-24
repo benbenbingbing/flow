@@ -1,9 +1,9 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.model.IdentityDirectoryModels.*;
+import com.workflow.port.system.model.identity.IdentityDirectoryModels.*;
 import java.util.List;
 
-/** 查询和替换系统用户角色关系，写入时校验管理权限。 */
+/** 查询和替换系统用户角色关系，由调用方授权。 */
 public interface SysUserRolePort {
     /** 反查给定用户的角色。 */
     List<Role> listUserRoles(String userId);

@@ -1,7 +1,5 @@
 package com.workflow.process.definition.application;
 
-import com.workflow.core.error.ForbiddenException;
-import com.workflow.port.system.CurrentActorPort;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
@@ -13,12 +11,10 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verifyNoInteractions;
 
 /** 流程目录绑定门闩的锁序与发布状态测试。 */
 class ProcessCatalogAdapterTest {
@@ -40,7 +36,7 @@ class ProcessCatalogAdapterTest {
         when(historyMapper.countPublishedVersions("2"))
                 .thenReturn(2L);
         ProcessCatalogAdapter adapter = new ProcessCatalogAdapter(
-                processMapper, historyMapper, mock(CurrentActorPort.class));
+                processMapper, historyMapper);
 
         var states = adapter.lockBindingStates(List.of(
                 "02", "1", "2"));
@@ -57,16 +53,10 @@ class ProcessCatalogAdapterTest {
     }
 
     @Test
-    void checksDefinitionViewBeforeQueriesAndReturnsOnlyPublishedKeys() {
+    void returnsOnlyPublishedKeysWithoutWebIdentity() {
         var mapper = mock(ProcessDefinitionConfigMapper.class);
-        var authorization = mock(CurrentActorPort.class);
-        var adapter = new ProcessCatalogAdapter(mapper, mock(ProcessVersionHistoryMapper.class), authorization);
+        var adapter = new ProcessCatalogAdapter(mapper, mock(ProcessVersionHistoryMapper.class));
 
-        assertThrows(ForbiddenException.class, () -> adapter.findPublishedByKey("known"));
-        assertThrows(ForbiddenException.class, () -> adapter.pagePublished(null, null));
-        verifyNoInteractions(mapper);
-
-        when(authorization.hasPermission("process:definition:view")).thenReturn(true);
         var draft = process("1", "pending", 0);
         var published = process("2", "known", 0);
         published.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);

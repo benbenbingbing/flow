@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.provisioning.api.web;
 
 import com.workflow.admin.identity.provisioning.application.IdentitySourceSnapshotService;
-import com.workflow.port.system.identity.model.IdentityObjectType;
+import com.workflow.port.system.model.identity.IdentityObjectType;
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
 import lombok.RequiredArgsConstructor;

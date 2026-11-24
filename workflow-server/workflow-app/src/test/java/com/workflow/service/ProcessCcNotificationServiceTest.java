@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
 import com.workflow.contracts.outbox.model.OutboxEvent;
-import com.workflow.port.platform.outbox.model.OutboxPublishRequest;
+import com.workflow.port.platform.model.outbox.OutboxPublishRequest;
 import com.workflow.port.platform.WorkflowOutboxEventPort;
 import com.workflow.contracts.process.cc.spi.CcNotificationChannelProvider;
 import com.workflow.process.cc.application.CcNotificationPayload;

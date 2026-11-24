@@ -160,6 +160,12 @@ public class TaskSlaRuntimeService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ProcessTaskSla acknowledge(String taskId, String operatorId) {
+        return acknowledge(taskId);
+    }
+
+    /** 结算调用方已授权的任务响应时间。重复调用保留首次响应记录。 */
+    @Transactional(rollbackFor = Exception.class)
+    public ProcessTaskSla acknowledge(String taskId) {
         ProcessTaskSla sla = requireSlaForUpdate(taskId);
         return acknowledgeLocked(sla);
     }

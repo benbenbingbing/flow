@@ -3,7 +3,7 @@ package com.workflow.process.task.application;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.system.identity.model.IdentityUser;
+import com.workflow.port.system.model.identity.IdentityUser;
 import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;

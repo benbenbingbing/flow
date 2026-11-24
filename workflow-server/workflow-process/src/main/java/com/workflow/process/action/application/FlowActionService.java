@@ -2,9 +2,9 @@ package com.workflow.process.action.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.port.process.ProcessActionDefinitionPort;
 import com.workflow.process.action.api.request.FlowActionSaveRequest;

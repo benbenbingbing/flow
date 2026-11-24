@@ -1,13 +1,12 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.port.system.dictionary.model.DictionaryEntry;
+import com.workflow.port.system.model.dictionary.DictionaryEntry;
 import com.workflow.port.system.SysDictPort;
 import com.workflow.port.entity.model.EntityPublishedMetadata;
 import com.workflow.port.entity.EntityDefinitionPort;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
-import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
@@ -23,7 +22,6 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class EntityMetadataAdapter implements EntityDefinitionPort {
-    private final EntityActionCapabilityService access;
     private final EntityPublishedSnapshotService snapshots;
     private final EntityStatusService statuses;
     private final SysDictPort dictionaries;
@@ -32,7 +30,6 @@ public class EntityMetadataAdapter implements EntityDefinitionPort {
 
     @Override
     public Optional<EntityPublishedMetadata> findPublished(String entityCode) {
-        access.requireEntityMetadataAccess(entityCode);
         var snapshot = snapshots.findLatestByEntityCode(entityCode);
         if (snapshot == null) return Optional.empty();
         // 只投影发布时允许读取的字段，不返回草稿、物理表等实现信息。
@@ -66,7 +63,6 @@ public class EntityMetadataAdapter implements EntityDefinitionPort {
 
     @Override
     public Object loadInterfaceOptions(FieldOptionsRequest request) {
-        access.requireEntityMetadataAccess(request.entityCode());
         var snapshot = snapshots.getLatestByEntityCode(request.entityCode());
         var form = forms.selectById(request.formId());
         if (form == null || !snapshot.getEntityId().equals(form.getEntityId())) {

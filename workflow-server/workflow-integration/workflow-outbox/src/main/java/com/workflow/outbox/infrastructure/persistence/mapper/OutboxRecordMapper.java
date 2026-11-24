@@ -23,6 +23,16 @@ import java.util.List;
 @Mapper
 public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
 
+    /** 按唯一业务键读取投递状态，避免读取事件载荷及异常内容。 */
+    @Select("""
+            SELECT status, retry_count, max_retries, next_retry_time, processed_time
+            FROM workflow_outbox_event WHERE topic = #{topic} AND event_key = #{eventKey}
+            """)
+    DeliveryRow findDeliveryStatus(@Param("topic") String topic, @Param("eventKey") String eventKey);
+
+    record DeliveryRow(String status, int retryCount, int maxRetries,
+                       LocalDateTime nextRetryTime, LocalDateTime processedTime) { }
+
     /**
      * 认领待发送事件记录批次；后续读取或执行将使用更新后的状态。
      *

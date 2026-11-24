@@ -104,9 +104,9 @@ public IdentitySaveResult saveEmployee(ExternalEmployee employee) {
 
 | 模型 | 字段 |
 | --- | --- |
-| UserSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields |
+| UserSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields、bindingChange |
 | UserBaseData | account、nickname、email、phone、avatar、organizationExternalId、departmentExternalId、enabled |
-| OrganizationSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields |
+| OrganizationSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields、bindingChange |
 | OrganizationBaseData | externalCode、name、type、parentExternalId、businessLevelCode、phone、email、address、description、sortOrder、enabled |
 
 基础字段是本模型范围内的**完整快照**：可空字段传 null 会清空原值。
@@ -125,10 +125,24 @@ V129 为来源映射保存 `parent_external_id` 与精确哈希 `parent_source_k
 - 负责人继续通过 UNIT_LEADER 任职入口维护，不在组织基础快照中设置。
 - 来源对象被本地逻辑删除后，映射标记 RETIRED；再次提交相同键会拒绝，不静默重建。
 
-外部预配账号使用 `EXTERNAL_ONLY`，不生成本地密码；本地密码登录、重置、改密、历史密码迁移均不能把它切换为密码账号。
+外部预配账号初始使用 `EXTERNAL_ONLY`，不生成本地密码。拥有 `system:user:reset-password` 权限的用户或超级管理员可在用户管理中为该账号设定临时密码，认证模式随之切换为 `EXTERNAL_AND_LOCAL_PASSWORD`。重置会撤销现有会话，账号须在下次本地登录后先改密。
+外部来源绑定、资料同步和来源键修复继续按外部预配账号处理。普通资料保存、来源同步和历史密码迁移都不能为仅外部认证的账号开通本地密码登录。
 来源配置 `default-role-code` 时，首次创建用户会同时分配该角色，获得该角色对应的权限。用户及组织同步共用来源配置，默认角色只用于新建用户。
 外部登录仍需使用产品已有且经过授权的登录接入能力。
 产品原有本地用户继续使用 LOCAL_PASSWORD。
+
+### 来源外部 ID 修复
+
+在单条或批量保存模型中传入新的 `key`、完整来源快照和可选的 `bindingChange`。数据修复任务先核实本地 ID 与来源对象的对应关系。
+
+| 场景 | `bindingChange` | 写入结果 |
+| --- | --- | --- |
+| 旧绑定仍存在 | `new IdentityBindingChange(localId, oldExternalId)` | 迁移同来源的旧绑定、原文和来源组织的父级引用，保留本地 ID、已有版本记录及本地启用许可。 |
+| 旧绑定已删除 | `new IdentityBindingChange(localId, null)` | 为尚未绑定的本地记录补绑，以本次快照建立来源版本基线。已停用的本地记录继续停用。 |
+
+来源账号或组织编码须与本地记录精确一致，用户须为外部预配账号，包括已开通本地密码的外部账号。修复操作人须通过来源授权及对应的 `system:user:manage` 或 `system:organization:manage` 权限校验，交互操作还校验本地对象的数据范围。其他对象占用的新键、已退休的旧绑定及目标键下归属不明的原文会阻止修复。成功修复返回 `UPDATED`，重复提交继续按来源版本和摘要判定。
+
+组织换键前，来源方须切换下级组织和用户的组织引用，并处理仍携带旧键的待重试消息。仅因引用切换而改变内容的版本化快照也应提交更高版本。先删绑定会失去旧键与本地对象的关联，补绑据本次快照恢复，旧键下的原文及下级来源引用需要另外核对。批量处理组织与用户时先提交组织。
 
 ### 3.1 主表文本扩展（V135）
 
@@ -303,7 +317,7 @@ V127 已执行，不能删除或改写；新库依次执行 V127、V128 后最�
 创建后续业务扩展前，重新检查 SQL/Java 迁移的最大版本，使用更高版本号。
 
 新增验证覆盖同键并发创建、重复/乱序/冲突版本、完整快照清空、扩展组保留、整批/审计失败回滚、
-本地扩展乐观锁、来源主权、组织批次排序和环、服务账号及权限拒绝、外部账号密码限制和 biz 转换示例。
+本地扩展乐观锁、来源主权、组织批次排序和环、服务账号及权限拒绝、外部账号重置后本地登录及来源同步、biz 转换示例。
 前端模型测试覆盖未建档、修改检测、版本、只读组与字段验证；构建包含管理端和嵌入端。
 集成测试使用 H2 MySQL 模式执行 V126 的兼容 SQL，不等同于已在真实部署 MySQL 上执行迁移验收。
 乱序组织回归使用真实组织服务及 Mapper，覆盖跨调用和跨批次补齐、父子并发写入、待关联父级版本变更、

@@ -1,6 +1,6 @@
 package com.workflow.entity.history.infrastructure.persistence;
 
-import com.workflow.port.migration.history.model.HistoryImportModels.SourceRecord;
+import com.workflow.port.migration.model.history.HistoryImportModels.SourceRecord;
 import org.apache.ibatis.annotations.*;
 import java.util.List;
 

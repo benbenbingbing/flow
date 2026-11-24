@@ -2,23 +2,24 @@ package com.workflow.port.entity;
 
 import com.workflow.port.entity.model.EntityRecordData;
 import com.workflow.port.entity.model.EntityRecordPage;
-import com.workflow.port.entity.mutation.model.EntitySubmissionCommand;
+import com.workflow.port.entity.model.mutation.EntitySubmissionCommand;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** 查询与提交当前身份有权操作的业务实体记录。 */
+/** 查询及提交业务实体记录。查询的实体和行范围由调用方授权。 */
 public interface EntityRecordPort {
-    /** 按当前数据范围读取；不存在或不在范围内返回 null，实体访问被拒绝时抛授权异常。 */
+    /** 按主键读取未删除记录，不存在时返回 null。 */
     EntityRecordData findById(String entityCode, String recordId);
 
-    /** 从已发布列表的数据范围查询详情。 */
+    /** 按主键读取记录，并确认给定列表键对应已发布列表。 */
     default EntityRecordData findById(String entityCode, String listKey, String recordId) {
         throw new UnsupportedOperationException("当前实现未提供指定列表的实体详情");
     }
 
-    /** 使用发布字段及当前身份的数据权限查询；条件格式与实体运行时保持一致。 */
+    /** 使用已发布字段和调用方提供的条件查询；条件格式与实体运行时保持一致。 */
     List<EntityRecordData> findByCondition(String entityCode, Map<String, Object> condition);
 
     /** 按发布字段排序和筛选后分页；页码从 1 开始，有效页大小最多 200。 */
@@ -27,13 +28,13 @@ public interface EntityRecordPort {
         throw new UnsupportedOperationException("当前实现未提供实体分页");
     }
 
-    /** 按已发布列表的入口权限和数据范围查询。 */
+    /** 按调用方提供的条件分页，并确认给定列表键对应已发布列表。 */
     default EntityRecordPage page(String entityCode, String listKey, Map<String, Object> condition,
             int pageNumber, int pageSize, String sortField, boolean descending) {
         throw new UnsupportedOperationException("当前实现未提供指定列表的实体分页");
     }
 
-    /** 按当前数据范围批量读取主表记录；按输入顺序去重，缺失及不可见记录被略过。 */
+    /** 按输入顺序去重并批量读取主表记录，缺失和已逻辑删除的记录被略过。 */
     default List<EntityRecordData> findByIds(String entityCode, List<String> recordIds) {
         return recordIds.stream().distinct().map(id -> findById(entityCode, id))
                 .filter(java.util.Objects::nonNull).toList();
@@ -52,17 +53,22 @@ public interface EntityRecordPort {
                 result.total(), result.pageNumber(), result.pageSize());
     }
 
-    /** 统计授权范围内命中条件的记录，无需组装实体聚合。 */
+    /** 统计命中调用方查询条件的记录，无需组装实体聚合。 */
     default long count(String entityCode, Map<String, Object> condition) {
         return findByCondition(entityCode, condition).size();
     }
 
-    /** 判断当前数据范围内是否有命中记录。 */
+    /** 判断调用方提供的条件是否有命中记录。 */
     default boolean exists(String entityCode, Map<String, Object> condition) {
         return count(entityCode, condition) > 0;
     }
 
-    /** 根据主记录保存的当前流程实例 ID 查询可见记录；历史轮次可先从流程查询取得业务引用。 */
+    /** 对发布的主表数值字段求和，复用实体查询的条件。无匹配值时返回零。 */
+    default BigDecimal sum(String entityCode, String fieldCode, Map<String, Object> condition) {
+        throw new UnsupportedOperationException("当前实现未提供实体字段求和");
+    }
+
+    /** 根据主记录保存的当前流程实例 ID 查询未删除记录；历史轮次可先从流程查询取得业务引用。 */
     default EntityRecordData findByProcessInstance(String entityCode, String processInstanceId) {
         if (processInstanceId == null || processInstanceId.isBlank()) {
             throw new IllegalArgumentException("流程实例 ID 不能为空");
@@ -98,10 +104,10 @@ public interface EntityRecordPort {
     /** 从已撤回的上一轮重新发起。命令的意图须为 RESTART，并提供上一轮实例 ID。 */
     EntityRecordData restart(EntitySubmissionCommand command);
 
-    /** 按已发布列表的动作及行范围逻辑删除记录，保留已删除主记录供历史查询。 */
+    /** 逻辑删除调用方已授权的记录，保留发布动作的状态约束及历史数据。 */
     void delete(String entityCode, String recordId, String listKey);
 
-    /** 按已发布列表逐条校验后在一个事务内逻辑删除，任一记录失败则整批回滚。 */
+    /** 逐条校验调用方已授权的记录是否满足删除条件，任一记录失败时整批回滚。 */
     void deleteBatch(String entityCode, List<String> recordIds, String listKey);
 
     /** 返回当前记录的 edit、delete、batchDelete、restartProcess 能力及受限原因。 */

@@ -1,13 +1,13 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.port.process.ProcessInstancePort;
-import com.workflow.port.process.instance.model.*;
-import com.workflow.port.process.instance.model.ProcessRuntimeViews.InstanceCapabilities;
-import com.workflow.port.process.instance.model.ProcessRuntimeViews.Progress;
+import com.workflow.port.process.model.instance.*;
+import com.workflow.port.process.model.instance.ProcessRuntimeViews.InstanceCapabilities;
+import com.workflow.port.process.model.instance.ProcessRuntimeViews.Progress;
 import com.workflow.port.process.model.ProcessCommandReceipt;
 import com.workflow.port.process.model.ProcessPage;
-import com.workflow.port.process.query.model.*;
-import com.workflow.port.process.query.model.ActionCapability;
+import com.workflow.port.process.model.query.*;
+import com.workflow.port.process.model.query.ActionCapability;
 import com.workflow.process.query.application.ProcessQueryAdapter;
 import java.util.List;
 import java.util.Optional;

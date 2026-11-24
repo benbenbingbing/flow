@@ -1,6 +1,6 @@
 package com.workflow.port.entity;
 
-import com.workflow.port.system.dictionary.model.DictionaryEntry;
+import com.workflow.port.system.model.dictionary.DictionaryEntry;
 import com.workflow.port.entity.model.EntityPublishedMetadata;
 
 import java.util.List;

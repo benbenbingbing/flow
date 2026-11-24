@@ -1,8 +1,8 @@
 package com.workflow.port.system;
 
-import com.workflow.port.system.identity.position.error.OrganizationPositionDirectoryException;
-import com.workflow.port.system.identity.position.model.PositionDefinitionView;
-import com.workflow.port.system.identity.position.model.PositionHolderResolution;
+import com.workflow.port.system.error.identity.position.OrganizationPositionDirectoryException;
+import com.workflow.port.system.model.identity.position.PositionDefinitionView;
+import com.workflow.port.system.model.identity.position.PositionHolderResolution;
 import java.util.List;
 
 /** 读取启用的岗位定义及计算后的有效任职人。 */

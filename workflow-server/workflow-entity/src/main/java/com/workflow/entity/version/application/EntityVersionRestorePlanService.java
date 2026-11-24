@@ -67,6 +67,17 @@ public class EntityVersionRestorePlanService {
             String entityCode,
             String recordId,
             Integer targetVersionNo) {
+        return plan(entityCode, recordId, targetVersionNo, true);
+    }
+
+    /** 生成已授权记录的恢复预演，发布版本、活跃流程和数据约束仍参与判断。 */
+    @Transactional(readOnly = true)
+    public EntityVersionRestorePlan planForPort(String entityCode, String recordId, Integer targetVersionNo) {
+        return plan(entityCode, recordId, targetVersionNo, false);
+    }
+
+    private EntityVersionRestorePlan plan(String entityCode, String recordId, Integer targetVersionNo,
+            boolean checkAccess) {
         EntityRecordVersion version = versionMapper.findVersion(
                 entityCode, recordId, targetVersionNo);
         if (version == null) {
@@ -80,16 +91,17 @@ public class EntityVersionRestorePlanService {
                     "旧V1版本缺少可靠关系数据集，不能生成整体恢复预演");
         }
 
-        EntityDataDTO currentDto = dataService
-                .findAccessibleIncludingDeletedById(
-                        entityCode, recordId, null);
+        EntityDataDTO currentDto = checkAccess
+                ? dataService.findAccessibleIncludingDeletedById(entityCode, recordId, null)
+                : dataService.findIncludingDeletedForPort(entityCode, recordId);
         Map<String, Object> currentRoot = objectMapper.convertValue(
                 currentDto, new TypeReference<>() { });
         Map<String, Object> rootDocument = readMap(
                 version.getSnapshotDocument());
         List<Action> actions = new ArrayList<>();
         List<Blocker> blockers = new ArrayList<>();
-        Set<String> permissionChecks = new LinkedHashSet<>();
+        // 仅用户入口在预演报告中列出该用户缺少的恢复权限。
+        Set<String> permissionChecks = checkAccess ? new LinkedHashSet<>() : null;
         Set<String> releaseChecks = new LinkedHashSet<>();
 
         // 根记录与关系节点分别检查发布版本和活跃流程，阻断项保留在只读计划中供调用方展示。
@@ -353,7 +365,7 @@ public class EntityVersionRestorePlanService {
             String recordId,
             List<Blocker> blockers,
             Set<String> checked) {
-        if (!StringUtils.hasText(entityCode)
+        if (checked == null || !StringUtils.hasText(entityCode)
                 || !checked.add(entityCode + ":" + action.name())) {
             return;
         }

@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -262,6 +263,20 @@ public class EntityActionCapabilityService {
             EntityListConfig config,
             String buttonKey,
             EntityDataDTO row) {
+        return evaluateRowAction(entityCode, config, buttonKey, row, true);
+    }
+
+    /** 判断调用方已授权的实体变更是否满足发布按钮和记录状态条件。 */
+    public EntityActionCapabilityDTO evaluateMutationForPort(
+            String entityCode, EntityListConfig config, String buttonKey, EntityDataDTO row) {
+        if (!Set.of("create", "edit", "delete", "batchDelete", "restartProcess").contains(buttonKey)) {
+            throw new IllegalArgumentException("此入口仅处理实体变更");
+        }
+        return evaluateRowAction(entityCode, config, buttonKey, row, false);
+    }
+
+    private EntityActionCapabilityDTO evaluateRowAction(
+            String entityCode, EntityListConfig config, String buttonKey, EntityDataDTO row, boolean checkPermission) {
         Map<String, Object> button = actionConfigService.resolveButton(
                 config,
                 entityCode,
@@ -269,7 +284,7 @@ public class EntityActionCapabilityService {
         if (button == null || Boolean.FALSE.equals(button.get("enabled"))) {
             return EntityActionCapabilityDTO.hidden("操作未启用");
         }
-        EntityStatus status = StringUtils.hasText(row.getStatus())
+        EntityStatus status = row != null && StringUtils.hasText(row.getStatus())
                 ? statusMapper.findByEntityAndCode(entityCode, row.getStatus())
                 : null;
         return evaluateButton(
@@ -277,7 +292,7 @@ public class EntityActionCapabilityService {
                 button,
                 row,
                 currentUser(),
-                status == null ? null : status.getStatusCategory());
+                status == null ? null : status.getStatusCategory(), checkPermission);
     }
 
     /**
@@ -555,18 +570,17 @@ public class EntityActionCapabilityService {
             return EntityActionCapabilityDTO.hidden(
                     "缺少权限：" + permissionCode);
         }
-        SysUser user = currentUser();
-        EntityStatus status =
-                row != null && StringUtils.hasText(row.getStatus())
-                        ? statusMapper.findByEntityAndCode(
-                                entityCode,
-                                row.getStatus())
-                        : null;
+        return evaluateConfiguredConditions(entityCode, rule, row);
+    }
+
+    /** 仅评估发布动作规则，调用方负责授权。 */
+    public EntityActionCapabilityDTO evaluateConfiguredConditions(
+            String entityCode, EntityActionRule rule, EntityDataDTO row) {
         return evaluateConditions(
                 new EntityActionRule[] {rule},
                 row,
-                user,
-                status == null ? null : status.getStatusCategory(),
+                currentUser(),
+                statusCategory(entityCode, row),
                 false);
     }
 
@@ -647,15 +661,19 @@ public class EntityActionCapabilityService {
             EntityDataDTO row,
             SysUser user,
             String statusCategory) {
-        String permissionCode = actionConfigService.permissionFor(entityCode, button);
-        if (!PermissionUtil.hasPermission(permissionCode)) {
+        return evaluateButton(entityCode, button, row, user, statusCategory, true);
+    }
+
+    private EntityActionCapabilityDTO evaluateButton(String entityCode, Map<String, Object> button,
+            EntityDataDTO row, SysUser user, String statusCategory, boolean checkPermission) {
+        if (checkPermission && !PermissionUtil.hasPermission(actionConfigService.permissionFor(entityCode, button))) {
             return EntityActionCapabilityDTO.hidden("无操作权限");
         }
         if ("restartProcess".equals(asString(button.get("key")))) {
             if (!Boolean.TRUE.equals(button.get("enabled"))) {
                 return EntityActionCapabilityDTO.hidden("未启用重新发起");
             }
-            EntityActionCapabilityDTO restart = evaluateRestartAction(entityCode, row);
+            EntityActionCapabilityDTO restart = evaluateRestartAction(entityCode, row, checkPermission);
             if (!restart.isVisible() || !restart.isEnabled()) {
                 return restart;
             }
@@ -795,8 +813,14 @@ public class EntityActionCapabilityService {
      * 以及最新实例真实结束事实和原发起人身份；状态文字不能替代引擎校验。
      */
     public EntityActionCapabilityDTO evaluateRestartAction(String entityCode, EntityDataDTO row) {
-        if (!PermissionUtil.hasPermission(EntityPermissionAction.RESTART_PROCESS.permissionCode(entityCode))
-                || !PermissionUtil.hasPermission(EntityPermissionAction.UPDATE.permissionCode(entityCode))) {
+        return evaluateRestartAction(entityCode, row, true);
+    }
+
+    /** 重新发起仍受历史轮次、数据状态和发起人身份约束。 */
+    public EntityActionCapabilityDTO evaluateRestartAction(
+            String entityCode, EntityDataDTO row, boolean checkPermission) {
+        if (checkPermission && (!PermissionUtil.hasPermission(EntityPermissionAction.RESTART_PROCESS.permissionCode(entityCode))
+                || !PermissionUtil.hasPermission(EntityPermissionAction.UPDATE.permissionCode(entityCode)))) {
             return EntityActionCapabilityDTO.hidden("无重新发起权限");
         }
         if (row == null || !"COMPLETED".equals(row.getProcessStatus())

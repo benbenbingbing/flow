@@ -478,36 +478,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="ccDialogVisible" title="人工知会" width="min(680px, 92vw)">
-      <el-form :model="ccForm" label-width="96px">
-        <el-form-item label="流程名称">
-          <div class="task-dialog-readonly-value" :title="ccForm.processName">
-            {{ ccForm.processName || '-' }}
-          </div>
-        </el-form-item>
-        <el-form-item label="流程编码">
-          <div class="task-dialog-readonly-value task-dialog-readonly-value--code" :title="ccForm.code">
-            {{ ccForm.code || '-' }}
-          </div>
-        </el-form-item>
-        <el-form-item label="知会人员" required>
-          <UserSelector
-            v-model="ccForm.userIds"
-            multiple
-            value-key="code"
-            placeholder="请选择知会人员"
-            title="选择知会人员"
-          />
-        </el-form-item>
-        <el-form-item label="知会说明">
-          <el-input v-model="ccForm.comment" type="textarea" :rows="3" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="ccDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="operationLoading" @click="submitCc">确认知会</el-button>
-      </template>
-    </el-dialog>
+    <WorkflowCcDialog v-model="ccDialogTask" @completed="onCcCompleted" />
   </div>
 </template>
 
@@ -523,12 +494,15 @@ import { Bell, Check, MoreFilled, Share } from '@element-plus/icons-vue'
 import EntityApprovalDialog from '@/views/entity/components/approval/EntityApprovalDialog.vue'
 import PageState from '@/components/PageState.vue'
 import UserSelector from '@/components/UserSelector.vue'
+import WorkflowCcDialog from '@/components/workflow/WorkflowCcDialog.vue'
+import {
+  confirmProcessTermination, INITIATOR_TERMINATION_REASON, promptProcessWithdrawal
+} from '@/components/workflow/processOperationPrompts.js'
 import { PRODUCT_TERMS } from '@/constants/productTerminology'
 import {
   acknowledgeTask,
   addSignTask,
   cancelAddSign,
-  ccTask,
   claimTask,
   completeTask,
   getDoneList,
@@ -630,7 +604,7 @@ const transferForm = reactive({
   comment: ''
 })
 const addSignDialogVisible = ref(false)
-const ccDialogVisible = ref(false)
+const ccDialogTask = ref(null)
 const operationLoading = ref(false)
 let addSignDialogSession = 0
 let addSignPreviewRequestSequence = 0
@@ -652,13 +626,6 @@ const addSignTypeSummary = computed(() => ({
   PARALLEL: '原办理人与加签人员可并行提交；全部完成后流程继续',
   AFTER: '原办理人先提交；随后激活加签任务；全部完成后流程继续'
 }[addSignForm.type]))
-const ccForm = reactive({
-  taskId: '',
-  processName: '',
-  code: '',
-  userIds: [],
-  comment: ''
-})
 const slaDialogVisible = ref(false)
 const slaLoading = ref(false)
 const slaActionLoading = ref(false)
@@ -1047,8 +1014,11 @@ function viewProgress(row) {
 async function onApprovalSuccess() {
   // 审批会触发当前节点完成、下一节点创建的知会，不能继续展示此前缓存的收件箱。
   loadedTabs.cc = false
+  // 从流程详情执行撤回或终止后，发起列表需要同步最新状态和可用操作。
+  loadedTabs.started = false
   await Promise.all([
     activeTab.value === 'cc' ? loadCcList() : Promise.resolve(),
+    activeTab.value === 'started' ? loadStartedList() : Promise.resolve(),
     loadTodoList(), loadDoneList(), loadStatistics()
   ])
 }
@@ -1116,14 +1086,7 @@ async function loadAddSignPreview() {
 }
 
 function openCcDialog(row) {
-  Object.assign(ccForm, {
-    taskId: row.taskId,
-    processName: row.processName || '',
-    code: row.code || '',
-    userIds: [],
-    comment: ''
-  })
-  ccDialogVisible.value = true
+  ccDialogTask.value = row
 }
 
 async function submitAddSign() {
@@ -1203,19 +1166,10 @@ async function handleCancelAddSign(row) {
   }
 }
 
-async function submitCc() {
-  if (!ccForm.userIds.length) return ElMessage.warning('请选择知会人员')
-  operationLoading.value = true
-  try {
-    await ccTask(ccForm.taskId, { userIds: ccForm.userIds, comment: ccForm.comment })
-    ElMessage.success('知会成功')
-    ccDialogVisible.value = false
-    loadedTabs.cc = false
-    if (activeTab.value === 'cc') await loadCcList()
-    await loadStatistics()
-  } finally {
-    operationLoading.value = false
-  }
+async function onCcCompleted() {
+  loadedTabs.cc = false
+  if (activeTab.value === 'cc') await loadCcList()
+  await loadStatistics()
 }
 
 async function readCc(row) {
@@ -1280,15 +1234,8 @@ async function handleWithdraw(row) {
   if (withdrawingInstanceId.value || row.status !== 'RUNNING' || row.canWithdraw !== true) return
   withdrawingInstanceId.value = row.processInstanceId
   try {
-    const { value } = await ElMessageBox.prompt(
-      '撤回后本轮流程结束，未完成的待办将取消。确认撤回吗？',
-      '撤回流程',
-      {
-        type: 'warning', inputType: 'textarea', inputPlaceholder: '请输入撤回原因（选填）',
-        inputValidator: value => !value || value.length <= 2000 || '撤回原因不能超过 2000 字',
-        confirmButtonText: '确认撤回', cancelButtonText: '取消'
-      }
-    )
+    const reason = await promptProcessWithdrawal()
+    if (reason === null) return
     const operations = await getProcessOperations(row.processInstanceId)
     row.canWithdraw = operations?.withdraw === true
     if (!row.canWithdraw) {
@@ -1296,14 +1243,12 @@ async function handleWithdraw(row) {
       await loadStartedList()
       return
     }
-    await withdrawProcess({ processInstanceId: row.processInstanceId, reason: (value || '').trim() })
+    await withdrawProcess({ processInstanceId: row.processInstanceId, reason })
     ElMessage.success('撤回成功')
     await Promise.all([loadStartedList(), loadStatistics()])
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') {
-      showRequestError(error, error?.message || '撤回失败，请刷新列表后重试')
-      await loadStartedList()
-    }
+    showRequestError(error, error?.message || '撤回失败，请刷新列表后重试')
+    await loadStartedList()
   } finally {
     withdrawingInstanceId.value = ''
   }
@@ -1316,25 +1261,15 @@ async function handleTerminate(row) {
     return
   }
   try {
-    await ElMessageBox.confirm(
-      '终止后流程将直接结束，相关待办也会取消，且不能从当前节点继续。确认终止吗？',
-      '终止流程',
-      {
-        type: 'warning',
-        confirmButtonText: '确认终止',
-        cancelButtonText: '取消'
-      }
-    )
+    if (!await confirmProcessTermination()) return
     if (!(await requireFreshTerminateOperation(row))) return
-    await terminateProcess(row.processInstanceId, '发起人主动终止')
+    await terminateProcess(row.processInstanceId, INITIATOR_TERMINATION_REASON)
     ElMessage.success('终止成功')
     loadStartedList()
     loadStatistics()
   } catch (e) {
-    if (e !== 'cancel') {
-      console.error('终止失败:', e)
-      showRequestError(e, '终止失败')
-    }
+    console.error('终止失败:', e)
+    showRequestError(e, '终止失败')
   }
 }
 

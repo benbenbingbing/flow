@@ -77,6 +77,40 @@ class AuthControllerTest {
                 "203.0.113.10");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {SysUser.EXTERNAL_ONLY, SysUser.EXTERNAL_AND_LOCAL_PASSWORD})
+    void externalUserCanLogInWithLocalPasswordOnlyAfterItIsEnabled(String mode) {
+        SysUserService userService = mock(SysUserService.class);
+        AuthSessionService sessions = mock(AuthSessionService.class);
+        AuthController controller = authController(userService, sessions, new AuthSessionProperties());
+        SysUser user = new SysUser();
+        user.setId("user-1");
+        user.setUsername("alice");
+        user.setStatus("0");
+        user.setAuthenticationMode(mode);
+        user.setPassword("$2a$10$test-hash");
+        user.setPasswordResetRequired(true);
+        LoginDTO login = new LoginDTO();
+        login.setUsername("alice");
+        login.setPassword("TemporaryPassword1");
+        when(userService.getByUsername("alice")).thenReturn(user);
+        when(userService.passwordMatches(login.getPassword(), user.getPassword())).thenReturn(true);
+
+        if (SysUser.EXTERNAL_ONLY.equals(mode)) {
+            var result = controller.login(login, new MockHttpServletRequest(), new MockHttpServletResponse());
+            assertEquals("用户名或密码错误", result.getMessage());
+            verifyNoInteractions(sessions);
+            return;
+        }
+
+        Instant now = Instant.now();
+        when(sessions.createSession(user)).thenReturn(new AuthTokenBundle(user, "access-for-test",
+                now.plusSeconds(900), "refresh-for-test", "session-1", now.plusSeconds(43200)));
+        var result = controller.login(login, new MockHttpServletRequest(), new MockHttpServletResponse());
+        assertEquals(200, result.getCode());
+        assertTrue(result.getData().getPasswordResetRequired());
+    }
+
     /** 登录和续期必须使用相同的 Cookie 策略，否则 HTTP 部署会在第一次刷新后再次丢失会话。 */
     @ParameterizedTest
     @ValueSource(booleans = {false, true})

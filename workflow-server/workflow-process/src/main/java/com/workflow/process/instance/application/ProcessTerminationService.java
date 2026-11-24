@@ -7,9 +7,9 @@ import com.workflow.process.status.application.ProcessEndReason;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.Result;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.port.system.SysUserLookupPort;
@@ -72,6 +72,19 @@ public class ProcessTerminationService {
             String processInstanceId,
             String userId,
             String reason) {
+        return terminateProcess(processInstanceId, userId, reason, true);
+    }
+
+    /** 终止调用方已授权的流程，保留节点开关、实体状态校验和审计。 */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.TERMINATE,
+            operation = "终止流程实例", risk = AuditRiskLevel.CRITICAL, required = true,
+            targetType = "PROCESS_INSTANCE", targetIdArg = 0)
+    public Result<Void> terminateForPort(String processInstanceId, String operatorId, String reason) {
+        return terminateProcess(processInstanceId, operatorId, reason, false);
+    }
+
+    private Result<Void> terminateProcess(String processInstanceId, String userId, String reason, boolean checkInitiator) {
         ProcessInstance processInstance = runtimeService
                 .createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
@@ -90,21 +103,20 @@ public class ProcessTerminationService {
             }
         }
 
-        HistoricProcessInstance historicInstance = historyService
-                .createHistoricProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-        String startUserId = historicInstance != null
-                ? historicInstance.getStartUserId()
-                : processInstance.getStartUserId();
-        if (!userId.equals(startUserId)) {
-            return Result.error(403, "只有发起人可以终止流程");
+        if (checkInitiator) {
+            HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(processInstanceId).singleResult();
+            String startUserId = historicInstance != null ? historicInstance.getStartUserId() : processInstance.getStartUserId();
+            if (!userId.equals(startUserId)) {
+                return Result.error(403, "只有发起人可以终止流程");
+            }
         }
 
-        // 权限校验下沉到事务服务，确保任何调用路径都无法绕过节点终止开关。
+        // 所有调用都必须满足当前节点的终止开关。
         nodeOperationCapabilityService.requireTerminateAllowed(
                 processInstanceId,
-                NodeOperationDecisionService.CheckContext.ofReason(reason));
+                checkInitiator ? NodeOperationDecisionService.CheckContext.ofReason(reason)
+                        : NodeOperationDecisionService.CheckContext.forAuthorizedOperation(reason, userId));
 
         // 元数据读取失败必须阻止终止，不能跳过实体目标状态校验后继续删除实例。
         String entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
@@ -124,7 +136,7 @@ public class ProcessTerminationService {
         try {
             String deleteReason = reason != null && !reason.isEmpty()
                     ? reason
-                    : "发起人主动终止";
+                    : checkInitiator ? "发起人主动终止" : "主动终止";
             runtimeService.deleteProcessInstance(
                     processInstanceId,
                     ProcessEndReason.encode("TERMINATED", deleteReason));

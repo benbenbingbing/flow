@@ -11,9 +11,9 @@ import com.workflow.admin.externalsystem.infrastructure.persistence.mapper.Exter
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemParameterRecord;
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemRecord;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.port.platform.audit.model.AuditAction;
-import com.workflow.port.platform.audit.model.AuditModule;
-import com.workflow.port.platform.audit.model.AuditRiskLevel;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.AuditRiskLevel;
 import com.workflow.port.platform.audit.annotation.SystemAudit;
 import com.workflow.core.result.PageResult;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -106,6 +107,39 @@ public class ExternalSystemService {
                 result.getCurrent(), result.getSize());
     }
 
+    /** 按活动记录 ID 查询摘要；仅统计参数数量。 */
+    @Transactional(readOnly = true)
+    public Optional<ExternalSystemViews.ExternalSystemSummary> findSummaryById(String id) {
+        return Optional.ofNullable(StringUtils.hasText(id) ? externalSystemMapper.selectById(id.trim()) : null)
+                .map(this::toSummary);
+    }
+
+    /** 按永久业务编码查询摘要；已逻辑删除的配置对调用方不可见。 */
+    @Transactional(readOnly = true)
+    public Optional<ExternalSystemViews.ExternalSystemSummary> findSummaryByCode(String systemCode) {
+        return findRecordByCode(systemCode).map(this::toSummary);
+    }
+
+    /** 查询对接配置及其当前活动参数，供已通过管理权限校验的入口调用。 */
+    @Transactional(readOnly = true)
+    public Optional<ExternalSystemViews.ExternalSystemDetail> findDetailByCode(String systemCode) {
+        if (!StringUtils.hasText(systemCode)) {
+            return Optional.empty();
+        }
+        var rows = externalSystemMapper.selectConfigurationByCode(systemCode.trim());
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+        // 左连接在没有活动参数时仍会返回父记录；只有附带参数的行才加入详情。
+        var parameters = rows.stream()
+                .filter(row -> row.getParameterId() != null)
+                .map(row -> new ExternalSystemViews.ExternalSystemParameterView(
+                        row.getParameterId(), row.getParameterNameZh(), row.getParameterNameEn(),
+                        row.getParameterValue(), row.getSortOrder() == null ? 0 : row.getSortOrder()))
+                .toList();
+        return Optional.of(toDetailView(rows.get(0), parameters));
+    }
+
     /**
      * 查询单个外部系统及其当前活动参数，父子两次查询共享只读事务快照。
      *
@@ -121,9 +155,20 @@ public class ExternalSystemService {
         if (externalSystem == null) {
             throw notFound();
         }
-        return toDetail(
-                externalSystem,
-                parameterMapper.selectActiveByExternalSystemId(id));
+        return toDetail(externalSystem, parameterMapper.selectActiveByExternalSystemId(id));
+    }
+
+    private Optional<ExternalSystemRecord> findRecordByCode(String systemCode) {
+        if (!StringUtils.hasText(systemCode)) {
+            return Optional.empty();
+        }
+        // BaseMapper 自动排除已逻辑删除的记录，保留编码永久占用的约束。
+        return Optional.ofNullable(externalSystemMapper.selectOne(new LambdaQueryWrapper<ExternalSystemRecord>()
+                .eq(ExternalSystemRecord::getSystemCode, systemCode.trim())));
+    }
+
+    private ExternalSystemViews.ExternalSystemSummary toSummary(ExternalSystemRecord record) {
+        return toSummary(record, parameterCounts(List.of(record)).getOrDefault(record.getId(), 0L));
     }
 
     /**
@@ -507,6 +552,11 @@ public class ExternalSystemService {
                 parameters == null ? List.of() : parameters.stream()
                         .map(this::toParameterView)
                         .toList();
+        return toDetailView(record, views);
+    }
+
+    private ExternalSystemViews.ExternalSystemDetail toDetailView(ExternalSystemRecord record,
+            List<ExternalSystemViews.ExternalSystemParameterView> views) {
         return new ExternalSystemViews.ExternalSystemDetail(
                 record.getId(),
                 record.getSystemCode(),
