@@ -43,7 +43,7 @@
             :index="0"
           />
           <div v-else class="form-row-body" :class="formLayoutClass">
-            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
+            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :class="{ 'is-multiline': isMultilineFormField(field) }" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
                 <FormFieldLabel :text="field.fieldName || ''" />
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
@@ -97,7 +97,7 @@
             :index="index"
           />
           <div v-else class="form-row-body" :class="formLayoutClass">
-            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
+            <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :class="{ 'is-multiline': isMultilineFormField(field) }" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
                 <FormFieldLabel :text="field.fieldName || ''" />
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
@@ -213,6 +213,7 @@ import {
 import { resolveFormContainerAppearance } from '@flow/workflow-core/form-container-appearance'
 import { hasOneToOneSubFormContent } from '@/shared/subform-row-presence'
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
+import { isMultilineFormField } from '@/shared/form-layout'
 
 const props = defineProps({
   config: {
@@ -765,6 +766,10 @@ defineExpose({
   box-sizing: border-box;
   padding: 0 8px;
   margin-bottom: 8px;
+}
+
+.form-row-body:is(.form-layout-horizontal, .form-layout-grid) .form-field-item.is-multiline {
+  align-items: flex-start;
 }
 
 .form-row-body.form-layout-horizontal .field-label,

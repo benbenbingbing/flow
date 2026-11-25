@@ -1,5 +1,5 @@
 <template>
-  <div class="entity-selector">
+  <div class="entity-selector" :data-size="formSize || undefined">
     <!-- 单选模式 -->
     <template v-if="!multiple">
       <div
@@ -229,7 +229,7 @@
 <script setup>
 import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue'
 import { ArrowDown, Close, Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, useFormSize } from 'element-plus'
 import {
   resolveRuntimeEntitySelectionReference
 } from '@flow/workflow-core/entity-selection-mapping'
@@ -313,6 +313,9 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'change'])
 const AsyncEntityDataList = defineAsyncComponent(() => import('@/views/entity/EntityDataList.vue'))
+
+// 触发框由自定义 DOM 渲染，主动读取与 Element Plus 原生输入框相同的尺寸上下文。
+const formSize = useFormSize()
 
 // 计算属性
 const isSystemEntity = computed(() => props.entityType !== 'CUSTOM')

@@ -1,4 +1,6 @@
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { pickerNativeComponent } from '@flow/workflow-core/data-picker'
+import { resolveFieldComponentDescriptor } from '../extensions/core/registries/formFieldRegistry.js'
 
 export const FORM_LABEL_POSITION_OPTIONS = [
   { value: 'top', label: '顶部' },
@@ -29,6 +31,13 @@ export function isSubFormLayoutField(field) {
   const nodeType = String(field?.nodeType || '').toUpperCase()
   const componentType = String(field?.componentType || field?.fieldType || '').toUpperCase()
   return ['SUB_FORM', 'REPEATER'].includes(nodeType) || componentType === 'SUB_FORM'
+}
+
+/** 按渲染器选中的控件判定顶对齐。数据选择器只有在内嵌多行编辑器时才适用。 */
+export function isMultilineFormField(field) {
+  const component = resolveFieldComponentDescriptor(field)?.name
+  const editor = component === 'data_picker' ? pickerNativeComponent(field) : component
+  return editor === 'textarea' || editor === 'rich_text'
 }
 
 /**

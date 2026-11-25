@@ -301,6 +301,7 @@ function toEquivalentFormVue(configLabel, sourceLabel, definition) {
     '      <ConfiguredFormFieldItem',
     '        v-for="field in formFields"',
     '        :key="field.id || field.fieldCode"',
+    '        :field="field"',
     '        :label="field.fieldLabel || field.fieldName"',
     '        :prop="fieldKey(field)"',
     '      >',

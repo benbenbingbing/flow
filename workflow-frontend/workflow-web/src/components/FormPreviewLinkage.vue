@@ -102,6 +102,7 @@
         </template>
         <ConfiguredFormFieldItem
           v-else
+          :field="field"
           :label="isSubFormLayoutField(field) ? undefined : (field.fieldLabel || field.fieldName)"
           :label-width="isSubFormLayoutField(field) ? '0px' : undefined"
           :prop="getFieldKey(field)"

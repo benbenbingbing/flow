@@ -17,7 +17,7 @@
     <VanCheckboxGroup v-else :model-value="Array.isArray(fieldValue) ? fieldValue : []" @update:model-value="handleChange"><VanCheckbox v-for="choice in choices" :key="String(choice.value)" :name="choice.value" :disabled="choice.disabled">{{ choice.text }}</VanCheckbox></VanCheckboxGroup>
   </template></VanField>
   <VanField v-else-if="selectionType || dateType" class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="selectionLabel" :placeholder="`请选择${fieldLabel}`" :label-align="labelPosition" :input-align="inputAlign" center readonly is-link clickable :required="required" @click="openPicker" />
-  <VanField v-else class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="inputValue"
+  <VanField v-else class="mobile-form-field" :class="{ 'is-multiline': type === 'textarea' }" :border="false" :label="fieldLabel" :model-value="inputValue"
     :type="['textarea', 'password', 'number'].includes(type) && !exactNumber ? type : 'text'" :inputmode="exactNumber ? (field.fieldType === 'LONG' ? 'numeric' : 'decimal') : undefined"
     :error-message="exactNumber ? numberError : undefined" :placeholder="placeholder" :maxlength="parsedComponentProps.maxlength" :autosize="type === 'textarea'" :label-align="labelPosition" :input-align="inputAlign" :required="required" @update:model-value="input" @focus="handleFocus" @blur="blur" />
   <MobileDataPickerField v-if="valuePicker && !disabled && !readonly" ref="dataPickerRef" v-bind="fieldProps" @patch-form="patchCustomForm" />
@@ -276,6 +276,7 @@ defineExpose({ validate })
   border-bottom: 1px solid var(--flow-mobile-border);
 }
 .mobile-form-field :deep(.van-field__label) { color: var(--flow-mobile-muted); font-size: var(--flow-mobile-form-label-font-size, 13px); }
+.mobile-form-field.is-multiline:not(.van-field--label-top) { align-items: flex-start; }
 /* 顶部标签明确独占一行，避免清除侧边距后，flex 把值压成零宽仍排在标签旁边。 */
 .mobile-form-field.van-field--label-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
 .mobile-form-field :deep(.van-field__label--top) { grid-column: 1 / -1; margin-right: 0; }

@@ -143,6 +143,7 @@
   <ConfiguredFormFieldItem
     v-else-if="runtimeField"
     v-show="visible"
+    :field="runtimeField"
     :label="isSubFormLayoutField(runtimeField) ? undefined : (node.props.label || runtimeField.fieldLabel || runtimeField.fieldName)"
     :label-width="isSubFormLayoutField(runtimeField) ? '0px' : undefined"
     :prop="fieldKey"

@@ -19,6 +19,7 @@
         :style="getFieldStyle(field)"
       >
         <ConfiguredFormFieldItem
+          :field="field"
           :label="isSubFormLayoutField(field) ? undefined : (field.fieldLabel || field.fieldName)"
           :label-width="isSubFormLayoutField(field) ? '0px' : undefined"
           :prop="field.fieldCode || `field_${field.id}`"

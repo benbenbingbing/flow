@@ -395,6 +395,7 @@
 
     <div v-else-if="fieldNode" class="design-field-node">
       <ConfiguredFormFieldItem
+        :field="node"
         :label="isSubFormLayoutField(node) ? undefined : (node.fieldLabel || node.fieldName)"
         :label-width="isSubFormLayoutField(node) ? '0px' : undefined"
         :required="node.isRequired === 1"

@@ -2,6 +2,21 @@
   width: 100%;
 }
 
+.entity-selector[data-size='small'] {
+  --entity-selector-height: var(--el-component-size-small);
+  --entity-selector-font-size: var(--el-font-size-extra-small);
+  --entity-selector-padding-x: 7px;
+}
+
+.entity-selector[data-size='default'] {
+  --entity-selector-height: var(--el-component-size);
+}
+
+.entity-selector[data-size='large'] {
+  --entity-selector-height: var(--el-component-size-large);
+  --entity-selector-padding-x: 15px;
+}
+
 .selector-input {
   display: flex;
   align-items: center;
@@ -24,9 +39,17 @@
   padding: 4px 8px;
 }
 
+.entity-selector[data-size] .selector-input {
+  box-sizing: border-box;
+  min-height: var(--entity-selector-height);
+  padding: 1px var(--entity-selector-padding-x, 12px);
+  font-size: var(--entity-selector-font-size, var(--el-font-size-base));
+  line-height: 1.5;
+}
+
 .placeholder {
   color: #a8abb2;
-  font-size: 14px;
+  font-size: var(--entity-selector-font-size, 14px);
 }
 
 .selected-item {
@@ -167,6 +190,11 @@
 
 :deep(.el-tag) {
   margin: 2px;
+}
+
+/* 标签换行可撑开多选触发框，单行标签及边框在小尺寸内也能完整显示。 */
+.entity-selector[data-size] .selector-input :deep(.el-tag) {
+  margin: 0;
 }
 
 .entity-selector-dialog :deep(.el-dialog__footer) {
