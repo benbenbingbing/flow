@@ -22,6 +22,15 @@
     @click.stop="$emit('select', node)"
     @dblclick.stop="$emit('open-properties', node)"
   >
+    <FormNodeGridResizeHandle
+      v-if="gridResize?.canEdit(node)"
+      :label="nodeLabelValue"
+      :span="gridResize.spanFor(node)"
+      :disabled="gridResize.disabled.value"
+      :begin="() => gridResize.begin(node)"
+      @preview="gridResize.preview(node, $event)"
+      @finish="gridResize.finish(node, $event)"
+    />
     <div class="node-actions" @click.stop @dblclick.stop>
       <span
         class="form-node-drag-handle"
@@ -35,19 +44,19 @@
       <el-button-group size="small">
         <el-button
           aria-label="上移节点"
-          :disabled="siblingIndex === 0"
+          :disabled="dragDisabled || siblingIndex === 0"
           @click="$emit('move', { node, direction: -1 })"
         >
           <el-icon><ArrowUp /></el-icon>
         </el-button>
         <el-button
           aria-label="下移节点"
-          :disabled="siblingIndex === siblingCount - 1"
+          :disabled="dragDisabled || siblingIndex === siblingCount - 1"
           @click="$emit('move', { node, direction: 1 })"
         >
           <el-icon><ArrowDown /></el-icon>
         </el-button>
-        <el-button type="danger" aria-label="删除节点" @click="$emit('remove', node)">
+        <el-button type="danger" aria-label="删除节点" :disabled="dragDisabled" @click="$emit('remove', node)">
           <el-icon><Delete /></el-icon>
         </el-button>
       </el-button-group>
@@ -470,7 +479,7 @@
 
 <script setup>
 import { isSubFormLayoutField } from '@/shared/form-layout'
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowLeft,
@@ -481,6 +490,8 @@ import {
 } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
+import FormNodeGridResizeHandle from '@/components/form-designer/FormNodeGridResizeHandle.vue'
+import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
@@ -512,6 +523,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['select', 'open-properties', 'move', 'remove', 'drop', 'edit-related-content', 'remove-related-content', 'open-related-properties'])
+const gridResize = inject(FORM_DESIGNER_CONTEXT_KEY, null)?.gridResize
 const relatedContentsAt = (node, side = 'AFTER') => formRelatedContentsAt(props.relatedContents, node, { preview: true, side })
 // 关联预览与主表字段共享排序占位，但不能共享选框、鼠标事件或属性操作栏。
 const hasAttachedContents = computed(() => relatedContentsAt(props.node).length > 0 || relatedContentsAt(props.node, 'BEFORE').length > 0)

@@ -19,7 +19,7 @@
           link
           type="danger"
           :loading="discardDraftLoading"
-          :disabled="discardDraftLoading || saving || initializing"
+          :disabled="discardDraftLoading || saving || initializing || gridResizeInProgress"
           @click="handleDiscardDraft"
         >
           撤销
@@ -63,7 +63,7 @@
         <el-button
           type="primary"
           :loading="saving"
-          :disabled="discardDraftLoading"
+          :disabled="discardDraftLoading || gridResizeInProgress"
           @click="handleSave"
         >
           <el-icon><Check /></el-icon>保存全部
@@ -71,7 +71,7 @@
         <el-button
           type="success"
           plain
-          :disabled="!isEdit || discardDraftLoading"
+          :disabled="!isEdit || discardDraftLoading || gridResizeInProgress"
           @click="handlePublish"
         >
           发&nbsp;&nbsp;布
@@ -135,7 +135,7 @@
           <div class="form-canvas" :class="form.layoutType">
             <div v-if="formFields.length" class="form-drag-guide">
               <el-icon><Rank /></el-icon>
-              <span>拖拽节点右上角手柄调整顺序，或移动到兼容容器；位置保存到草稿，发布后生效。</span>
+              <span>拖拽右上角手柄移动节点。拖拽右缘调整栅格宽度，已有节点松手即保存。</span>
             </div>
             <div v-if="formFields.length === 0 && !inlineRelationContents.length" class="empty-tip">
               <el-empty description="点击左侧字段或实体关系添加到表单">
@@ -150,7 +150,7 @@
                 :items="rootDesignNodes"
                 parent-id=""
                 :can-drop="canDropNode"
-                :disabled="reorderingNode"
+                :disabled="canvasNodeDragDisabled"
                 zone-class="root-design-drop-zone"
                 @drop="handleNodeDrop"
               >
@@ -172,7 +172,7 @@
                     @open-related-properties="openRelatedContentProperties"
                     @remove-related-content="removeRelatedContent"
                     :can-drop-node="canDropNode"
-                    :drag-disabled="reorderingNode"
+                    :drag-disabled="canvasNodeDragDisabled"
                     @select="selectField"
                     @open-properties="openFieldProperties"
                     @move="moveNode"
@@ -192,7 +192,7 @@
             />
             <FormNodeDraggableList
               v-if="inlineRelationContents.length" :items="[]" parent-id=""
-              :can-drop="canDropNode" :disabled="reorderingNode"
+              :can-drop="canDropNode" :disabled="canvasNodeDragDisabled"
               zone-class="root-design-drop-zone"
               @drop="handleNodeDrop({ ...$event, newIndex: designChildrenFor('').length, afterRelatedContents: inlineRelationContents })"
             >
@@ -370,7 +370,7 @@
                 </SettingsFormItem>
 
                 <SettingsFormItem label="栅格宽度" :disabled="!canEditGridSpan" disabled-reason="仅可设置宽度的节点在栅格布局中支持此配置">
-                  <el-slider :model-value="selectedField.gridSpan" @update:model-value="canEditGridSpan && (selectedField.gridSpan = $event)" :min="1" :max="24" show-stops />
+                  <el-slider :model-value="selectedField.gridSpan" @update:model-value="canEditGridSpan && (selectedField.gridSpan = $event)" :min="1" :max="24" :disabled="gridResizeInProgress" show-stops />
                 </SettingsFormItem>
               </SettingsSection>
 
@@ -927,6 +927,7 @@
             <el-button
               type="primary"
               :loading="savingNode"
+              :disabled="gridResizeInProgress"
               @click="selectedRelatedContent ? saveSelectedRelatedContent() : saveSelectedNode()"
             >
               <el-icon><Check /></el-icon>保存当前属性
@@ -1214,6 +1215,11 @@ const initializing = ref(true)
 const saving = ref(false)
 const savingNode = ref(false)
 const reorderingNode = ref(false)
+// 拖拽预览只影响画布排版；松手时才写入节点草稿，取消时直接清掉这个占位。
+const gridSpanPreview = ref(null)
+const savingGridSpan = ref(false)
+const gridResizeInProgress = computed(() => Boolean(gridSpanPreview.value) || savingGridSpan.value)
+const canvasNodeDragDisabled = computed(() => reorderingNode.value || gridResizeInProgress.value)
 const nodeBaselines = ref(new Map())
 const formBaseline = ref('')
 // 只在服务端确认 actionBar 已持久化后递增，供按钮面板解锁事件配置。
@@ -1249,6 +1255,8 @@ const publishDialogVisible = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
 const diffLoadSucceeded = ref(false)
 const discardDraftLoading = ref(false)
+const gridResizeDisabled = computed(() => initializing.value || saving.value || savingNode.value
+  || reorderingNode.value || discardDraftLoading.value || publishDialogVisible.value || savingGridSpan.value)
 const interfaceExtensions = ref([])
 const interfacesByUsage = ref({})
 const extensionDefinitions = ref([])
@@ -1572,7 +1580,7 @@ function validateRelatedContentDrafts(onlyKey) {
 }
 
 async function saveSelectedRelatedContent() {
-  if (savingNode.value || saving.value) return
+  if (savingNode.value || saving.value || gridResizeInProgress.value) return
   savingNode.value = true
   try {
     await saveRelatedContentDrafts(selectedRelatedKey.value)
@@ -1780,13 +1788,7 @@ const canEditNodeLabel = computed(() =>
     selectedNodeType.value
   )
 )
-const canEditGridSpan = computed(() =>
-  selectedNodePropertySchema.value.gridSpan
-    && (
-      form.value.layoutType === 'grid'
-      || nodeTypeOf(nodeById(selectedField.value?.parentId)) === 'GRID'
-    )
-)
+const canEditGridSpan = computed(() => canEditNodeGridSpan(selectedField.value))
 const selectedNodeConfig = computed(() =>
   safeParseConfig(selectedField.value?.componentProps)
 )
@@ -2032,6 +2034,10 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   formDataSourceBindingCount, eventFieldOptions,
   formActionPersistenceRevision,
   persistedFormButtonKeys,
+  gridResize: {
+    canEdit: canEditNodeGridSpan, spanFor: getResizeHandleSpan, disabled: gridResizeDisabled,
+    begin: beginGridResize, preview: previewGridResize, finish: finishGridResize
+  },
   selectedCustomFormSchema, customFormOptions,
   selectedCustomFormCatalogOption, showFormExtensionConfig,
   openFormDataSourceConfig, onEventBindingsChanged: loadDiff,
@@ -2136,19 +2142,82 @@ function isFieldInForm(entityField) {
 
 function getNodeSpan(field, fallback = 24) {
   // 显式 GRID 容器中的子节点统一按 grid 规则计算，ACTION_SLOT 也能读取自己的宽度。
+  if (gridSpanPreview.value?.field === field) return gridSpanPreview.value.span
   return resolveFormNodeLayoutSpan(field, 'grid', fallback)
 }
 
 function getNodeDesignStyle(field) {
-  const span = resolveFormNodeLayoutSpan(
-    field,
-    form.value.layoutType,
-    24
-  )
+  const span = gridSpanPreview.value?.field === field
+    ? gridSpanPreview.value.span
+    : resolveFormNodeLayoutSpan(field, form.value.layoutType, 24)
   const width = `${(span / 24) * 100}%`
   return {
     width,
     flex: `0 0 ${width}`
+  }
+}
+
+/** 属性面板和画布共用同一能力判断，保留历史垂直和水平布局的固定宽度。 */
+function canEditNodeGridSpan(field) {
+  return Boolean(field && getFormNodePropertySchema(nodeTypeOf(field)).gridSpan
+    && (form.value.layoutType === 'grid' || (field.parentId && nodeTypeOf(nodeById(field.parentId)) === 'GRID')))
+}
+
+function getResizeHandleSpan(field) {
+  const parent = field.parentId ? nodeById(field.parentId) : null
+  const fallback = nodeTypeOf(parent) === 'GRID'
+    ? Number(parseDocument(parent.componentProps).defaultSpan || 12)
+    : 24
+  return getNodeSpan(field, fallback)
+}
+
+function beginGridResize(field) {
+  if (gridResizeDisabled.value || gridSpanPreview.value || !canEditNodeGridSpan(field)) return false
+  gridSpanPreview.value = { field, span: getResizeHandleSpan(field) }
+  selectField(field)
+  return true
+}
+
+function previewGridResize(field, span) {
+  if (gridSpanPreview.value?.field === field) gridSpanPreview.value.span = span
+}
+
+/** 提交当前节点的最后一格宽度，span 为 null 时取消；新节点和失败的写入留待「保存全部」提交。 */
+async function finishGridResize(field, span) {
+  if (gridSpanPreview.value?.field !== field) return
+  gridSpanPreview.value = null
+  if (span == null || nodeById(field.id) !== field || span === getResizeHandleSpan(field)) return
+
+  field.gridSpan = span
+  const storedNode = formNodes.value.find(node => node.id === field.id)
+  const fingerprint = nodeBaselines.value.get(field.id)
+  if (!form.value.id || !field.revision || storedNode?.revision !== field.revision || !fingerprint) {
+    ElMessage.info('栅格宽度已调整，点击「保存全部」写入草稿')
+    return
+  }
+
+  savingGridSpan.value = true
+  try {
+    // 节点接口会替换整个 props 文档，因此用服务端版本合并宽度，保留其他本地编辑。
+    const props = { ...parseDocument(storedNode.propsDocument), gridSpan: span }
+    delete props.span // 历史跨度已由 gridSpan 接替，旧键不能随新属性提交。
+    const saved = await patchFormNode(form.value.id, field.id, { expectedRevision: field.revision, props })
+    rememberStoredFormNode(saved)
+    field.revision = saved.revision
+    const baseline = JSON.parse(fingerprint)
+    baseline.props.gridSpan = span
+    nodeBaselines.value.set(field.id, JSON.stringify(baseline))
+    // 补读失败时仍保留已确认的节点修订号和基线，避免把已写入的宽度标为未保存。
+    const latest = await getFormById(form.value.id).catch(() => null)
+    if (latest) form.value.revision = latest.revision
+    await loadDiff()
+    if (latest) ElMessage.success('栅格宽度已保存到草稿，发布后生效')
+    else ElMessage.warning('栅格宽度已保存，表单修订号刷新失败')
+  } catch (error) {
+    if (isRevisionConflict(error)) ElMessage.warning('配置已被其他人修改，当前宽度已保留，请刷新后重新确认')
+    else showRequestError(error, error?.message || '保存栅格宽度失败，当前宽度已保留')
+  } finally {
+    savingGridSpan.value = false
   }
 }
 
@@ -2887,6 +2956,13 @@ function rememberNodeBaseline(field) {
   }
 }
 
+/** 缓存服务端确认的节点文档，供后续画布操作按修订号单独合并宽度。 */
+function rememberStoredFormNode(node) {
+  const index = formNodes.value.findIndex(item => item.id === node.id)
+  if (index === -1) formNodes.value.push(node)
+  else formNodes.value[index] = node
+}
+
 function formFingerprint() {
   return JSON.stringify({
     rendererMode: formRendererMode.value,
@@ -3338,6 +3414,7 @@ async function removeField(index) {
 }
 
 async function removeNode(field) {
+  if (gridResizeInProgress.value) return
   const children = designChildrenFor(field.id)
   if (children.length) {
     ElMessage.warning(`当前节点包含 ${children.length} 个直接子节点，请先移动或删除子节点`)
@@ -3360,7 +3437,7 @@ async function moveNode({ node, direction }) {
 }
 
 function canDropNode(node, targetParentId) {
-  return !reorderingNode.value
+  return !canvasNodeDragDisabled.value
     && validateFormNodeDrop(formFields.value, node, targetParentId).valid
 }
 
@@ -3369,7 +3446,7 @@ function canDropNode(node, targetParentId) {
  * 含新节点或未保存属性时交由“保存全部”一起提交，避免引用服务器尚不存在的容器或丢失编辑。
  */
 async function handleNodeDrop({ node, newParentId, newIndex, afterRelatedContents = [] }) {
-  if (!node || reorderingNode.value) return
+  if (!node || canvasNodeDragDisabled.value) return
   const plan = buildFormNodeDropPlan(
     formFields.value,
     node,
@@ -3821,6 +3898,7 @@ async function ensureFormMetadata() {
 }
 
 async function saveSelectedNode() {
+  if (savingNode.value || saving.value || gridResizeInProgress.value) return
   const field = selectedField.value
   if (!field) return
   if (isTabNode.value && !field.parentId) {
@@ -3869,6 +3947,7 @@ async function saveSelectedNode() {
     }
     const refreshed = nodeToField(saved, field)
     Object.assign(field, refreshed)
+    rememberStoredFormNode(saved)
     rememberNodeBaseline(field)
     const latest = await getFormById(currentFormId)
     form.value.revision = latest.revision
@@ -3942,6 +4021,7 @@ async function validateFormActionsForPersistence({ requireEventBindings = false 
 }
 
 async function handlePublish() {
+  if (gridResizeInProgress.value) return
   if (!form.value.id) {
     ElMessage.warning('请先保存草稿')
     return
@@ -4074,7 +4154,7 @@ async function handleReleaseChanged() {
 
 // 保存表单
 async function handleSave() {
-  if (saving.value || savingNode.value) return false
+  if (saving.value || savingNode.value || gridResizeInProgress.value) return false
   if (!form.value.formName) {
     ElMessage.warning('请输入表单名称')
     return
@@ -4223,7 +4303,7 @@ async function reloadFormDesignerData({ resetInteraction = false } = {}) {
 }
 
 async function handleDiscardDraft() {
-  if (discardDraftLoading.value || !canDiscardDraft.value) return
+  if (discardDraftLoading.value || gridResizeInProgress.value || !canDiscardDraft.value) return
   try {
     await ElMessageBox.confirm(
       '撤销后将恢复到当前已发布配置。自上次发布以来所有已保存但未发布的修改，以及当前页面尚未保存的编辑，都会被覆盖且不可恢复。确定继续吗？',
@@ -4237,7 +4317,7 @@ async function handleDiscardDraft() {
   } catch {
     return
   }
-  if (discardDraftLoading.value || !canDiscardDraft.value) return
+  if (discardDraftLoading.value || gridResizeInProgress.value || !canDiscardDraft.value) return
 
   discardDraftLoading.value = true
   let discardCommitted = false

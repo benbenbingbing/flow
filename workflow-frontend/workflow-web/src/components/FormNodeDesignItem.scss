@@ -24,6 +24,11 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 15%, transparent);
 }
 
+.form-node-design-item:hover > .form-node-grid-resize-handle,
+.form-node-design-item.active > .form-node-grid-resize-handle {
+  opacity: 1;
+}
+
 .form-node-design-item.is-grid-child {
   margin-bottom: 0;
 }

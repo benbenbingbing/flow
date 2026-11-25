@@ -16,14 +16,14 @@ import Designer from '/src/views/EntityFormDesignByEntity.vue'
 import request from '/src/utils/request.js'
 const makeNode=(id,nodeType,parentId,orderKey,label)=>({id,nodeKey:id,nodeType,parentId,orderKey,revision:1,formId:'drag-form',bindingType:nodeType==='FIELD'?'ENTITY_FIELD':'NONE',bindingRef:nodeType==='FIELD'?id:'',propsDocument:JSON.stringify({label,fieldCode:id,fieldType:'VARCHAR',componentType:'input',gridSpan:24}),rulesDocument:'{}',dataSourceBindingsDocument:'{}'})
 const initialNodes=[makeNode('tabs','TAB_SET','',1000000,'Tab 集合'),makeNode('tab-a','TAB','tabs',1000000,'基本信息'),makeNode('tab-b','TAB','tabs',2000000,'更多信息'),makeNode('inside','FIELD','tab-a',1000000,'原有字段'),makeNode('moving','FIELD','',2000000,'待移动字段'),makeNode('section','SECTION','',3000000,'区块'),makeNode('grid','GRID','',4000000,'栅格')]
-const state=JSON.parse(localStorage.getItem('form-drag-test')||'null')||{form:{id:'drag-form',entityId:'entity-test',formName:'拖拽验收',formKey:'TEST_drag',layoutType:'grid',revision:1,status:1,activeReleaseId:'published',viewConfig:'{}'},nodes:initialNodes,published:initialNodes.map(n=>({...n})),orders:[],saves:[]}
-const fingerprint=nodes=>JSON.stringify(nodes.map(({id,parentId,orderKey})=>({id,parentId:parentId||'',orderKey})).sort((a,b)=>a.id.localeCompare(b.id)))
+const state=JSON.parse(localStorage.getItem('form-drag-test')||'null')||{form:{id:'drag-form',entityId:'entity-test',formName:'拖拽验收',formKey:'TEST_drag',layoutType:'grid',revision:1,status:1,activeReleaseId:'published',viewConfig:'{}'},nodes:initialNodes,published:initialNodes.map(n=>({...n})),orders:[],resizes:[],saves:[]}
+const fingerprint=nodes=>JSON.stringify(nodes.map(({id,parentId,orderKey,propsDocument})=>({id,parentId:parentId||'',orderKey,gridSpan:JSON.parse(propsDocument).gridSpan})).sort((a,b)=>a.id.localeCompare(b.id)))
 const changed=()=>fingerprint(state.nodes)!==fingerprint(state.published)
 const save=()=>localStorage.setItem('form-drag-test',JSON.stringify(state))
 request.defaults.adapter=async config=>{
  let data=[]
  const body=config.data?JSON.parse(config.data):null
- if(config.url==='/entity/entity-test')data={id:'entity-test',entityCode:'TEST',entityName:'拖拽验收实体',fields:['inside','moving'].map(id=>({id,fieldCode:id,fieldName:id==='moving'?'待移动字段':'原有字段',fieldType:'VARCHAR'}))}
+ if(config.url==='/entity/entity-test')data={id:'entity-test',entityCode:'TEST',entityName:'拖拽验收实体',fields:Object.entries({inside:'原有字段',moving:'待移动字段',fresh:'新字段'}).map(([id,fieldName])=>({id,fieldCode:id,fieldName,fieldType:'VARCHAR'}))}
  else if(config.url==='/entity-form/drag-form')data=state.form
  else if(config.url==='/entity-forms/drag-form/nodes')data=state.nodes
  else if(config.url==='/entity-forms/drag-form/diff')data={changed:changed(),discardableChanged:changed(),changedSections:changed()?['nodes']:[],changedItems:changed()?[{changeType:'MOVED',id:'moving',label:'待移动字段'}]:[]}
@@ -35,6 +35,13 @@ request.defaults.adapter=async config=>{
   node.parentId=body.parentId||''
   const previous=state.nodes.find(n=>n.id===body.previousNodeId),next=state.nodes.find(n=>n.id===body.nextNodeId)
   node.orderKey=next?Math.floor(((previous?.orderKey||0)+next.orderKey)/2):(previous?.orderKey||0)+1000000
+  node.revision++;state.form.revision++;data=node;save()
+ }
+ else if(config.url?.includes('/nodes/')&&config.url.endsWith('/patch')){
+  const id=config.url.split('/').at(-2),node=state.nodes.find(n=>n.id===id)
+  if(body.expectedRevision!==node.revision)throw Error('宽度保存 revision 不匹配')
+  state.resizes.push({id,...body})
+  node.propsDocument=JSON.stringify(body.props)
   node.revision++;state.form.revision++;data=node;save()
  }
  else if(config.url==='/entity-form/drag-form/patch'){
@@ -119,6 +126,42 @@ async function dragNode(nodeId, parentId, index = 'last') {
   await sleep(400)
 }
 
+async function resizeNode(nodeId, targetSpan, { autoSave = true } = {}) {
+  const selector = `.form-node-design-item[data-node-id="${nodeId}"] > .form-node-grid-resize-handle`
+  const handle = `document.querySelector(${JSON.stringify(selector)})`
+  const { x, y, targetX, rowWidth } = await evaluate(`(() => {
+    const handle=${handle}, row=handle.closest('.form-node-drop-zone');
+    handle.scrollIntoView({block:'center'});
+    const rect=handle.getBoundingClientRect(), {paddingLeft,paddingRight}=getComputedStyle(row);
+    const rowWidth=row.clientWidth-parseFloat(paddingLeft)-parseFloat(paddingRight);
+    const x=rect.x+rect.width/2,y=rect.y+rect.height/2;
+    return {x,y,rowWidth,targetX:x+(${targetSpan}-Number(handle.getAttribute('aria-valuenow')))*rowWidth/24}
+  })()`)
+  const resizeCount = await evaluate('dragTest.state.resizes.length')
+  const orderCount = await evaluate('dragTest.state.orders.length')
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: targetX, y, button: 'left', buttons: 1 })
+  await waitFor(`${handle}.getAttribute('aria-valuenow') === '${targetSpan}'`, 'Resize preview did not update')
+  const layoutWidth = await evaluate(`(() => {
+    const node = ${handle}.parentElement;
+    const entry = node.parentElement;
+    const column = entry.parentElement.matches('.design-grid > .el-col') ? entry.parentElement : node;
+    return column.getBoundingClientRect().width;
+  })()`)
+  assert.ok(Math.abs(layoutWidth - rowWidth * targetSpan / 24) < 1, `Dragging must change the layout before release (${layoutWidth}px of ${rowWidth}px for ${targetSpan} columns)`)
+  assert.equal(await evaluate('dragTest.state.resizes.length'), resizeCount)
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: targetX, y, button: 'left', clickCount: 1 })
+  if (autoSave) {
+    await waitFor(`dragTest.state.resizes.length === ${resizeCount + 1} && ${handle}.getAttribute('aria-disabled')==='false'`, 'Release did not save the new width')
+    assert.equal(await evaluate('dragTest.state.resizes.at(-1).props.gridSpan'), targetSpan)
+  } else {
+    assert.equal(await evaluate('dragTest.state.resizes.length'), resizeCount, 'New nodes must be saved with the form')
+  }
+  assert.equal(await evaluate('dragTest.state.orders.length'), orderCount, 'Width drag must leave order and parent unchanged')
+  assert.equal(await evaluate(`Boolean(document.querySelector('.node-property-drawer')?.getClientRects().length)`), false)
+}
+
 try {
   server = await createServer({ cacheDir: path.join(fixture, 'cache'), optimizeDeps: { entries: [path.join(fixture, 'index.html')] }, server: { host: '127.0.0.1', port: 3399, strictPort: true } })
   await server.listen()
@@ -144,6 +187,16 @@ try {
   await send('Page.navigate', { url: `http://127.0.0.1:3399/${path.basename(fixture)}/index.html` })
   await waitFor(`Boolean(window.dragTest)&&document.querySelectorAll('[data-sortable-ready="true"]').length>=6&&!document.querySelector('.el-loading-mask')`, 'Designer did not initialize')
 
+  assert.equal(await evaluate(`Boolean(document.querySelector('[data-node-id="section"] > .form-node-grid-resize-handle'))`), false)
+  await resizeNode('moving', 12)
+  await evaluate('window.dragTest=null')
+  await send('Page.reload')
+  await waitFor(`Boolean(window.dragTest)&&document.querySelector('[data-node-id="moving"] > .form-node-grid-resize-handle[aria-valuenow="12"]')&&!document.querySelector('.el-loading-mask')`, 'Reload lost the saved grid span')
+  await evaluate(`document.querySelector('[data-node-id="moving"] > .form-node-grid-resize-handle').focus()`)
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End' })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'End', code: 'End' })
+  await waitFor(`dragTest.state.resizes.at(-1)?.props.gridSpan===24&&document.querySelector('[data-node-id="moving"] > .form-node-grid-resize-handle[aria-valuenow="24"][aria-disabled="false"]')`, 'Keyboard resize did not save the full width')
+
   await dragNode('moving', 'tab-a')
   assert.equal(await evaluate(`dragTest.state.nodes.find(n=>n.id==='moving').parentId`), 'tab-a', '跨容器拖拽必须持久化父容器，不能只移动 DOM')
   assert.equal(await evaluate(`dragTest.state.orders.at(-1).parentId`), 'tab-a')
@@ -168,7 +221,7 @@ try {
   const publishDialog = `[...document.querySelectorAll('.el-dialog')].find(e=>e.getClientRects().length&&e.textContent.includes('表单发布'))`
   await waitFor(`Boolean(${publishDialog})`, 'Moved node did not open publish dialog')
   await waitFor(`Boolean(${publishDialog}?.querySelector('.el-dialog__footer .el-button--primary:not([disabled])'))`, 'Publish preview did not recognize the move')
-  await clickButton('发布', publishDialog)
+  await clickButton('确认发布', publishDialog)
   await waitFor('!dragTest.changed()', 'Published configuration did not include parent move')
   await waitFor(`!(${publishDialog})`, 'Publish dialog did not close')
 
@@ -177,6 +230,8 @@ try {
   assert.equal(await evaluate(`dragTest.state.nodes.find(n=>n.id==='moving').parentId`), 'section')
   await dragNode('moving', 'grid')
   assert.equal(await evaluate(`dragTest.state.nodes.find(n=>n.id==='moving').parentId`), 'grid')
+  await resizeNode('moving', 8)
+  await resizeNode('moving', 24)
   await dragNode('moving', '', 'first')
   assert.equal(await evaluate(`dragTest.state.nodes.find(n=>n.id==='moving').parentId`), '')
   assert.equal(await evaluate(`dragTest.state.orders.at(-1).parentId`), null, '移回根节点必须显式清空父容器')
@@ -208,10 +263,30 @@ try {
   await waitFor(`Boolean(window.dragTest)&&document.querySelector('.design-tab-order-item[data-node-id="${newTabId}"]')&&!document.querySelector('.el-loading-mask')`, 'Refresh lost new tab')
   await evaluate(`document.querySelector('.design-tab-order-item[data-node-id="${newTabId}"] .design-tab-order-label').click()`)
   await waitFor(`Boolean(document.querySelector('.tab-node-children[data-form-node-parent-id="${newTabId}"] .form-node-design-item[data-node-id="moving"]'))`, 'Refresh lost field under new tab')
+
+  // 自动保存宽度时以服务端文档为基底，其他编辑仍可随表单提交。
+  await evaluate(`document.querySelector('.form-node-design-item[data-node-id="moving"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))`)
+  const labelInput = `[...document.querySelectorAll('.node-property-drawer .el-form-item')].find(e=>e.querySelector('.el-form-item__label')?.textContent.trim()==='显示标签')?.querySelector('input')`
+  await waitFor(`Boolean(${labelInput})`, 'Node label input did not open')
+  await evaluate(`(() => {const input=${labelInput}; input.value='本地标签'; input.dispatchEvent(new Event('input',{bubbles:true}))})()`)
+  await evaluate(`document.querySelector('.node-property-drawer .el-drawer__close-btn').click()`)
+  await waitFor(`!document.querySelector('.node-property-drawer')?.getClientRects().length`, 'Node properties did not close')
+  await resizeNode('moving', 12)
+  assert.equal(await evaluate('dragTest.state.resizes.at(-1).props.label'), '待移动字段')
+
+  await evaluate(`[...document.querySelectorAll('.field-item')].find(item=>item.querySelector('.field-code').textContent==='fresh').click()`)
+  const freshNode = `document.querySelector('.form-node-grid-resize-handle[aria-label="新字段栅格宽度"]')?.parentElement`
+  await waitFor(`Boolean(${freshNode})`, 'New field did not get a resize handle')
+  const freshId = await evaluate(`${freshNode}.dataset.nodeId`)
+  await resizeNode(freshId, 8, { autoSave: false })
+  await clickButton('保存全部')
+  await waitFor('dragTest.state.saves.length===3', 'Save all did not persist the remaining changes')
+  assert.equal(await evaluate(`JSON.parse(dragTest.state.nodes.find(n=>n.id==='moving').propsDocument).label`), '本地标签')
+  assert.equal(await evaluate(`JSON.parse(dragTest.state.nodes.find(n=>n.id==='${freshId}').propsDocument).gridSpan`), 8)
   assert.deepEqual(errors, [])
   const screenshot = await send('Page.captureScreenshot', { format: 'png' })
   writeFileSync('/tmp/flow-form-node-drag.png', Buffer.from(screenshot.data, 'base64'))
-  console.log('form node drag browser acceptance passed: parent property, save/reload, publish, nested transfers, root reset, sibling reorder and unsaved new tab')
+  console.log('form node drag browser acceptance passed: live grid resize, save/reload, keyboard resize, publish, nested transfers, sibling reorder and unsaved new tab')
 } catch (error) {
   if (ws?.readyState === WebSocket.OPEN) {
     console.error(await evaluate(`JSON.stringify({orders:window.dragTest?.state.orders,parentLabels:[...document.querySelectorAll('.el-form-item')].filter(e=>e.querySelector('.el-form-item__label')?.textContent.includes('父容器')).map(e=>e.querySelector('.el-select__placeholder')?.textContent),nodes:[...document.querySelectorAll('.form-node-design-item[data-node-id="moving"]')].map(e=>({parent:e.closest('.form-node-drop-zone').dataset.formNodeParentId}))})`))
