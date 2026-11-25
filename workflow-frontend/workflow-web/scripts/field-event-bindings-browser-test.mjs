@@ -14,13 +14,16 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
 import Panel from '/src/components/form-designer/FormNodeEventBindings.vue'
 import SettingsSection from '/src/components/SettingsSection.vue'
+import EventBindingEditor from '/src/components/ui-config/EventBindingEditor.vue'
 import { uiEventBindingApi, uiExtensionApi } from '/src/api/uiConfig.js'
 import { registerFormFieldComponent } from '/src/extensions/core/registries/formFieldRegistry.js'
+import request from '/src/utils/request.js'
 const copy = value => JSON.parse(JSON.stringify(value))
-const events = ['FIELD_CHANGE','ENTITY_SELECTED','FIELD_BUTTON_CLICK','SUBFORM_LOAD','SUBFORM_SAVE']
+const events = ['FIELD_CHANGE','ENTITY_SELECTED','FIELD_BUTTON_CLICK','SUBFORM_LOAD','SUBFORM_SAVE','FORM_OPEN']
 const field = {id:'customer-id',revision:1,nodeType:'FIELD',fieldId:'customer-id',fieldCode:'customer',fieldName:'单选用户',fieldType:'REFERENCE',componentType:'reference',refEntityType:'USER'}
 const fields = [field,{id:'name-id',fieldId:'name-id',fieldCode:'name',fieldName:'数据名称',fieldType:'STRING'}]
 const state = reactive({field, formId:'form1', changes:0, rows:[], writes:[], reads:0})
+request.defaults.adapter=async config=>({config,status:200,data:{code:200,data:{viewConfig:{inputParameterSchema:{properties:{customerId:{type:'string',title:'客户 ID'}}}}}}})
 uiEventBindingApi.catalog=async()=>({events})
 uiEventBindingApi.list=async(owner,id)=>{state.reads++;const rows=copy(state.rows.filter(r=>r.ownerId===id));await new Promise(r=>setTimeout(r,id==='slow'?350:10));return rows}
 uiEventBindingApi.create=async payload=>{if(state.rows.some(r=>r.ownerId===payload.ownerId&&r.targetKey===payload.targetKey&&r.eventCode===payload.eventCode))throw Error('duplicate binding');const row={...copy(payload),id:'binding'+state.writes.length,revision:1};state.rows.push(row);state.writes.push(copy(row));return copy(row)}
@@ -29,7 +32,9 @@ uiEventBindingApi.remove=async(id,revision)=>{const row=state.rows.find(r=>r.id=
 uiExtensionApi.availableInterfaces=async()=>[{id:'extra-interface',extensionId:'extra-interface',extensionType:'INTERFACE',displayName:'扩展接口',interfaceContextType:'FORM',interfaceKind:'READ',enabled:true}]
 registerFormFieldComponent('test_score',{render:()=>h('div')},{capabilities:{supportedEvents:['FIELD_BUTTON_CLICK']}})
 const app=createApp({setup(){return()=>h('main',{id:'panel',style:'width:900px;margin:30px auto'},[
- h(SettingsSection,{title:'事件与回填',defaultExpanded:true},{default:()=>h(Panel,{formId:state.formId,field:state.field,formFields:fields,fieldOptions:fields.map(f=>({label:f.fieldName,value:f.fieldCode})),onChanged:()=>state.changes++})})
+ state.showFormOpen
+   ? h(EventBindingEditor,{ownerType:'FORM',ownerId:'open-form',allowedEvents:['FORM_OPEN'],fieldOptions:fields.map(f=>({label:f.fieldName,value:f.fieldCode}))})
+   : h(SettingsSection,{title:'事件与回填',defaultExpanded:true},{default:()=>h(Panel,{formId:state.formId,field:state.field,formFields:fields,fieldOptions:fields.map(f=>({label:f.fieldName,value:f.fieldCode})),onChanged:()=>state.changes++})})
 ])}})
 app.config.warnHandler=message=>console.warn(message)
 app.use(createPinia()).use(ElementPlus,{locale:zhCn}).mount('#app')
@@ -117,6 +122,31 @@ try{
  assert.ok(!(await evaluate(`document.querySelector('#panel .el-table').textContent`)).includes('加载子表'))
  await evaluate(`eventTest.state.formId='form1';eventTest.settle()`)
  const screenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-field-event-panel.png',Buffer.from(screenshot.data,'base64'))
+ // 用表单打开事件验证普通步骤也能选择页面参数，并保留自定义路径的往返兼容。
+ await evaluate(`eventTest.state.rows.push({id:'open-form-binding',revision:1,ownerType:'FORM',ownerId:'open-form',eventCode:'FORM_OPEN',targetType:'OWNER',targetKey:'',inheritanceMode:'INHERIT',enabled:true,steps:[{strategy:'BEFORE',outputMapping:[{sourcePath:'input.form.name',targetPath:'form.name'}],condition:{path:'context.custom.flag',equals:'legacy'}}]});eventTest.state.showFormOpen=true;eventTest.settle()`)
+ await clickText('编辑');await clickText('执行条件','.el-collapse-item__header')
+ assert.match(await evaluate("document.querySelector('.condition-grid').innerText"), /context\.custom\.flag/)
+ const savedCondition = () => evaluate('JSON.parse(JSON.stringify(eventTest.state.writes.at(-1).steps[0].condition))')
+ await clickText('保存绑定')
+ assert.equal(await evaluate('eventTest.state.writes.at(-1).ownerId'), 'open-form', await evaluate("[...document.querySelectorAll('.el-message__content')].map(e=>e.textContent).join(' | ')"))
+ assert.deepEqual(await savedCondition(), {path:'context.custom.flag',equals:'legacy'})
+ await clickText('编辑');await clickText('执行条件','.el-collapse-item__header')
+ await evaluate("document.querySelector('.condition-grid .el-select__wrapper').click();eventTest.settle()")
+ items=await options()
+ assert.ok(items.some(item=>item.text==='客户 ID · input.params.customerId'))
+ assert.ok(items.some(item=>item.text==='数据名称 · input.form.name'))
+ await clickText('打开方式 · input.mode','.el-select-dropdown__item')
+ await evaluate("document.querySelectorAll('.condition-grid .el-select__wrapper')[2].click();eventTest.settle()")
+ await clickText('新增','.el-select-dropdown__item')
+ await clickText('保存绑定')
+ assert.deepEqual(await savedCondition(), {path:'input.mode',equals:'create'})
+ await clickText('编辑');await clickText('执行条件','.el-collapse-item__header')
+ await evaluate("document.querySelector('.condition-grid .el-select__wrapper').click();eventTest.settle()")
+ await clickText('客户 ID · input.params.customerId','.el-select-dropdown__item')
+ await evaluate("document.querySelectorAll('.condition-grid .el-select__wrapper')[1].click();eventTest.settle()")
+ await clickText('存在','.el-select-dropdown__item')
+ await clickText('保存绑定')
+ assert.deepEqual(await savedCondition(), {path:'input.params.customerId',exists:true})
  assert.deepEqual(errors,[])
- console.log('field event browser acceptance passed: inline list, disabled event reasons, quick-fill/create/edit/delete, duplicate prevention, ordering, field switching, stale responses, unsaved guard')
+ console.log('field event browser acceptance passed: inline list, disabled event reasons, quick-fill/create/edit/delete, duplicate prevention, ordering, field switching, stale responses, unsaved guard, form condition paths and mode options')
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}

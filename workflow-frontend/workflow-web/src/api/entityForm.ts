@@ -8,8 +8,8 @@ export const getFormsByEntity = (entityId: string) => {
 }
 
 // 根据ID获取表单
-export const getFormById = (id: string) => {
-  return request.get(`/entity-form/${id}`)
+export const getFormById = (id: string, options = {}) => {
+  return request.get(`/entity-form/${id}`, options)
 }
 
 // 创建表单

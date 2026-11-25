@@ -14,8 +14,8 @@ export const entityListConfigApi = {
   /**
    * 根据ID查询配置（含字段）
    */
-  getById(id) {
-    return request.get(`/entity-list-config/${id}`)
+  getById(id, options = {}) {
+    return request.get(`/entity-list-config/${id}`, options)
   },
 
   getExtensionOptions(entityCode) {

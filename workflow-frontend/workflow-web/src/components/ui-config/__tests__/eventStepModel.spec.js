@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createEventStepEditor, serializeEventStep, parseEventDocument } from '../eventStepModel.js'
+import { eventConditionPathGroups } from '../eventConditionPaths.js'
 
 test('步骤编辑往返保持条件、接口兼容标记与输出映射策略', () => {
   const { normalizeStep } = createEventStepEditor()
@@ -101,4 +102,28 @@ test('实体查询往返保留目标和页面参数路径，表单回填和列�
   assert.equal(JSON.parse(JSON.stringify(listStep)).outputMapping, undefined)
   assert.equal(validateEventStepChain([listStep], list), '')
   assert.match(validateEventStepChain([{ ...listStep, strategy: 'BEFORE' }], list), /主处理/)
+})
+
+test('打开表单按名称提供表单字段和参数，选中的路径保持原有条件协议', () => {
+  const fields = [{ value: 'status', label: '状态' }]
+  const parameters = [{ code: 'customerId', name: '客户 ID' }]
+  const groups = eventConditionPathGroups('FORM_OPEN', fields, parameters)
+  assert.deepEqual(groups.find(group => group.label === '表单字段').options, [{ label: '状态', value: 'input.form.status' }])
+  assert.deepEqual(groups.find(group => group.label === '页面参数').options, [{ label: '客户 ID', value: 'input.params.customerId' }])
+  const step = createEventStepEditor().normalizeStep({}, 0)
+  step.conditionPath = groups[0].options.find(item => item.label === '打开方式').value
+  step.conditionValue = 'create'
+  assert.deepEqual(serializeEventStep(step, 0).condition, { path: 'input.mode', equals: 'create' })
+  step.conditionPath = ''
+  assert.deepEqual(serializeEventStep(step, 0).condition, {})
+})
+
+test('来源选项随事件变化，列表系统字段和业务字段使用实际行结构', () => {
+  const fields = [{ value: 'id', label: 'ID' }, { value: 'status', label: '状态' }, { value: 'customer_id', label: '客户' }]
+  const pathsFor = event => eventConditionPathGroups(event, fields, []).flatMap(group => group.options.map(item => item.value))
+  assert.deepEqual(pathsFor('ROW_BUTTON_CLICK'), ['input.row.id', 'input.row.status', 'input.row.data.customer_id'])
+  assert.deepEqual(pathsFor('TOOLBAR_BUTTON_CLICK'), ['input.selectedRows.0.id', 'input.selectedRows.0.status', 'input.selectedRows.0.data.customer_id'])
+  assert.ok(pathsFor('ENTITY_SELECTED').includes('selection.id'))
+  assert.ok(!pathsFor('FIELD_CHANGE').includes('selection.id'))
+  assert.ok(!pathsFor('LIST_LOAD').some(path => path.startsWith('input.row')))
 })

@@ -470,7 +470,7 @@
               v-model:config="step.actionConfig"
               :event-code="editor.eventCode"
               :field-options="fieldOptions"
-              :parameter-options="lookupParameters"
+              :parameter-options="eventParameters"
               @change-entity="step.outputRows = []"
               @fields="step.lookupFields = $event"
             />
@@ -535,18 +535,44 @@
                   v-if="!isFormButtonMainStep(step) || hasStepCondition(step)"
                   class="condition-grid"
                 >
-                  <el-input
+                  <el-select
+                    v-if="conditionPathGroups.length"
                     v-model="step.conditionPath"
-                    placeholder="数据路径，例如 input.status"
-                  />
-                  <el-select v-model="step.conditionOperator">
+                    aria-label="条件数据来源"
+                    placeholder="选择字段或参数，也可输入路径"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                  >
+                    <el-option-group v-for="group in conditionPathGroups" :key="group.label" :label="group.label">
+                      <el-option
+                        v-for="item in group.options" :key="item.value"
+                        :label="`${item.label} · ${item.value}`" :value="item.value"
+                      />
+                    </el-option-group>
+                  </el-select>
+                  <el-input v-else v-model="step.conditionPath" aria-label="条件数据来源" placeholder="输入自定义数据路径" clearable />
+                  <el-select v-model="step.conditionOperator" aria-label="条件操作符">
                     <el-option label="等于" value="equals" />
                     <el-option label="不等于" value="notEquals" />
                     <el-option label="存在" value="exists" />
                     <el-option label="为真" value="truthy" />
                   </el-select>
+                  <el-select
+                    v-if="showFormModeChoices(step)"
+                    v-model="step.conditionValue"
+                    aria-label="比较值"
+                    placeholder="选择新增或编辑"
+                    filterable
+                    allow-create
+                    default-first-option
+                  >
+                    <el-option label="新增" value="create" />
+                    <el-option label="编辑" value="edit" />
+                  </el-select>
                   <el-input
-                    v-if="!['exists', 'truthy'].includes(step.conditionOperator)"
+                    v-else-if="!['exists', 'truthy'].includes(step.conditionOperator)"
                     v-model="step.conditionValue"
                     placeholder="比较值"
                   />
@@ -556,6 +582,9 @@
                     active-text="是"
                     inactive-text="否"
                   />
+                  <span class="condition-hint">
+                    {{ conditionPathGroups.length ? '可按名称搜索，自定义路径输入后按回车。' : '' }}来源留空时执行这一步。
+                  </span>
                 </div>
               </el-collapse-item>
             </el-collapse>
@@ -594,6 +623,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
 import EntityLookupStepEditor from './EntityLookupStepEditor.vue'
+import { eventConditionPathGroups } from './eventConditionPaths'
 import { getFormById } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
@@ -692,21 +722,32 @@ const listMainStepExists = computed(() => lookupOwner.value === 'LIST' && editor
 const lookupTargetFields = computed(() => props.fieldOptions.filter(field =>
   !['id', 'processInstanceId', 'process_instance_id', 'processStatus', 'process_status',
     'deleted', 'create_by', 'update_by', 'create_time', 'update_time'].includes(field.value)))
-const lookupParameters = ref([])
-watch(() => [dialogVisible.value, props.ownerId, lookupOwner.value, editor.steps.some(isEntityLookupStep)],
-  async ([visible, id, owner, hasLookup], _, onCleanup) => {
-    lookupParameters.value = []
-    if (!visible || !id || !hasLookup || !['FORM', 'LIST'].includes(owner)) return
+const eventParameters = ref([])
+const hasEditableStep = computed(() => editor.steps.some(step => !isBuiltinExcelStep(step)))
+const conditionPathGroups = computed(() => eventConditionPathGroups(editor.eventCode, props.fieldOptions, eventParameters.value))
+watch([dialogVisible, () => props.ownerId, lookupOwner, hasEditableStep],
+  async ([visible, id, owner, hasStep], _, onCleanup) => {
+    eventParameters.value = []
+    if (!visible || !id || !hasStep || !['FORM', 'LIST'].includes(owner)) return
     let current = true
     onCleanup(() => { current = false })
     try {
-      const config = await (owner === 'FORM' ? getFormById(id) : entityListConfigApi.getById(id))
-      if (current) lookupParameters.value = getInputParameterDefinitions(parseJson(config?.viewConfig, {})?.inputParameterSchema)
+      const requestOptions = { silentError: true }
+      const config = await (owner === 'FORM' ? getFormById(id, requestOptions) : entityListConfigApi.getById(id, requestOptions))
+      if (current) {
+        const view = parseJson(config?.viewConfig, {})
+        eventParameters.value = getInputParameterDefinitions(view?.inputParameterSchema)
+      }
     } catch {
       // 加载不到参数选项时仍可输入已知路径，运行时按发布声明校验。
     }
   })
 const selectedEventDefault = computed(() => platformDefaultHelp(editor.eventCode))
+
+function showFormModeChoices(step) {
+  return ['FORM_OPEN', 'FORM_RESET'].includes(editor.eventCode) && step.conditionPath === 'input.mode'
+    && ['equals', 'notEquals'].includes(step.conditionOperator)
+}
 
 const ownerTypeLabel = computed(() => ({
   ENTITY: '实体默认配置',
@@ -1511,7 +1552,13 @@ defineExpose({ reload: load })
 }
 
 .condition-grid {
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.condition-hint {
+  grid-column: 1 / -1;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 
 .main-condition-cleanup {
