@@ -8,6 +8,15 @@ import { normalizeSupportedEntityCodes } from '../extension-entity-scope.js'
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 const RUNTIME_REGEX_MAX_LENGTH = 500
+export const FORM_COMPONENT_SIZE_LABELS = Object.freeze({ small: '小', default: '中', large: '大' })
+export const FORM_LABEL_OVERFLOW_LABELS = Object.freeze({
+  ellipsis: '单行省略',
+  'ellipsis-two': '两行省略',
+  wrap: '完整换行',
+  shrink: '自动缩小 · 单行',
+  'shrink-two': '自动缩小 · 最多两行'
+})
+export const FORM_LABEL_OVERFLOW_KEY = Symbol('formLabelOverflow')
 
 export function safeParseConfig(value, fallback = {}) {
   if (!value) return cloneValue(fallback)
@@ -18,6 +27,24 @@ export function safeParseConfig(value, fallback = {}) {
   } catch {
     return cloneValue(fallback)
   }
+}
+
+/**
+ * 从草稿或发布的 viewConfig 读取整表控件尺寸。独立表单缺省为中档，
+ * 嵌入的子表可传入父表档位作为回退，显式选择「中」仍能覆盖父表。
+ */
+export function resolveFormComponentSize(viewConfig, inheritedSize) {
+  const config = typeof viewConfig === 'string' ? safeParseConfig(viewConfig) : viewConfig
+  return [config?.componentSize, inheritedSize].find(size =>
+    typeof size === 'string' && Object.hasOwn(FORM_COMPONENT_SIZE_LABELS, size)
+  ) || 'default'
+}
+
+/** 设计器与发布运行时共用空值规则，历史快照直接按完整换行展示。 */
+export function resolveFormLabelOverflow(viewConfig) {
+  const config = typeof viewConfig === 'string' ? safeParseConfig(viewConfig) : viewConfig
+  const mode = config?.labelOverflow
+  return typeof mode === 'string' && Object.hasOwn(FORM_LABEL_OVERFLOW_LABELS, mode) ? mode : 'wrap'
 }
 
 export function stringifyConfig(value) {

@@ -25,7 +25,8 @@
 </template>
 <script setup>
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
-import { Field as VanField, Popup as VanPopup, Cascader as VanCascader } from 'vant'
+import { Popup as VanPopup, Cascader as VanCascader } from 'vant'
+import VanField from './MobileLabeledField.vue'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useCascaderFieldRuntime } from '@flow/workflow-core/vue/useCascaderFieldRuntime'
 import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
@@ -122,10 +123,14 @@ defineExpose({ validate: () => props.disabled || (!loading.value && !error.value
 .mobile-cascader-field {
   --van-field-label-width: 92px;
   --van-field-label-margin-right: 16px;
-  padding: 14px 0; background: transparent; font-size: 14px; line-height: 1.65;
+  padding: var(--flow-mobile-form-field-padding, 14px) 0;
+  min-height: 44px;
+  background: transparent;
+  font-size: var(--flow-mobile-form-field-font-size, 14px);
+  line-height: 1.65;
   border-bottom: 1px solid var(--flow-mobile-border);
 }
-.mobile-cascader-field :deep(.van-field__label) { color: var(--flow-mobile-muted); font-size: 13px; }
+.mobile-cascader-field :deep(.van-field__label) { color: var(--flow-mobile-muted); font-size: var(--flow-mobile-form-label-font-size, 13px); }
 .mobile-cascader-field.van-field--label-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
 .mobile-cascader-field :deep(.van-field__label--top) { grid-column: 1 / -1; margin-right: 0; }
 .cascader-status, .cascader-error { padding: 8px 16px; font-size: 13px; line-height: 1.6; }

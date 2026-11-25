@@ -24,25 +24,27 @@
         show-icon
         class="custom-form-unique-error"
       />
-      <component
-        ref="customFormRef"
-        :is="getCustomFormComponent(form.customComponent, form.customComponentVersion || undefined)"
-        :form="form"
-        :modelValue="formData"
-        @update:modelValue="handleCustomFormUpdate"
-        :readonly="readonly"
-        :fields="processedFields"
-        :linkageState="linkageState"
-        :mode="mode"
-        :config="formViewConfig.customComponentProps || {}"
-        :context="runtimeContext"
-        :entity-code="entityCode"
-        :entity-definition="entityDefinition"
-        :entity-fields="entityFields"
-        :data-source-runtime="dataSourceRuntime"
-        :form-action-slots="customFormActionSlots"
-        @form-action="triggerCustomFormAction"
-      />
+      <el-config-provider :size="componentSize">
+        <component
+          ref="customFormRef"
+          :is="getCustomFormComponent(form.customComponent, form.customComponentVersion || undefined)"
+          :form="form"
+          :modelValue="formData"
+          @update:modelValue="handleCustomFormUpdate"
+          :readonly="readonly"
+          :fields="processedFields"
+          :linkageState="linkageState"
+          :mode="mode"
+          :config="formViewConfig.customComponentProps || {}"
+          :context="runtimeContext"
+          :entity-code="entityCode"
+          :entity-definition="entityDefinition"
+          :entity-fields="entityFields"
+          :data-source-runtime="dataSourceRuntime"
+          :form-action-slots="customFormActionSlots"
+          @form-action="triggerCustomFormAction"
+        />
+      </el-config-provider>
     </template>
     <FormNodeRenderer
       v-else-if="hasNodeTree"
@@ -57,6 +59,8 @@
       :data-source-runtime="dataSourceRuntime"
       :label-width="labelWidth"
       :label-position="labelPosition"
+      :label-overflow="labelOverflow"
+      :component-size="componentSize"
       :layout-type="form?.layoutType || 'vertical'"
       :root-parent-id="nodeRootParentId"
       :excluded-node-ids="excludedNodeIds"
@@ -82,6 +86,7 @@
       :model="formData"
       :label-width="labelWidth"
       :label-position="labelPosition"
+      :size="componentSize"
       class="preview-form"
     >
       <div
@@ -95,7 +100,7 @@
         <template v-if="isSectionField(field)">
           <SectionField :field="field" />
         </template>
-        <el-form-item
+        <ConfiguredFormFieldItem
           v-else
           :label="isSubFormLayoutField(field) ? undefined : (field.fieldLabel || field.fieldName)"
           :label-width="isSubFormLayoutField(field) ? '0px' : undefined"
@@ -126,7 +131,7 @@
           <div v-if="crossValidation.errorFor(field)" class="el-form-item__error" role="alert">
             {{ crossValidation.errorFor(field) }}
           </div>
-        </el-form-item>
+        </ConfiguredFormFieldItem>
       </div>
     </el-form>
 
@@ -177,6 +182,7 @@ import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth }
 
 import { ref, computed, watch, onMounted, nextTick, provide, defineAsyncComponent } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
+import ConfiguredFormFieldItem from './ConfiguredFormFieldItem.vue'
 import FormNodeRenderer from './FormNodeRenderer.vue'
 import FormActionBar from './FormActionBar.vue'
 import RelatedContentRuntime from './related-content/RelatedContentRuntime.vue'
@@ -207,8 +213,11 @@ import {
   FORM_UNIQUE_PRECHECK_CONTEXT_KEY
 } from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 import {
+  FORM_LABEL_OVERFLOW_KEY,
   isFieldReadonlyForMode,
   isFieldVisibleForMode,
+  resolveFormComponentSize,
+  resolveFormLabelOverflow,
   safeParseConfig
 } from '@flow/workflow-core/config-runtime'
 
@@ -284,6 +293,9 @@ const dictionaryOptions = useFieldDictionaryOptions(() =>
   [...(props.form?.fields || []), ...props.entityFields].filter(field => field.runtimeOptions == null)
 )
 const formViewConfig = computed(() => safeParseConfig(props.form?.viewConfig))
+const componentSize = computed(() => resolveFormComponentSize(formViewConfig.value))
+const labelOverflow = computed(() => resolveFormLabelOverflow(formViewConfig.value))
+provide(FORM_LABEL_OVERFLOW_KEY, labelOverflow)
 
 const previewStyle = computed(() => ({
   height: props.height,

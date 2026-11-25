@@ -1,5 +1,5 @@
 <template>
-  <div ref="root" class="mobile-form-renderer">
+  <div ref="root" class="mobile-form-renderer" :data-component-size="componentSize">
     <div v-if="loading" class="form-loading"><VanLoading size="18" />正在加载表单</div>
     <p v-if="loadError || modelError || submissionError" class="form-message" role="alert">{{ loadError || modelError || submissionError }}<button v-if="loadError" @click="initialize">重试</button></p>
     <MobileFormPages :tabbed="tabbed" :active-tab="activeTab" :pages="pageLayout.pages" @update:active-tab="$emit('update:activeTab', $event)">
@@ -14,7 +14,7 @@
   </div>
 </template>
 <script setup>
-import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, provide, ref, unref, watch } from 'vue'
 import { Loading as VanLoading } from 'vant'
 import { getFieldKey, applyRuntimeFieldDefaults } from '@flow/workflow-core/form-runtime'
 import { resolveComponentFormPatch, projectRuntimeFields, settleRuntimeLinkages, runtimeFieldState, validateRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
@@ -24,14 +24,14 @@ import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomVa
 import { resolveFormUniqueValidationTrigger, createFormUniquePrecheckRuntime } from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 import { isEntitySelectionEventField } from '@flow/workflow-core/field-event-capabilities'
 import { FIELD_SCRIPT_CONTEXT } from '@flow/workflow-core/browser/field-event-scripts'
-import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { FORM_LABEL_OVERFLOW_KEY, resolveFormComponentSize, resolveFormLabelOverflow, safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { createCustomFormActionSlotContract } from '@flow/workflow-core/form-actions'
 import { buildMobileFormTree, buildMobileFormPages, groupsContainingField } from './mobileFormTree.js'
 import { getMobileExtension, mobileFieldCapability } from '../fields/registry.js'
 import MobileFormSections from './MobileFormSections.vue'
 import MobileFormPages from './MobileFormPages.vue'
 import MobileRelatedContent from './MobileRelatedContent.vue'
-const props = defineProps({ tabbed: Boolean, activeTab: { type: String, default: 'basic' }, form: { type: Object, required: true }, modelValue: { type: Object, default: () => ({}) }, entityFields: { type: Array, default: () => [] }, readonly: Boolean, mode: { type: String, default: 'view' }, context: { type: Object, default: () => ({}) }, services: { type: Object, default: () => ({}) }, dataSourceRuntime: { type: Object, default: null }, rootParentId: { type: [String, Number], default: '' }, actions: { type: Array, default: () => [] }, actionLoadingKey: String })
+const props = defineProps({ tabbed: Boolean, activeTab: { type: String, default: 'basic' }, form: { type: Object, required: true }, modelValue: { type: Object, default: () => ({}) }, entityFields: { type: Array, default: () => [] }, readonly: Boolean, mode: { type: String, default: 'view' }, context: { type: Object, default: () => ({}) }, services: { type: Object, default: () => ({}) }, dataSourceRuntime: { type: Object, default: null }, rootParentId: { type: [String, Number], default: '' }, inheritedComponentSize: String, inheritLabelOverflow: Boolean, actions: { type: Array, default: () => [] }, actionLoadingKey: String })
 const emit = defineEmits(['update:modelValue', 'update:activeTab', 'action', 'error'])
 const record = ref(props.modelValue), expanded = ref([]), baseErrors = ref({}), uniqueErrors = ref({}), loading = ref(false), loadError = ref(''), modelError = ref('')
 const root = ref(), customFormRef = ref(), sectionRefs = new Map()
@@ -43,6 +43,12 @@ const runtimeOptions = computed(() => ({ form: props.form, record: record.value,
 const linkage = ref({ visibility: {}, disabled: {}, required: {}, options: {}, attachmentItemRequired: {} })
 const tree = computed(() => buildMobileFormTree(props.form, fields.value, runtimeOptions.value, linkage.value))
 const formConfig = computed(() => safeParseConfig(props.form.viewConfig))
+const componentSize = computed(() => resolveFormComponentSize(formConfig.value, props.inheritedComponentSize))
+const parentLabelOverflow = inject(FORM_LABEL_OVERFLOW_KEY, 'wrap')
+// 内嵌明细随当前表单的标签策略更新。独立子表使用自己发布的配置。
+provide(FORM_LABEL_OVERFLOW_KEY, computed(() => props.inheritLabelOverflow
+  ? unref(parentLabelOverflow)
+  : resolveFormLabelOverflow(formConfig.value)))
 const relatedContents = computed(() => (props.form.viewCompositions || []).filter(item => {
   if (item.config?.enabled === false) return false
   if (String(item.anchorType).toUpperCase() !== 'FORM_NODE') return true
@@ -64,7 +70,7 @@ const unique = createFormUniquePrecheckController({
   onErrorsChange: value => { uniqueErrors.value = value }
 })
 const uniqueRuntime = createFormUniquePrecheckRuntime({ controller: unique, getFields: () => fields.value, getRecord: () => record.value, getErrors: () => uniqueErrors.value })
-const runtimeContext = computed(() => ({ ...props.context, form: props.form, mode: props.mode, readonly: props.readonly, record: record.value, getFormData: () => record.value, setFormFieldValue: (code, value) => setField({ fieldCode: code }, value), scriptFields: fields.value, formCustomValidation: custom.runtime, formUniqueness: uniqueRuntime, onFieldChange: fieldChange, onFieldBlur: fieldBlur, revealField: reveal }))
+const runtimeContext = computed(() => ({ ...props.context, form: props.form, componentSize: componentSize.value, mode: props.mode, readonly: props.readonly, record: record.value, getFormData: () => record.value, setFormFieldValue: (code, value) => setField({ fieldCode: code }, value), scriptFields: fields.value, formCustomValidation: custom.runtime, formUniqueness: uniqueRuntime, onFieldChange: fieldChange, onFieldBlur: fieldBlur, revealField: reveal }))
 provide(FIELD_SCRIPT_CONTEXT, {
   getFieldValue: code => record.value[code],
   setFieldValue(code, value) {
@@ -203,5 +209,22 @@ async function applyServerValidationError(cause) {
 defineExpose({ validate, reveal, applyServerValidationError, getValidationError: () => loadError.value || modelError.value || submissionError.value || Object.values(errors.value)[0] || '', getRecord: () => record.value })
 </script>
 <style scoped>
-.mobile-form-renderer { font-size: 14px; }.form-message { color: #b04432; padding: 12px; border-radius: 8px; background: #fff3ec; line-height: 1.6; }.form-message button { border: 0; background: none; color: inherit; min-height: 44px; text-decoration: underline; }.form-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px; color: var(--flow-mobile-muted); font-size: 13px; }
+/* 每个表单根重设中档，嵌入的独立表单可以覆盖父表尺寸。 */
+.mobile-form-renderer {
+  --flow-mobile-form-field-padding: 14px;
+  --flow-mobile-form-field-font-size: 14px;
+  --flow-mobile-form-label-font-size: 13px;
+  font-size: 14px;
+}
+.mobile-form-renderer[data-component-size='small'] {
+  --flow-mobile-form-field-padding: 12px;
+  --flow-mobile-form-field-font-size: 13px;
+  --flow-mobile-form-label-font-size: 12px;
+}
+.mobile-form-renderer[data-component-size='large'] {
+  --flow-mobile-form-field-padding: 18px;
+  --flow-mobile-form-field-font-size: 16px;
+  --flow-mobile-form-label-font-size: 14px;
+}
+.form-message { color: #b04432; padding: 12px; border-radius: 8px; background: #fff3ec; line-height: 1.6; }.form-message button { border: 0; background: none; color: inherit; min-height: 44px; text-decoration: underline; }.form-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px; color: var(--flow-mobile-muted); font-size: 13px; }
 </style>

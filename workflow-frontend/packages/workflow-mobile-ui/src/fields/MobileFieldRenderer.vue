@@ -46,7 +46,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch, provide, getCurrentInstance } from 'vue'
 import { FIELD_SCRIPT_EVENTS, readComponentScriptEvents } from '@flow/workflow-core/browser/field-script-metadata'
 import { readFieldScripts, validateFieldScript } from '@flow/workflow-core/browser/field-event-scripts'
-import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cell as VanCell, showFailToast } from 'vant'
+import { Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cell as VanCell, showFailToast } from 'vant'
+import VanField from './MobileLabeledField.vue'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { normalizeFieldDefaultValue, useFormField } from '@flow/workflow-core/vue/useFormField'
 import { usePickerNumericInput } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
@@ -267,13 +268,14 @@ defineExpose({ validate })
 .mobile-form-field {
   --van-field-label-width: 92px;
   --van-field-label-margin-right: 16px;
-  padding: 14px 0;
+  padding: var(--flow-mobile-form-field-padding, 14px) 0;
+  min-height: 44px;
   background: transparent;
-  font-size: 14px;
+  font-size: var(--flow-mobile-form-field-font-size, 14px);
   line-height: 1.65;
   border-bottom: 1px solid var(--flow-mobile-border);
 }
-.mobile-form-field :deep(.van-field__label) { color: var(--flow-mobile-muted); font-size: 13px; }
+.mobile-form-field :deep(.van-field__label) { color: var(--flow-mobile-muted); font-size: var(--flow-mobile-form-label-font-size, 13px); }
 /* 顶部标签明确独占一行，避免清除侧边距后，flex 把值压成零宽仍排在标签旁边。 */
 .mobile-form-field.van-field--label-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
 .mobile-form-field :deep(.van-field__label--top) { grid-column: 1 / -1; margin-right: 0; }

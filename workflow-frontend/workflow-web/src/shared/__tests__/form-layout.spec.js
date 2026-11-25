@@ -1,10 +1,27 @@
 import assert from 'node:assert/strict'
 import { resolveFormDefaultColumnCount, resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '../form-layout.js'
 import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
-import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { FORM_LABEL_OVERFLOW_LABELS, resolveFormComponentSize, resolveFormLabelOverflow, safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { buildEntityConfigKey } from '../entity-config-key.js'
 import { FORM_RENDERER_MODE_DEFAULT, resolveFormRendererMode } from '../form-renderer-mode.js'
 import { extractSfcFunctions } from '../../../scripts/test-sfc-functions.mjs'
+
+// 历史草稿和发布快照中尺寸可能缺省或留空，只解析为中档，不补写配置。
+for (const config of [undefined, null, '', '{invalid}', Object.freeze({}), '{"componentSize":null}', { componentSize: '' }, { componentSize: 'invalid' }]) {
+  assert.equal(resolveFormComponentSize(config), 'default')
+}
+for (const size of ['small', 'default', 'large']) {
+  assert.equal(resolveFormComponentSize(JSON.stringify({ componentSize: size })), size)
+}
+assert.equal(resolveFormComponentSize({}, 'large'), 'large', '缺省的子表继承父表档位')
+assert.equal(resolveFormComponentSize({ componentSize: 'default' }, 'large'), 'default', '子表显式选择中档时覆盖父表')
+
+for (const config of [undefined, null, '', '{invalid}', Object.freeze({}), '{"labelOverflow":null}', { labelOverflow: '' }, { labelOverflow: 'invalid' }]) {
+  assert.equal(resolveFormLabelOverflow(config), 'wrap', '历史表单的空值按完整换行展示')
+}
+for (const mode of Object.keys(FORM_LABEL_OVERFLOW_LABELS)) {
+  assert.equal(resolveFormLabelOverflow(JSON.stringify({ labelOverflow: mode })), mode)
+}
 
 // 历史快照中被布局模式覆盖的 gridSpan 不能因升级而突然生效。
 for (const [layoutType, labelPosition, span] of [

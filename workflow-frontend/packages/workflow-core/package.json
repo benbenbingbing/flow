@@ -8,6 +8,7 @@
     ".": "./dist/index.js",
     "./vue/useFormCrossFieldValidation": "./dist/composables/useFormCrossFieldValidation.js",
     "./vue/useFormCustomValidation": "./dist/composables/useFormCustomValidation.js",
+    "./vue/FormFieldLabel.vue": "./dist/components/FormFieldLabel.vue",
     "./extensions/contracts/form-field": "./dist/extensions/contracts/form-field.js",
     "./extensions/contracts/validation": "./dist/extensions/contracts/validation.js",
     "./extensions/core/fieldPolicy": "./dist/extensions/core/fieldPolicy.js",

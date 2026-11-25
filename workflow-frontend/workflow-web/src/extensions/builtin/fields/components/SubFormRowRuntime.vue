@@ -7,6 +7,8 @@
     :fields="fields"
     :label-width="labelWidth"
     :label-position="labelPosition"
+    :label-overflow="labelOverflow"
+    :component-size="componentSize"
     :model-value="row"
     :readonly="readonly"
     :mode="mode"
@@ -33,6 +35,8 @@ const props = defineProps({
   fields: { type: Array, default: () => [] },
   labelWidth: { type: String, default: '100px' },
   labelPosition: { type: String, default: 'right' },
+  labelOverflow: { type: String, default: 'wrap' },
+  componentSize: { type: String, default: undefined },
   nodes: { type: Array, default: () => [] },
   row: { type: Object, required: true },
   rootParentId: { type: [String, Number], default: '' },

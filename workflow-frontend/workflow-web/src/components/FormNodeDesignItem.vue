@@ -394,14 +394,14 @@
     </div>
 
     <div v-else-if="fieldNode" class="design-field-node">
-      <el-form-item
+      <ConfiguredFormFieldItem
         :label="isSubFormLayoutField(node) ? undefined : (node.fieldLabel || node.fieldName)"
         :label-width="isSubFormLayoutField(node) ? '0px' : undefined"
         :required="node.isRequired === 1"
         class="design-form-item"
       >
         <FormFieldRenderer :field="node" :node="componentPreviewNode" :disabled="true" :readonly="true" mode="view" />
-      </el-form-item>
+      </ConfiguredFormFieldItem>
       <div
         v-if="nestedFieldContainer"
         class="nested-field-children"
@@ -489,6 +489,7 @@ import {
   Rank
 } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
+import ConfiguredFormFieldItem from '@/components/ConfiguredFormFieldItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormNodeGridResizeHandle from '@/components/form-designer/FormNodeGridResizeHandle.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'

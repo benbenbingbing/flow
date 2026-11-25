@@ -52,6 +52,14 @@
               <el-input-number v-model="viewConfig.labelWidth" :min="60" :max="240" :disabled="formLabelPosition === 'top'" />
               <span class="field-unit">px</span>
             </el-form-item>
+            <el-form-item label="长标签显示">
+              <el-select v-model="formLabelOverflow" class="label-overflow-select">
+                <el-option v-for="(label, value) in FORM_LABEL_OVERFLOW_LABELS" :key="value" :label="label" :value="value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="组件尺寸">
+              <el-segmented v-model="formComponentSize" :options="formComponentSizeOptions" />
+            </el-form-item>
             <el-form-item label="默认表单">
               <el-switch v-model="form.isDefault" />
               <span class="field-help">
@@ -196,6 +204,12 @@ import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import PageInputParameterSettings from '@/components/page-parameters/PageInputParameterSettings.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 import { FORM_LABEL_POSITION_OPTIONS, resolveFormLabelPosition } from '@/shared/form-layout'
+import {
+  FORM_COMPONENT_SIZE_LABELS,
+  FORM_LABEL_OVERFLOW_LABELS,
+  resolveFormComponentSize,
+  resolveFormLabelOverflow
+} from '@flow/workflow-core/config-runtime'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -251,6 +265,17 @@ const formLabelPosition = computed({
   get: () => resolveFormLabelPosition(form.value, viewConfig.value),
   set: value => { viewConfig.value.labelPosition = value }
 })
+const formLabelOverflow = computed({
+  get: () => resolveFormLabelOverflow(viewConfig.value),
+  set: value => { viewConfig.value.labelOverflow = value }
+})
+const formComponentSizeOptions = Object.entries(FORM_COMPONENT_SIZE_LABELS)
+  .map(([value, label]) => ({ value, label }))
+// 缺省档位只用于展示，旧表单打开设置时不会产生配置变更。
+const formComponentSize = computed({
+  get: () => resolveFormComponentSize(viewConfig.value),
+  set: value => { viewConfig.value.componentSize = value }
+})
 const drawerVisible = computed({
   get: () => props.modelValue,
   set: value => emit('update:modelValue', value)
@@ -262,6 +287,8 @@ const currentTab = computed({
 </script>
 
 <style scoped>
+.label-overflow-select { width: 220px; max-width: 100%; }
+
 :global(.form-settings-drawer .el-drawer__body) {
   min-height: 0;
   padding-top: 8px;

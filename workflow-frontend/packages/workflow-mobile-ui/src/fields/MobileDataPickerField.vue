@@ -1,7 +1,7 @@
 <template>
   <div class="mobile-data-picker" :class="{ 'picker-action': nativeComponent }">
     <button v-if="nativeComponent && !disabled && !readonly" type="button" @click="open">选择</button>
-    <VanField v-if="!nativeComponent" :label="field.fieldLabel || field.fieldName" :model-value="label" :placeholder="field.placeholder || '请选择数据'"
+    <MobileLabeledField v-if="!nativeComponent" :label="field.fieldLabel || field.fieldName" :model-value="label" :placeholder="field.placeholder || '请选择数据'"
       readonly :is-link="!disabled && !readonly" :clickable="!disabled && !readonly" :required="required" :label-align="labelPosition" :border="false" @click="open" />
     <button v-if="!nativeComponent && modelValue !== null && modelValue !== undefined && modelValue !== '' && !disabled && !readonly" class="picker-clear" :disabled="state.confirming" @click="clear">清空选择</button>
     <div v-if="state.resolving" class="picker-note" role="status">正在回显已选数据…</div>
@@ -43,6 +43,7 @@
 import { computed, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { Field as VanField, Popup as VanPopup, NavBar as VanNavBar, Search as VanSearch, Empty as VanEmpty, showConfirmDialog } from 'vant'
+import MobileLabeledField from './MobileLabeledField.vue'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useDataPickerFieldRuntime } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
 import { buildListRequestFilters, listQueryDefaults } from '@flow/workflow-core/list-query-filters'

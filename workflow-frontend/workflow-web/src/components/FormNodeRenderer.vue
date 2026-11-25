@@ -4,6 +4,7 @@
     :model="modelValue"
     :label-width="labelWidth"
     :label-position="labelPosition"
+    :size="componentSize"
     class="form-node-renderer"
   >
     <el-row :gutter="rootGutter" class="form-node-root-row">
@@ -41,7 +42,8 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, provide, ref, toRef } from 'vue'
+import { FORM_LABEL_OVERFLOW_KEY } from '@flow/workflow-core/config-runtime'
 import { projectRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
 import FormNodeRuntimeItem from '@/components/FormNodeRuntimeItem.vue'
 import { normalizeRuntimeNodes, createFormNodeVisibility } from '@flow/workflow-core/form-runtime/nodeProjection'
@@ -61,10 +63,13 @@ const props = defineProps({
   crossFieldErrors: { type: Object, default: () => ({}) },
   labelWidth: { type: String, default: '100px' },
   labelPosition: { type: String, default: 'right' },
+  labelOverflow: { type: String, default: 'wrap' },
+  componentSize: { type: String, default: undefined },
   layoutType: { type: String, default: 'vertical' }
 })
 
 defineEmits(['update:modelValue'])
+provide(FORM_LABEL_OVERFLOW_KEY, toRef(props, 'labelOverflow'))
 const formRef = ref()
 const revealFieldCode = ref('')
 

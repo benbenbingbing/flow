@@ -1,7 +1,7 @@
 <template>
   <MobileReadonlyField v-if="disabled" :field="field" :model-value="modelValue" :services="services" />
   <div v-else class="mobile-file-field">
-    <div class="file-label">{{ field.fieldLabel || field.fieldName }}</div>
+    <div class="file-label"><FormFieldLabel :text="field.fieldLabel || field.fieldName || ''" /></div>
     <section v-for="(group, index) in groups" :key="group.itemKey || index">
       <p v-if="items.length" class="file-group-name">{{ group.itemName }}<span v-if="group.required || attachmentItemRequiredState[group.itemKey || group.itemName]"> *</span></p>
       <VanUploader :model-value="fileList(group, index)" :multiple="group.multiple !== false && maxCount(group) > 1" :accept="accept(group)" :max-count="maxCount(group)" :after-read="result => upload(result, group, index)" :before-read="file => checkFile(file, group)" @delete="(_, details) => remove(group, index, details.index)" @click-preview="item => services.openFile?.(item)" :preview-full-image="false" :disabled="uploading > 0" />
@@ -13,6 +13,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Uploader as VanUploader, Button as VanButton } from 'vant'
+import FormFieldLabel from '@flow/workflow-core/vue/FormFieldLabel.vue'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeAttachmentFiles, resolveAttachmentItems, getAttachmentItemValue, setAttachmentItemValue, isAttachmentFileTypeAllowed, normalizeAttachmentFileTypes } from '@flow/workflow-core/file-attachment'
 import MobileReadonlyField from './MobileReadonlyField.vue'

@@ -22,6 +22,8 @@
           :fields="runtimeFields"
           :label-width="parentForm?.labelWidth"
           :label-position="parentForm?.labelPosition"
+          :label-overflow="childLabelOverflow"
+          :component-size="childComponentSize"
           :row="row"
           :readonly="isDisabled"
           :mode="context.mode || (isDisabled ? 'view' : 'edit')"
@@ -41,8 +43,8 @@ defineOptions({ scriptEvents: [
     { name: 'onChange', label: '值变化', description: '用户修改值后触发，完成后执行值变化事件链' }
 ] })
 import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
-import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
-import { formContextKey } from 'element-plus'
+import { computed, inject, onBeforeUnmount, provide, reactive, ref, toRefs, unref, watch } from 'vue'
+import { formContextKey, formItemContextKey } from 'element-plus'
 import SubFormRenderer from '@/components/SubFormRenderer.vue'
 import SectionField from './SectionField.vue'
 import SubFormRowRuntime from './SubFormRowRuntime.vue'
@@ -54,7 +56,7 @@ import {
   getFormRuntimeRelease,
   precheckFormFieldUnique
 } from '@/api/entityForm'
-import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { FORM_LABEL_OVERFLOW_KEY, resolveFormComponentSize, resolveFormLabelOverflow, safeParseConfig } from '@flow/workflow-core/config-runtime'
 import {
   createFormUniquePrecheckController,
   resolveFormFieldKey,
@@ -89,6 +91,8 @@ const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 const { fieldValue, isDisabled, handleChange, parsedComponentProps } = useFormField(props, emit)
 // 嵌入的子行继承父表单标签设置，避免去掉外层标签后仍因默认宽度不同而错位。
 const parentForm = inject(formContextKey, null)
+const parentFormItem = inject(formItemContextKey, null)
+const parentLabelOverflow = inject(FORM_LABEL_OVERFLOW_KEY, 'wrap')
 // 历史配置未声明开关时继续显示名称；仅隐藏标题，不隐藏子表单数据。
 const showTitle = computed(() => parsedComponentProps.value.subFormConfig?.showTitle !== false)
 const subFormRendererRef = ref(null)
@@ -134,6 +138,20 @@ const externalFormFields = ref([])
 const externalFormNodes = ref([])
 const refFormLayoutType = ref('vertical')
 const childFormDefinition = ref(null)
+// 内嵌字段属于当前表单。引用独立表单时，按其发布快照读取标签策略。
+const childLabelOverflow = computed(() => subFormMeta.value.childFormId
+  ? resolveFormLabelOverflow(childFormDefinition.value?.viewConfig)
+  : unref(parentLabelOverflow))
+provide(FORM_LABEL_OVERFLOW_KEY, childLabelOverflow)
+const childComponentSize = computed(() => resolveFormComponentSize(
+  childFormDefinition.value?.viewConfig,
+  parentForm?.size || parentFormItem?.size
+))
+// Element Plus 优先读取外层表单项的尺寸。保留原表单项的校验和标签上下文，
+// 仅在子表内部替换尺寸，让旧明细表格和独立节点表单都能使用子表档位。
+if (parentFormItem) {
+  provide(formItemContextKey, reactive({ ...toRefs(parentFormItem), size: childComponentSize }))
+}
 const childEntityCode = ref('')
 // 使用子实体自己的编码匹配扩展范围；禁止继承父表 entityCode。
 watch(() => subFormMeta.value.refEntityId, async (id, _old, onCleanup) => {

@@ -9,6 +9,7 @@
       :model="formData"
       :label-width="labelWidth"
       :label-position="labelPosition"
+      :size="componentSize"
       class="preview-form"
     >
       <div 
@@ -17,7 +18,7 @@
         class="preview-field-wrapper"
         :style="getFieldStyle(field)"
       >
-        <el-form-item
+        <ConfiguredFormFieldItem
           :label="isSubFormLayoutField(field) ? undefined : (field.fieldLabel || field.fieldName)"
           :label-width="isSubFormLayoutField(field) ? '0px' : undefined"
           :prop="field.fieldCode || `field_${field.id}`"
@@ -35,7 +36,7 @@
             v-model="formData[field.fieldCode || `field_${field.id}`]"
             :disabled="readonly || field.isReadonly === 1"
           />
-        </el-form-item>
+        </ConfiguredFormFieldItem>
       </div>
     </el-form>
   </div>
@@ -44,9 +45,11 @@
 <script setup>
 import { resolveComponentFormPatch } from '@flow/workflow-core/form-runtime/formModel'
 import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
+import { FORM_LABEL_OVERFLOW_KEY, resolveFormComponentSize, resolveFormLabelOverflow } from '@flow/workflow-core/config-runtime'
 
-import { ref, computed, watch } from 'vue'
+import { ref, computed, provide, watch } from 'vue'
 import FormFieldRenderer from './FormFieldRenderer.vue'
+import ConfiguredFormFieldItem from './ConfiguredFormFieldItem.vue'
 import { evaluateExpression, formatCalcResult } from '@flow/workflow-core/utils/calcEngine'
 
 const props = defineProps({
@@ -126,6 +129,8 @@ const sortedFields = computed(() => {
 // 与设计器共用标签设置；缺少新配置的历史表单继续使用原来的位置。
 const labelPosition = computed(() => resolveFormLabelPosition(props.form))
 const labelWidth = computed(() => resolveFormLabelWidth(props.form))
+const componentSize = computed(() => resolveFormComponentSize(props.form?.viewConfig))
+provide(FORM_LABEL_OVERFLOW_KEY, computed(() => resolveFormLabelOverflow(props.form?.viewConfig)))
 
 // 获取字段样式
 function getFieldStyle(field) {

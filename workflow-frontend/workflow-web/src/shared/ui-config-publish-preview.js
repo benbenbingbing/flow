@@ -1,3 +1,5 @@
+import { FORM_COMPONENT_SIZE_LABELS, FORM_LABEL_OVERFLOW_LABELS } from '@flow/workflow-core/config-runtime'
+
 /** 发布确认的展示模型：所有数量、分组与提醒均由同一份语义变更生成。 */
 const SECTIONS = {
   form: '表单设置', nodes: '表单字段与布局', legacyFields: '表单字段',
@@ -10,6 +12,7 @@ const LABELS = {
   helpText: '帮助说明', placeholder: '输入提示', width: '宽度', minWidth: '最小宽度',
   align: '对齐方式', fixed: '固定位置', orderKey: '排列顺序', sortOrder: '排列顺序',
   parentId: '所在容器', gridSpan: '占用列数', layoutType: '布局方式', labelWidth: '标签宽度',
+  labelOverflow: '长标签显示', componentSize: '组件尺寸',
   showInList: '列表展示', isQuery: '查询条件', queryType: '匹配方式',
   sortable: '是否排序', quickCopy: '快捷复制', maskingEnabled: '内容脱敏', maskPrefixLength: '脱敏前保留位数',
   maskSuffixLength: '脱敏后保留位数', labelMap: '显示文本映射', statusMap: '状态样式映射',
@@ -50,7 +53,7 @@ const LABELS = {
   visibleWhen: '显示条件', readonlyWhen: '只读条件'
 }
 const CHANGE_LABELS = { ADDED: '新增', MODIFIED: '修改', REMOVED: '移除', MOVED: '移动' }
-const PRESENTATION = new Set(('formName listName description label fieldLabel fieldName title text content helpText placeholder width minWidth align fixed orderKey sortOrder gridSpan layoutType labelWidth pageSize pageSizes emptyText showOverflowTooltip defaultExpanded accordion showPadding showBorder border stripe showIndex size collapsible defaultVisibleCount icon confirmText buttonType styleType').split(' '))
+const PRESENTATION = new Set(('formName listName description label fieldLabel fieldName title text content helpText placeholder width minWidth align fixed orderKey sortOrder gridSpan layoutType labelWidth labelOverflow componentSize pageSize pageSizes emptyText showOverflowTooltip defaultExpanded accordion showPadding showBorder border stripe showIndex size collapsible defaultVisibleCount icon confirmText buttonType styleType').split(' '))
 // 首次启用时这些标识建立正常绑定，不应把每个新字段都当成风险；后续变更仍须复核。
 const INITIAL_IDENTITY = new Set(('id entityId formId listConfigId formKey listKey nodeKey fieldId fieldCode fieldType nodeType bindingType bindingRef componentType renderComponent').split(' '))
 const INTERNAL = new Set(('id revision version deleted createdAt updatedAt createTime updateTime createdBy updatedBy configType schemaVersion').split(' '))
@@ -69,6 +72,8 @@ const ENUMS = {
   dataScopeMode: { INHERIT: '继承实体权限', CUSTOM: '自定义范围', ALL: '全部数据' },
   dataSourceType: { ENTITY_FIELD: '实体字段', FIELD_TEMPLATE: '字段组合', INTERFACE: '扩展接口' },
   targetFormMode: { CREATE: '新增', EDIT: '编辑', VIEW: '查看' },
+  componentSize: FORM_COMPONENT_SIZE_LABELS,
+  labelOverflow: FORM_LABEL_OVERFLOW_LABELS,
   size: { small: '紧凑', default: '标准', large: '宽松' },
   rendererMode: { STANDARD: '标准表单', CUSTOM: '自定义组件', SCHEMA: '标准表单' }
 }

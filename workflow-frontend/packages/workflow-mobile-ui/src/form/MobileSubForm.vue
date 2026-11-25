@@ -14,7 +14,7 @@
       <!-- 关闭的行保留运行实例，提交校验覆盖所有明细，且不会丢失异步校验状态。 -->
       <VanPopup :show="opened === rowKey(row)" :lazy-render="false" position="bottom" round class="subform-editor" safe-area-inset-bottom @update:show="value => { if (!value) opened = '' }">
         <VanNavBar :title="rowTitle(row, index)" left-text="返回" @click-left="opened = ''" />
-        <div class="subform-content"><MobileFormRenderer v-if="definition && !loading" :ref="value => setRef(rowKey(row), value)" :form="definition" :root-parent-id="rootParentId" :model-value="row" :readonly="disabled" :mode="disabled ? 'view' : context.mode || 'edit'" :context="rowContext(row, index)" :services="services" :data-source-runtime="rowRuntime(row)" @update:model-value="value => updateRow(row, value)" /></div>
+        <div class="subform-content"><MobileFormRenderer v-if="definition && !loading" :ref="value => setRef(rowKey(row), value)" :form="definition" :root-parent-id="rootParentId" :model-value="row" :readonly="disabled" :mode="disabled ? 'view' : context.mode || 'edit'" :context="rowContext(row, index)" :inherited-component-size="context.componentSize" :inherit-label-overflow="!meta.childFormId" :services="services" :data-source-runtime="rowRuntime(row)" @update:model-value="value => updateRow(row, value)" /></div>
       </VanPopup>
     </div>
     <div v-if="canAddRow && showBottomActions" class="subform-actions" :style="actionBarStyle">

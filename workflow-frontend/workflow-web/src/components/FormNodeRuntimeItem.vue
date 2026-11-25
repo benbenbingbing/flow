@@ -140,7 +140,7 @@
     {{ node.props.text || node.props.content || '' }}
   </div>
 
-  <el-form-item
+  <ConfiguredFormFieldItem
     v-else-if="runtimeField"
     v-show="visible"
     :label="isSubFormLayoutField(runtimeField) ? undefined : (node.props.label || runtimeField.fieldLabel || runtimeField.fieldName)"
@@ -174,7 +174,7 @@
     <div v-if="crossFieldError" class="el-form-item__error" role="alert">
       {{ crossFieldError }}
     </div>
-  </el-form-item>
+  </ConfiguredFormFieldItem>
 
   <div v-else-if="node.nodeType === 'ACTION_SLOT'" class="node-action-slot">
     <component :is="actionSlotRenderer" />
@@ -216,6 +216,7 @@ import { isSubFormLayoutField } from '@/shared/form-layout'
 import { resolveRuntimeNodeField, isFormNodeVisible } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { computed, defineComponent, defineAsyncComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
+import ConfiguredFormFieldItem from '@/components/ConfiguredFormFieldItem.vue'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'

@@ -145,7 +145,13 @@
               </el-empty>
             </div>
             
-            <el-form v-if="formFields.length" :label-width="formLabelWidth" :label-position="formLabelPosition" class="design-form">
+            <el-form
+              v-if="formFields.length"
+              :label-width="formLabelWidth"
+              :label-position="formLabelPosition"
+              :size="formComponentSize"
+              class="design-form"
+            >
               <FormNodeDraggableList
                 :items="rootDesignNodes"
                 parent-id=""
@@ -1145,7 +1151,10 @@ import {
 import { useReferenceListSettings } from './form-designer/useReferenceListSettings.js'
 
 import {
+  FORM_LABEL_OVERFLOW_KEY,
   getRuntimeRegexPatternError,
+  resolveFormComponentSize,
+  resolveFormLabelOverflow,
   resolveVarcharFieldLength,
   safeParseConfig,
   stringifyConfig
@@ -2119,6 +2128,8 @@ function handlePreviewAction(action) {
 // 标签位置和宽度共用运行时解析规则，调整后画布立即反映表单设置。
 const formLabelWidth = computed(() => resolveFormLabelWidth(form.value, viewConfig.value))
 const formLabelPosition = computed(() => resolveFormLabelPosition(form.value, viewConfig.value))
+const formComponentSize = computed(() => resolveFormComponentSize(viewConfig.value))
+provide(FORM_LABEL_OVERFLOW_KEY, computed(() => resolveFormLabelOverflow(viewConfig.value)))
 
 // 当前选中的是否为节
 const isSelectedSection = computed(() => isSectionField(selectedField.value))

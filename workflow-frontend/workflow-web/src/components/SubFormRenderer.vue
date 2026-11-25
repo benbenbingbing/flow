@@ -45,7 +45,7 @@
           <div v-else class="form-row-body" :class="formLayoutClass">
             <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
-                {{ field.fieldName }}
+                <FormFieldLabel :text="field.fieldName || ''" />
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
               </label>
               <div class="field-control">
@@ -99,7 +99,7 @@
           <div v-else class="form-row-body" :class="formLayoutClass">
             <div v-for="field in config.fields" :key="field.fieldKey" class="form-field-item" :style="getFieldItemStyle(field)">
               <label class="field-label" :class="{ required: field.isRequired }">
-                {{ field.fieldName }}
+                <FormFieldLabel :text="field.fieldName || ''" />
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
               </label>
               <div class="field-control">
@@ -203,6 +203,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import BuiltInActionButton from '@/components/BuiltInActionButton.vue'
+import FormFieldLabel from '@flow/workflow-core/vue/FormFieldLabel.vue'
 import { normalizeBuiltInActionBar, builtInActionBarStyle, builtInActionBarHasPosition, resolveBuiltInButton } from '@flow/workflow-core/builtin-button-appearance'
 import FormFieldRenderer from './FormFieldRenderer.vue'
 import {
@@ -726,7 +727,8 @@ defineExpose({
 }
 
 .field-label {
-  display: block;
+  display: flex;
+  align-items: baseline;
   margin-bottom: 5px;
   font-size: 13px;
   color: #606266;
@@ -738,6 +740,7 @@ defineExpose({
 }
 
 .required-tag {
+  flex: none;
   margin-left: 4px;
   font-size: 10px;
   height: 18px;
@@ -758,7 +761,7 @@ defineExpose({
 .form-row-body.form-layout-horizontal .form-field-item,
 .form-row-body.form-layout-grid .form-field-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   box-sizing: border-box;
   padding: 0 8px;
   margin-bottom: 8px;
@@ -767,11 +770,11 @@ defineExpose({
 .form-row-body.form-layout-horizontal .field-label,
 .form-row-body.form-layout-grid .field-label {
   width: 120px;
+  justify-content: flex-end;
   text-align: right;
   padding-right: 12px;
   flex-shrink: 0;
   margin-bottom: 0;
-  line-height: 32px;
 }
 
 .form-row-body.form-layout-horizontal .field-control,

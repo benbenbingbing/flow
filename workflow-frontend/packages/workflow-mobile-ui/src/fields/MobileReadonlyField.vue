@@ -1,6 +1,6 @@
 <template>
   <div class="readonly-field" :class="[{ multiline }, `label-${labelPosition}`]">
-    <div class="readonly-label">{{ label }}</div>
+    <div class="readonly-label"><FormFieldLabel :text="label" /></div>
     <div v-if="richText" class="readonly-rich" v-html="safeHtml" />
     <div v-else-if="isFile" class="readonly-files"><template v-if="attachments.length"><button v-for="(file, index) in attachments" :key="index" @click="services.openFile?.(file)"><VanIcon name="description-o" /><span>{{ file.label }}</span><VanIcon name="arrow" /></button></template><span v-else>—</span></div>
     <div v-else class="readonly-value">{{ display }}</div>
@@ -9,6 +9,7 @@
 <script setup>
 import { computed } from 'vue'
 import DOMPurify from 'dompurify'
+import FormFieldLabel from '@flow/workflow-core/vue/FormFieldLabel.vue'
 import { Icon as VanIcon } from 'vant'
 import { formatReadonlyValue } from '@flow/workflow-core/workflow/approval-display'
 import { isEntityStatusField, isProcessStatusField, resolveEntityStatusLabel, resolveProcessStatusLabel } from '@flow/workflow-core/entity-status-runtime'
@@ -49,5 +50,15 @@ const attachments = computed(() => {
 })
 </script>
 <style scoped>
-.readonly-field { padding: 14px 0; display: flex; gap: 16px; line-height: 1.65; font-size: 14px; border-bottom: 1px solid var(--flow-mobile-border); }.readonly-label { font-size: 13px; flex: 0 0 92px; color: var(--flow-mobile-muted); }.readonly-value { flex: 1; min-width: 0; text-align: right; white-space: pre-wrap; overflow-wrap: anywhere; }.multiline { display: block; }.multiline .readonly-label { margin-bottom: 8px; }.multiline .readonly-value { text-align: left; }.readonly-rich { overflow-wrap: anywhere; overflow: auto; }.readonly-rich :deep(img) { max-width: 100%; height: auto; }.readonly-rich :deep(table) { max-width: 100%; }.readonly-files { width: 100%; }.readonly-files button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; background: var(--flow-mobile-inset); border: 0; border-radius: 8px; margin: 6px 0; padding: 10px; color: var(--flow-mobile-accent-text); text-align: left; }.readonly-files button span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.readonly-field {
+  padding: var(--flow-mobile-form-field-padding, 14px) 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  line-height: 1.65;
+  font-size: var(--flow-mobile-form-field-font-size, 14px);
+  border-bottom: 1px solid var(--flow-mobile-border);
+}
+.readonly-label { font-size: var(--flow-mobile-form-label-font-size, 13px); flex: 0 0 92px; color: var(--flow-mobile-muted); }
+.readonly-value { flex: 1; min-width: 0; text-align: right; white-space: pre-wrap; overflow-wrap: anywhere; }.multiline { display: block; }.multiline .readonly-label { margin-bottom: 8px; }.multiline .readonly-value { text-align: left; }.readonly-rich { overflow-wrap: anywhere; overflow: auto; }.readonly-rich :deep(img) { max-width: 100%; height: auto; }.readonly-rich :deep(table) { max-width: 100%; }.readonly-files { width: 100%; }.readonly-files button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; background: var(--flow-mobile-inset); border: 0; border-radius: 8px; margin: 6px 0; padding: 10px; color: var(--flow-mobile-accent-text); text-align: left; }.readonly-files button span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 </style>

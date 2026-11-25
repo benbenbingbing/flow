@@ -1,11 +1,12 @@
 <template>
   <div class="rich-field">
-    <div class="rich-label">{{ label }}</div>
+    <div class="rich-label"><FormFieldLabel :text="label" /></div>
     <div class="rich-toolbar" role="toolbar" aria-label="文字格式"><button v-for="item in commands" :key="item.command" type="button" :aria-label="item.label" @mousedown.prevent @click="format(item.command)">{{ item.text }}</button></div>
     <div ref="editor" class="rich-content" contenteditable="true" role="textbox" aria-multiline="true" :aria-label="label" @input="change" @blur="$emit('blur')" @focus="$emit('focus')" @paste="paste" />
   </div>
 </template>
 <script setup>
+import FormFieldLabel from '@flow/workflow-core/vue/FormFieldLabel.vue'
 import { nextTick, onMounted, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 const props = defineProps({ modelValue: { type: String, default: '' }, label: String })
