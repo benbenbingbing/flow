@@ -199,7 +199,7 @@ public class TaskController {
      */
     @PostMapping("/resubmit")
     public Result<Void> resubmitTask(@RequestBody Map<String, Object> params) {
-        taskCommands.resubmit(new com.workflow.port.process.model.task.ResubmitTaskCommand(
+        taskCommands.resubmitForUser(new com.workflow.port.process.model.task.ResubmitTaskCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta((String) params.get("requestId")),
                 (String) params.get("taskId"), new com.workflow.port.process.model.task.TaskSubmission(
                         (String) params.get("comment"), "重新提交", (Map<String, Object>) params.get("formData"), null, null)));

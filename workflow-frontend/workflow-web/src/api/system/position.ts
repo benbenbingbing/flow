@@ -2,8 +2,6 @@ import request from '@/utils/request'
 
 export interface PositionQuery {
   keyword?: string
-  applicableUnitType?: 'ORG' | 'DEPT' | 'ANY' | ''
-  holderMode?: 'SINGLE' | 'MULTIPLE' | ''
   status?: 'ENABLED' | 'DISABLED' | ''
   pageNum?: number
   pageSize?: number
@@ -23,8 +21,8 @@ export const getPositionPage = (params: PositionQuery) =>
   request.get('/system/position/page', { params })
 
 /** 读取流程设计和任职表单可用的启用职务。 */
-export const getEnabledPositions = (params: Record<string, any> = {}) =>
-  request.get('/system/position/enabled', { params })
+export const getEnabledPositions = () =>
+  request.get('/system/position/enabled')
 
 export const getPositionById = (id: string) =>
   request.get(`/system/position/${encodeURIComponent(id)}`)
@@ -57,7 +55,7 @@ export const getOrganizationPositionAssignments = (unitId: string) =>
     `/system/org/${encodeURIComponent(unitId)}/position-assignments`
   )
 
-/** 直接设置当前负责人，空 userId 表示清空，使用已读取集合阻止并发覆盖。 */
+/** 兼容旧客户端的单值负责人写入，多人设置使用 setPositionMembers。 */
 export const updateOrganizationLeader = (unitId: string, data: Record<string, any>) =>
   request.post(`/system/org/${encodeURIComponent(unitId)}/leader`, data)
 
@@ -75,9 +73,8 @@ export const removePositionAssignment = (id: string, revision: number) =>
   request.delete(`/system/position/assignments/${encodeURIComponent(id)}`, { data: { revision } })
 
 /** 流程设计器专用职务选项，不要求任职管理权限。 */
-export const getProcessDesignPositionOptions = (
-  params: Record<string, any> = {}
-) => request.get('/process-design/position-options', { params })
+export const getProcessDesignPositionOptions = () =>
+  request.get('/process-design/position-options')
 
 export const getOrganizationBusinessLevels = () =>
   request.get('/process-design/organization-business-levels')

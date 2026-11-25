@@ -33,9 +33,13 @@ public interface IdentityPersistenceMapper {
 
     default Map<String, Object> findObject(IdentityObjectType type, String id) { return row(selectObject(type, id)); }
 
-    /** 编码在本地表中全局唯一，逻辑删除记录仍受唯一索引约束，首次来源写入须一并检查。 */
-    @SelectProvider(type = IdentitySqlProvider.class, method = "countIdentityCode")
-    int countIdentityCode(@Param("type") IdentityObjectType type, @Param("code") String code);
+    /** 按全局唯一编码查找写入目标，包含逻辑删除的记录以区分真正的新建和已有编码冲突。 */
+    @SelectProvider(type = IdentitySqlProvider.class, method = "selectObjectByCode")
+    Map<String, Object> selectObjectByCode(@Param("type") IdentityObjectType type, @Param("code") String code);
+
+    default Map<String, Object> findObjectByCode(IdentityObjectType type, String code) {
+        return row(selectObjectByCode(type, code));
+    }
 
     @Select("SELECT COUNT(*) FROM sys_user WHERE id = #{id} AND status = '0' AND deleted = 0")
     int activeUser(String id);

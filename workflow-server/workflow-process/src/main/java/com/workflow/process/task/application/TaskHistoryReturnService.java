@@ -92,9 +92,19 @@ public class TaskHistoryReturnService {
     /** 用当前身份和冻结版本查询候选；完整校验也会在写事务中重新运行。 */
     @Transactional(readOnly = true)
     public List<Target> targets(String taskId) {
+        return targets(taskId, true);
+    }
+
+    /** 调用方授权任务读取，目标仍限于当前执行链真实经过的可回退节点。 */
+    @Transactional(readOnly = true)
+    public List<Target> targetsForPort(String taskId) {
+        return targets(taskId, false);
+    }
+
+    private List<Target> targets(String taskId, boolean checkAccess) {
         Task task = tasks.createTaskQuery().taskId(taskId).active().singleResult();
         if (task == null) return List.of();
-        taskActions.requireTaskAccess(taskId);
+        if (checkAccess) taskActions.requireTaskAccess(taskId);
         return candidates(task).values().stream().map(Candidate::target).toList();
     }
 
@@ -105,17 +115,30 @@ public class TaskHistoryReturnService {
 
     /** 幂等回执、引擎移动、动作与待办投影由同一个写事务提交。 */
     public Outcome execute(String taskId, Request request) {
-        var actor = access.requireActor();
-        return ProcessCommandFailures.translate(taskId, () -> commands.execute(
-                new CommandMeta(request.requestId()), "TASK_HISTORY_RETURN", Map.of("taskId", taskId, "input", request),
-                Outcome.class, () -> TaskCommandScope.run(taskId,
-                        () -> move(taskId, request, actor.username(), actor.userId())))).value();
+        return execute(taskId, request, false);
     }
 
-    private ProcessCommandExecutor.Outcome<Outcome> move(String taskId, Request request, String username, String userId) {
+    /** 调用方授权回退，保留节点候选、发布表单、事务和审计。 */
+    public Outcome executeForPort(String taskId, Request request) {
+        return execute(taskId, request, true);
+    }
+
+    private Outcome execute(String taskId, Request request, boolean portCall) {
+        var actor = access.requireActor();
+        var meta = new CommandMeta(request.requestId());
+        var input = Map.of("taskId", taskId, "input", request);
+        java.util.function.Supplier<ProcessCommandExecutor.Outcome<Outcome>> work = () -> TaskCommandScope.run(taskId,
+                () -> move(taskId, request, actor.username(), actor.userId(), portCall));
+        return ProcessCommandFailures.translate(taskId, () -> portCall
+                ? commands.executeForPort(meta, "TASK_HISTORY_RETURN", input, Outcome.class, work)
+                : commands.execute(meta, "TASK_HISTORY_RETURN", input, Outcome.class, work)).value();
+    }
+
+    private ProcessCommandExecutor.Outcome<Outcome> move(
+            String taskId, Request request, String username, String userId, boolean portCall) {
         Task source = tasks.createTaskQuery().taskId(taskId).active().singleResult();
         if (source == null) throw changed(taskId);
-        taskActions.requireTaskAccess(taskId);
+        if (!portCall) taskActions.requireTaskAccess(taskId);
         Candidate selected = requireCandidate(source, request.targetActivityInstanceId());
         // 加签入口也锁源待办。等锁后用当前读检查加签记录，避免存储快照漏掉刚提交的编排。
         if (!mirrors.lockPendingTaskForIntervention(taskId) || addSigns.hasOpenAddSignForUpdate(taskId)) {
@@ -125,7 +148,8 @@ public class TaskHistoryReturnService {
         if (runtime.getVariable(instanceId, "entityCode") != null || request.formId() != null || request.formConfigHash() != null) {
             var reference = request.formId() == null && request.formConfigHash() == null ? null
                     : new TaskFormReference(request.formId(), request.formConfigHash());
-            forms.require(taskId, source, reference);
+            if (portCall) forms.requireForPort(taskId, source, reference);
+            else forms.require(taskId, source, reference);
         }
         String operator = StringUtils.hasText(username) ? username : userId;
         Target target = selected.target();
@@ -140,13 +164,16 @@ public class TaskHistoryReturnService {
         event.setTargetNodeName(target.nodeName());
         flowActions.fire(event, TASK_RETURNING);
 
-        // 前置动作可以修改变量。重新核对目标和任务归属，候选任务在同一事务中完成认领。
+        // 前置动作可以修改变量。重新核对目标和源执行，未分配的任务在同一事务中认领。
         Task current = tasks.createTaskQuery().taskId(taskId).active().singleResult();
         if (current == null || !Objects.equals(source.getExecutionId(), current.getExecutionId())) throw changed(taskId);
-        taskActions.requireTaskAccess(taskId);
+        if (!portCall) taskActions.requireTaskAccess(taskId);
         Candidate verified = requireCandidate(current, target.activityInstanceId());
         if (!selected.equals(verified)) throw changed(taskId);
-        if (!StringUtils.hasText(current.getAssignee())) taskActions.claimTask(taskId);
+        if (!StringUtils.hasText(current.getAssignee())) {
+            if (portCall) taskActions.claimTaskForPort(taskId);
+            else taskActions.claimTask(taskId);
+        }
         clearRoutingState(instanceId, selected);
 
         runtime.createChangeActivityStateBuilder().processInstanceId(instanceId)

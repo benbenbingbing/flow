@@ -705,7 +705,6 @@ export default {
                 { field: '审批意见名称', meaning: '备注输入区标签。', defaultLimit: '默认“审批意见”。', effect: '可改为审批备注、处理说明等。', publish: '与业务术语一致。' },
                 { field: '选项名称 label', meaning: '用户看到的按钮文字。', defaultLimit: '默认通过、驳回。', effect: '显示为审批按钮。', publish: '可以改文案而不改 value。' },
                 { field: '选项值 value', meaning: '流程变量和分支判断使用的稳定值。', defaultLimit: '默认 approve、reject；新增项默认空。', effect: '提交后写入审批结果，连线条件读取。', publish: '发布后不要随意修改已使用 value。' },
-                { field: '样式 type', meaning: 'primary、success、warning、danger。', defaultLimit: '新增默认 primary；驳回默认 danger。', effect: '改变按钮颜色。', publish: '危险操作使用 danger。' },
                 { field: '显示备注', meaning: '该操作是否显示备注输入。', defaultLimit: '默认开启。', effect: '允许用户填写意见。', publish: '不显示备注时 remarkRequired 无意义。' },
                 { field: '备注必填', meaning: '选择该操作时必须填写备注。', defaultLimit: '默认关闭。', effect: '阻止空备注提交。', publish: '驳回、终止等建议必填。' },
                 { field: '删除 / 添加选项', meaning: '维护审批动作集合。', defaultLimit: '至少保留 1 个；删除需确认。', effect: '改变运行时按钮和 approved 可选值。', publish: '同步维护所有出线条件、通知和流程动作。' }

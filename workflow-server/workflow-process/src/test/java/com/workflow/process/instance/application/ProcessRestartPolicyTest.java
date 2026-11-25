@@ -57,9 +57,11 @@ class ProcessRestartPolicyTest {
         when(historic.getEndTime()).thenReturn(new Date());
         when(historic.getStartUserId()).thenReturn("starter");
         when(historic.getDeleteReason()).thenReturn(ProcessEndReason.encode("WITHDRAWN", "改正金额"));
+        assertTrue(service.canRestartLatest("expense", "record", "old"));
         assertTrue(service.canRestart("expense", "record", "old", "starter"));
         assertFalse(service.canRestart("expense", "record", "old", "other"));
         when(historic.getDeleteReason()).thenReturn(ProcessEndReason.encode("TERMINATED", "发起人撤回"));
+        assertFalse(service.canRestartLatest("expense", "record", "old"));
         assertFalse(service.canRestart("expense", "record", "old", "starter"));
     }
 

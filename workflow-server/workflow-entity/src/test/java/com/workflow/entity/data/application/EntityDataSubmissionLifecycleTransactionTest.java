@@ -105,7 +105,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
     }
 
     @Test
-    void createAndSubmitWritesServerTimeAndAuthenticatedActorAfterSuccessfulStart() {
+    void createAndSubmitMakesTrustedSubmitterAvailableDuringStartup() {
         var f = new Fixture();
         UserContext.setCurrentUser("submitter", "实际提交人");
         LocalDateTime before = LocalDateTime.now();
@@ -118,6 +118,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
         assertEquals(saved.getSubmitTime(), saved.getProcessStartTime());
         assertEquals(saved.getSubmitTime(), f.read(saved.getId()).getSubmitTime());
         assertEquals("submitter", f.lastStart.submitterId());
+        assertEquals("submitter", f.submitterAtStart);
         assertEquals("实际提交人", f.lastStart.submitterName());
         assertNoSubmissionFields(saved.getData());
         assertNoSubmissionFields(f.lastStart.data());
@@ -195,6 +196,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
         EntityDataDTO submitted = f.service.update("asset", id, f.submitRequest());
 
         assertSubmission(submitted, "submitter", "实际提交人");
+        assertEquals("submitter", f.submitterAtStart);
         assertEquals("creator", submitted.getCreateBy());
         assertEquals("creator-dept", submitted.getDeptId());
         assertEquals("submitter", f.lastStart.submitterId());
@@ -287,6 +289,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
 
         assertNull(restarted.getSubmitTime());
         assertEquals("legacy-user", restarted.getSubmitterId());
+        assertEquals("legacy-user", f.submitterAtStart);
         assertEquals("历史提交人", restarted.getSubmitterName());
         assertEquals("submitter", f.lastStart.submitterId());
         assertEquals("当前提交人", f.lastStart.submitterName());
@@ -444,6 +447,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
         private final EntityDataMutationService service;
         private final AtomicInteger sequence = new AtomicInteger();
         private ProcessStartRequest lastStart;
+        private String submitterAtStart;
         private boolean failStart;
 
         private Fixture() {
@@ -509,9 +513,12 @@ class EntityDataSubmissionLifecycleTransactionTest {
                 lastStart = call.getArgument(0);
                 String instance = "instance-" + sequence.incrementAndGet();
                 jdbc.update("INSERT INTO process_probe VALUES (?, ?)", instance, lastStart.entityRecordId());
+                EntityDataDTO current = read(lastStart.entityRecordId());
+                submitterAtStart = current.getSubmitterId();
                 if (lastStart.previousProcessInstanceId() == null
-                        && read(lastStart.entityRecordId()).getProcessStartTime() == null) {
-                    assertUnsubmitted(read(lastStart.entityRecordId()));
+                        && current.getProcessStartTime() == null) {
+                    assertNull(current.getSubmitTime());
+                    assertNull(current.getSubmitterName());
                 }
                 if (failStart) throw new IllegalStateException("模拟流程启动失败");
                 return new ProcessStartResult(instance, "PENDING", "task-" + instance, "审批", "approver");
@@ -598,7 +605,7 @@ class EntityDataSubmissionLifecycleTransactionTest {
             var request = submitRequest();
             request.put("restartProcess", true);
             request.put("previousProcessInstanceId", previousInstance);
-            return EntityProcessRestartContext.execute("asset", id, previousInstance,
+            return EntityProcessRestartContext.execute("asset", id, previousInstance, false,
                     () -> service.update("asset", id, request));
         }
 

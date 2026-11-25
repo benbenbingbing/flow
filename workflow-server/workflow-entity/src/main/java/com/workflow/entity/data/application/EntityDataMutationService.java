@@ -300,9 +300,7 @@ public class EntityDataMutationService {
         boolean requireUnstarted = formData != null
                 && Boolean.TRUE.equals(formData.get(EntityMutationSystemFields.REQUIRE_UNSTARTED));
         String previousInstanceId = formData == null ? null : asText(formData.get("previousProcessInstanceId"));
-        if (restart) {
-            EntityProcessRestartContext.require(entityCode, id, previousInstanceId);
-        }
+        boolean callerAuthorized = restart && EntityProcessRestartContext.require(entityCode, id, previousInstanceId);
         // 启动意图和表单修改必须在同一记录锁及事务内，避免并发发起或覆盖新一轮流程。
         Map<String, Object> existingData = restart || requireUnstarted
                 ? dynamicMapper.selectByIdForUpdate(tableName, id)
@@ -319,9 +317,12 @@ public class EntityDataMutationService {
             if (!java.util.Objects.equals(previousInstanceId, asText(existingData.get("process_instance_id")))
                     || !"COMPLETED".equals(asText(existingData.get("process_status")))
                     || status == null || !"WITHDRAWN".equals(status.getStatusCategory())
-                    || !processRuntimePort.canRestart(entityCode, id, previousInstanceId, UserContext.getUserId())) {
+                    || !(callerAuthorized
+                            ? processRuntimePort.canRestartLatest(entityCode, id, previousInstanceId)
+                            : processRuntimePort.canRestart(entityCode, id, previousInstanceId, UserContext.getUserId()))) {
                 throw new BusinessConflictException("ENTITY_PROCESS_RESTART_DENIED",
-                        "仅原发起人可重新发起最新的已撤回流程，请刷新后重试");
+                        callerAuthorized ? "仅最新的已撤回流程可以重新发起，请刷新后重试"
+                                : "仅原发起人可重新发起最新的已撤回流程，请刷新后重试");
             }
         }
         Map<String, Object> updateData =
@@ -891,7 +892,7 @@ public class EntityDataMutationService {
     }
 
     /**
-     * 在保存事务内启动一轮流程，并在成功后登记首次提交审计。
+     * 在保存事务内启动一轮流程，并登记首次提交审计。
      *
      * <p>调用方须已取得聚合根锁或在同一事务内创建记录。启动或后续写入失败时，
      * 流程实例和提交审计随外层事务一起回滚。</p>
@@ -929,6 +930,11 @@ public class EntityDataMutationService {
         EntityDataDTO previousAudit = payloadMapper.toRuntimeDto(persisted, dto.getEntityCode());
         String submittingUserId = getCurrentUserId();
         String submittingUserName = getCurrentUserName();
+        if (firstSubmission) {
+            // 首节点可能在引擎启动时同步解析提交人关系，先在同一事务写入可信用户 ID。
+            // 启动失败会回滚该写入；重新发起仍读取记录原有的首次提交人。
+            dynamicMapper.update(tableName, Map.of("id", dto.getId(), "submitter_id", submittingUserId));
+        }
         ProcessStartResult result =
                 processRuntimePort.start(
                         new ProcessStartRequest(
@@ -953,7 +959,6 @@ public class EntityDataMutationService {
         updateData.put("id", dto.getId());
         if (firstSubmission) {
             updateData.put("submit_time", startedAt);
-            updateData.put("submitter_id", submittingUserId);
             updateData.put("submitter_name", submittingUserName);
         }
         updateData.put(

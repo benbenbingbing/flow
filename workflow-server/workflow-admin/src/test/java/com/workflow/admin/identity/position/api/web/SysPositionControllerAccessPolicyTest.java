@@ -27,7 +27,7 @@ class SysPositionControllerAccessPolicyTest {
     void assignmentOperatorCanReadOnlyEnabledPositionOptions()
             throws Exception {
         Method enabled = SysPositionController.class.getDeclaredMethod(
-                "enabled", String.class);
+                "enabled");
         RequiresPermission policy = AnnotatedElementUtils.findMergedAnnotation(
                 enabled, RequiresPermission.class);
 

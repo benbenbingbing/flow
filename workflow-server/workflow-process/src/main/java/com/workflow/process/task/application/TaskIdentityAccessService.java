@@ -73,6 +73,16 @@ public class TaskIdentityAccessService {
                 : isCandidate(task, userId, username);
     }
 
+    /** 校验引擎任务是否仍分配给指定业务身份，用于识别发起人的退回重提待办。 */
+    public boolean isAssignedOrCandidate(Task task, String identity) {
+        if (task == null || !StringUtils.hasText(identity)) return false;
+        var user = identityDirectoryPort.findUser(identity);
+        String id = user.map(IdentityUser::id).orElse(identity);
+        String username = user.map(IdentityUser::username).orElse(identity);
+        return StringUtils.hasText(task.getAssignee())
+                ? matchesUser(task.getAssignee(), id, username) : isCandidate(task, id, username);
+    }
+
     /**
      * 判断是否候选人；判断结果决定调用方的后续分支。
      *

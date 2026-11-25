@@ -44,6 +44,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -86,8 +87,18 @@ public class TaskAddSignService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> operations(String taskId) {
+        return operations(taskId, true);
+    }
+
+    /** 查询调用方已授权的任务在加签及重提状态下开放的动作。 */
+    @Transactional(readOnly = true)
+    public Map<String, Object> operationsForPort(String taskId) {
+        return operations(taskId, false);
+    }
+
+    private Map<String, Object> operations(String taskId, boolean checkAccess) {
         Task task = requireSourceTask(taskId);
-        requireTaskOperator(task);
+        if (checkAccess) requireTaskOperator(task);
         if (task.isSuspended()) return Map.of("approve", false, "reject", false);
         ProcessTaskAddSign current = findOpenBySourceTask(taskId);
         boolean historyResubmit = isHistoryResubmission(taskId);
@@ -119,11 +130,21 @@ public class TaskAddSignService {
                 "taskCount", preview.taskCount(), "type", preview.type().name(), "structure", preview.structure());
     }
 
-    /** 预检与办理复用同一任务权限和人员解析。旧页面由 preview 继续返回原有结构。 */
+    /** 页面预检校验办理身份，并复用人员解析。 */
     @Transactional(readOnly = true)
     public AddSignPreview previewForCaller(String taskId, List<String> requestedUserIds, String requestedType) {
+        return preview(taskId, requestedUserIds, requestedType, true);
+    }
+
+    /** Port 调用方确认源任务的访问范围，预检复用原人员和任务状态规则。 */
+    @Transactional(readOnly = true)
+    public AddSignPreview previewForPort(String taskId, List<String> requestedUserIds, String requestedType) {
+        return preview(taskId, requestedUserIds, requestedType, false);
+    }
+
+    private AddSignPreview preview(String taskId, List<String> requestedUserIds, String requestedType, boolean checkAccess) {
         Task task = requireSourceTask(taskId);
-        requireTaskOperator(task);
+        if (checkAccess) requireTaskOperator(task);
         requireTaskSupportsAddSign(taskId);
         String type = normalizeType(requestedType);
         Resolution resolution = resolveUsers(requestedUserIds, task.getAssignee());
@@ -154,11 +175,23 @@ public class TaskAddSignService {
             targetIdArg = 0,
             captureResult = true)
     public Map<String, Object> addSign(String taskId, TaskAddSignRequest request) {
+        return addSign(taskId, request, null);
+    }
+
+    /** 调用方授权源任务后，仍执行加签开关、人员规则、审计和事务锁。 */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.ADD_SIGN, operation = "发起任务加签",
+            risk = AuditRiskLevel.HIGH, targetType = "PROCESS_TASK", targetIdArg = 0, captureResult = true)
+    public Map<String, Object> addSignForPort(String taskId, TaskAddSignRequest request, String operatorId) {
+        return addSign(taskId, request, Objects.requireNonNull(operatorId));
+    }
+
+    private Map<String, Object> addSign(String taskId, TaskAddSignRequest request, String authorizedOperator) {
         Task sourceTask = requireSourceTask(taskId);
-        String operator = requireTaskOperator(sourceTask);
+        String operator = authorizedOperator == null ? requireTaskOperator(sourceTask) : authorizedOperator;
         requireTaskSupportsAddSign(taskId);
         String type = normalizeType(request.getType());
-        requireAddSignAllowed(taskId, request, type);
+        requireAddSignAllowed(taskId, request, type, authorizedOperator);
         if (!"ALL".equalsIgnoreCase(request.getCompletionPolicy())) {
             throw new IllegalArgumentException("当前加签完成策略仅支持全部完成");
         }
@@ -254,16 +287,14 @@ public class TaskAddSignService {
     private void requireAddSignAllowed(
             String taskId,
             TaskAddSignRequest request,
-            String type) {
+            String type,
+            String authorizedOperator) {
         NodeOperationPolicy.Operation operation = switch (type) {
             case "BEFORE" -> NodeOperationPolicy.Operation.ADD_SIGN_BEFORE;
             case "AFTER" -> NodeOperationPolicy.Operation.ADD_SIGN_AFTER;
             default -> NodeOperationPolicy.Operation.ADD_SIGN_PARALLEL;
         };
-        nodeOperationCapabilityService.requireAllowed(
-                taskId,
-                operation,
-                NodeOperationDecisionService.CheckContext.ofTarget(
+        var context = NodeOperationDecisionService.CheckContext.ofTarget(
                         request.getComment(),
                         request.getUserIds() == null
                                 ? Set.of()
@@ -273,7 +304,9 @@ public class TaskAddSignService {
                         Map.of("completionPolicy",
                                 request.getCompletionPolicy() == null
                                         ? ""
-                                        : request.getCompletionPolicy())));
+                                        : request.getCompletionPolicy()));
+        nodeOperationCapabilityService.requireAllowed(taskId, operation, authorizedOperator == null
+                ? context : context.authorizedByCaller(authorizedOperator));
     }
 
     /**
@@ -344,12 +377,24 @@ public class TaskAddSignService {
             String comment,
             String actionLabel,
             Map<String, Object> formData) {
+        return handleSourceCompletion(taskId, userId, action, comment, actionLabel, formData, true);
+    }
+
+    /** 已授权源任务的提交，沿用加签暂存、子任务激活和收口规则。 */
+    @Transactional(rollbackFor = Exception.class)
+    public boolean handleSourceCompletionForPort(String taskId, String operatorId, String action,
+            String comment, String actionLabel, Map<String, Object> formData) {
+        return handleSourceCompletion(taskId, operatorId, action, comment, actionLabel, formData, false);
+    }
+
+    private boolean handleSourceCompletion(String taskId, String userId, String action,
+            String comment, String actionLabel, Map<String, Object> formData, boolean checkAccess) {
         ProcessTaskAddSign addSign = findOpenBySourceTaskForUpdate(taskId);
         if (addSign == null) {
             return false;
         }
         Task sourceTask = requireSourceTask(taskId);
-        requireTaskOperator(sourceTask);
+        if (checkAccess) requireTaskOperator(sourceTask);
         String type = addSign.getOperationType();
         String normalizedAction = normalizeAction(action);
 
@@ -369,6 +414,8 @@ public class TaskAddSignService {
         // 加签源任务和本地子任务均属于本次审批提交，通过任务上下文区分，不另设执行时机。
         operationActions.fire(operation, TASK_SUBMITTING);
 
+        // 发起加签与提交源任务可能是不同操作人，收口历史必须归属于实际提交人。
+        addSign.setOperatorId(userId);
         saveSourceSubmission(addSign, normalizedAction, comment, actionLabel, formData);
         markSourceWaiting(taskId, normalizedAction, comment, actionLabel);
 
@@ -414,16 +461,30 @@ public class TaskAddSignService {
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
     public void completeAddSignTask(String taskId, String action, String comment) {
+        completeAddSignTask(taskId, action, comment, null);
+    }
+
+    /** 已授权子任务的办理，在锁内重验任务状态并记录实际操作人。 */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.APPROVE, operation = "办理加签任务",
+            risk = AuditRiskLevel.MEDIUM, targetType = "PROCESS_TASK", targetIdArg = 0)
+    public void completeAddSignTaskForPort(String taskId, String action, String comment, String operatorId) {
+        completeAddSignTask(taskId, action, comment, Objects.requireNonNull(operatorId));
+    }
+
+    private void completeAddSignTask(String taskId, String action, String comment, String authorizedOperator) {
         ProcessTaskAddSignUser taskLookup = addSignUserMapper.findByGeneratedTaskId(taskId);
         if (taskLookup == null) {
             throw new IllegalArgumentException("加签任务不存在或尚未激活/已处理");
         }
         ProcessTaskAddSign addSign = addSignMapper.selectByIdForUpdate(taskLookup.getAddSignId());
         ProcessTaskAddSignUser userTask = addSignUserMapper.findByGeneratedTaskIdForUpdate(taskId);
-        if (addSign == null || userTask == null || !"TODO".equals(userTask.getStatus())) {
+        if (addSign == null || userTask == null || !"TODO".equals(userTask.getStatus())
+                || authorizedOperator != null && !"ACTIVE".equals(addSign.getStatus())) {
             throw new IllegalArgumentException("加签任务不存在或尚未激活/已处理");
         }
-        if (!userTask.getUserId().equals(currentUsername())) {
+        String operator = authorizedOperator == null ? currentUsername() : authorizedOperator;
+        if (authorizedOperator == null && !userTask.getUserId().equals(operator)) {
             throw new ForbiddenException("当前用户不是该加签任务办理人");
         }
         String normalizedAction = normalizeAction(action);
@@ -436,7 +497,7 @@ public class TaskAddSignService {
         parameters.put("type", addSign.getOperationType());
         parameters.put("comment", comment);
         parameters.put("action", normalizedAction);
-        var operation = operationActions.task(source, taskId, "SUBMIT", currentUsername(), Map.of(), parameters);
+        var operation = operationActions.task(source, taskId, "SUBMIT", operator, Map.of(), parameters);
         operation.setTaskAssignee(userTask.getUserId());
         operation.setApprovalAction(normalizedAction);
         // 加签源任务和本地子任务均属于本次审批提交，通过任务上下文区分，不另设执行时机。
@@ -448,7 +509,7 @@ public class TaskAddSignService {
                 addSign,
                 taskId,
                 "reject".equals(normalizedAction) ? "ADD_SIGN_REJECT" : "ADD_SIGN_APPROVE",
-                currentUsername(),
+                operator,
                 comment,
                 Map.of("generatedTaskId", taskId, "action", normalizedAction));
         if ("reject".equals(normalizedAction)) {
@@ -503,11 +564,22 @@ public class TaskAddSignService {
     /** 撤销规则保持一致，公共命令提供的原因写入原操作日志；旧调用沿用加签备注。 */
     @Transactional(rollbackFor = Exception.class)
     public void cancel(String addSignId, String reason) {
+        cancel(addSignId, reason, null);
+    }
+
+    /** 调用方授权撤销，保留子任务已办理及源任务已提交的并发限制。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelForPort(String addSignId, String reason, String operatorId) {
+        cancel(addSignId, reason, Objects.requireNonNull(operatorId));
+    }
+
+    private void cancel(String addSignId, String reason, String authorizedOperator) {
         ProcessTaskAddSign addSign = addSignMapper.selectByIdForUpdate(addSignId);
         if (addSign == null) {
             throw new IllegalArgumentException("加签记录不存在");
         }
-        if (!currentUsername().equals(addSign.getOperatorId())) {
+        String operator = authorizedOperator == null ? currentUsername() : authorizedOperator;
+        if (authorizedOperator == null && !operator.equals(addSign.getOperatorId())) {
             throw new ForbiddenException("只有加签发起人可以撤销");
         }
         if (Boolean.TRUE.equals(addSign.getSourceCompleted())) {
@@ -524,7 +596,7 @@ public class TaskAddSignService {
                 addSign,
                 addSign.getSourceTaskId(),
                 "ADD_SIGN_CANCEL",
-                currentUsername(),
+                operator,
                 StringUtils.hasText(reason) ? reason : addSign.getComment(),
                 Map.of("addSignId", addSignId, "type", addSign.getOperationType()));
     }

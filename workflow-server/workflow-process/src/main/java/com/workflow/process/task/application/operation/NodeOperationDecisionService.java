@@ -53,12 +53,28 @@ public class NodeOperationDecisionService {
      * @return 可用动作集合键值结果，供调用方继续处理
      */
     public Map<String, ActionDecision> availableActions(String taskId) {
+        return availableActions(taskId, CheckContext.availability());
+    }
+
+    /** 返回调用方已授权的任务在当前业务状态下可作出的操作。 */
+    public Map<String, ActionDecision> availableActionsForPort(String taskId, String operatorId) {
+        return availableActions(taskId, CheckContext.availability().authorizedByCaller(operatorId));
+    }
+
+    private Map<String, ActionDecision> availableActions(String taskId, CheckContext context) {
         TaskSnapshot snapshot = snapshot(taskId);
         LinkedHashMap<String, ActionDecision> decisions = new LinkedHashMap<>();
         for (NodeOperationPolicy.Operation operation : NodeOperationPolicy.Operation.values()) {
-            decisions.put(operation.apiCode(), decide(snapshot, operation, CheckContext.availability()));
+            decisions.put(operation.apiCode(), decide(snapshot, operation, context));
         }
         return decisions;
+    }
+
+    /** 预览需要所有活动分支符合节点规则，理由等具体参数留到执行时检查。 */
+    boolean allowsForPort(List<Task> activeTasks, NodeOperationPolicy.Operation operation, String operatorId) {
+        CheckContext context = CheckContext.availability().authorizedByCaller(operatorId);
+        return !activeTasks.isEmpty()
+                && activeTasks.stream().allMatch(task -> decide(snapshot(task), operation, context).allowed());
     }
 
     /**
@@ -589,8 +605,13 @@ public class NodeOperationDecisionService {
 
         /** 调用方已完成权限授权，继续按发布规则核验原因及业务条件。 */
         public static CheckContext forAuthorizedOperation(String reason, String operatorId) {
-            return new CheckContext(reason, Set.of(), null, null, Map.of(),
-                    Set.of("*"), operatorId, Instant.now(), true);
+            return ofReason(reason).authorizedByCaller(operatorId);
+        }
+
+        /** 调用方已授权当前操作，发布规则仍使用真实的请求参数和执行人。 */
+        public CheckContext authorizedByCaller(String operatorId) {
+            return new CheckContext(reason, targetUserIds, targetNodeId, addSignType, requestVariables,
+                    Set.of("*"), operatorId, now, enforceRequestDetails);
         }
 
         /**

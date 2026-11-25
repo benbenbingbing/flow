@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TaskServiceImpl implements com.workflow.process.task.application.TaskService {
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.port.process.ProcessTaskPort taskCommands;
+    private ProcessTaskCommandAdapter taskCommands;
 
 
     private final org.flowable.engine.TaskService flowableTaskService;
@@ -142,11 +142,11 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         var submission = new com.workflow.port.process.model.task.TaskSubmission(comment, actionLabel, null, null, null);
         var meta = com.workflow.process.command.application.ProcessHttpCommands.meta(null);
         if ("transfer".equalsIgnoreCase(action)) {
-            taskCommands.transfer(new com.workflow.port.process.model.task.TransferTaskCommand(meta, taskId, transferTo, submission));
+            taskCommands.transferForUser(new com.workflow.port.process.model.task.TransferTaskCommand(meta, taskId, transferTo, submission));
         } else if ("resubmit".equalsIgnoreCase(action)) {
-            taskCommands.resubmit(new com.workflow.port.process.model.task.ResubmitTaskCommand(meta, taskId, submission));
+            taskCommands.resubmitForUser(new com.workflow.port.process.model.task.ResubmitTaskCommand(meta, taskId, submission));
         } else {
-            taskCommands.complete(new com.workflow.port.process.model.task.CompleteTaskCommand(meta, taskId,
+            taskCommands.completeForUser(new com.workflow.port.process.model.task.CompleteTaskCommand(meta, taskId,
                     action == null ? "approve" : action, submission));
         }
     }
@@ -371,7 +371,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
     public void resubmitTask(String taskId, String comment, Map<String, Object> formData) {
-        taskCommands.resubmit(new com.workflow.port.process.model.task.ResubmitTaskCommand(
+        taskCommands.resubmitForUser(new com.workflow.port.process.model.task.ResubmitTaskCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(null), taskId,
                 new com.workflow.port.process.model.task.TaskSubmission(comment, "重新提交", formData, null, null)));
     }

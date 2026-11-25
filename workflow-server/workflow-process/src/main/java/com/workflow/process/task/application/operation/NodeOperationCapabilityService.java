@@ -50,10 +50,22 @@ public class NodeOperationCapabilityService {
      * @return 处理后的可用能力集合结果，供调用方继续处理
      */
     public OperationCapabilities availableCapabilities(String taskId) {
+        return availableCapabilities(taskId, false);
+    }
+
+    /** 调用方授权当前实例，能力按部署开关、活动节点和业务条件计算。 */
+    public OperationCapabilities availableCapabilitiesForPort(String taskId) {
+        return availableCapabilities(taskId, true);
+    }
+
+    private OperationCapabilities availableCapabilities(String taskId, boolean portCall) {
         Task task = requireTask(taskId);
         NodeOperationConfig config = config(task);
+        String currentUserId = UserContext.getUserId();
+        if (!StringUtils.hasText(currentUserId)) currentUserId = UserContext.getUsername();
         Map<String, NodeOperationDecisionService.ActionDecision> legacy =
-                legacyDecisionService.availableActions(taskId);
+                portCall ? legacyDecisionService.availableActionsForPort(taskId, currentUserId)
+                        : legacyDecisionService.availableActions(taskId);
 
         boolean transfer = config.allowTransfer()
                 && legacy.get(NodeOperationPolicy.Operation.TRANSFER.apiCode()).allowed();
@@ -67,17 +79,25 @@ public class NodeOperationCapabilityService {
                 }
             }
         }
-        String currentUserId = UserContext.getUserId();
-        if (!StringUtils.hasText(currentUserId)) {
-            currentUserId = UserContext.getUsername();
-        }
         boolean terminate = StringUtils.hasText(task.getProcessInstanceId())
-                && canTerminateProcess(task.getProcessInstanceId(), currentUserId);
+                && (portCall ? canTerminateForPort(task.getProcessInstanceId(), currentUserId)
+                        : canTerminateProcess(task.getProcessInstanceId(), currentUserId));
         return new OperationCapabilities(
                 transfer,
                 !addSignTypes.isEmpty(),
                 terminate,
                 Collections.unmodifiableSet(addSignTypes));
+    }
+
+    /** 终止预览由调用方授权，活动分支上的节点开关和存量规则仍全部生效。 */
+    public boolean canTerminateForPort(String processInstanceId, String operatorId) {
+        try {
+            List<Task> tasks = activeTasks(processInstanceId);
+            requireConfiguredTerminateAllowed(tasks);
+            return legacyDecisionService.allowsForPort(tasks, NodeOperationPolicy.Operation.TERMINATE, operatorId);
+        } catch (ForbiddenException denied) {
+            return false;
+        }
     }
 
     /**
@@ -180,13 +200,23 @@ public class NodeOperationCapabilityService {
      */
     public boolean canWithdrawProcess(String processInstanceId, String userId) {
         if (!isRuntimeStarter(processInstanceId, userId)) return false;
+        return canWithdrawProcess(processInstanceId, userId, false);
+    }
+
+    /** 撤回预览由调用方授权，仍检查节点配置和适用时间窗口。 */
+    public boolean canWithdrawForPort(String processInstanceId, String operatorId) {
+        return canWithdrawProcess(processInstanceId, operatorId, true);
+    }
+
+    private boolean canWithdrawProcess(String processInstanceId, String userId, boolean portCall) {
         try {
             List<Task> tasks = activeTasks(processInstanceId);
             if (tasks.isEmpty()) return false;
             requireConfiguredWithdrawAllowed(tasks);
             return tasks.stream().allMatch(task -> {
-                NodeOperationDecisionService.ActionDecision decision =
-                        legacyDecisionService.availableActions(task.getId()).get("withdraw");
+                var decisions = portCall ? legacyDecisionService.availableActionsForPort(task.getId(), userId)
+                        : legacyDecisionService.availableActions(task.getId());
+                NodeOperationDecisionService.ActionDecision decision = decisions.get("withdraw");
                 return decision != null && decision.allowed();
             });
         } catch (RuntimeException exception) {

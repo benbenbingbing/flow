@@ -56,8 +56,17 @@ public class ProcessProjectionReader {
 
     /** 普通任务实时身份来自引擎；投影可能滞后，不能仅依据旧 assignee 判断可认领。 */
     public ProcessTaskView task(Task task) {
+        return task(task, true);
+    }
+
+    /** Port 任务投影用引擎判定认领状态，候选范围由调用方掌握。 */
+    public ProcessTaskView taskForPort(Task task) {
+        return task(task, false);
+    }
+
+    private ProcessTaskView task(Task task, boolean checkAccess) {
         boolean canClaim = (task.getAssignee() == null || task.getAssignee().isBlank())
-                && !task.isSuspended() && taskAccess.canCurrentUserAccess(task);
+                && !task.isSuspended() && (!checkAccess || taskAccess.canCurrentUserAccess(task));
         return new ProcessTaskView(task.getId(), task.getId(), "ENGINE", task.getProcessInstanceId(),
                 task.getTaskDefinitionKey(), task.getName(), task.isSuspended() ? "suspended" : "todo",
                 task.getAssignee(), time.instant(task.getCreateTime()), null, canClaim);

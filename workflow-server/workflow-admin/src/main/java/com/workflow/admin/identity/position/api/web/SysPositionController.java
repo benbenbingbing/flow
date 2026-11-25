@@ -34,8 +34,6 @@ public class SysPositionController {
      * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
      * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
      * @param keyword 关键字，作为 {@code Result.success} 的输入影响后续处理
-     * @param applicableUnitType 适用单元类型标识，决定后续系统位置采用的处理分支
-     * @param holderMode 持有者模式标识，决定后续系统位置采用的处理分支
      * @param status 状态标识，决定后续系统位置采用的处理分支
      * @return 符合条件的位置视图结果，供调用方继续处理
      */
@@ -44,18 +42,14 @@ public class SysPositionController {
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String applicableUnitType,
-            @RequestParam(required = false) String holderMode,
             @RequestParam(required = false) String status) {
         return Result.success(service.page(
-                pageNum, pageSize, keyword, applicableUnitType,
-                holderMode, status));
+                pageNum, pageSize, keyword, status));
     }
 
     /**
      * 处理启用，并将结果传给后续步骤。
      *
-     * @param applicableUnitType 适用单元类型标识，决定后续启用采用的处理分支
      * @return 处理后的启用结果，供调用方继续处理
      */
     @GetMapping("/enabled")
@@ -63,9 +57,8 @@ public class SysPositionController {
             value = {"system:position:view", "process:definition:view",
                     "process:definition:manage", "system:position:assign"},
             any = true)
-    public Result<List<PositionViews.PositionView>> enabled(
-            @RequestParam(required = false) String applicableUnitType) {
-        return Result.success(service.enabled(applicableUnitType));
+    public Result<List<PositionViews.PositionView>> enabled() {
+        return Result.success(service.enabled());
     }
 
     /**

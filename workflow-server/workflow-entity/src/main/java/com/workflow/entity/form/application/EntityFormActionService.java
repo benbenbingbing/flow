@@ -135,7 +135,28 @@ public class EntityFormActionService {
             FormActionResolveRequest request, String actionKey, EntityDataDTO row) {
         requireMutationActionReference(request, actionKey);
         String mode = requireMode(request.getMode());
-        if (!Set.of("create", "edit").contains(mode) || !BUILT_IN_MODES.get(actionKey).contains(mode)) {
+        if (!Set.of("create", "edit").contains(mode)) throw unavailableMutationAction();
+        requireReleasedMutationForPort(request, actionKey, row, mode);
+    }
+
+    /** 流程服务已核验节点的发布表单绑定。按真实流程坐标重读记录，再执行表单按钮状态规则。 */
+    public void requireApprovalMutationForPort(FormActionResolveRequest request, String instanceId) {
+        requireMutationActionReference(request, "submitApproval");
+        if (!StringUtils.hasText(request.getEntityCode()) || !StringUtils.hasText(request.getRecordId())) {
+            throw approvalContextMismatch();
+        }
+        var row = dataService.findById(request.getEntityCode(), request.getRecordId());
+        if (row == null || !Objects.equals(instanceId, row.getProcessInstanceId())) throw approvalContextMismatch();
+        requireReleasedMutationForPort(request, "submitApproval", row, "approve");
+    }
+
+    private BusinessForbiddenException approvalContextMismatch() {
+        return new BusinessForbiddenException("UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH", "审批表单与当前业务记录不一致");
+    }
+
+    private void requireReleasedMutationForPort(
+            FormActionResolveRequest request, String actionKey, EntityDataDTO row, String mode) {
+        if (!BUILT_IN_MODES.get(actionKey).contains(mode)) {
             throw unavailableMutationAction();
         }
         RuntimeSource source = loadSource(request.getFormId(), request.getConfigHash(), request.getRuntimeContext());
@@ -709,8 +730,9 @@ public class EntityFormActionService {
         }
         if ("submitApproval".equals(key)) {
             // 打开审批表单不会抢占候选任务；提交按钮需使用可审批身份，并继续叠加发布覆盖条件。
-            return capabilityService.evaluateApprovalAction(
-                    definition.getEntityCode(), row, approvalRule(), readRule(button));
+            return checkPermission
+                    ? capabilityService.evaluateApprovalAction(definition.getEntityCode(), row, approvalRule(), readRule(button))
+                    : capabilityService.evaluateApprovalConditionsForPort(definition.getEntityCode(), row, approvalRule(), readRule(button));
         }
         if (!checkPermission) {
             return capabilityService.evaluateConfiguredConditions(definition.getEntityCode(), readRule(button), row);

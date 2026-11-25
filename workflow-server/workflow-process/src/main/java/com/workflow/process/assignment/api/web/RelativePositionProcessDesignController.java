@@ -17,11 +17,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Locale;
 
 /**
  * 流程设计器的职务选项、业务层级与权威试算接口。
@@ -51,19 +49,10 @@ public class RelativePositionProcessDesignController {
         this.resolver = resolver;
     }
 
-    /**
-     * 返回已启用职务；同时兼容前端传入 anchor 或直接传单位类型。
-     *
-     * @param applicableUnitType 适用单元类型标识，决定后续位置选项采用的处理分支
-     * @param anchor 锚点，作为 {@code ApiResponse.success} 的输入影响后续处理
-     * @return 处理后的位置选项结果，供调用方继续处理
-     */
+    /** 返回全部启用职务，供组织和部门锚点共用。 */
     @GetMapping("/position-options")
-    public ApiResponse<List<PositionDefinitionView>> positionOptions(
-            @RequestParam(required = false) String applicableUnitType,
-            @RequestParam(required = false) String anchor) {
-        return ApiResponse.success(positions.listEnabledPositions(
-                normalizedUnitType(applicableUnitType, anchor)));
+    public ApiResponse<List<PositionDefinitionView>> positionOptions() {
+        return ApiResponse.success(positions.listEnabledPositions());
     }
 
     /**
@@ -156,31 +145,5 @@ public class RelativePositionProcessDesignController {
             }
         }
         return List.copyOf(result);
-    }
-
-    /**
-     * 生成规范化单元类型文本，供后续匹配或展示。
-     *
-     * @param applicableUnitType 适用单元类型标识，决定后续规范化单元类型采用的处理分支
-     * @param anchor 锚点，作为 {@code IllegalArgumentException} 的输入影响后续处理
-     * @return 处理后的规范化单元类型文本，供调用方比较或展示
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private String normalizedUnitType(
-            String applicableUnitType,
-            String anchor) {
-        String raw = StringUtils.hasText(applicableUnitType)
-                ? applicableUnitType : anchor;
-        if (!StringUtils.hasText(raw)) {
-            return null;
-        }
-        String normalized = raw.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "DEPARTMENT" -> "DEPT";
-            case "ORGANIZATION" -> "ORG";
-            case "DEPT", "ORG", "ANY" -> normalized;
-            default -> throw new IllegalArgumentException(
-                    "applicableUnitType/anchor 不支持: " + raw);
-        };
     }
 }

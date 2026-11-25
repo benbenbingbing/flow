@@ -8,7 +8,7 @@ class EntityProcessRestartContextTest {
     @Test void rawRequestCannotAuthorizeAnotherRecordAndExceptionClearsScope() {
         assertThrows(BusinessForbiddenException.class,
                 () -> EntityProcessRestartContext.require("expense", "1", "old"));
-        assertThrows(IllegalStateException.class, () -> EntityProcessRestartContext.execute("expense", "1", "old", () -> {
+        assertThrows(IllegalStateException.class, () -> EntityProcessRestartContext.execute("expense", "1", "old", false, () -> {
             EntityProcessRestartContext.require("expense", "1", "old");
             assertThrows(BusinessForbiddenException.class,
                     () -> EntityProcessRestartContext.require("expense", "2", "old"));

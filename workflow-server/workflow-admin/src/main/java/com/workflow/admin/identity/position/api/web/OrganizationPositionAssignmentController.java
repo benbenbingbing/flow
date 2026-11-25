@@ -34,13 +34,13 @@ public class OrganizationPositionAssignmentController {
      * @return 处理后的分配集合结果，供调用方继续处理
      */
     @GetMapping("/{unitId}/position-assignments")
-    @RequiresPermission("system:position:view")
+    @RequiresPermission(value = {"system:position:view", "system:position:assign"}, any = true)
     public Result<PositionViews.OrganizationAssignmentMatrix> assignments(
             @PathVariable String unitId) {
         return Result.success(queryService.byOrganization(unitId));
     }
 
-    /** 负责人快捷编辑复用当前关系服务，与其他职务使用相同并发检查。 */
+    /** 兼容旧客户端的单值负责人写入，与多人接口共用完整集合的并发检查。 */
     @PostMapping("/{unitId}/leader")
     @RequiresPermission("system:position:assign")
     public Result<Void> changeLeader(@PathVariable String unitId,

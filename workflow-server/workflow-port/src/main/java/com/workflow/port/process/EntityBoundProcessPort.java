@@ -20,8 +20,12 @@ public interface EntityBoundProcessPort {
     ProcessStartResult start(ProcessStartRequest request);
 
     /**
-     * 读操作。判断实体最新实例是否为该用户发起并已撤回，用于按钮能力查询。
-     * 不代表已获得实体更新或重新发起按钮权限，调用方仍必须校验已发布按钮和数据范围。
+     * 读操作。校验旧实例确实是该记录最新一轮已撤回的流程。发起时会在完成加锁后重新校验。
+     */
+    boolean canRestartLatest(String entityCode, String entityRecordId, String previousInstanceId);
+
+    /**
+     * 读操作。判断最新一轮已撤回实例是否由指定用户发起，供页面检查发起人资格。
      */
     boolean canRestart(String entityCode, String entityRecordId, String previousInstanceId, String userId);
 }

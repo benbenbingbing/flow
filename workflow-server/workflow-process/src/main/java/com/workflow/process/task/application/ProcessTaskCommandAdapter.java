@@ -19,7 +19,7 @@ import java.util.*;
 import java.util.function.Supplier;
 
 /**
- * 公共任务命令的唯一编排入口。授权、发布表单、加签分流与原有任务核心共享；
+ * 公共任务命令的唯一编排入口。页面授权与调用方授权使用独立入口，共享发布表单、加签分流和任务核心；
  * 操作结果和回执在同一事务内保存，失败不会留下已成功的回执。
  */
 @Service
@@ -32,6 +32,7 @@ public class ProcessTaskCommandAdapter {
     private final HistoryService history;
     private final RepositoryService repository;
     private final TaskActionService actions;
+    private final TaskIdentityAccessService identities;
     private final TaskAddSignService addSigns;
     private final LocalAddSignTaskAccessService localAccess;
     private final TaskSubmissionGuard forms;
@@ -63,12 +64,12 @@ public class ProcessTaskCommandAdapter {
             form.setFormId(request.getFormId()); form.setConfigHash(request.getFormConfigHash());
             form.setEntityCode(request.getEntityCode()); form.setRecordId(request.getRecordId());
             form.setListKey(request.getListKey());
-            Task resubmit = "resubmit".equals(action) ? requireResubmit(request.getTaskId()) : null;
+            Task resubmit = "resubmit".equals(action) ? requireResubmit(request.getTaskId(), false) : null;
             if (resubmit == null || !isHistoryResubmission(resubmit.getId())
                     || !isUnboundTask(resubmit, submission.formReference())) {
                 formActions.requireBuiltInMutationAction(form, "submitApproval");
             }
-            return completeWork(request.getTaskId(), action, request.getTransferTo(), submission);
+            return completeWork(request.getTaskId(), action, request.getTransferTo(), submission, null, false);
         });
     }
 
@@ -82,7 +83,7 @@ public class ProcessTaskCommandAdapter {
     }
 
     private TaskCommandResult claim(ClaimTaskCommand command, boolean checkAccess) {
-        return taskCommand(command.meta(), "TASK_CLAIM", command, command.taskId(), () -> {
+        return taskCommand(command.meta(), "TASK_CLAIM", command, command.taskId(), !checkAccess, () -> {
             Task task = requireEngineTask(command.taskId());
             boolean changed = task.getAssignee() == null || task.getAssignee().isBlank();
             if (checkAccess) actions.claimTask(task.getId());
@@ -92,18 +93,36 @@ public class ProcessTaskCommandAdapter {
     }
 
     public TaskCommandResult complete(CompleteTaskCommand command) {
-        return taskCommand(command.meta(), "TASK_COMPLETE", command, command.taskId(),
+        return complete(command, true);
+    }
+
+    /** 用户入口保留当前任务办理及表单权限。 */
+    public TaskCommandResult completeForUser(CompleteTaskCommand command) {
+        return complete(command, false);
+    }
+
+    private TaskCommandResult complete(CompleteTaskCommand command, boolean portCall) {
+        return taskCommand(command.meta(), "TASK_COMPLETE", command, command.taskId(), portCall,
                 () -> {
                     String action = outcomes.normalizeAction(command.actionCode());
                     if (Set.of("transfer", "resubmit").contains(action)) throw denied(command.taskId(),
                             "转办和重提需要使用对应的专用命令");
-                    return completeWork(command.taskId(), action, null, command.submission());
+                    return completeWork(command.taskId(), action, null, command.submission(), null, portCall);
                 });
     }
 
     public TaskCommandResult transfer(TransferTaskCommand command) {
-        return taskCommand(command.meta(), "TASK_TRANSFER", command, command.taskId(),
-                () -> completeWork(command.taskId(), "transfer", command.targetUserId(), command.submission()));
+        return transfer(command, true);
+    }
+
+    /** 用户入口按待办检查转办人权限。 */
+    public TaskCommandResult transferForUser(TransferTaskCommand command) {
+        return transfer(command, false);
+    }
+
+    private TaskCommandResult transfer(TransferTaskCommand command, boolean portCall) {
+        return taskCommand(command.meta(), "TASK_TRANSFER", command, command.taskId(), portCall,
+                () -> completeWork(command.taskId(), "transfer", command.targetUserId(), command.submission(), null, portCall));
     }
 
     /**
@@ -112,10 +131,21 @@ public class ProcessTaskCommandAdapter {
      * 异步、加签及未汇聚的会签应使用普通 reject，不能保证立即退到指定节点。
      */
     public TaskCommandResult returnToNode(ReturnTaskCommand command) {
-        return taskCommand(command.meta(), "TASK_RETURN", command, command.taskId(), () -> {
+        return returnToNode(command, true);
+    }
+
+    /** 页面退回需同时满足用户办理身份和发布节点配置。 */
+    public TaskCommandResult returnToNodeForUser(ReturnTaskCommand command) {
+        return returnToNode(command, false);
+    }
+
+    private TaskCommandResult returnToNode(ReturnTaskCommand command, boolean portCall) {
+        return taskCommand(command.meta(), "TASK_RETURN", command, command.taskId(), portCall, () -> {
             Task source = requireEngineTask(command.taskId());
-            actions.requireTaskAccess(command.taskId());
-            var allowed = decisions.availableActions(command.taskId()).get("reject");
+            if (!portCall) actions.requireTaskAccess(command.taskId());
+            var decisionsByAction = portCall ? decisions.availableActionsForPort(command.taskId(), access.requireActor().userId())
+                    : decisions.availableActions(command.taskId());
+            var allowed = decisionsByAction.get("reject");
             if (allowed == null || !allowed.allowed()
                     || !allowed.rule().allowedRejectTargets().contains(command.targetNodeId())
                     || addSigns.isAddSignSourceTask(command.taskId())) {
@@ -123,7 +153,7 @@ public class ProcessTaskCommandAdapter {
             }
             Set<String> previous = new HashSet<>(tasks.createTaskQuery().processInstanceId(source.getProcessInstanceId())
                     .list().stream().map(Task::getId).toList());
-            var result = completeWork(command.taskId(), "reject", null, command.submission(), command.targetNodeId());
+            var result = completeWork(command.taskId(), "reject", null, command.submission(), command.targetNodeId(), portCall);
             // 并行分支可能早已有同名节点；只能以本次新生成的目标待办证明退回已到达。
             if (tasks.createTaskQuery().processInstanceId(source.getProcessInstanceId())
                     .taskDefinitionKey(command.targetNodeId()).list().stream().noneMatch(task -> !previous.contains(task.getId()))) {
@@ -135,20 +165,32 @@ public class ProcessTaskCommandAdapter {
 
     /** 重提限于发起人持有的退回待办，复用表单、下一审批人和实体同步路径。 */
     public TaskCommandResult resubmit(ResubmitTaskCommand command) {
-        return taskCommand(command.meta(), "TASK_RESUBMIT", command, command.taskId(), () -> {
-            requireResubmit(command.taskId());
-            return completeWork(command.taskId(), "resubmit", null, command.submission());
+        return resubmit(command, true);
+    }
+
+    /** 页面重提仍由流程发起人办理。 */
+    public TaskCommandResult resubmitForUser(ResubmitTaskCommand command) {
+        return resubmit(command, false);
+    }
+
+    private TaskCommandResult resubmit(ResubmitTaskCommand command, boolean portCall) {
+        return taskCommand(command.meta(), "TASK_RESUBMIT", command, command.taskId(), portCall, () -> {
+            requireResubmit(command.taskId(), portCall);
+            return completeWork(command.taskId(), "resubmit", null, command.submission(), null, portCall);
         });
     }
 
     /** 发起人身份与退回状态必须同时满足；不允许把任意待办当作重提入口。 */
-    private Task requireResubmit(String taskId) {
+    private Task requireResubmit(String taskId, boolean portCall) {
             Task source = requireEngineTask(taskId);
             var actor = access.requireActor();
             var instance = history.createHistoricProcessInstanceQuery()
                     .processInstanceId(source.getProcessInstanceId()).singleResult();
             String starter = instance == null ? null : instance.getStartUserId();
-            if (starter == null || !starter.equals(actor.userId()) && !starter.equals(actor.username())) {
+            if (portCall && !identities.isAssignedOrCandidate(source, starter)) {
+                throw denied(taskId, "当前任务不是发起人的退回待办");
+            }
+            if (!portCall && (starter == null || !starter.equals(actor.userId()) && !starter.equals(actor.username()))) {
                 throw new ProcessOperationException("PROCESS_ACCESS_DENIED", "只有发起人可以重新提交", taskId);
             }
             Object approved = runtime.getVariable(source.getProcessInstanceId(), "approved");
@@ -162,23 +204,24 @@ public class ProcessTaskCommandAdapter {
     public AddSignResult addSign(AddSignCommand command) {
         TaskAddSignRequest request = new TaskAddSignRequest();
         request.setType(command.type().name()); request.setUserIds(command.userIds()); request.setComment(command.comment());
-        var execution = addSignExecution(command.meta(), command, command.taskId(), request);
+        var execution = addSignExecution(command.meta(), command, command.taskId(), request, true);
         return new AddSignResult(execution.receipt(), execution.value().id(), execution.value().taskIds());
     }
 
     /** 兼容页面的人员预览字段和完成策略，执行路径与 Java 加签完全相同。 */
     public Map<String, Object> addSignHttp(String taskId, TaskAddSignRequest request) {
-        return addSignExecution(ProcessHttpCommands.meta(request.getRequestId()), Map.of("taskId", taskId, "request", request), taskId, request).value().response();
+        return addSignExecution(ProcessHttpCommands.meta(request.getRequestId()), Map.of("taskId", taskId, "request", request),
+                taskId, request, false).value().response();
     }
 
     private ProcessCommandExecutor.Execution<AddSignPayload> addSignExecution(
-            CommandMeta meta, Object command, String taskId, TaskAddSignRequest request) {
-        access.requireActor();
-        return ProcessCommandFailures.translate(taskId, () -> commands.execute(
-                meta, "TASK_ADD_SIGN", command, AddSignPayload.class,
+            CommandMeta meta, Object command, String taskId, TaskAddSignRequest request, boolean portCall) {
+        String operator = actorKey();
+        return ProcessCommandFailures.translate(taskId, () -> execute(
+                meta, "TASK_ADD_SIGN", command, AddSignPayload.class, portCall,
                 () -> TaskCommandScope.run(taskId, () -> {
                     Task source = requireEngineTask(taskId);
-                    var result = addSigns.addSign(taskId, request);
+                    var result = portCall ? addSigns.addSignForPort(taskId, request, operator) : addSigns.addSign(taskId, request);
                     var ids = ((List<?>) result.get("generatedTaskIds")).stream().map(String::valueOf).toList();
                     return new ProcessCommandExecutor.Outcome<>(source.getProcessInstanceId(), taskId, true,
                             new AddSignPayload(String.valueOf(result.get("addSignId")), ids, result));
@@ -186,11 +229,21 @@ public class ProcessTaskCommandAdapter {
     }
 
     public TaskCommandResult cancelAddSign(CancelAddSignCommand command) {
-        return taskCommand(command.meta(), "TASK_CANCEL_ADD_SIGN", command, command.addSignId(), () -> {
+        return cancelAddSign(command, true);
+    }
+
+    /** 页面撤销由原加签发起人的身份授权。 */
+    public TaskCommandResult cancelAddSignForUser(CancelAddSignCommand command) {
+        return cancelAddSign(command, false);
+    }
+
+    private TaskCommandResult cancelAddSign(CancelAddSignCommand command, boolean portCall) {
+        return taskCommand(command.meta(), "TASK_CANCEL_ADD_SIGN", command, command.addSignId(), portCall, () -> {
             var sign = addSignRecords.selectById(command.addSignId());
             if (sign == null) throw new ProcessOperationException("TASK_NOT_FOUND", "加签编排不存在", command.addSignId());
             return TaskCommandScope.run(sign.getSourceTaskId(), () -> {
-                addSigns.cancel(command.addSignId(), command.reason());
+                if (portCall) addSigns.cancelForPort(command.addSignId(), command.reason(), actorKey());
+                else addSigns.cancel(command.addSignId(), command.reason());
                 return new ProcessCommandExecutor.Outcome<>(sign.getProcessInstanceId(), sign.getSourceTaskId(), true,
                         new TaskPayload("ADD_SIGN_CANCELLED", lifecycle(sign.getProcessInstanceId())));
             });
@@ -198,15 +251,25 @@ public class ProcessTaskCommandAdapter {
     }
 
     public ManualCcResult addCc(ManualCcCommand command) {
-        access.requireActor();
-        var execution = ProcessCommandFailures.translate(command.taskId(), () -> commands.execute(
-                command.meta(), "TASK_CC", command, Integer.class,
+        return addCc(command, true);
+    }
+
+    /** 页面知会沿用任务办理身份权限和原回执范围。 */
+    public ManualCcResult addCcForUser(ManualCcCommand command) {
+        return addCc(command, false);
+    }
+
+    private ManualCcResult addCc(ManualCcCommand command, boolean portCall) {
+        String operator = actorKey();
+        var execution = ProcessCommandFailures.translate(command.taskId(), () -> execute(
+                command.meta(), "TASK_CC", command, Integer.class, portCall,
                 () -> TaskCommandScope.run(command.taskId(), () -> {
                     Task source = requireEngineTask(command.taskId());
                     TaskCcRequest request = new TaskCcRequest();
                     request.setUserIds(command.userIds());
                     request.setComment(command.comment());
-                    int created = operations.manualCc(command.taskId(), request);
+                    int created = portCall ? operations.manualCcForPort(command.taskId(), request, operator)
+                            : operations.manualCc(command.taskId(), request);
                     return new ProcessCommandExecutor.Outcome<>(source.getProcessInstanceId(), command.taskId(), created > 0, created);
                 })));
         return new ManualCcResult(execution.receipt(), execution.value());
@@ -217,16 +280,19 @@ public class ProcessTaskCommandAdapter {
      * 子任务没有独立实体写入，源任务延后办理时由原加签服务保存表单并在最终收口校验。
      */
     private ProcessCommandExecutor.Outcome<TaskPayload> completeWork(
-            String taskId, String action, String transferTo, TaskSubmission submission) {
-        return completeWork(taskId, action, transferTo, submission, null);
-    }
-
-    private ProcessCommandExecutor.Outcome<TaskPayload> completeWork(
-            String taskId, String action, String transferTo, TaskSubmission submission, String returnTargetNodeId) {
+            String taskId, String action, String transferTo, TaskSubmission submission, String returnTargetNodeId,
+            boolean portCall) {
         boolean local = addSigns.isAddSignTask(taskId);
         Task source;
-        if (local) source = localAccess.requireCurrentUserAccess(taskId, null).sourceTask();
-        else { source = requireEngineTask(taskId); actions.requireTaskAccess(taskId); }
+        if (local) {
+            source = (portCall ? localAccess.requireActiveForPort(taskId, null)
+                    : localAccess.requireCurrentUserAccess(taskId, null)).sourceTask();
+            if (portCall && source.isSuspended()) throw new ProcessOperationException(
+                    "PROCESS_STATE_CHANGED", "任务所属流程已挂起", taskId);
+        } else {
+            source = requireEngineTask(taskId);
+            if (!portCall) actions.requireTaskAccess(taskId);
+        }
         String normalized = outcomes.normalizeAction(action);
         // 发起人重提使用专用的审批结果，不能从通用完成接口转交或伪造其他办理结果。
         boolean historyResubmit = !local && isHistoryResubmission(taskId);
@@ -234,25 +300,31 @@ public class ProcessTaskCommandAdapter {
             throw denied(taskId, "当前待办需由发起人重新提交");
         }
         if (!historyResubmit || !isUnboundTask(source, submission.formReference())) {
-            forms.require(taskId, source, submission.formReference());
+            if (portCall) forms.requireForPort(taskId, source, submission.formReference());
+            else forms.require(taskId, source, submission.formReference());
         }
         requirePublishedAction(source, normalized);
         boolean selected = submission.nextApprovers() != null && !submission.nextApprovers().nodes().isEmpty();
         if ((local || addSigns.isAddSignSourceTask(taskId) || "transfer".equals(normalized)) && selected) {
             throw new IllegalArgumentException("加签或转办不能指定下一节点审批人");
         }
+        String actor = actorKey();
         if (local) {
             if (!Set.of("approve", "reject").contains(normalized)) throw denied(taskId, "加签子任务只支持通过或驳回");
             // 最后一个子任务可能同步推进源任务；两者都纳入防重入，阻止源任务监听器递归办理。
             TaskCommandScope.run(source.getId(), () -> {
-                addSigns.completeAddSignTask(taskId, normalized, submission.comment());
+                if (portCall) addSigns.completeAddSignTaskForPort(taskId, normalized, submission.comment(), actor);
+                else addSigns.completeAddSignTask(taskId, normalized, submission.comment());
                 return null;
             });
             return outcome(source, taskId, "ADD_SIGN_COMPLETED", true);
         }
-        String actor = actorKey();
-        if (addSigns.handleSourceCompletion(taskId, actor, normalized, submission.comment(),
-                submission.actionLabel(), submission.formData())) {
+        boolean deferred = portCall
+                ? addSigns.handleSourceCompletionForPort(taskId, actor, normalized, submission.comment(),
+                        submission.actionLabel(), submission.formData())
+                : addSigns.handleSourceCompletion(taskId, actor, normalized, submission.comment(),
+                        submission.actionLabel(), submission.formData());
+        if (deferred) {
             // 收口可能因下一审批人仍需手选而恢复源待办。此时编排已经关闭，不能误报仍在等待加签。
             String status = tasks.createTaskQuery().taskId(taskId).count() == 0 ? "COMPLETED"
                     : addSignRecords.countBlockingBySourceTaskId(taskId) > 0 ? "WAITING_ADD_SIGN" : "TODO";
@@ -263,7 +335,10 @@ public class ProcessTaskCommandAdapter {
             var request = new NextApproverSelectionRequest();
             request.setNodeId(node.nodeId()); request.setUserKeys(node.userKeys()); return request;
         }).toList();
-        if (returnTargetNodeId == null) {
+        if (portCall) {
+            actions.completeTaskForPort(taskId, actor, normalized, submission.comment(), transferTo,
+                    submission.actionLabel(), submission.formData(), next == null ? null : next.scopeKey(), selections, returnTargetNodeId);
+        } else if (returnTargetNodeId == null) {
             actions.completeTask(taskId, actor, normalized, submission.comment(), transferTo,
                     submission.actionLabel(), submission.formData(), next == null ? null : next.scopeKey(), selections);
         } else {
@@ -308,10 +383,21 @@ public class ProcessTaskCommandAdapter {
     /** 回执重放发生在重新读取活动任务之前，任务已经完成也能返回原成功结果。 */
     private TaskCommandResult taskCommand(CommandMeta meta, String type, Object command, String taskId,
                                          Supplier<ProcessCommandExecutor.Outcome<TaskPayload>> work) {
+        return taskCommand(meta, type, command, taskId, false, work);
+    }
+
+    private TaskCommandResult taskCommand(CommandMeta meta, String type, Object command, String taskId,
+            boolean portCall, Supplier<ProcessCommandExecutor.Outcome<TaskPayload>> work) {
         access.requireActor();
-        var execution = ProcessCommandFailures.translate(taskId, () -> commands.execute(meta, type, command,
-                TaskPayload.class, () -> TaskCommandScope.run(taskId, work)));
+        var execution = ProcessCommandFailures.translate(taskId, () -> execute(meta, type, command,
+                TaskPayload.class, portCall, () -> TaskCommandScope.run(taskId, work)));
         return new TaskCommandResult(execution.receipt(), execution.value().status(), execution.value().lifecycle());
+    }
+
+    private <T> ProcessCommandExecutor.Execution<T> execute(CommandMeta meta, String type, Object command,
+            Class<T> resultType, boolean portCall, Supplier<ProcessCommandExecutor.Outcome<T>> work) {
+        return portCall ? commands.executeForPort(meta, type, command, resultType, work)
+                : commands.execute(meta, type, command, resultType, work);
     }
     private Task requireEngineTask(String taskId) {
         Task task = tasks.createTaskQuery().taskId(taskId).singleResult();

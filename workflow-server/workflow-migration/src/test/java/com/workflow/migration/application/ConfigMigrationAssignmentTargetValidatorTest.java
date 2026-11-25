@@ -75,6 +75,23 @@ class ConfigMigrationAssignmentTargetValidatorTest {
     }
 
     @Test
+    void pathPreflightAcceptsHistoricalSystemSubmitterField() {
+        PersonResolverRuntimeService runtime = mock(PersonResolverRuntimeService.class);
+        when(runtime.supportsConfigured("entityUserReferenceField", PersonResolveUsage.ASSIGNEE)).thenReturn(true);
+        var validator = new ConfigMigrationAssignmentTargetValidator(runtime,
+                mock(SysOrganizationPort.class), mock(SysPositionPort.class), List.of());
+        var dependency = resolver("entityUserReferenceField", List.of(reference("ASSIGNEE", Map.of(
+                "schemaVersion", 2, "entityCode", "expense", "path", List.of(Map.of(
+                        "type", "REFERENCE_FIELD", "code", "submitterId",
+                        "sourceEntityCode", "expense", "targetEntityCode", "sys_user"))))));
+        assertTrue(validator.resolved(dependency, "PERSON_RESOLVER", "entityUserReferenceField",
+                (type, key) -> key, key -> "path:expense/submitterId".equals(key)
+                        ? Map.of("fieldType", "STRING", "isSystem", true) : Map.of()));
+        assertFalse(validator.resolved(dependency, "PERSON_RESOLVER", "entityUserReferenceField",
+                (type, key) -> key, key -> Map.of("fieldType", "STRING", "isSystem", false)));
+    }
+
+    @Test
     void plannedEntityFieldIsValidatedBeforeItExistsInTargetDatabase() {
         ConfigMigrationPackageService service = mock(ConfigMigrationPackageService.class, CALLS_REAL_METHODS);
         PersonResolverRuntimeService runtime = mock(PersonResolverRuntimeService.class);

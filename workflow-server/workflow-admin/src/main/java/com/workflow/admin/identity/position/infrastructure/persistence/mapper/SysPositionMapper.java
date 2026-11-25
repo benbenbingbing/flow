@@ -65,18 +65,13 @@ public interface SysPositionMapper extends BaseMapper<SysPosition> {
     }
 
     /**
-     * 读取适用组织类型的启用职务；未指定类型时返回全部，ANY 对所有类型可用。
+     * 按管理界面顺序读取全部启用职务。
      *
-     * @param unitType 单元类型标识，决定后续启用采用的处理分支
      * @return 系统位置集合，供调用方遍历或展示
      */
-    default List<SysPosition> selectEnabled(String unitType) {
+    default List<SysPosition> selectEnabled() {
         return selectList(Wrappers.<SysPosition>lambdaQuery()
                 .eq(SysPosition::getStatus, "ENABLED")
-                // NULLIF 由数据库按既有排序规则比较空串，保留 MySQL 对尾部空格的处理。
-                .and(condition -> condition.apply("NULLIF({0,jdbcType=VARCHAR}, '') IS NULL", unitType)
-                        .or().eq(SysPosition::getApplicableUnitType, "ANY")
-                        .or().eq(SysPosition::getApplicableUnitType, unitType))
                 .orderByAsc(SysPosition::getSortOrder, SysPosition::getPositionCode));
     }
 
@@ -150,43 +145,11 @@ public interface SysPositionMapper extends BaseMapper<SysPosition> {
             """)
     long countProcessReferences(@Param("positionCode") String positionCode);
 
-    /** 切换单人模式前检查当前人员数；调用方持有职务行锁以串行化人员修改。 */
-    @Select("""
-            SELECT COUNT(*) FROM (
-                SELECT organization_unit_id FROM sys_position_assignment
-                WHERE position_id = #{positionId}
-                GROUP BY organization_unit_id HAVING COUNT(*) > 1
-            ) occupied_units
-            """)
-    long countUnitsWithMultipleHolders(@Param("positionId") String positionId);
-
-    /**
-     * 统计分配集合{@code outside}单元类型；结果供后续判断或展示使用。
-     *
-     * @param positionId 位置ID，后续用于统计分配集合{@code outside}单元类型时定位或关联目标
-     * @param unitType 单元类型标识，决定后续分配集合{@code outside}单元类型采用的处理分支
-     * @return 符合条件的分配集合{@code outside}单元类型数量
-     */
-    @Select("""
-            SELECT COUNT(*)
-            FROM sys_position_assignment assignment_record
-            JOIN sys_organization organization_unit
-              ON organization_unit.id = assignment_record.organization_unit_id
-            WHERE assignment_record.position_id = #{positionId}
-              AND organization_unit.deleted = 0
-              AND organization_unit.type <> #{unitType}
-            """)
-    long countAssignmentsOutsideUnitType(
-            @Param("positionId") String positionId,
-            @Param("unitType") String unitType);
-
     /**
      * 更新定义；后续读取或执行将使用更新后的状态。
      *
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param positionName 位置名称，后续用于更新定义时匹配或展示
-     * @param applicableUnitType 适用单元类型标识，决定后续定义采用的处理分支
-     * @param holderMode 持有者模式标识，决定后续定义采用的处理分支
      * @param sortOrder 排序顺序，供本方法更新定义时使用
      * @param description 描述，供本方法更新定义时使用
      * @param actor 操作人，供本方法更新定义时使用
@@ -197,8 +160,6 @@ public interface SysPositionMapper extends BaseMapper<SysPosition> {
             <script>
             UPDATE sys_position
             SET position_name = #{positionName},
-                applicable_unit_type = #{applicableUnitType},
-                holder_mode = #{holderMode},
                 sort_order = #{sortOrder},
                 description = #{description},
                 updated_by = #{actor},
@@ -210,8 +171,6 @@ public interface SysPositionMapper extends BaseMapper<SysPosition> {
     int updateDefinition(
             @Param("id") String id,
             @Param("positionName") String positionName,
-            @Param("applicableUnitType") String applicableUnitType,
-            @Param("holderMode") String holderMode,
             @Param("sortOrder") int sortOrder,
             @Param("description") String description,
             @Param("actor") String actor,

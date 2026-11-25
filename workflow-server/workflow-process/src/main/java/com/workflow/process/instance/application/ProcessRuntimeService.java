@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
+import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
@@ -204,8 +205,8 @@ public class ProcessRuntimeService implements EntityBoundProcessPort {
         // 下一代必须由明确的重新发起请求创建；旧请求或重复点击不能隐式启动新一轮。
         if (StringUtils.hasText(request.previousProcessInstanceId())) {
             if (latest == null || !request.previousProcessInstanceId().equals(latest.getProcessInstanceId())
-                    || !canRestart(request.entityCode(), request.entityRecordId(),
-                            request.previousProcessInstanceId(), request.submitterId())) {
+                    || !canRestartLatest(request.entityCode(), request.entityRecordId(),
+                            request.previousProcessInstanceId())) {
                 throw new BusinessConflictException("PROCESS_RESTART_NOT_ALLOWED", "流程已变化或不允许重新发起，请刷新后重试");
             }
         } else if (latest != null && "ENDED".equals(latest.getState())) {
@@ -265,19 +266,33 @@ public class ProcessRuntimeService implements EntityBoundProcessPort {
     }
 
     /**
-     * 同一实体、最新代次、真实撤回原因与发起人必须全部匹配。实体投影即使被误改为撤回也不能放行。
+     * 只检查最新代次和引擎真实撤回原因，供内部发起及预检共用。
      * 写入口已持有实体行及流程链接锁；只读能力查询不加锁，实际发起时会重新检查。
      */
     @Override
+    public boolean canRestartLatest(String entityCode, String entityRecordId, String previousInstanceId) {
+        return findWithdrawnLatest(entityCode, entityRecordId, previousInstanceId) != null;
+    }
+
+    @Override
     public boolean canRestart(String entityCode, String entityRecordId, String previousInstanceId, String userId) {
-        if (!StringUtils.hasText(previousInstanceId) || !StringUtils.hasText(userId)) return false;
+        if (!StringUtils.hasText(userId)) return false;
+        var historic = findWithdrawnLatest(entityCode, entityRecordId, previousInstanceId);
+        return historic != null && userId.equals(historic.getStartUserId());
+    }
+
+    private HistoricProcessInstance findWithdrawnLatest(
+            String entityCode, String entityRecordId, String previousInstanceId) {
+        if (!StringUtils.hasText(previousInstanceId)) return null;
         EntityProcessLink latest = entityProcessLinkMapper.selectLatest(entityCode, entityRecordId);
         if (latest == null || !previousInstanceId.equals(latest.getProcessInstanceId())
-                || !"ENDED".equals(latest.getState()) || !"WITHDRAWN".equals(latest.getEndType())) return false;
-        if (runtimeService.createProcessInstanceQuery().processInstanceId(previousInstanceId).singleResult() != null) return false;
+                || !"ENDED".equals(latest.getState()) || !"WITHDRAWN".equals(latest.getEndType())) return null;
+        if (runtimeService.createProcessInstanceQuery().processInstanceId(previousInstanceId).singleResult() != null) return null;
         var historic = historyService.createHistoricProcessInstanceQuery().processInstanceId(previousInstanceId).singleResult();
-        return historic != null && historic.getEndTime() != null && userId.equals(historic.getStartUserId())
-                && "WITHDRAWN".equals(com.workflow.process.status.application.ProcessEndReason.category(historic.getDeleteReason()));
+        if (historic == null || historic.getEndTime() == null
+                || !"WITHDRAWN".equals(com.workflow.process.status.application.ProcessEndReason.category(
+                        historic.getDeleteReason()))) return null;
+        return historic;
     }
 
     /**

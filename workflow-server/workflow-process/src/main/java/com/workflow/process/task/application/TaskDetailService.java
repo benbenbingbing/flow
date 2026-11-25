@@ -205,7 +205,7 @@ public class TaskDetailService {
     /** 返回已授权活动任务的表单摘要，只解析绑定和表单，不加载实体数据或流程变量。 */
     TaskDetailDTO.FormConfigDTO findActiveTaskForm(String taskId, boolean addSign) {
         if (addSign) {
-            var context = localAddSignTaskAccessService.requireCurrentUserAccess(taskId, null);
+            var context = localAddSignTaskAccessService.requireActiveForPort(taskId, null);
             return resolveForm(taskId, context.localTask(), context, false);
         }
         ProcessTask task = processTaskMapper.selectByTaskId(taskId);

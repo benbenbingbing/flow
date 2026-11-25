@@ -180,29 +180,9 @@
           <div class="field-help">业务层级用于流程按语义定位组织，不等同于系统计算的物理层级 level。</div>
         </el-form-item>
         <el-form-item label="负责人">
-          <template v-if="isEdit">
-            <div class="leader-editor">
-              <UserSelector
-                v-model="form.leaderId"
-                value-key="id"
-                placeholder="清空可移除负责人"
-                title="选择负责人"
-                :disabled="!canAssignPosition || leaderSubmitting"
-              />
-              <el-button
-                type="primary"
-                plain
-                :loading="leaderSubmitting"
-                :disabled="!canAssignPosition || !leaderDirty"
-                @click="saveOrganizationLeader"
-              >
-                保存负责人
-              </el-button>
-            </div>
-            <div class="field-help">
-              设置后立即生效，已生成的审批任务保持原办理人。
-            </div>
-          </template>
+          <el-button v-if="isEdit" :disabled="!canAssignPosition" @click="openLeaderAssignment">
+            设置负责人
+          </el-button>
           <div v-else class="field-help">请先保存组织，再设置负责人。</div>
         </el-form-item>
         <el-form-item label="联系电话">
@@ -232,7 +212,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm" :loading="submitLoading" :disabled="leaderDirty">
+        <el-button type="primary" @click="submitForm" :loading="submitLoading">
           {{ isEdit ? '保存组织部门' : form.type === 'org' ? '创建组织' : '创建部门' }}
         </el-button>
       </template>
@@ -254,6 +234,8 @@
     <PositionAssignmentDialog
       v-model="positionAssignmentVisible"
       :locked-unit="positionAssignmentUnit"
+      :locked-position="positionAssignmentPosition"
+      :title="positionAssignmentPosition ? '设置负责人' : '设置职务人员'"
       @saved="handlePositionAssignmentSaved"
     />
   </div>
@@ -267,10 +249,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, OfficeBuilding, House } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
-import UserSelector from '@/components/UserSelector.vue'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
 import { useUserStore } from '@/stores/user'
-import { updateOrganizationLeader } from '@/api/system/position'
 import { getOrganizationBusinessLevelOptions, getOrganizationPage, getOrganizationAncestors } from '@/api/system/org'
 import OrganizationNavigationTree from '@/views/system/components/OrganizationNavigationTree.vue'
 import ResizableTreeLayout from '@/views/system/components/ResizableTreeLayout.vue'
@@ -303,11 +283,8 @@ const formRef = ref(null)
 const extensionFormRef = ref(null)
 const positionAssignmentVisible = ref(false)
 const positionAssignmentUnit = ref(null)
+const positionAssignmentPosition = ref(null)
 const businessLevelOptions = ref([])
-const originalLeaderId = ref('')
-const leaderSubmitting = ref(false)
-const leaderDirty = computed(() => isEdit.value
-  && String(form.leaderId || '') !== String(originalLeaderId.value || ''))
 
 const parentIsDepartment = computed(() => selectedParent.value?.type === 'dept')
 
@@ -323,7 +300,6 @@ const form = reactive({
   orgCode: '',
   orgName: '',
   businessLevelCode: '',
-  leaderId: '',
   phone: '',
   email: '',
   address: '',
@@ -496,7 +472,6 @@ async function handleEdit(row) {
     Object.assign(form, row)
     selectedParent.value = parentPath.at(-1) || null
     form.status = row.sourceInfo ? (row.sourceInfo.localAllowed ? '0' : '1') : row.status
-    originalLeaderId.value = String(row.leaderId || '')
     dialogVisible.value = true
   } catch (e) {
     if (sequence === editSequence) ElMessage.error(e?.message || '组织部门详情加载失败')
@@ -505,26 +480,18 @@ async function handleEdit(row) {
 
 function openPositionAssignment(row) {
   positionAssignmentUnit.value = row
+  positionAssignmentPosition.value = null
   positionAssignmentVisible.value = true
+}
+
+/** 使用任职关系中的完整负责人集合，兼容字段只存一人，不能作为保存基准。 */
+function openLeaderAssignment() {
+  openPositionAssignment({ id: form.id, orgName: form.orgName })
+  positionAssignmentPosition.value = { positionCode: 'UNIT_LEADER' }
 }
 
 async function handlePositionAssignmentSaved() {
   await refreshOrganizations()
-}
-
-/** 负责人直接保存当前关系；已读取的人员集合用于检测并发修改。 */
-async function saveOrganizationLeader() {
-  if (!isEdit.value || !leaderDirty.value || !canAssignPosition.value) return
-  leaderSubmitting.value = true
-  try {
-    await updateOrganizationLeader(form.id, {
-      userId: form.leaderId || null,
-      expectedUserIds: originalLeaderId.value ? [originalLeaderId.value] : []
-    })
-    originalLeaderId.value = String(form.leaderId || '')
-    ElMessage.success('负责人已保存')
-    await refreshOrganizations()
-  } finally { leaderSubmitting.value = false }
 }
 
 function handleTypeChange(type) {
@@ -603,7 +570,6 @@ function resetForm() {
   form.orgCode = ''
   form.orgName = ''
   form.businessLevelCode = ''
-  form.leaderId = ''
   form.phone = ''
   form.email = ''
   form.address = ''
@@ -611,7 +577,6 @@ function resetForm() {
   form.status = '0'
   form.description = ''
   form.sourceInfo = null
-  originalLeaderId.value = ''
 }
 
 onMounted(() => {
@@ -693,13 +658,6 @@ onMounted(() => {
   margin-top: 4px;
   color: #909399;
   font-size: 12px;
-}
-
-.leader-editor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  width: 100%;
 }
 
 @media (max-width: 1000px) {

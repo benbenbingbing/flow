@@ -41,7 +41,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ProcessRollbackService {
     @org.springframework.beans.factory.annotation.Autowired
-    private com.workflow.port.process.ProcessTaskPort taskCommands;
+    private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
@@ -78,9 +78,9 @@ public class ProcessRollbackService {
         // 历史签名的 userId 不再作为授权来源；公共命令始终验证真实执行身份。
         // 未指定目标沿发布驳回连线执行，指定目标则要求实际到达该节点。
         if (targetNodeId == null || targetNodeId.isBlank()) {
-            taskCommands.complete(new com.workflow.port.process.model.task.CompleteTaskCommand(meta, taskId, "reject", submission));
+            taskCommands.completeForUser(new com.workflow.port.process.model.task.CompleteTaskCommand(meta, taskId, "reject", submission));
         } else {
-            taskCommands.returnToNode(new com.workflow.port.process.model.task.ReturnTaskCommand(meta, taskId, targetNodeId, submission));
+            taskCommands.returnToNodeForUser(new com.workflow.port.process.model.task.ReturnTaskCommand(meta, taskId, targetNodeId, submission));
         }
         return Result.success();
     }
@@ -110,7 +110,7 @@ public class ProcessRollbackService {
                 .taskAssignee(identity).list();
         if (candidates.size() != 1) throw new com.workflow.port.process.error.ProcessOperationException(
                 "PROCESS_STATE_CHANGED", "需要唯一的重新提交待办，请使用明确的 taskId", processInstanceId);
-        taskCommands.resubmit(new com.workflow.port.process.model.task.ResubmitTaskCommand(
+        taskCommands.resubmitForUser(new com.workflow.port.process.model.task.ResubmitTaskCommand(
                 com.workflow.process.command.application.ProcessHttpCommands.meta(null), candidates.get(0).getId(),
                 new com.workflow.port.process.model.task.TaskSubmission(comment, "重新提交", formData, null, null)));
         return Result.success();

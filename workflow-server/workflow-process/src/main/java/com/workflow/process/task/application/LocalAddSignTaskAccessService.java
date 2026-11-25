@@ -42,6 +42,19 @@ public class LocalAddSignTaskAccessService {
         String identity = currentIdentity();
         ProcessTask localTask = StringUtils.hasText(taskId)
                 ? taskMapper.selectActionableAddSignTaskByTaskId(identity, taskId) : null;
+        return requireActive(taskId, expectedProcessInstanceId, localTask, false);
+    }
+
+    /** 调用方授权本地任务后，通过子任务和源待办重验真实流程绑定及活动状态。 */
+    @Transactional(readOnly = true)
+    public AuthorizedAddSignTask requireActiveForPort(String taskId, String expectedProcessInstanceId) {
+        ProcessTask localTask = taskMapper.selectByTaskId(taskId);
+        if (localTask == null || !ProcessTask.STATUS_TODO.equals(localTask.getStatus())) throw unavailable();
+        return requireActive(taskId, expectedProcessInstanceId, localTask, true);
+    }
+
+    private AuthorizedAddSignTask requireActive(String taskId, String expectedProcessInstanceId,
+            ProcessTask localTask, boolean checkSourceMirror) {
         if (localTask == null || !"ADD_SIGN".equals(localTask.getNodeType())
                 || StringUtils.hasText(expectedProcessInstanceId)
                 && !Objects.equals(expectedProcessInstanceId, localTask.getProcessInstanceId())) {
@@ -62,6 +75,14 @@ public class LocalAddSignTaskAccessService {
                 || !StringUtils.hasText(sourceTask.getTaskDefinitionKey())
                 || !StringUtils.hasText(sourceTask.getProcessDefinitionId())) {
             throw unavailable();
+        }
+        if (checkSourceMirror) {
+            var mirror = taskMapper.selectByTaskId(sourceTask.getId());
+            if (mirror == null || !(ProcessTask.STATUS_TODO.equals(mirror.getStatus())
+                    || ProcessTask.STATUS_WAITING.equals(mirror.getStatus()))
+                    || !Objects.equals(localTask.getProcessInstanceId(), mirror.getProcessInstanceId())
+                    || !Objects.equals(localTask.getEntityCode(), mirror.getEntityCode())
+                    || !Objects.equals(localTask.getEntityDataId(), mirror.getEntityDataId())) throw unavailable();
         }
         return new AuthorizedAddSignTask(localTask, sourceTask);
     }

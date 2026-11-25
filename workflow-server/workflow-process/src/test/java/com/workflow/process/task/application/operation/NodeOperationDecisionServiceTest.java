@@ -193,6 +193,9 @@ class NodeOperationDecisionServiceTest {
         rules.put(NodeOperationPolicy.Operation.APPROVE, new NodeOperationPolicy.Rule(
                 false, null, null, false, List.of(), false,
                 NodeOperationPolicy.TargetScope.ANY, Set.of(), Set.of(), Set.of(), null));
+        rules.put(NodeOperationPolicy.Operation.TERMINATE, new NodeOperationPolicy.Rule(
+                true, null, "task:terminate", true, List.of(), false,
+                NodeOperationPolicy.TargetScope.ANY, Set.of(), Set.of(), Set.of(), null));
         when(policyParser.parse(userTask)).thenReturn(new NodeOperationPolicy(1, true, Set.of(), rules));
 
         NodeOperationDecisionService service = new NodeOperationDecisionService(
@@ -201,12 +204,18 @@ class NodeOperationDecisionServiceTest {
                 service.availableActions("task-1");
 
         assertFalse(decisions.get("approve").allowed());
+        assertFalse(decisions.get("terminate").allowed());
+        assertTrue(service.allowsForPort(List.of(task), NodeOperationPolicy.Operation.TERMINATE, "operator"));
         assertThrows(ForbiddenException.class, () -> service.requireAllowed(
                 "task-1",
                 NodeOperationPolicy.Operation.APPROVE,
                 NodeOperationDecisionService.CheckContext.ofReason("尝试绕过前端")));
-        verify(repositoryService, times(2)).getBpmnModel("definition-v3");
-        verify(policyParser, times(2)).parse(userTask);
+        assertThrows(ForbiddenException.class, () -> service.requireAllowed(
+                "task-1",
+                NodeOperationPolicy.Operation.TERMINATE,
+                NodeOperationDecisionService.CheckContext.forAuthorizedOperation(null, "operator")));
+        verify(repositoryService, times(4)).getBpmnModel("definition-v3");
+        verify(policyParser, times(4)).parse(userTask);
     }
 
     private NodeOperationDecisionService simulationService(NodeOperationPolicyParser policyParser) {

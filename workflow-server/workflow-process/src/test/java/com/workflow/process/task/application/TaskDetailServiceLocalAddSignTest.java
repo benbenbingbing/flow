@@ -169,13 +169,14 @@ class TaskDetailServiceLocalAddSignTest {
     void portFormSummaryDoesNotReadEntitiesOrProcessVariables() {
         Task source = mock(Task.class);
         when(source.getFormKey()).thenReturn("source-form");
-        when(accessService.requireCurrentUserAccess("addsign-1", null))
+        when(accessService.requireActiveForPort("addsign-1", null))
                 .thenReturn(new LocalAddSignTaskAccessService.AuthorizedAddSignTask(local, source));
 
         var form = service.findActiveTaskForm("addsign-1", true);
 
         assertEquals("source-form", form.getFormKey());
         assertEquals(true, form.getIsReadonly());
+        verify(accessService, never()).requireCurrentUserAccess("addsign-1", null);
         verifyNoInteractions(dataService, runtimeService);
     }
 

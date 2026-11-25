@@ -193,17 +193,9 @@ public class OrganizationPositionDirectoryAdapter
         return definition(position);
     }
 
-    /**
-     * 列出启用{@code positions}；查询结果供调用方展示或继续处理。
-     *
-     * @param applicableUnitType 适用单元类型标识，决定后续启用{@code positions}采用的处理分支
-     * @return 位置定义视图集合，供调用方遍历或展示
-     */
     @Override
-    public List<PositionDefinitionView> listEnabledPositions(
-            String applicableUnitType) {
-        String normalizedType = normalizeUnitType(applicableUnitType);
-        return positionMapper.selectEnabled(normalizedType).stream()
+    public List<PositionDefinitionView> listEnabledPositions() {
+        return positionMapper.selectEnabled().stream()
                 .map(this::definition)
                 .toList();
     }
@@ -240,13 +232,6 @@ public class OrganizationPositionDirectoryAdapter
                 position.getId(), unit.getId());
         if (!SysOrganization.Status.ENABLED.getValue().equals(unit.getStatus())) {
             return empty(PositionDirectoryResultCode.ORGANIZATION_UNIT_DISABLED,
-                    normalizedCode, organizationUnitId, revision);
-        }
-        if (!SysPosition.ApplicableUnitType.ANY.name().equals(
-                position.getApplicableUnitType())
-                && !position.getApplicableUnitType().equals(
-                    unit.getType().toUpperCase(Locale.ROOT))) {
-            return empty(PositionDirectoryResultCode.POSITION_UNIT_TYPE_MISMATCH,
                     normalizedCode, organizationUnitId, revision);
         }
         List<PositionHolderView> holders = assignmentMapper.selectCurrentHolders(
@@ -305,7 +290,6 @@ public class OrganizationPositionDirectoryAdapter
     private PositionDefinitionView definition(SysPosition position) {
         return new PositionDefinitionView(
                 position.getPositionCode(), position.getPositionName(),
-                position.getApplicableUnitType(), position.getHolderMode(),
                 position.getRevision() == null ? 1 : position.getRevision());
     }
 
@@ -366,27 +350,6 @@ public class OrganizationPositionDirectoryAdapter
     private String normalizePositionCode(String code) {
         return StringUtils.hasText(code)
                 ? code.trim().toUpperCase(Locale.ROOT) : "";
-    }
-
-    /**
-     * 规范化单元类型；输出作为后续校验或处理的输入。
-     *
-     * @param unitType 单元类型标识，决定后续单元类型采用的处理分支
-     * @return 规范化后的单元类型文本，供调用方比较或展示
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private String normalizeUnitType(String unitType) {
-        if (!StringUtils.hasText(unitType)
-                || SysPosition.ApplicableUnitType.ANY.name()
-                    .equalsIgnoreCase(unitType.trim())) {
-            return null;
-        }
-        String normalized = unitType.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("ORG", "DEPT").contains(normalized)) {
-            throw new IllegalArgumentException(
-                    "适用单位类型只支持 ORG/DEPT/ANY");
-        }
-        return normalized;
     }
 
     /**

@@ -469,7 +469,7 @@ async function loadSelectedData() {
     if (!values.length) return
 
     const params = new URLSearchParams({
-      ids: values.join(','),
+      ids: '',
       valueKey: props.valueKey
     })
     if (props.entityType === 'CUSTOM') {
@@ -481,9 +481,20 @@ async function loadSelectedData() {
     }
 
     // 传入专用数据源后不得再回退通用目录，否则离职、禁用等来源身份会被错误过滤。
-    const records = props.dataSource
-      ? await props.dataSource.batch(values, props.valueKey)
-      : await request.get(`/entity-selector/${props.entityType}/batch?${params}`)
+    let records
+    if (props.dataSource) {
+      records = await props.dataSource.batch(values, props.valueKey)
+    } else {
+      records = []
+      // 大量任职人必须分批回显，避免受代理或应用服务器的 URL 长度限制。
+      const batchSize = props.entityType === 'USER' ? 50 : values.length
+      for (let index = 0; index < values.length; index += batchSize) {
+        params.set('ids', values.slice(index, index + batchSize).join(','))
+        const batch = await request.get(`/entity-selector/${props.entityType}/batch?${params}`)
+        if (requestId !== selectedRequestId) return
+        records.push(...(batch || []))
+      }
+    }
     if (requestId !== selectedRequestId) return
 
     if (props.multiple) {
@@ -496,6 +507,7 @@ async function loadSelectedData() {
     selectedData.value = null
     selectedList.value = []
     console.error('加载已选数据失败:', e)
+    return false
   }
 }
 
@@ -508,7 +520,8 @@ async function openSelector() {
   }
   const requestId = ++openRequestId
   const scope = pickerParameterKey.value
-  await loadSelectedData()
+  // 已选集合加载失败时停止编辑，避免用空集合确认后覆盖现有人员。
+  if (await loadSelectedData() === false) return
   if (props.disabled || requestId !== openRequestId || scope !== pickerParameterKey.value) return
   selectedRows.value = normalizeRecordSelection(selectedList.value)
   openedPickerParameterKey = scope

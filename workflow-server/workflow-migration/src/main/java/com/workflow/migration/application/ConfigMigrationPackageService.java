@@ -1243,6 +1243,7 @@ public class ConfigMigrationPackageService {
             if (!parts[1].equals(field.getFieldCode())) continue;
             Map<String, Object> value = new LinkedHashMap<>();
             value.put("fieldType", field.getFieldType().name());
+            value.put("isSystem", field.getIsSystem());
             value.put("refEntityType", field.getRefEntityType() == null ? "" : field.getRefEntityType().name());
             EntityDefinition target = StringUtils.hasText(field.getRefEntityId()) ? entityMapper.selectById(field.getRefEntityId()) : null;
             value.put("refEntityCode", target == null ? "" : target.getEntityCode());

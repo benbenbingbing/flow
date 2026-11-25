@@ -171,11 +171,30 @@ class EntityFormCandidateApprovalActionTest {
     @Test
     void taskPermissionDoesNotGrantOrdinaryViewOrEditAccess() {
         FormActionResolveRequest request = pinnedApprovalRequest();
+        when(dataService.findAccessibleActionSummaryById(ENTITY_CODE, row.getId(), null))
+                .thenThrow(new ForbiddenException("数据不存在或无权访问"));
         for (String mode : List.of("view", "edit")) {
             request.setMode(mode);
             assertThrows(ForbiddenException.class, () -> formActionService.resolve(request));
         }
         verify(dataService, never()).findById(anyString(), anyString());
+    }
+
+    @Test
+    void callerAuthorizedApprovalStillRequiresTheBoundRecordAndAnOpenApproval() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        request.setTaskId(null);
+        when(taskAccessPort.findActionableTaskId("alice-id", ENTITY_CODE, "record-1", "process-1"))
+                .thenReturn(Optional.empty());
+        assertThrows(BusinessForbiddenException.class, () -> formActionService.requireBuiltInMutationAction(
+                request, "submitApproval"));
+        formActionService.requireApprovalMutationForPort(request, "process-1");
+
+        assertThrows(BusinessForbiddenException.class, () -> formActionService.requireApprovalMutationForPort(
+                request, "other-process"));
+        row.setProcessEndTime(LocalDateTime.now());
+        assertThrows(BusinessForbiddenException.class, () -> formActionService.requireApprovalMutationForPort(
+                request, "process-1"));
     }
 
     /** 已办/知会复用流程读取授权，运行中与已结束实例都只能呈现只读按钮。 */

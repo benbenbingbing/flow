@@ -14,6 +14,7 @@ import com.workflow.admin.organization.infrastructure.persistence.record.SysOrga
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.util.List;
+import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -30,7 +31,7 @@ class PositionAssignmentServiceTest {
     @BeforeEach void prepare() {
         position = new SysPosition();
         position.setId("position"); position.setPositionCode("MANAGER");
-        position.setHolderMode("SINGLE"); position.setApplicableUnitType("DEPT"); position.setStatus("ENABLED");
+        position.setStatus("ENABLED");
         when(positions.selectByCode("MANAGER")).thenReturn(position);
         when(positions.selectForUpdate("position")).thenReturn(position);
         SysOrganization unit = new SysOrganization();
@@ -40,7 +41,7 @@ class PositionAssignmentServiceTest {
         SysUser user = new SysUser(); user.setId("new"); user.setDeptId("dept"); user.setStatus("0");
         when(users.selectForUpdate("new")).thenReturn(user);
     }
-    @Test void replacingSingleHolderDeletesOldRelationAndInsertsNewWithoutHistory() {
+    @Test void replacingHolderDeletesOldRelationAndInsertsNewWithoutHistory() {
         SysPositionAssignment old = relation("old");
         when(assignments.selectMembersForUpdate(any(), any())).thenReturn(List.of(old));
         service.setMembers(request(List.of("new"), List.of("old")));
@@ -60,10 +61,24 @@ class PositionAssignmentServiceTest {
         verify(assignments, never()).insert(any(SysPositionAssignment.class));
         verify(assignments, never()).deleteById(any(String.class));
     }
-    @Test void singlePositionRejectsMultipleUsers() {
-        var failure = assertThrows(PositionManagementException.class,
-                () -> service.setMembers(request(List.of("new", "other"), List.of())));
-        assertEquals(PositionErrorCode.SINGLE_POSITION_OCCUPIED, failure.errorCode());
+    @Test void organizationAcceptsMoreThanTwoHundredHoldersForBuiltInLeader() {
+        position.setPositionCode(PositionAssignmentService.UNIT_LEADER);
+        position.setBuiltIn(true);
+        when(positions.selectByCode(PositionAssignmentService.UNIT_LEADER)).thenReturn(position);
+        SysOrganization organization = new SysOrganization();
+        organization.setId("org"); organization.setType("org"); organization.setStatus("0");
+        when(organizations.selectForUpdate("org")).thenReturn(organization);
+
+        List<String> ids = IntStream.range(0, 201).mapToObj(index -> "user-" + index).toList();
+        for (String id : ids) {
+            SysUser user = new SysUser();
+            user.setId(id); user.setOrgId("org"); user.setStatus("0");
+            when(users.selectForUpdate(id)).thenReturn(user);
+        }
+
+        service.setMembers(new PositionRequests.SetMembers(
+                PositionAssignmentService.UNIT_LEADER, "org", ids, List.of()));
+        verify(assignments, times(ids.size())).insert(any(SysPositionAssignment.class));
     }
     @Test void rejectsUserOutsideTargetSubtree() {
         SysUser user = new SysUser(); user.setId("new"); user.setDeptId("outside"); user.setStatus("0");

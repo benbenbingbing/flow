@@ -1,4 +1,6 @@
 -- OceanBase 4.x MySQL 模式平台基础表空库初始化脚本。
+-- 2026-11-25 同步至 V146，动态实体提交人字段升级为用户单选关系；空库结构及种子不变。
+-- 2026-11-24 同步至 V145，移除职务适用单位和人数模式字段及检查约束。
 -- 2026-11-18 同步至 V144，引擎流程启动动作统一归入发起后；空库无动作绑定数据需转换，结构及种子不变。
 -- 2026-11-18 同步 V143，实体字段增加只读选项接口绑定，历史代码表和种子不变。
 -- 2026-11-18 同步至 V142，引擎任务完成时机归入节点离开前；空库无动作绑定数据需转换，结构及种子不变。
@@ -3668,8 +3670,6 @@ CREATE TABLE `sys_position` (
   `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：全局职务定义；职务本身不携带组织范围，也不产生系统权限。',
   `position_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '职务编码。',
   `position_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '职务名称。',
-  `applicable_unit_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '适用单元类型；CHECK 枚举：\\\'ORG\\\',\\\'DEPT\\\',\\\'ANY\\\'。',
-  `holder_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '任职者模式；CHECK 枚举：\\\'SINGLE\\\',\\\'MULTIPLE\\\'。',
   `built_in` tinyint NOT NULL DEFAULT '0' COMMENT '内置内置；CHECK 枚举：0,1。',
   `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ENABLED' COMMENT '状态；CHECK 枚举：\\\'ENABLED\\\',\\\'DISABLED\\\'。',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序号。',
@@ -3684,10 +3684,8 @@ CREATE TABLE `sys_position` (
   UNIQUE KEY `uk_sys_position_code` (`position_code`),
   KEY `idx_sys_position_status_sort` (`status`,`deleted`,`sort_order`),
   CONSTRAINT `chk_sys_position_flags` CHECK (((`built_in` in (0,1)) and (`deleted` in (0,1)))),
-  CONSTRAINT `chk_sys_position_holder_mode` CHECK ((`holder_mode` in (_utf8mb4'SINGLE',_utf8mb4'MULTIPLE'))),
   CONSTRAINT `chk_sys_position_revision` CHECK ((`revision` >= 1)),
-  CONSTRAINT `chk_sys_position_status` CHECK ((`status` in (_utf8mb4'ENABLED',_utf8mb4'DISABLED'))),
-  CONSTRAINT `chk_sys_position_unit_type` CHECK ((`applicable_unit_type` in (_utf8mb4'ORG',_utf8mb4'DEPT',_utf8mb4'ANY')))
+  CONSTRAINT `chk_sys_position_status` CHECK ((`status` in (_utf8mb4'ENABLED',_utf8mb4'DISABLED')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局职务定义表';
 
 CREATE TABLE `sys_position_assignment` (
@@ -4578,7 +4576,7 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `so
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`, `is_frame`, `is_cache`, `query`, `entity_code`, `resource_type`, `list_key`) VALUES ('work_calendar_manage_perm_001','work_calendar_menu_001','维护工作日历','F',NULL,1,'','','system:work-calendar:manage','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`, `is_frame`, `is_cache`, `query`, `entity_code`, `resource_type`, `list_key`) VALUES ('work_calendar_menu_001','400','工作日历','C','Calendar',7,'/system/work-calendars','system/WorkCalendarManagement','system:work-calendar:view','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,'migration-v075',CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`, `is_frame`, `is_cache`, `query`, `entity_code`, `resource_type`, `list_key`) VALUES ('work_calendar_publish_perm_001','work_calendar_menu_001','发布工作日历','F',NULL,2,'','','system:work-calendar:publish','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
-INSERT INTO `sys_position` (`id`, `position_code`, `position_name`, `applicable_unit_type`, `holder_mode`, `built_in`, `status`, `sort_order`, `description`, `revision`, `created_by`, `updated_by`, `create_time`, `update_time`, `deleted`) VALUES ('position_unit_leader_001','UNIT_LEADER','负责人','ANY','SINGLE',1,'ENABLED',10,'组织或部门负责人；旧 leader 字段的权威任职来源',1,'migration-v069','migration-v069',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
+INSERT INTO `sys_position` (`id`, `position_code`, `position_name`, `built_in`, `status`, `sort_order`, `description`, `revision`, `created_by`, `updated_by`, `create_time`, `update_time`, `deleted`) VALUES ('position_unit_leader_001','UNIT_LEADER','负责人',1,'ENABLED',10,'组织或部门负责人；旧 leader 字段的权威任职来源',1,'migration-v069','migration-v069',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
 -- 人员交接入口及独立操作权限；仅为初始化超级管理员授权，普通角色按需显式分配。
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `is_frame`, `is_cache`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('task_handover_menu_001', '400', '人员交接', 'C', 'Switch', 36, '/system/task-handover', 'system/TaskHandoverManagement', 'system:task-handover:view', '0', '0', '0', '0', '0', '1', '查询任意状态人员的待办并执行管理员交接', 0, 'migration-v110', CURRENT_TIMESTAMP, 'migration-v110', CURRENT_TIMESTAMP);
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `is_frame`, `is_cache`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('task_handover_transfer_001', 'task_handover_menu_001', '批量交接', 'F', NULL, 1, NULL, NULL, 'system:task-handover:transfer', '0', '0', '0', '0', '0', '1', '将选中的待办交接给状态正常的人员', 0, 'migration-v110', CURRENT_TIMESTAMP, 'migration-v110', CURRENT_TIMESTAMP);

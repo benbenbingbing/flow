@@ -95,11 +95,23 @@ public class ProcessCcRuntimeService {
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
     public int manualCc(String taskId, TaskCcRequest request) {
+        return manualCc(taskId, request, null);
+    }
+
+    /** 调用方授权知会，继续校验节点开关并按真实操作人写审计。 */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.CC, operation = "手工知会流程任务",
+            risk = AuditRiskLevel.MEDIUM, targetType = "PROCESS_TASK", targetIdArg = 0)
+    public int manualCcForPort(String taskId, TaskCcRequest request, String operatorId) {
+        return manualCc(taskId, request, java.util.Objects.requireNonNull(operatorId));
+    }
+
+    private int manualCc(String taskId, TaskCcRequest request, String authorizedOperator) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
             throw new IllegalArgumentException("任务不存在或已处理: " + taskId);
         }
-        String operator = requireOperator(task);
+        String operator = authorizedOperator == null ? requireOperator(task) : authorizedOperator;
         if (!isManualCcAllowed(task)) {
             throw new ForbiddenException("当前节点未开放人工知会");
         }

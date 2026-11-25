@@ -19,13 +19,23 @@ public interface IdentitySourceSnapshotMapper {
     })
     IdentitySourceSnapshot metadata(String key);
 
-    /** 单次联查提供一致的版本和原文视图；只能在登录、管理权限与对象范围校验后调用。 */
+    /**
+     * 单次联查提供一致的版本和原文视图；只能在登录、管理权限与对象范围校验后调用。
+     * MySQL 系列存量库的两个来源键可能继承不同排序规则。绑定键是固定长度的 SHA-256 十六进制串，
+     * 只转换绑定侧即可按字节匹配，快照侧仍保留裸主键供索引定位。
+     */
     @Select("""
+        <script>
         SELECT b.source_code, b.external_id, b.source_version AS current_source_version,
                s.source_key, s.source_version, s.payload_hash, s.raw_json, s.raw_hash,
                s.raw_bytes, s.is_current, s.recorded_at, s.recorded_by
-        FROM sys_identity_source_binding b LEFT JOIN sys_identity_source_snapshot s ON s.source_key = b.source_key
+        FROM sys_identity_source_binding b LEFT JOIN sys_identity_source_snapshot s ON s.source_key =
+        <choose>
+            <when test="_databaseId == 'MYSQL' or _databaseId == 'OCEANBASE_MYSQL'">CONVERT(b.source_key USING binary)</when>
+            <otherwise>b.source_key</otherwise>
+        </choose>
         WHERE b.object_type = #{type} AND b.local_id = #{id}
+        </script>
         """)
     @Results(value = {
         @Result(column = "source_code", property = "sourceCode"),

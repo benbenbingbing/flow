@@ -12,12 +12,12 @@ import com.workflow.port.process.model.task.TaskInterventionModels.HistoryReturn
 import java.util.List;
 import java.util.Optional;
 
-/** 查询和办理流程任务。执行办理时重新校验任务身份、当前状态和节点规则。 */
+/** 查询和办理调用方已授权的流程任务，命令继续验证运行状态及发布规则。 */
 public interface ProcessTaskPort {
     /** 查询仍活动的引擎或本地加签任务，不存在/已完成返回 empty。 */
     Optional<ProcessTaskView> findActiveTask(String taskId);
 
-    /** 读取待办办理人或候选人可见的任务、表单摘要及能力。实体数据通过业务引用另行授权读取。 */
+    /** 读取活动任务、发布表单摘要和操作能力。实体数据可通过业务引用读取。 */
     ProcessTaskDetail getTaskDetail(String taskId);
 
     /** 列出实例中全部可见活动任务，调用方不能假定只有一条。 */
@@ -26,7 +26,7 @@ public interface ProcessTaskPort {
     /** 查询当前身份待办/已办或指定实例的活动任务。 */
     ProcessPage<ProcessTaskView> pageTasks(ProcessTaskQuery query);
 
-    /** 查询操作可用性提示，命令执行时仍重新校验。 */
+    /** 查询发布配置和当前任务状态允许的操作，调用方负责用户授权。 */
     TaskCapabilities getTaskCapabilities(String taskId);
 
     /** 认领调用方已授权的任务给当前执行身份；同一人已认领可返回未变化，他人已认领则冲突。 */
@@ -74,15 +74,15 @@ public interface ProcessTaskPort {
     /** 撤销指定加签编排，清理子待办并按原规则恢复/推进源任务；不是删除审批历史。 */
     TaskCommandResult cancelAddSign(CancelAddSignCommand command);
 
-    /** 按节点配置和当前身份添加人工知会。 */
+    /** 为调用方已授权的任务添加人工知会，接收人须符合发布规则。 */
     ManualCcResult addCc(ManualCcCommand command);
 
     /** 读操作。只返回当前实例实际经过且按当前任务的发布规则仍可回退的活动。 */
     List<HistoryReturnTarget> listHistoryReturnTargets(String taskId);
 
-    /** 写操作。在原实例回退到指定历史活动；执行时重新鉴权、确认候选并写入同事务幂等回执。 */
+    /** 写操作。在原实例回退到指定历史活动；在同一事务重验候选并保存幂等回执。 */
     HistoryReturnResult returnToHistory(HistoryReturnCommand command);
 
-    /** 读操作。使用与实际加签相同的任务权限和人员解析，返回解析问题及将生成的任务数。 */
+    /** 读操作。使用与实际加签相同的人员解析，返回解析问题及将生成的任务数。 */
     AddSignPreview previewAddSign(String taskId, AddSignType type, List<String> userIds);
 }

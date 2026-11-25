@@ -15,19 +15,19 @@ class ProcessTaskInterventionAdapterTest {
     void returnsToTheExactActivityOccurrenceAndUsesTheOriginalRequestId() {
         var history = mock(TaskHistoryReturnService.class);
         var port = new ProcessTaskInterventionAdapter(history, mock(TaskAddSignService.class), mock(TaskSkipService.class));
-        when(history.targets("task")).thenReturn(List.of(
+        when(history.targetsForPort("task")).thenReturn(List.of(
                 new TaskHistoryReturnService.Target("activity-first", "review", "Review", false),
                 new TaskHistoryReturnService.Target("activity-second", "review", "Review", false)));
         var targets = port.listHistoryReturnTargets("task");
         assertEquals(List.of("activity-first", "activity-second"), targets.stream().map(t -> t.activityInstanceId()).toList());
 
         var expected = new TaskHistoryReturnService.Request("request", "activity-second", "revise", "form", "hash");
-        when(history.execute("task", expected)).thenReturn(
+        when(history.executeForPort("task", expected)).thenReturn(
                 new TaskHistoryReturnService.Outcome("instance", "review", "request"));
         var command = new HistoryReturnCommand(new CommandMeta("request"), "task", targets.get(1).activityInstanceId(),
                 "revise", new TaskFormReference("form", "hash"));
 
         assertEquals("instance", port.returnToHistory(command).processInstanceId());
-        verify(history).execute("task", expected);
+        verify(history).executeForPort("task", expected);
     }
 }

@@ -230,7 +230,7 @@ public class ProcessInstanceServiceTest {
         request.setVariables(Map.of("paymentStatus", "SUCCESS"));
 
         var inspection = new com.workflow.process.instance.application.ProcessInstanceInspectionAdapter(
-                processInstanceService, processInstanceAccessService, null, null, nodeOperationCapabilityService);
+                processInstanceService, null, nodeOperationCapabilityService);
         assertTrue(inspection.previewReceive("instance-1", null, "receive-payment", "paymentCallback").allowed());
         assertEquals("RECEIVE_TASK_UNAVAILABLE",
                 inspection.previewReceive("instance-1", null, "receive-payment", "wrongMessage").reasonCode());

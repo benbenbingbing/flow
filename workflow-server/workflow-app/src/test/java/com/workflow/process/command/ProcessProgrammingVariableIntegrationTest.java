@@ -216,7 +216,8 @@ class ProcessProgrammingVariableIntegrationTest {
         queries = new ProcessQueryAdapter(engine.getHistoryService(), engine.getRuntimeService(), engine.getTaskService(),
                 access, instanceAccess, projection, time, mirrors, addSignUsers, addSigns,
                 mock(LocalAddSignTaskAccessService.class), links, mock(ProcessOperationLogMapper.class), receipts,
-                mock(TaskOperationApplicationService.class), mock(TaskApprovalQueryService.class), mock(NodeOperationDecisionService.class));
+                mock(TaskOperationApplicationService.class), mock(TaskApprovalQueryService.class),
+                mock(NodeOperationDecisionService.class), taskAccess);
     }
 
     @AfterEach
@@ -641,7 +642,7 @@ class ProcessProgrammingVariableIntegrationTest {
                 new FlowableActiveTaskSkipper(engine.getManagementService()), operationLogs, directory);
         var interventions = new ProcessTaskInterventionAdapter(mock(TaskHistoryReturnService.class), signService, skip);
         return new ProcessTaskAdapter(queries, mock(com.workflow.process.task.application.ProcessTaskCommandAdapter.class),
-                interventions, mock(TaskActionService.class), mock(TaskDetailService.class));
+                interventions, mock(TaskDetailService.class));
     }
 
     private int skipLogCount() {
@@ -821,8 +822,7 @@ class ProcessProgrammingVariableIntegrationTest {
     /** 公共命令通过真实 TaskActionService 推进引擎；表单解析单独做契约测试。 */
     private ProcessTaskPort taskCommands(com.workflow.process.task.application.TaskSubmissionGuard guard) {
         return new ProcessTaskAdapter(queries, taskCommandImplementation(guard),
-                mock(ProcessTaskInterventionAdapter.class), mock(TaskActionService.class),
-                mock(TaskDetailService.class));
+                mock(ProcessTaskInterventionAdapter.class), mock(TaskDetailService.class));
     }
 
     private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommandImplementation(
@@ -830,10 +830,13 @@ class ProcessProgrammingVariableIntegrationTest {
         com.workflow.admin.security.context.UserContext.setCurrentUser("alice-id", "alice");
         var outcome = new com.workflow.process.task.application.MultiInstanceOutcomeService(
                 engine.getRuntimeService(), engine.getRepositoryService(), engine.getTaskService(), new ObjectMapper());
+        var directory = mock(SysUserLookupPort.class);
+        when(directory.findUser("alice-id")).thenReturn(Optional.of(new com.workflow.port.system.model.identity.IdentityUser(
+                "alice-id", "alice", "Alice", null, null)));
         var identity = new TaskIdentityAccessService(engine.getTaskService(),
                 mock(com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper.class),
                 mock(com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper.class),
-                mock(com.workflow.port.system.SysUserLookupPort.class));
+                directory);
         var core = transactional(new com.workflow.process.task.application.TaskActionService(operationActions,
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(), mirrors,
                 engine.getRepositoryService(), mock(ProcessOperationLogMapper.class),
@@ -848,7 +851,7 @@ class ProcessProgrammingVariableIntegrationTest {
         commandDecisions = mock(NodeOperationDecisionService.class);
         return new com.workflow.process.task.application.ProcessTaskCommandAdapter(commands, access,
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(), engine.getRepositoryService(),
-                core, mock(com.workflow.process.task.application.TaskAddSignService.class),
+                core, identity, mock(com.workflow.process.task.application.TaskAddSignService.class),
                 mock(LocalAddSignTaskAccessService.class), guard, mock(TaskOperationApplicationService.class), addSigns,
                 commandDecisions, outcome, new ObjectMapper(),
                 mock(com.workflow.entity.form.application.EntityFormActionService.class));
@@ -1065,20 +1068,45 @@ class ProcessProgrammingVariableIntegrationTest {
     }
 
     @Test
-    void formDenialAndOtherAssigneeCannotAdvanceOrLeaveReceipt() {
+    void callerAuthorizationCanCompleteAnotherAssigneesTaskButPageAndFormChecksStillApply() {
         var guard = mock(com.workflow.process.task.application.TaskSubmissionGuard.class);
-        var port = taskCommands(guard);
+        var commands = taskCommandImplementation(guard);
+        ProcessTaskPort port = new ProcessTaskAdapter(queries, commands, mock(ProcessTaskInterventionAdapter.class),
+                mock(TaskDetailService.class));
         var task = tasks().get(0);
-        doThrow(new ForbiddenException("提交按钮不可用")).when(guard).require(anyString(), any(), any());
+        doThrow(new ForbiddenException("提交按钮不可用")).when(guard).requireForPort(anyString(), any(), any());
         assertCode("PROCESS_ACCESS_DENIED", () -> port.complete(new com.workflow.port.process.model.task.CompleteTaskCommand(
                 new CommandMeta("form-denied"), task.getId(), "approve", null)));
         reset(guard);
         engine.getTaskService().setAssignee(task.getId(), "bob");
-        assertCode("PROCESS_ACCESS_DENIED", () -> port.complete(new com.workflow.port.process.model.task.CompleteTaskCommand(
-                new CommandMeta("other-assignee"), task.getId(), "approve", null)));
+        var command = new com.workflow.port.process.model.task.CompleteTaskCommand(
+                new CommandMeta("other-assignee"), task.getId(), "approve", null);
+        assertCode("PROCESS_ACCESS_DENIED", () -> commands.completeForUser(command));
         assertEquals(2, tasks().size());
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM process_command_receipt", Integer.class));
         verifyNoInteractions(guard);
+        assertFalse(port.complete(command).receipt().replayed());
+        assertTrue(port.complete(command).receipt().replayed());
+        assertCode("TASK_ALREADY_COMPLETED", () -> commands.completeForUser(command));
+    }
+
+    @Test
+    void portReplaysAnOlderMatchingReceiptWithoutAdvancingAgain() {
+        var guard = mock(com.workflow.process.task.application.TaskSubmissionGuard.class);
+        var commands = taskCommandImplementation(guard);
+        ProcessTaskPort port = new ProcessTaskAdapter(queries, commands, mock(ProcessTaskInterventionAdapter.class),
+                mock(TaskDetailService.class));
+        var task = tasks().get(0);
+        var command = new com.workflow.port.process.model.task.CompleteTaskCommand(
+                new CommandMeta("previous-scope"), task.getId(), "approve", null);
+        var older = commands.completeForUser(command);
+
+        var replay = port.complete(command);
+
+        assertTrue(replay.receipt().replayed());
+        assertEquals(older.receipt().operationId(), replay.receipt().operationId());
+        assertEquals(1, receiptCount());
+        verify(guard, never()).requireForPort(anyString(), any(), any());
     }
 
     @Test
@@ -1090,7 +1118,7 @@ class ProcessProgrammingVariableIntegrationTest {
             port.complete(new com.workflow.port.process.model.task.CompleteTaskCommand(
                     new CommandMeta("recursive-inner"), task.getId(), "approve", null));
             return null;
-        }).when(guard).require(anyString(), any(), any());
+        }).when(guard).requireForPort(anyString(), any(), any());
         var command = new com.workflow.port.process.model.task.CompleteTaskCommand(
                 new CommandMeta("recursive-outer"), task.getId(), "approve", null);
         assertCode("COMMAND_REENTRANT", () -> port.complete(command));
@@ -1118,7 +1146,7 @@ class ProcessProgrammingVariableIntegrationTest {
         var task = tasks().get(0);
         var barrier = new CyclicBarrier(2);
         doAnswer(invocation -> { barrier.await(10, TimeUnit.SECONDS); return null; })
-                .when(guard).require(anyString(), any(), any());
+                .when(guard).requireForPort(anyString(), any(), any());
         ExecutorService workers = Executors.newFixedThreadPool(2);
         try {
             List<Future<Object>> results = new ArrayList<>();
@@ -1167,7 +1195,7 @@ class ProcessProgrammingVariableIntegrationTest {
         var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
         var rule = new com.workflow.process.task.application.operation.NodeOperationPolicy.Rule(
                 true, null, null, false, List.of(), false, null, Set.of(), Set.of(), Set.of("edit", "absent"), null);
-        when(commandDecisions.availableActions(anyString())).thenReturn(Map.of("reject",
+        when(commandDecisions.availableActionsForPort(anyString(), any())).thenReturn(Map.of("reject",
                 new NodeOperationDecisionService.ActionDecision("reject", true, null, null, rule)));
         Task source = engine.getTaskService().createTaskQuery().processInstanceId(returned).singleResult();
         var meta = new CommandMeta("return-command");

@@ -238,11 +238,13 @@ class TaskAddSignServiceTest {
         assertEquals(ProcessTask.STATUS_HOLD, taskCaptor.getValue().getStatus());
 
         ProcessTaskAddSign open = addSign("AFTER", false);
+        open.setOperatorId("integration-user");
         when(addSignMapper.findOpenBySourceTaskIdForUpdate("source-task")).thenReturn(open);
         when(addSignUserMapper.selectList(any())).thenReturn(List.of());
 
         assertTrue(service.handleSourceCompletion(
                 "source-task", "admin", "approve", "同意", "通过", null));
+        assertEquals("admin", open.getOperatorId());
         verify(addSignUserMapper).activateHeld("add-sign-1");
         verify(taskActionService, never()).completeDeferredTask(any(), any(), any(), any(), any(), any(), any());
     }

@@ -17,12 +17,11 @@ public interface SysPositionPort {
     PositionDefinitionView requireEnabledPosition(String positionCode);
 
     /**
-     * 按可任职单位类型列出已启用职务；空类型表示不过滤。
+     * 列出可在组织和部门任职的全部启用职务。
      *
-     * @param applicableUnitType 适用单元类型标识，决定后续启用{@code positions}采用的处理分支
      * @return 位置定义视图集合，供调用方遍历或展示
      */
-    List<PositionDefinitionView> listEnabledPositions(String applicableUnitType);
+    List<PositionDefinitionView> listEnabledPositions();
 
     /**
      * 查询组织节点当前职务人员，过滤停用用户、职务和组织，按 userId 稳定排序。

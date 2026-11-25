@@ -158,16 +158,13 @@ class MySqlEmptyStringQueryDatabaseTest {
         }
     }
 
-    @Test void positionTypeOptionalFilterKeepsEnabledDeletedAndAnyTypeRules() {
+    @Test void enabledPositionsExcludeDisabledAndDeletedDefinitions() {
         try (var f = new Fixture()) {
             // Wrapper 按实体映射读取全部列，夹具保留完整结构，数据仍只填写本场景所需字段。
-            f.table("sys_position", "id VARCHAR(64),position_code VARCHAR(64),position_name VARCHAR(128),status VARCHAR(32),deleted INT,applicable_unit_type VARCHAR(64),sort_order INT,holder_mode VARCHAR(32),built_in INT,description TEXT,revision INT,created_by VARCHAR(64),updated_by VARCHAR(64),create_time DATETIME,update_time DATETIME");
+            f.table("sys_position", "id VARCHAR(64),position_code VARCHAR(64),position_name VARCHAR(128),status VARCHAR(32),deleted INT,sort_order INT,holder_mode VARCHAR(32),built_in INT,description TEXT,revision INT,created_by VARCHAR(64),updated_by VARCHAR(64),create_time DATETIME,update_time DATETIME");
             var h = new Harness(f, SysPositionMapper.class); var mapper = h.mapper(SysPositionMapper.class);
-            h.jdbc.update("INSERT INTO sys_position(id,position_code,status,deleted,applicable_unit_type,sort_order) VALUES ('a','ANY','ENABLED',0,'ANY',0),('b','ORG','ENABLED',0,'ORG',1),('c','TEAM','ENABLED',0,'TEAM',2),('off','OFF','DISABLED',0,'ANY',3),('deleted','DEL','ENABLED',1,'ANY',4)");
-            for (String type : new String[]{null, "", "   "}) assertEquals(3, mapper.selectEnabled(type).size());
-            assertEquals(List.of("a"), mapper.selectEnabled("\t").stream().map(row -> row.getId()).toList());
-            assertEquals(List.of("a", "b"), mapper.selectEnabled("ORG").stream().map(row -> row.getId()).toList());
-            assertEquals(List.of("a"), mapper.selectEnabled("x' OR 1=1 --").stream().map(row -> row.getId()).toList());
+            h.jdbc.update("INSERT INTO sys_position(id,position_code,status,deleted,sort_order) VALUES ('a','FIRST','ENABLED',0,0),('b','SECOND','ENABLED',0,1),('off','OFF','DISABLED',0,2),('deleted','DEL','ENABLED',1,3)");
+            assertEquals(List.of("a", "b"), mapper.selectEnabled().stream().map(row -> row.getId()).toList());
         }
     }
 

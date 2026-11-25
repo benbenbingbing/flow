@@ -300,14 +300,19 @@ active_process_definition_key bigint GENERATED ALWAYS AS ( CASE WHEN COALESCE(`d
 业务关联：
 
 - `entity_id` → [entity_definition](#11-entity_definition-实体定义表).`id`。
+- `ref_entity_id` → [entity_definition](#11-entity_definition-实体定义表).`id`。系统提交人字段通过此关联识别 `sys_user` 为目标实体，再按业务主表 `submitter_id` 中的用户主键读取用户记录。
 
 #### 1.2.4 业务规则
 
 字段定义发布后由实体发布快照约束运行时。field_id 是旧字段编码，本表主键为 id。
 
+动态实体的系统字段 `submitterId` 为只读用户单选关系，`field_type` 为 `REFERENCE`，`ref_entity_type` 为 `USER`。实体首次发起流程时，在同一事务中写入提交人的用户主键，供首个办理节点解析关系。发起失败时随事务回滚，重新发起沿用记录的首次提交人。`submitterName` 保存首次提交人的姓名快照。
+
 #### 1.2.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V023__remove_subform_display_mode.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V023__remove_subform_display_mode.sql)、[V024__entity_field_sub_list_reference.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V024__entity_field_sub_list_reference.sql)。
+
+V146 更新有效动态实体的旧系统提交人字段元数据。旧发布快照由流程按用户主键解释，保留原有历史内容和版本指纹。[V146__submitter_system_user_reference.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V146__submitter_system_user_reference.sql)
 
 实现定位：[EntityFieldMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/infrastructure/persistence/mapper/EntityFieldMapper.java)、[TaskDetailService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/task/application/TaskDetailService.java)、[EntityFieldService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/application/EntityFieldService.java)。
 
@@ -4362,9 +4367,9 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 #### 9.2.1 业务说明
 
-定义可跨组织复用的职务编码、适用单位类型和任职方式。
+定义组织和部门共用的职务编码、名称和启停状态。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
 
 #### 9.2.2 字段设计
 
@@ -4373,8 +4378,6 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 | `id` | 主键ID | `varchar(64)` | 否 | 无 | 全局职务定义；职务本身不携带组织范围，也不产生系统权限。 | 现存 |
 | `position_code` | 职务编码 | `varchar(100)` | 否 | 无 | 职务编码。 | 现存 |
 | `position_name` | 职务名称 | `varchar(100)` | 否 | 无 | 职务名称。 | 现存 |
-| `applicable_unit_type` | 适用单元类型 | `varchar(16)` | 否 | 无 | 适用单元类型；CHECK 枚举：'ORG','DEPT','ANY'。 | 现存 |
-| `holder_mode` | 任职者模式 | `varchar(16)` | 否 | 无 | 任职者模式；CHECK 枚举：'SINGLE','MULTIPLE'。 | 现存 |
 | `built_in` | 内置内置 | `tinyint` | 否 | `0` | 内置内置；CHECK 枚举：0,1。 | 现存 |
 | `status` | 状态 | `varchar(16)` | 否 | `'ENABLED'` | 状态；CHECK 枚举：'ENABLED','DISABLED'。 | 现存 |
 | `sort_order` | 排序号 | `int` | 否 | `0` | 排序号。 | 现存 |
@@ -4391,8 +4394,6 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_sys_position_code` (`position_code`)``。
 - ``KEY `idx_sys_position_status_sort` (`status`,`deleted`,`sort_order`)``。
-- ``CONSTRAINT `chk_sys_position_unit_type` CHECK (`applicable_unit_type` IN ('ORG','DEPT','ANY'))``。
-- ``CONSTRAINT `chk_sys_position_holder_mode` CHECK (`holder_mode` IN ('SINGLE','MULTIPLE'))``。
 - ``CONSTRAINT `chk_sys_position_status` CHECK (`status` IN ('ENABLED','DISABLED'))``。
 - ``CONSTRAINT `chk_sys_position_flags` CHECK (`built_in` IN (0,1) AND `deleted` IN (0,1))``。
 - ``CONSTRAINT `chk_sys_position_revision` CHECK (`revision` >= 1)``。
@@ -4401,9 +4402,11 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 #### 9.2.4 业务规则
 
-用户在具体组织的当前职务关系保存在 sys_position_assignment。单人职务每组织最多一人，多人职务允许多名人员；职务本身不授予系统权限。
+用户在具体组织或部门的当前职务关系保存在 `sys_position_assignment`。每个职务均可配置多名人员，职务本身不授予系统权限。
 
 #### 9.2.5 来源与迁移
+
+[V145__remove_position_restrictions.java](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V145__remove_position_restrictions.java) 移除职务的适用单位和人数模式列及两列对应的检查约束，保留职务和任职数据。
 
 结构依据：[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
 
@@ -4443,10 +4446,10 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 - 以某组织某职务的完整人员集合保存，空集合清空。后台在同一事务内校验、删除旧关系并新增缺少的关系。
 - 保持职务、组织、用户的固定锁顺序；当前集合采用锁定读，避免 MySQL 可重复读快照导致并发覆盖。
 - 请求携带编辑时的 `expectedUserIds`；集合已变更则返回冲突。目标集合已相同时重复提交不新增关系。
-- 单人职务每组织最多一人，多人职务可设置多人；不再选择主职或通过任职排序挑人。
+- 组织和部门均可为同一职务设置任意数量的人员，同一用户在同一节点的同一职务仅保留一条关系。
 - 人员必须处于目标组织子树内；同时检查管理员的组织数据范围。清空和移除允许清理停用对象。
 - 审批选人过滤已删除或停用的用户、组织和职务。直接分配要求唯一人员，候选人和多实例使用全部人员；多人无法唯一确定时进入原有错误处理。
-- `UNIT_LEADER` 关系是负责人唯一权威来源；兼容 `sys_organization.leader_id/leader_name` 在保存事务内同步。投影表示当前设置，停用状态由审批查询过滤。
+- `UNIT_LEADER` 关系是负责人唯一权威来源；兼容 `sys_organization.leader_id/leader_name` 在保存事务内同步。旧字段按用户 ID 排序投影首位人员。任职管理和相对职务审批读取完整人员集合，审批查询过滤停用对象。
 - 已生成任务的办理人不随当前职务设置自动改派，流程自身的审批历史保持原语义。
 - 通用操作日志沿用平台机制，不增加任职履历或必填变更原因。
 

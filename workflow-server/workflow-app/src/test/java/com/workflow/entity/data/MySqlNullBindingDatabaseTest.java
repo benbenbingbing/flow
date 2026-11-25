@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
-import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionMapper;
 import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.embed.management.infrastructure.persistence.EmbedOperationsMapper;
@@ -150,22 +149,6 @@ class MySqlNullBindingDatabaseTest {
                     Map.of("issuer", "issuer", "namespace", "n")), "id"));
             assertNull(MapperMethodCalls.call(h.session, mapper + ".findProviderByIssuerAndNamespace", Map.of("issuer", "missing", "namespace", "n")));
             assertEquals(Collections.nCopies(4, Types.VARCHAR), h.audit.nullTypes());
-        }
-    }
-
-    @Test void singleHolderValidationCountsCurrentOrganizationsWithMultiplePeople() throws Exception {
-        try (var f = new Fixture()) {
-            f.table("sys_position_assignment", "id VARCHAR(64),position_id VARCHAR(64),organization_unit_id VARCHAR(64),user_id VARCHAR(64)");
-            f.table("sys_organization", "id VARCHAR(64),type VARCHAR(32),deleted INT");
-            var h = new BindingHarness(f, ExecutorType.SIMPLE, SysPositionMapper.class);
-            var mapper = h.session.getMapper(SysPositionMapper.class);
-            h.jdbc.update("INSERT INTO sys_organization VALUES ('u','DEPT',0),('other','ORG',0)");
-            h.jdbc.update("INSERT INTO sys_position_assignment VALUES ('a','p','u','alice'),('b','p','other','bob'),('c','q','u','carol')");
-            assertEquals(0, mapper.countUnitsWithMultipleHolders("p"));
-            h.jdbc.update("INSERT INTO sys_position_assignment VALUES ('d','p','u','dave')");
-            assertEquals(1, mapper.countUnitsWithMultipleHolders("p"));
-            assertEquals(0, mapper.countUnitsWithMultipleHolders("q"));
-            assertEquals(1, mapper.countAssignmentsOutsideUnitType("p", "DEPT"));
         }
     }
 

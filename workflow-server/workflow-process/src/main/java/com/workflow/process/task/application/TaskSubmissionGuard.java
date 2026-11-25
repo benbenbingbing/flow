@@ -35,6 +35,15 @@ public class TaskSubmissionGuard {
      * @param reference 可选表单身份与配置摘要，不接受客户端声明的实体绑定
      */
     public void require(String taskId, Task source, TaskFormReference reference) {
+        require(taskId, source, reference, false);
+    }
+
+    /** 内部办理的授权由调用方提供，源任务、流程记录、发布表单和配置摘要仍须匹配。 */
+    public void requireForPort(String taskId, Task source, TaskFormReference reference) {
+        require(taskId, source, reference, true);
+    }
+
+    private void require(String taskId, Task source, TaskFormReference reference, boolean portCall) {
         String instanceId = source.getProcessInstanceId();
         String entityCode = text(runtime.getVariable(instanceId, "entityCode"));
         String recordId = text(runtime.getVariable(instanceId, "entityDataId"));
@@ -43,7 +52,7 @@ public class TaskSubmissionGuard {
         request.setMode("approve");
         request.setEntityCode(entityCode);
         request.setRecordId(recordId);
-        if (reference != null) {
+        if (reference != null && !portCall) {
             request.setFormId(reference.formId());
             request.setConfigHash(reference.configHash());
         } else {
@@ -55,20 +64,34 @@ public class TaskSubmissionGuard {
             // 与节点表单的排序一致。服务端自动选择只有一个绑定时才明确；
             // 多个绑定必须由调用方指定，避免误用另一张表单的按钮条件。
             var bindings = published.nodeForms().stream()
+                    .filter(binding -> !portCall || binding.getFormId() != null && !binding.getFormId().isBlank())
                     .sorted(Comparator.comparing(ProcessNodeForm::getSortOrder,
                             Comparator.nullsLast(Comparator.naturalOrder())))
                     .toList();
-            if (bindings.size() > 1) throw new ProcessOperationException(
+            if (reference == null && bindings.size() > 1) throw new ProcessOperationException(
                     "PROCESS_INVALID_ARGUMENT", "多个审批表单需要指定 formReference", taskId);
             String entityId = bindings.isEmpty() ? entities.findEntityIdByCode(entityCode) : null;
-            var form = !bindings.isEmpty() ? forms.submissionReference(bindings.get(0), context)
-                    : entityId == null ? null : forms.defaultSubmissionReference(entityId, context);
+            TaskFormReference form;
+            if (bindings.isEmpty()) {
+                form = entityId == null ? null : forms.defaultSubmissionReference(entityId, context);
+            } else {
+                var binding = reference == null ? bindings.get(0) : bindings.stream()
+                        .filter(item -> Objects.equals(item.getFormId(), reference.formId())).findFirst().orElse(null);
+                form = binding == null ? null : forms.submissionReference(binding, context);
+            }
             if (form == null) throw new ProcessOperationException(
                     "TASK_ACTION_NOT_ALLOWED", "任务未绑定可提交的已发布表单", taskId);
+            if (reference != null) {
+                if (!Objects.equals(form.formId(), reference.formId())) throw new ProcessOperationException(
+                        "TASK_ACTION_NOT_ALLOWED", "表单与当前任务的发布绑定不一致", taskId);
+                // 始终校验调用方声明的摘要，不能把过期摘要替换成当前摘要。
+                form = reference;
+            }
             request.setFormId(form.formId());
             request.setConfigHash(form.configHash());
         }
-        actions.requireBuiltInMutationAction(request, "submitApproval");
+        if (portCall) actions.requireApprovalMutationForPort(request, instanceId);
+        else actions.requireBuiltInMutationAction(request, "submitApproval");
     }
     private String text(Object value) { return value == null ? null : Objects.toString(value); }
 }

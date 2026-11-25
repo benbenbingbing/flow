@@ -1869,12 +1869,6 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: 'REJECT',
     expectedEffect: '办理人点击对应按钮后提交 REJECT，后续条件流可据此分支；修改显示名称不会改变该值。'
   },
-  'src/components/NodeConfigPanel.vue:option.type': {
-    label: '审批选项样式',
-    meaning: '设置该审批结果按钮的主要、成功、警告或危险视觉样式。',
-    example: 'danger',
-    expectedEffect: '办理弹窗使用对应颜色强调结果，不改变结果值和流程动作。'
-  },
   'src/components/NodeConfigPanel.vue:rule.type': {
     label: '知会收件人类型',
     meaning: '选择知会对象来自固定用户、角色、用户组、部门、发起人、办理历史、实体字段或受控解析器。',

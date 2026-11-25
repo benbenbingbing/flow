@@ -104,9 +104,9 @@ public IdentitySaveResult saveEmployee(ExternalEmployee employee) {
 
 | 模型 | 字段 |
 | --- | --- |
-| UserSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields、bindingChange |
+| UserSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields |
 | UserBaseData | account、nickname、email、phone、avatar、organizationExternalId、departmentExternalId、enabled |
-| OrganizationSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields、bindingChange |
+| OrganizationSaveModel | key、sourceVersion、base、extensions、rawDataJson、mainFields |
 | OrganizationBaseData | externalCode、name、type、parentExternalId、businessLevelCode、phone、email、address、description、sortOrder、enabled |
 
 基础字段是本模型范围内的**完整快照**：可空字段传 null 会清空原值。
@@ -131,18 +131,22 @@ V129 为来源映射保存 `parent_external_id` 与精确哈希 `parent_source_k
 外部登录仍需使用产品已有且经过授权的登录接入能力。
 产品原有本地用户继续使用 LOCAL_PASSWORD。
 
-### 来源外部 ID 修复
+### 自动补绑和改绑
 
-在单条或批量保存模型中传入新的 `key`、完整来源快照和可选的 `bindingChange`。数据修复任务先核实本地 ID 与来源对象的对应关系。
+`saveUser`、`saveOrganization` 及其批量方法接收当前来源键和完整快照。保存先查来源键。键未命中时，在目录事务锁内按全局唯一的 `account` 或 `externalCode` 定位本地对象。同步方应保证同一对象使用固定编码，外部 ID 纠正时继续提交原编码。
 
-| 场景 | `bindingChange` | 写入结果 |
-| --- | --- | --- |
-| 旧绑定仍存在 | `new IdentityBindingChange(localId, oldExternalId)` | 迁移同来源的旧绑定、原文和来源组织的父级引用，保留本地 ID、已有版本记录及本地启用许可。 |
-| 旧绑定已删除 | `new IdentityBindingChange(localId, null)` | 为尚未绑定的本地记录补绑，以本次快照建立来源版本基线。已停用的本地记录继续停用。 |
+| 当前库状态 | 保存结果 |
+| --- | --- |
+| 新键已绑定 | 按已有绑定更新，并校验来源版本和固定编码。 |
+| 新键未绑定，编码命中同来源的有效旧绑定 | 改绑至新键，迁移原文和来源组织的父级引用，保留本地 ID 和本地启用许可。 |
+| 新键未绑定，编码命中有效且未绑定的本地对象 | 补绑并以本次快照建立来源版本基线。已停用的本地记录继续停用。 |
+| 来源键和编码均未命中 | 正常创建本地对象及来源绑定。 |
 
-来源账号或组织编码须与本地记录精确一致，用户须为外部预配账号，包括已开通本地密码的外部账号。修复操作人须通过来源授权及对应的 `system:user:manage` 或 `system:organization:manage` 权限校验，交互操作还校验本地对象的数据范围。其他对象占用的新键、已退休的旧绑定及目标键下归属不明的原文会阻止修复。成功修复返回 `UPDATED`，重复提交继续按来源版本和摘要判定。
+自动补绑和改绑须通过来源授权及对应的 `system:user:manage` 或 `system:organization:manage` 权限校验，交互操作还校验本地对象的数据范围。匹配要求编码的大小写、空格和字符完全相同，用户须为外部预配账号。其他来源绑定、退役对象、普通本地账号和目标键下归属不明的原文会阻止自动处理。成功补绑或改绑返回 `UPDATED`，相同快照的重试返回 `UNCHANGED`。
 
-组织换键前，来源方须切换下级组织和用户的组织引用，并处理仍携带旧键的待重试消息。仅因引用切换而改变内容的版本化快照也应提交更高版本。先删绑定会失去旧键与本地对象的关联，补绑据本次快照恢复，旧键下的原文及下级来源引用需要另外核对。批量处理组织与用户时先提交组织。
+VERSIONED 来源改绑须提交更高版本。同版本换键返回 `SOURCE_VERSION_CONFLICT`，低版本旧键重放返回 `STALE_IGNORED`。SERIAL 来源按提交顺序应用换键，同步方须先处理携带旧键的待重试消息。批次内同一编码只能提交一个外部 ID。
+
+组织换键后，后续下级组织和用户快照使用新的组织外部 ID。引用变化的版本化快照也须提交更高版本。旧绑定已删除时，补绑可以恢复本地对象的来源映射，旧键下的原文及下级来源引用需要另外核对。批量处理组织与用户时先提交组织。
 
 ### 3.1 主表文本扩展（V135）
 

@@ -6,6 +6,7 @@ import com.workflow.port.system.SysOrganizationPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
+import com.workflow.entity.definition.application.EntityUserPathMetadata;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 import lombok.RequiredArgsConstructor;
@@ -117,6 +118,11 @@ class ConfigMigrationAssignmentTargetValidator {
                     + (reverse ? step.targetEntityCode() : current) + "/" + step.code());
             if (value.isEmpty()) return false;
             String target = relation ? text(value.get("childEntityCode")) : text(value.get("refEntityCode"));
+            // 发布快照或同包旧版本可能仍将系统提交人记为 STRING，按正式路径编译规则识别。
+            if ("REFERENCE_FIELD".equals(step.type())
+                    && EntityUserPathMetadata.isSystemSubmitter(step.code(), Boolean.TRUE.equals(value.get("isSystem")))) {
+                target = "sys_user";
+            }
             if (!relation && target.isEmpty()) {
                 String kind = text(value.get("refEntityType"));
                 if (kind.isEmpty()) kind = text(value.get("fieldType"));

@@ -1,5 +1,5 @@
 <template>
-  <el-dialog :model-value="modelValue" title="设置职务人员" width="620px" append-to-body destroy-on-close
+  <el-dialog :model-value="modelValue" :title="title" width="620px" append-to-body destroy-on-close
     :close-on-click-modal="false" @update:model-value="emit('update:modelValue', $event)">
     <el-alert title="保存后立即生效，已生成的审批任务保持原办理人。" type="info" :closable="false" show-icon />
     <el-table v-if="lockedUser && userAssignments.length" :data="userAssignments" class="current-positions">
@@ -19,14 +19,12 @@
       <el-form-item label="职务" required>
         <el-select v-model="form.positionCode" filterable :disabled="Boolean(lockedPosition) || submitting"
           placeholder="请选择职务" style="width: 100%" @change="loadMembers">
-          <el-option v-for="position in selectablePositions" :key="position.positionCode"
+          <el-option v-for="position in positionOptions" :key="position.positionCode"
             :label="position.positionName" :value="position.positionCode" />
         </el-select>
       </el-form-item>
       <el-form-item v-if="!lockedUser" label="当前人员">
-        <UserSelector v-if="selectedPosition?.holderMode === 'SINGLE'" v-model="singleUserId" value-key="id"
-          :disabled="!membersLoaded || submitting" placeholder="请选择人员，清空可移除" title="选择职务人员" />
-        <UserSelector v-else v-model="form.userIds" multiple value-key="id" :disabled="!membersLoaded || submitting"
+        <UserSelector v-model="form.userIds" multiple value-key="id" :disabled="!membersLoaded || submitting"
           placeholder="请选择人员，清空可移除全部" title="选择职务人员" />
       </el-form-item>
     </el-form>
@@ -50,7 +48,8 @@ import { getEnabledPositions, getOrganizationPositionAssignments, getUserPositio
   removePositionAssignment, setPositionMembers } from '@/api/system/position'
 
 const props = defineProps({ modelValue: Boolean, lockedUser: { type: Object, default: null },
-  lockedUnit: { type: Object, default: null }, lockedPosition: { type: Object, default: null } })
+  lockedUnit: { type: Object, default: null }, lockedPosition: { type: Object, default: null },
+  title: { type: String, default: '设置职务人员' } })
 const emit = defineEmits(['update:modelValue', 'saved'])
 const selectedUnit = ref<any>(null)
 const initializing = ref(false)
@@ -65,9 +64,6 @@ const form = reactive({ organizationUnitId: '', positionCode: '', userIds: [] as
 let sequence = 0
 let initializationSequence = 0
 const selectedPosition = computed(() => positionOptions.value.find(p => p.positionCode === form.positionCode))
-const singleUserId = computed({ get: () => form.userIds[0] || '', set: value => { form.userIds = value ? [value] : [] } })
-const selectablePositions = computed(() => positionOptions.value.filter(position => !selectedUnit.value
-  || position.applicableUnitType === 'ANY' || position.applicableUnitType.toLowerCase() === selectedUnit.value.type))
 
 /** 关闭和切换条件均使旧请求失效，防止慢响应覆盖新选择或提交错误范围的人员。 */
 function invalidate() { sequence++; membersLoaded.value = false }
@@ -104,7 +100,7 @@ async function initialize() {
   } finally { if (initialization === initializationSequence) initializing.value = false }
 }
 
-/** 节点类型随选择更新，职务适用范围不再依赖遍历全量组织目录。 */
+/** 切换组织节点后重新读取该节点的职务人员集合。 */
 async function selectUnit(unit: any) {
   selectedUnit.value = unit
   await loadMembers()
@@ -116,7 +112,7 @@ async function loadMembers() {
   form.userIds = []
   expectedUserIds.value = []
   loadError.value = ''
-  if (!selectablePositions.value.some(position => position.positionCode === form.positionCode)) form.positionCode = ''
+  if (!selectedPosition.value) form.positionCode = ''
   if (!form.organizationUnitId || !form.positionCode) { loading.value = false; return }
   const current = sequence
   loading.value = true
@@ -133,15 +129,9 @@ async function loadMembers() {
 
 async function submit() {
   if (!membersLoaded.value || loading.value || submitting.value) return
-  let userIds = [...form.userIds]
-  if (props.lockedUser) {
-    userIds = selectedPosition.value?.holderMode === 'SINGLE' ? [props.lockedUser.id]
-      : [...new Set([...expectedUserIds.value, props.lockedUser.id])]
-    if (selectedPosition.value?.holderMode === 'SINGLE' && expectedUserIds.value.some(id => id !== props.lockedUser.id)) {
-      try { await ElMessageBox.confirm('该职务已有人员，保存后将替换为当前用户。', '更换职务人员', { type: 'warning' }) }
-      catch { return }
-    }
-  }
+  const userIds = props.lockedUser
+    ? [...new Set([...expectedUserIds.value, props.lockedUser.id])]
+    : [...form.userIds]
   submitting.value = true
   try {
     await setPositionMembers({ positionCode: form.positionCode, organizationUnitId: form.organizationUnitId,

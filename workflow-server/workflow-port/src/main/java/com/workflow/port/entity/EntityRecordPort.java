@@ -101,7 +101,7 @@ public interface EntityRecordPort {
     /** 提交已有草稿并启动流程。命令的意图须为 START_EXISTING。 */
     EntityRecordData startExisting(EntitySubmissionCommand command);
 
-    /** 从已撤回的上一轮重新发起。命令的意图须为 RESTART，并提供上一轮实例 ID。 */
+    /** 从已撤回的上一轮重新发起。调用方负责授权，命令意图须为 RESTART 并提供上一轮实例 ID。 */
     EntityRecordData restart(EntitySubmissionCommand command);
 
     /** 逻辑删除调用方已授权的记录，保留发布动作的状态约束及历史数据。 */
@@ -110,7 +110,7 @@ public interface EntityRecordPort {
     /** 逐条校验调用方已授权的记录是否满足删除条件，任一记录失败时整批回滚。 */
     void deleteBatch(String entityCode, List<String> recordIds, String listKey);
 
-    /** 返回当前记录的 edit、delete、batchDelete、restartProcess 能力及受限原因。 */
+    /** 根据发布配置和记录状态返回 edit、delete、batchDelete、restartProcess 能力及受限原因。 */
     Map<String, RecordCapability> getRecordCapabilities(String entityCode, String recordId, String listKey);
 
     /** visible 决定是否展示入口，enabled 决定当前状态下能否执行。 */

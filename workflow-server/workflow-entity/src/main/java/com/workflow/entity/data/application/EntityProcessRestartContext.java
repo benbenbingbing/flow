@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * 将已通过发布按钮、权限和表单校验的重新发起意图传到同步写入管道。
+ * 将已通过入口授权及发布表单校验的重新发起意图传到同步写入管道。
  * 不把授权标记放在客户端 JSON 中，防止其他更新入口仅凭请求字段启动新流程。
  * 作用域绑定用户、实体、记录和旧实例；异常或嵌套调用结束后恢复原上下文。
  */
@@ -15,9 +15,11 @@ final class EntityProcessRestartContext {
 
     private EntityProcessRestartContext() {}
 
-    static <T> T execute(String entityCode, String recordId, String previousInstanceId, Supplier<T> write) {
+    static <T> T execute(
+            String entityCode, String recordId, String previousInstanceId, boolean callerAuthorized, Supplier<T> write) {
         Authorization previous = CURRENT.get();
-        CURRENT.set(new Authorization(entityCode, recordId, previousInstanceId, UserContext.getUserId()));
+        CURRENT.set(new Authorization(
+                new Target(entityCode, recordId, previousInstanceId, UserContext.getUserId()), callerAuthorized));
         try {
             return write.get();
         } finally {
@@ -26,15 +28,19 @@ final class EntityProcessRestartContext {
         }
     }
 
-    /** 仅允许本次已鉴权的原记录写入；仍需在记录锁内重新校验流程事实。 */
-    static void require(String entityCode, String recordId, String previousInstanceId) {
+    /** 校验本次重新发起的确切目标，并返回是否由 Java 调用方负责授权。 */
+    static boolean require(String entityCode, String recordId, String previousInstanceId) {
+        Authorization authorization = CURRENT.get();
         if (previousInstanceId == null || previousInstanceId.isBlank()
-                || !Objects.equals(CURRENT.get(), new Authorization(
+                || authorization == null || !Objects.equals(authorization.target(), new Target(
                 entityCode, recordId, previousInstanceId, UserContext.getUserId()))) {
             throw new BusinessForbiddenException("ENTITY_PROCESS_RESTART_NOT_AUTHORIZED",
                     "请通过已启用的重新发起按钮提交");
         }
+        return authorization.callerAuthorized();
     }
 
-    private record Authorization(String entityCode, String recordId, String previousInstanceId, String userId) {}
+    private record Target(String entityCode, String recordId, String previousInstanceId, String userId) {}
+
+    private record Authorization(Target target, boolean callerAuthorized) {}
 }

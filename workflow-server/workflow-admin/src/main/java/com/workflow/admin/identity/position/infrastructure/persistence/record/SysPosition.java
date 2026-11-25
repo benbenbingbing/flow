@@ -19,8 +19,6 @@ public class SysPosition {
     private String id;
     private String positionCode;
     private String positionName;
-    private String applicableUnitType;
-    private String holderMode;
     private Boolean builtIn;
     private String status;
     private Integer sortOrder;
@@ -32,23 +30,6 @@ public class SysPosition {
     private LocalDateTime updateTime;
     @TableLogic
     private Integer deleted;
-
-    /**
-     * 定义适用单元类型的可选值；调用方据此选择对应的处理分支。
-     */
-    public enum ApplicableUnitType {
-        ORG,
-        DEPT,
-        ANY
-    }
-
-    /**
-     * 定义持有者模式的可选值；调用方据此选择对应的处理分支。
-     */
-    public enum HolderMode {
-        SINGLE,
-        MULTIPLE
-    }
 
     /**
      * 定义状态的可选值；调用方据此选择对应的处理分支。

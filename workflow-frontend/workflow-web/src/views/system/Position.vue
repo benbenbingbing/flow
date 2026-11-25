@@ -11,19 +11,6 @@
               @keyup.enter="searchPositions"
             />
           </el-form-item>
-          <el-form-item label="适用单位">
-            <el-select v-model="positionQuery.applicableUnitType" clearable placeholder="全部" style="width: 130px">
-              <el-option label="组织" value="ORG" />
-              <el-option label="部门" value="DEPT" />
-              <el-option label="组织和部门" value="ANY" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="人员数量">
-            <el-select v-model="positionQuery.holderMode" clearable placeholder="全部" style="width: 120px">
-              <el-option label="单人" value="SINGLE" />
-              <el-option label="多人" value="MULTIPLE" />
-            </el-select>
-          </el-form-item>
           <el-form-item label="状态">
             <el-select v-model="positionQuery.status" clearable placeholder="全部" style="width: 110px">
               <el-option label="启用" value="ENABLED" />
@@ -66,16 +53,6 @@
             </template>
           </el-table-column>
           <el-table-column prop="positionCode" label="稳定编码" min-width="160" show-overflow-tooltip />
-          <el-table-column label="适用单位" width="120">
-            <template #default="{ row }">{{ unitTypeLabel(row.applicableUnitType) }}</template>
-          </el-table-column>
-          <el-table-column label="人员数量" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.holderMode === 'SINGLE' ? 'primary' : 'success'" size="small">
-                {{ row.holderMode === 'SINGLE' ? '单人' : '多人' }}
-              </el-tag>
-            </template>
-          </el-table-column>
           <el-table-column label="当前人员" width="95" align="center">
             <template #default="{ row }">{{ row.currentAssignmentCount ?? row.activeAssignmentCount ?? row.assignmentCount ?? 0 }}</template>
           </el-table-column>
@@ -265,20 +242,6 @@
           />
           <div class="form-tip">创建后不可修改，流程定义和外部集成使用该编码。</div>
         </el-form-item>
-        <el-form-item label="适用单位" prop="applicableUnitType">
-          <el-radio-group v-model="positionForm.applicableUnitType">
-            <el-radio-button value="ORG">组织</el-radio-button>
-            <el-radio-button value="DEPT">部门</el-radio-button>
-            <el-radio-button value="ANY">组织和部门</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="人员数量" prop="holderMode">
-          <el-radio-group v-model="positionForm.holderMode">
-            <el-radio-button value="SINGLE">单人</el-radio-button>
-            <el-radio-button value="MULTIPLE">多人</el-radio-button>
-          </el-radio-group>
-          <div class="form-tip">单人职务每个组织最多一人，多人职务可设置多名人员。</div>
-        </el-form-item>
         <el-form-item label="排序">
           <el-input-number v-model="positionForm.sortOrder" :min="0" :max="9999" controls-position="right" />
         </el-form-item>
@@ -334,7 +297,7 @@ const positionLoadError = ref('')
 const positionList = ref<any[]>([])
 const positionTotal = ref(0)
 const positionQuery = reactive({
-  keyword: '', applicableUnitType: '', holderMode: '', status: '', pageNum: 1, pageSize: 20
+  keyword: '', status: '', pageNum: 1, pageSize: 20
 })
 const enabledPositionOptions = ref<any[]>([])
 
@@ -342,7 +305,7 @@ const positionDialogVisible = ref(false)
 const positionFormRef = ref()
 const positionSubmitting = ref(false)
 const positionForm = reactive({
-  id: '', positionName: '', positionCode: '', applicableUnitType: 'ANY', holderMode: 'MULTIPLE',
+  id: '', positionName: '', positionCode: '',
   status: 'ENABLED', sortOrder: 0, description: '', revision: undefined as number | undefined
 })
 const positionRules = {
@@ -350,9 +313,7 @@ const positionRules = {
   positionCode: [
     { required: true, message: '请输入稳定编码', trigger: 'blur' },
     { pattern: /^[A-Z][A-Z0-9_]{1,99}$/, message: '编码应使用大写字母、数字和下划线', trigger: 'blur' }
-  ],
-  applicableUnitType: [{ required: true, message: '请选择适用单位', trigger: 'change' }],
-  holderMode: [{ required: true, message: '请选择人员数量', trigger: 'change' }]
+  ]
 }
 
 const selectedUnit = ref<any>(null)
@@ -381,8 +342,6 @@ async function fetchPositions() {
     const page = normalizePage(await getPositionPage({
       ...positionQuery,
       keyword: positionQuery.keyword.trim() || undefined,
-      applicableUnitType: positionQuery.applicableUnitType || undefined,
-      holderMode: positionQuery.holderMode || undefined,
       status: positionQuery.status || undefined
     } as any), positionQuery.pageNum, positionQuery.pageSize)
     positionList.value = page.records
@@ -403,14 +362,14 @@ async function fetchEnabledPositions() {
 
 function searchPositions() { positionQuery.pageNum = 1; fetchPositions() }
 function resetPositionQuery() {
-  Object.assign(positionQuery, { keyword: '', applicableUnitType: '', holderMode: '', status: '', pageNum: 1 })
+  Object.assign(positionQuery, { keyword: '', status: '', pageNum: 1 })
   fetchPositions()
 }
 function handlePositionPageSizeChange() { positionQuery.pageNum = 1; fetchPositions() }
 
 function resetPositionForm() {
   Object.assign(positionForm, {
-    id: '', positionName: '', positionCode: '', applicableUnitType: 'ANY', holderMode: 'MULTIPLE',
+    id: '', positionName: '', positionCode: '',
     status: 'ENABLED', sortOrder: 0, description: '', revision: undefined
   })
 }
@@ -421,8 +380,6 @@ function openPositionDialog(row: any = null) {
     id: row.id,
     positionName: row.positionName,
     positionCode: row.positionCode,
-    applicableUnitType: row.applicableUnitType,
-    holderMode: row.holderMode,
     status: row.status,
     sortOrder: row.sortOrder ?? row.sort ?? 0,
     description: row.description || '',
@@ -439,8 +396,6 @@ async function savePosition() {
   try {
     const mutableFields = {
       positionName: positionForm.positionName,
-      applicableUnitType: positionForm.applicableUnitType,
-      holderMode: positionForm.holderMode,
       sortOrder: positionForm.sortOrder,
       description: positionForm.description
     }
@@ -562,9 +517,7 @@ function openMembersDialog(row: any) {
     position: {
       id: row.positionId,
       positionCode: row.positionCode,
-      positionName: row.positionName,
-      applicableUnitType: row.applicableUnitType || 'ANY',
-      holderMode: row.holderMode || 'SINGLE'
+      positionName: row.positionName
     }
   })
 }
@@ -583,7 +536,6 @@ async function removeAssignment(row: any) {
 
 function assignmentUserLabel(row: any) { return row.displayName || row.userDisplayName || row.nickname || row.userName || row.username || row.userId || '-' }
 function assignmentUnitLabel(row: any) { return row.organizationPath || row.organizationUnitPath || row.orgPath || row.organizationUnitName || row.orgName || row.organizationUnitId || '-' }
-function unitTypeLabel(value: string) { return ({ ORG: '组织', DEPT: '部门', ANY: '组织和部门' } as any)[value] || value || '-' }
 function formatDateTime(value: any) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-' }
 
 async function handleTabChange(name: string | number) {

@@ -197,4 +197,21 @@ assert.equal(dedicatedSelected.value.name, '离职人员')
 assert.equal(dedicatedSelected.value.deleted, true)
 assert.deepEqual(handoverCalls.at(-1), ['batch', ['former'], 'id'])
 
+const userIds = Array.from({ length: 201 }, (_, index) => `user-${index}`)
+const loadedUsers = ref([])
+const batches = []
+await selectorMethod('loadSelectedData', {
+  props: { entityType: 'USER', modelValue: userIds, multiple: true, valueKey: 'id' },
+  selectedRequestId: 0, selectedList: loadedUsers,
+  request: {
+    get: async url => {
+      const ids = new URLSearchParams(url.split('?')[1]).get('ids').split(',')
+      batches.push(ids)
+      return ids.map(id => ({ id }))
+    }
+  }
+})()
+assert.deepEqual(batches.map(ids => ids.length), [50, 50, 50, 50, 1])
+assert.deepEqual(loadedUsers.value.map(user => user.id), userIds)
+
 console.log('entity record selection tests passed')

@@ -1,4 +1,6 @@
 -- PostgreSQL 16 平台基础表空库初始化脚本。
+-- 2026-11-25 同步至 V146，动态实体提交人字段升级为用户单选关系；空库结构及种子不变。
+-- 2026-11-24 同步至 V145，移除职务适用单位和人数模式字段及检查约束。
 -- 2026-11-18 同步至 V144，引擎流程启动动作统一归入发起后；空库无动作绑定数据需转换，结构及种子不变。
 -- 2026-11-18 同步 V143，实体字段增加只读选项接口绑定，历史代码表和种子不变。
 -- 2026-11-18 同步至 V142，引擎任务完成时机归入节点离开前；空库无动作绑定数据需转换，结构及种子不变。
@@ -3109,8 +3111,6 @@ CREATE TABLE "sys_position" (
   "id" varchar(64) NOT NULL,
   "position_code" varchar(100) NOT NULL,
   "position_name" varchar(100) NOT NULL,
-  "applicable_unit_type" varchar(16) NOT NULL,
-  "holder_mode" varchar(16) NOT NULL,
   "built_in" smallint NOT NULL DEFAULT '0',
   "status" varchar(16) NOT NULL DEFAULT 'ENABLED',
   "sort_order" integer NOT NULL DEFAULT '0',
@@ -3123,10 +3123,8 @@ CREATE TABLE "sys_position" (
   "deleted" smallint NOT NULL DEFAULT '0',
   CONSTRAINT "pk_sys_position_sys_position" PRIMARY KEY ("id"),
   CONSTRAINT "ck_sys_position_chk_sys_position_flags" CHECK ((("built_in" in (0,1)) and ("deleted" in (0,1)))),
-  CONSTRAINT "ck_sys_position_chk_sys_position_holder_mode" CHECK (("holder_mode" in ('SINGLE','MULTIPLE'))),
   CONSTRAINT "ck_sys_position_chk_sys_position_revision" CHECK (("revision" >= 1)),
-  CONSTRAINT "ck_sys_position_chk_sys_position_status" CHECK (("status" in ('ENABLED','DISABLED'))),
-  CONSTRAINT "ck_sys_position_chk_sys_position_unit_type" CHECK (("applicable_unit_type" in ('ORG','DEPT','ANY')))
+  CONSTRAINT "ck_sys_position_chk_sys_position_status" CHECK (("status" in ('ENABLED','DISABLED')))
 );
 
 CREATE TABLE "sys_position_assignment" (
@@ -6956,8 +6954,6 @@ COMMENT ON TABLE "sys_position" IS '全局职务定义表';
 COMMENT ON COLUMN "sys_position"."id" IS '主键ID：全局职务定义；职务本身不携带组织范围，也不产生系统权限。';
 COMMENT ON COLUMN "sys_position"."position_code" IS '职务编码。';
 COMMENT ON COLUMN "sys_position"."position_name" IS '职务名称。';
-COMMENT ON COLUMN "sys_position"."applicable_unit_type" IS '适用单元类型；CHECK 枚举：\\''ORG\\'',\\''DEPT\\'',\\''ANY\\''。';
-COMMENT ON COLUMN "sys_position"."holder_mode" IS '任职者模式；CHECK 枚举：\\''SINGLE\\'',\\''MULTIPLE\\''。';
 COMMENT ON COLUMN "sys_position"."built_in" IS '内置内置；CHECK 枚举：0,1。';
 COMMENT ON COLUMN "sys_position"."status" IS '状态；CHECK 枚举：\\''ENABLED\\'',\\''DISABLED\\''。';
 COMMENT ON COLUMN "sys_position"."sort_order" IS '排序号。';
@@ -7597,7 +7593,7 @@ INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "icon", "so
 INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "icon", "sort", "path", "component", "perm", "status", "visible", "keep_alive", "breadcrumb", "remark", "deleted", "create_by", "create_time", "update_by", "update_time", "is_frame", "is_cache", "query", "entity_code", "resource_type", "list_key") VALUES ('work_calendar_manage_perm_001','work_calendar_menu_001','维护工作日历','F',NULL,1,'','','system:work-calendar:manage','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "icon", "sort", "path", "component", "perm", "status", "visible", "keep_alive", "breadcrumb", "remark", "deleted", "create_by", "create_time", "update_by", "update_time", "is_frame", "is_cache", "query", "entity_code", "resource_type", "list_key") VALUES ('work_calendar_menu_001','400','工作日历','C','Calendar',7,'/system/work-calendars','system/WorkCalendarManagement','system:work-calendar:view','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,'migration-v075',CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "icon", "sort", "path", "component", "perm", "status", "visible", "keep_alive", "breadcrumb", "remark", "deleted", "create_by", "create_time", "update_by", "update_time", "is_frame", "is_cache", "query", "entity_code", "resource_type", "list_key") VALUES ('work_calendar_publish_perm_001','work_calendar_menu_001','发布工作日历','F',NULL,2,'','','system:work-calendar:publish','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
-INSERT INTO "sys_position" ("id", "position_code", "position_name", "applicable_unit_type", "holder_mode", "built_in", "status", "sort_order", "description", "revision", "created_by", "updated_by", "create_time", "update_time", "deleted") VALUES ('position_unit_leader_001','UNIT_LEADER','负责人','ANY','SINGLE',1,'ENABLED',10,'组织或部门负责人；旧 leader 字段的权威任职来源',1,'migration-v069','migration-v069',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
+INSERT INTO "sys_position" ("id", "position_code", "position_name", "built_in", "status", "sort_order", "description", "revision", "created_by", "updated_by", "create_time", "update_time", "deleted") VALUES ('position_unit_leader_001','UNIT_LEADER','负责人',1,'ENABLED',10,'组织或部门负责人；旧 leader 字段的权威任职来源',1,'migration-v069','migration-v069',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
 INSERT INTO "sys_role" ("id", "role_name", "role_code", "description", "sort", "status", "create_time", "update_time", "deleted", "sort_order") VALUES ('1','超级管理员','super_admin','系统内置超级管理员角色',0,'0',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,0);
 -- 为内置超级管理员（role_code = super_admin，固定 ID 为 1）补齐新增页面授权；已有子菜单和按钮授权继续保留。
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('bootstrap_navigation_100','1','100',CURRENT_TIMESTAMP);

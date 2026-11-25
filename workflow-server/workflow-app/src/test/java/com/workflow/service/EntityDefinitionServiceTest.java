@@ -361,13 +361,17 @@ public class EntityDefinitionServiceTest {
         verify(entityMapper, times(1)).insert(any(EntityDefinition.class));
     }
 
-    /** 新实体的所属部门系统字段应直接绑定系统组织实体 */
+    /** 新实体的所属部门和提交人系统字段绑定对应的系统实体。 */
     @Test
-    void testSaveBindsDepartmentSystemFieldToOrganizationEntity() {
+    void testSaveBindsSystemReferenceFields() {
         EntityDefinition organization = new EntityDefinition();
         organization.setId("organization-entity");
         organization.setEntityCode("sys_organization");
         organization.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
+        EntityDefinition user = new EntityDefinition();
+        user.setId("user-entity");
+        user.setEntityCode("sys_user");
+        user.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
 
         EntityDefinitionDTO dto = new EntityDefinitionDTO();
         dto.setEntityCode("new_entity");
@@ -375,6 +379,7 @@ public class EntityDefinitionServiceTest {
 
         when(entityMapper.findByEntityCode("sys_organization"))
                 .thenReturn(Optional.of(organization));
+        when(entityMapper.findByEntityCode("sys_user")).thenReturn(Optional.of(user));
 
         entityService.save(dto);
 
@@ -407,6 +412,14 @@ public class EntityDefinitionServiceTest {
         assertEquals(EntityField.RefEntityType.DEPT, departmentField.getRefEntityType());
         assertEquals("organization-entity", departmentField.getRefEntityId());
         assertTrue(Boolean.TRUE.equals(departmentField.getEditable()));
+
+        EntityField submitter = fieldCaptor.getAllValues().stream()
+                .filter(field -> "submitterId".equals(field.getFieldCode())).findFirst().orElseThrow();
+        assertEquals(EntityField.FieldType.REFERENCE, submitter.getFieldType());
+        assertEquals(EntityField.RefEntityType.USER, submitter.getRefEntityType());
+        assertEquals("user-entity", submitter.getRefEntityId());
+        assertEquals("submitter_id", submitter.getDbColumnName());
+        assertEquals(false, submitter.getEditable());
     }
 
     /** 普通更新只写可编辑列，不能通过旧实体快照覆盖流程绑定。 */

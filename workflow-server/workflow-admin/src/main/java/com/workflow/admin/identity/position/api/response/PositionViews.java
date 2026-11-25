@@ -20,8 +20,6 @@ public final class PositionViews {
      * @param id 对象标识，供后续引用、更新或关联
      * @param positionCode 位置编码，后续用于处理位置视图时定位或关联目标
      * @param positionName 位置名称，后续用于处理位置视图时匹配或展示
-     * @param applicableUnitType 适用单元类型标识，决定后续位置视图采用的处理分支
-     * @param holderMode 持有者模式标识，决定后续位置视图采用的处理分支
      * @param builtIn {@code built}，保存在对象中供后续校验、查询或展示
      * @param status 状态标识，决定后续位置视图采用的处理分支
      * @param sortOrder 排序权重，后续用于稳定展示顺序
@@ -38,8 +36,6 @@ public final class PositionViews {
             String id,
             String positionCode,
             String positionName,
-            String applicableUnitType,
-            String holderMode,
             boolean builtIn,
             String status,
             int sortOrder,

@@ -387,7 +387,7 @@
                 @change="onRelativePositionChanged"
               >
                 <el-option
-                  v-for="position in availableRelativePositionOptions"
+                  v-for="position in relativePositionOptions"
                   :key="position.positionCode"
                   :label="position.positionName"
                   :value="position.positionCode"
@@ -1548,19 +1548,11 @@
             <div class="approval-options-list">
               <div v-for="(option, index) in approvalForm.options" :key="index" class="approval-option-item">
                 <el-row :gutter="8" align="middle">
-                  <el-col :span="6">
+                  <el-col :span="9">
                     <el-input v-model="option.label" placeholder="选项名称" size="small" />
                   </el-col>
-                  <el-col :span="6">
+                  <el-col :span="9">
                     <el-input v-model="option.value" placeholder="选项值" size="small" />
-                  </el-col>
-                  <el-col :span="6">
-                    <el-select v-model="option.type" placeholder="样式" size="small">
-                      <el-option label="主要" value="primary" />
-                      <el-option label="成功" value="success" />
-                      <el-option label="警告" value="warning" />
-                      <el-option label="危险" value="danger" />
-                    </el-select>
                   </el-col>
                   <el-col :span="6" class="approval-option-actions">
                     <el-tooltip content="显示备注" placement="top">
@@ -2191,14 +2183,6 @@ const relativePositionSampleUserId = ref('')
 const relativePositionPreviewLoading = ref(false)
 const relativePositionPreviewResult = ref(null)
 const relativePositionPreviewError = ref('')
-const availableRelativePositionOptions = computed(() => {
-  const unitType = assigneeForm.value.relativePosition?.anchor === 'ORGANIZATION'
-    ? 'ORG'
-    : 'DEPT'
-  return relativePositionOptions.value.filter(position =>
-    position.applicableUnitType === 'ANY'
-    || position.applicableUnitType === unitType)
-})
 const selectedRelativePosition = computed(() => relativePositionOptions.value.find(
   option => option.positionCode === assigneeForm.value.relativePosition?.positionCode
 ))
@@ -2607,13 +2591,6 @@ function onRelativePositionAnchorChanged(anchor) {
   assigneeForm.value.relativePosition.hierarchy.eligibleUnitTypes = [
     anchor === 'ORGANIZATION' ? 'org' : 'dept'
   ]
-  const selected = selectedRelativePosition.value
-  const unitType = anchor === 'ORGANIZATION' ? 'ORG' : 'DEPT'
-  if (selected && selected.applicableUnitType !== 'ANY'
-      && selected.applicableUnitType !== unitType) {
-    assigneeForm.value.relativePosition.positionCode = ''
-    ElMessage.warning('已清除不适用于该组织锚点的职务')
-  }
   onRelativePositionChanged()
 }
 

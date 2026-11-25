@@ -1,5 +1,7 @@
 package com.workflow.admin.identity.position.api.request;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 
 /**
@@ -18,16 +20,13 @@ public final class PositionRequests {
      *
      * @param positionCode 位置编码，后续用于处理创建位置时定位或关联目标
      * @param positionName 位置名称，后续用于处理创建位置时匹配或展示
-     * @param applicableUnitType 适用单元类型标识，决定后续创建位置采用的处理分支
-     * @param holderMode 持有者模式标识，决定后续创建位置采用的处理分支
      * @param sortOrder 排序权重，后续用于稳定展示顺序
      * @param description 描述，保存在对象中供后续校验、查询或展示
      */
+    @JsonIgnoreProperties({"applicableUnitType", "holderMode"})
     public record CreatePosition(
             String positionCode,
             String positionName,
-            String applicableUnitType,
-            String holderMode,
             Integer sortOrder,
             String description) {
     }
@@ -36,16 +35,13 @@ public final class PositionRequests {
      * 封装更新位置的不可变数据；各分量供后续校验、传递或结果展示使用。
      *
      * @param positionName 位置名称，后续用于处理更新位置时匹配或展示
-     * @param applicableUnitType 适用单元类型标识，决定后续更新位置采用的处理分支
-     * @param holderMode 持有者模式标识，决定后续更新位置采用的处理分支
      * @param sortOrder 排序权重，后续用于稳定展示顺序
      * @param description 描述，保存在对象中供后续校验、查询或展示
      * @param revision 修订版本，保存在对象中供后续校验、查询或展示
      */
+    @JsonIgnoreProperties({"applicableUnitType", "holderMode"})
     public record UpdatePosition(
             String positionName,
-            String applicableUnitType,
-            String holderMode,
             Integer sortOrder,
             String description,
             Integer revision) {

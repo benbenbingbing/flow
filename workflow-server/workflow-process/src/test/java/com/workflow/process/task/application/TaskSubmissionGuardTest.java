@@ -68,6 +68,26 @@ class TaskSubmissionGuardTest {
     }
 
     @Test
+    void callerAuthorizedSubmissionStillRejectsUnboundFormAndKeepsSuppliedFingerprint() {
+        var binding = new ProcessNodeForm();
+        binding.setFormId("published-form");
+        when(snapshots.getNodeFormsContextByProcessDefinitionId("deployment-version", "review"))
+                .thenReturn(new ProcessPublishedSnapshotService.PublishedNodeForms(null, List.of(binding)));
+        when(forms.submissionReference(eq(binding), any()))
+                .thenReturn(new TaskFormReference("published-form", "current-hash"));
+
+        assertEquals("TASK_ACTION_NOT_ALLOWED", assertThrows(ProcessOperationException.class,
+                () -> guard.requireForPort("task", source, new TaskFormReference("unrelated", "current-hash"))).getErrorCode());
+        verifyNoInteractions(actions);
+
+        guard.requireForPort("task", source, new TaskFormReference("published-form", "supplied-hash"));
+        var request = ArgumentCaptor.forClass(FormActionResolveRequest.class);
+        verify(actions).requireApprovalMutationForPort(request.capture(), eq("instance"));
+        assertEquals("supplied-hash", request.getValue().getConfigHash());
+        assertEquals("record", request.getValue().getRecordId());
+    }
+
+    @Test
     void ambiguousBindingRequiresCallerToChooseAndMissingBindingDoesNotSilentlySkipGuard() {
         when(snapshots.getNodeFormsContextByProcessDefinitionId(anyString(), anyString()))
                 .thenReturn(new ProcessPublishedSnapshotService.PublishedNodeForms(null,

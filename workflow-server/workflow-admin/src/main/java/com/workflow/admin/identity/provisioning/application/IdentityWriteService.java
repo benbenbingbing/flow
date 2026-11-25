@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.sql.Connection;
 import java.util.*;
+import java.util.function.IntFunction;
 
 import static com.workflow.core.logging.LogValue.safe;
 
@@ -56,9 +57,8 @@ public class IdentityWriteService {
         String digest = digest(model.base(), groups, model.mainFields());
         validateVersion(model.sourceVersion(), writer);
         UserBaseData base = model.base();
-        var target = resolveBinding(IdentityObjectType.USER, model.key(), base.account(), model.bindingChange(), writer);
-        var previous = target.previous();
-        var unchanged = previousResult(IdentityObjectType.USER, model.key(), model.sourceVersion(), digest, previous);
+        var target = resolveBinding(IdentityObjectType.USER, model.key(), base.account(), writer);
+        var unchanged = previousResult(IdentityObjectType.USER, model.key(), model.sourceVersion(), digest, target);
         if (unchanged != null) {
             // 旧版本完全忽略；相同业务版本允许补录或刷新原文，不重写用户、扩展和角色。
             if (unchanged.outcome() == IdentitySaveOutcome.UNCHANGED) {
@@ -81,7 +81,8 @@ public class IdentityWriteService {
         String dept = store.resolveOrganization(model.key().sourceCode(), base.departmentExternalId(), "departmentExternalId");
         boolean allowed = target.localAllowed();
         String status = base.enabled() && allowed ? "0" : "1";
-        String username = identityCode(IdentityObjectType.USER, base.account(), target);
+        requireStableCode(IdentityObjectType.USER, base.account(), target.previous());
+        String username = base.account();
         SysUser candidate = new SysUser();
         candidate.setId(id); candidate.setOrgId(org); candidate.setDeptId(dept); candidate.setStatus(status);
         // 归属规则由用户服务共享；同步提示带上调用方提交的外部 ID，便于从来源记录定位问题。
@@ -126,9 +127,9 @@ public class IdentityWriteService {
         validateMainFields(model.mainFields());
         String digest = digest(base, groups, model.mainFields());
         validateVersion(model.sourceVersion(), writer);
-        var target = resolveBinding(IdentityObjectType.ORGANIZATION, model.key(), base.externalCode(), model.bindingChange(), writer);
+        var target = resolveBinding(IdentityObjectType.ORGANIZATION, model.key(), base.externalCode(), writer);
         var previous = target.previous();
-        var unchanged = previousResult(IdentityObjectType.ORGANIZATION, model.key(), model.sourceVersion(), digest, previous);
+        var unchanged = previousResult(IdentityObjectType.ORGANIZATION, model.key(), model.sourceVersion(), digest, target);
         if (unchanged != null) {
             if (unchanged.outcome() == IdentitySaveOutcome.UNCHANGED) {
                 String raw = snapshots.validate(model.rawDataJson(), writer);
@@ -153,7 +154,8 @@ public class IdentityWriteService {
         boolean allowed = target.localAllowed();
         SysOrganization org = new SysOrganization();
         org.setId(id);
-        org.setOrgCode(identityCode(IdentityObjectType.ORGANIZATION, base.externalCode(), target));
+        requireStableCode(IdentityObjectType.ORGANIZATION, base.externalCode(), previous);
+        org.setOrgCode(base.externalCode());
         org.setOrgName(base.name());
         org.setType(base.type() == OrganizationUnitType.ORGANIZATION ? "org" : "dept");
         moveBinding(IdentityObjectType.ORGANIZATION, model.key(), target);
@@ -183,7 +185,8 @@ public class IdentityWriteService {
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public List<IdentitySaveResult> saveUsers(List<UserSaveModel> models) {
         lockDirectory();
-        batch(models == null ? null : models.stream().map(m -> m == null ? null : m.key()).toList());
+        batch(models == null ? null : models.stream().map(m -> m == null ? null : m.key()).toList(), "account",
+                i -> models.get(i).base() == null ? null : models.get(i).base().account());
         snapshots.checkSizes(models.stream().map(UserSaveModel::rawDataJson).toList(), true);
         List<IdentitySaveResult> results = new ArrayList<>();
         for (int i = 0; i < models.size(); i++) {
@@ -196,7 +199,8 @@ public class IdentityWriteService {
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public List<IdentitySaveResult> saveOrganizations(List<OrganizationSaveModel> models) {
         lockDirectory();
-        batch(models == null ? null : models.stream().map(m -> m == null ? null : m.key()).toList());
+        batch(models == null ? null : models.stream().map(m -> m == null ? null : m.key()).toList(), "externalCode",
+                i -> models.get(i).base() == null ? null : models.get(i).base().externalCode());
         snapshots.checkSizes(models.stream().map(OrganizationSaveModel::rawDataJson).toList(), true);
         // 先冻结目录结构，再拓扑处理当前批次的父子引用；返回顺序仍与输入一致。
         Map<String, OrganizationSaveModel> pending = new LinkedHashMap<>();
@@ -247,10 +251,12 @@ public class IdentityWriteService {
         return failure;
     }
 
-    private void batch(List<ExternalIdentityKey> keys) {
+    /** 批次中一个稳定编码只能有一份快照，避免按处理顺序把两个外部 ID 当作连续改绑。 */
+    private void batch(List<ExternalIdentityKey> keys, String codeField, IntFunction<String> codeAt) {
         int size = keys == null ? 0 : keys.size();
         if (size == 0 || size > 100) fail("INVALID_MODEL", "models", "同步批次须为 1 至 100 条，本批 %d 条".formatted(size));
         Set<ExternalIdentityKey> seen = new HashSet<>();
+        Set<String> seenCodes = new HashSet<>();
         String source = null;
         for (int i = 0; i < size; i++) {
             var key = keys.get(i);
@@ -261,6 +267,9 @@ public class IdentityWriteService {
                 if (!source.equals(key.sourceCode())) fail("INVALID_MODEL", "key.sourceCode", "批次来源须与首条记录的来源「%s」一致"
                         .formatted(safe(source)));
                 if (!seen.add(key)) fail("INVALID_MODEL", "key.externalId", "该外部 ID 在本批次重复提交");
+                String code = codeAt.apply(i);
+                if (code != null && !seenCodes.add(code)) fail("IDENTITY_CODE_CONFLICT", codeField,
+                        "稳定编码「%s」在本批次对应多个外部 ID，请只提交当前快照".formatted(safe(code)));
             } catch (IdentityWriteException error) {
                 throw batchFailure(i, key, error);
             }
@@ -277,55 +286,34 @@ public class IdentityWriteService {
     }
 
     /**
-     * 在目录锁内确认修复对象，避免同步仅凭编码接管本地数据。已在新键上的同一对象可直接重试。
-     * 这里只读取和校验，版本、原文及快照通过校验后才写入绑定和本地资料。
+     * 在目录锁内先按来源键定位。外部 ID 变化或绑定缺失时，按全局唯一且固定的来源账号或组织编码查找本地对象。
+     * 这里只读取和授权；新键、版本及快照通过校验后才写入绑定和本地资料。
      *
-     * @throws IdentityWriteException 本地对象不可管理、已删除、编码不匹配或来源键已有其他归属
+     * @param code 本次快照的 account 或 externalCode，须与本地编码逐字符相同
+     * @return 已有来源绑定、可补绑的本地对象或可新建的目标
+     * @throws IdentityWriteException 对象不可管理、编码冲突或新键存在归属不明的原文
      */
     private BindingTarget resolveBinding(IdentityObjectType type, ExternalIdentityKey key, String code,
-                                         IdentityBindingChange change, IdentityAccessService.Writer writer) {
+                                         IdentityAccessService.Writer writer) {
         var previous = store.find(type, key);
-        if (change == null) return new BindingTarget(previous, null, false);
+        if (previous != null) return new BindingTarget(previous, null, false);
 
-        String id = change.localId();
-        text(id, 64, true, "bindingChange.localId");
-        String oldKey = null;
-        if (change.previousExternalId() != null) {
-            var old = new ExternalIdentityKey(key.sourceCode(), change.previousExternalId());
-            IdentityAccessService.validateKey(old);
-            if (key.equals(old)) fail("INVALID_MODEL", "bindingChange.previousExternalId", "改绑的新旧外部 ID 均为「%s」，请提供不同的新键"
-                    .formatted(safe(key.externalId())));
-            oldKey = IdentitySourceStore.hash(type, old);
+        var local = persistence.findObjectByCode(type, code);
+        if (local == null) return new BindingTarget(null, null, false);
+        // 数据库唯一索引可能忽略大小写或空格。只有精确相同的编码才允许复用，普通本地账号也不得被接管。
+        if (!code.equals(local.get("identity_code")) || IdentitySourceStore.flag(local.get("deleted"))
+                || type == IdentityObjectType.USER && !SysUser.isExternallyProvisioned((String) local.get("authentication_mode"))) {
+            throw codeConflict(type, code);
+        }
+
+        String id = (String) local.get("id");
+        var bound = store.findLocal(type, id);
+        if (bound != null && (!key.sourceCode().equals(bound.get("source_code")) || !code.equals(bound.get("external_account")))) {
+            throw codeConflict(type, code);
         }
         access.requireBindingChange(type, id, writer);
-        var local = persistence.findObject(type, id);
-        if (local == null) fail("OBJECT_NOT_FOUND", "bindingChange.localId", "绑定修复目标 localId「%s」已删除或不存在"
-                .formatted(safe(id)));
-        boolean user = type == IdentityObjectType.USER;
-        var localCode = local.get(user ? "username" : "org_code");
-        if (!Objects.equals(code, localCode)) {
-            fail("IDENTITY_CODE_CONFLICT", user ? "account" : "externalCode", "%s「%s」与 localId「%s」的现有值「%s」不一致"
-                    .formatted(user ? "用户名" : "组织编码", safe(code), safe(id), safe(localCode)));
-        }
-        if (user && !SysUser.isExternallyProvisioned((String) local.get("authentication_mode"))) {
-            fail("SOURCE_BINDING_CONFLICT", "bindingChange.localId", "用户名「%s」的账号类型不支持绑定修复，仅支持外部预配账号".formatted(safe(code)));
-        }
-        if (previous != null) {
-            if (!id.equals(previous.get("local_id"))) fail("SOURCE_BINDING_CONFLICT", "key", "%s已绑定其他本地记录，无法关联到 localId「%s」"
-                    .formatted(sourceReference(key), safe(id)));
-            return new BindingTarget(previous, local, false);
-        }
-
-        var bound = store.findLocal(type, id);
-        if (oldKey == null) {
-            if (bound != null) fail("SOURCE_BINDING_CONFLICT", "bindingChange.localId", "localId「%s」已有来源绑定。若要更换同来源外部 ID，请提交旧外部 ID 改绑"
-                    .formatted(safe(id)));
-        } else if (bound == null || !oldKey.equals(bound.get("source_key"))) {
-            fail("SOURCE_BINDING_CONFLICT", "bindingChange.previousExternalId", "来源「%s」的旧外部 ID「%s」未绑定到 localId「%s」"
-                    .formatted(safe(key.sourceCode()), safe(change.previousExternalId()), safe(id)));
-        }
         snapshots.requireVacantKey(type, key);
-        return new BindingTarget(bound, local, oldKey != null);
+        return new BindingTarget(bound, local, bound != null);
     }
 
     /** 同事务迁移绑定、原文和组织父级引用；调用前已校验旧版本及目标键占用情况。 */
@@ -334,7 +322,7 @@ public class IdentityWriteService {
         String oldKey = (String) target.previous().get("source_key");
         String newKey = IdentitySourceStore.hash(type, key);
         if (persistence.moveBinding(oldKey, newKey, key.externalId(), target.localId()) != 1) {
-            fail("SOURCE_BINDING_CONFLICT", "bindingChange.previousExternalId", "localId「%s」的旧绑定已变更，请重新核对后提交改绑"
+            fail("SOURCE_BINDING_CONFLICT", "key.externalId", "localId「%s」的旧绑定已变更，请核对后重试同步"
                     .formatted(safe(target.localId())));
         }
         snapshots.move(oldKey, newKey);
@@ -355,33 +343,19 @@ public class IdentityWriteService {
         }
     }
 
-    /**
-     * 首次创建时原样使用来源编码，供各环境按相同用户名或组织编码解析配置引用。
-     * 已有映射以首次保存的来源编码校验后续快照，防止改名使任务和配置中的引用失效。
-     *
-     * @param type 决定目标表与错误字段名
-     * @param requested 已通过非空及长度校验的 account 或 externalCode
-     * @param target 已定位的同步目标，补绑编码已经与本地对象核对
-     * @return 原样传入的来源编码，供本地 username 或 orgCode 使用
-     * @throws IdentityWriteException 来源编码已被占用或试图修改已有编码时拒绝写入
-     */
-    private String identityCode(IdentityObjectType type, String requested, BindingTarget target) {
+    /** 已有来源编码用于跨环境解析配置引用，更新快照时不得修改。 */
+    private void requireStableCode(IdentityObjectType type, String requested, Map<String, Object> previous) {
+        if (previous == null || Objects.equals(requested, previous.get("external_account"))) return;
         boolean user = type == IdentityObjectType.USER;
-        String field = user ? "account" : "externalCode";
-        String label = user ? "用户名" : "组织编码";
-        var previous = target.previous();
-        if (previous != null) {
-            var current = previous.get("external_account");
-            if (!Objects.equals(requested, current)) {
-                fail("SOURCE_CODE_IMMUTABLE", field, "%s创建后固定，当前为「%s」，本次提交「%s」"
-                        .formatted(label, safe(current), safe(requested)));
-            }
-        } else if (target.creating() && persistence.countIdentityCode(type, requested) > 0) {
-            // 与数据库唯一索引使用相同的比较规则，并覆盖逻辑删除记录占用的编码。
-            fail("IDENTITY_CODE_CONFLICT", field, "%s「%s」已被占用，请核对同步记录的外部 ID 和现有绑定"
-                    .formatted(label, safe(requested)));
-        }
-        return requested;
+        fail("SOURCE_CODE_IMMUTABLE", user ? "account" : "externalCode", "%s创建后固定，当前为「%s」，本次提交「%s」"
+                .formatted(user ? "用户名" : "组织编码", safe(previous.get("external_account")), safe(requested)));
+    }
+
+    private IdentityWriteException codeConflict(IdentityObjectType type, String code) {
+        boolean user = type == IdentityObjectType.USER;
+        return new IdentityWriteException("IDENTITY_CODE_CONFLICT", user ? "account" : "externalCode",
+                "%s「%s」已被占用，请核对现有对象的编码、状态和来源归属"
+                        .formatted(user ? "用户名" : "组织编码", safe(code)));
     }
 
     /**
@@ -406,7 +380,8 @@ public class IdentityWriteService {
     }
 
     private IdentitySaveResult previousResult(IdentityObjectType type, ExternalIdentityKey key, Long version,
-                                               String digest, Map<String, Object> previous) {
+                                               String digest, BindingTarget target) {
+        var previous = target.previous();
         if (previous == null) return null;
         if (!"ACTIVE".equals(previous.get("binding_status"))) fail("SOURCE_OBJECT_RETIRED", "key", sourceReference(key) + "的绑定已退役");
         String id = (String) previous.get("local_id");
@@ -420,6 +395,11 @@ public class IdentityWriteService {
                         .formatted(sourceReference(key), safe(applied), safe(version)));
         IdentitySaveOutcome outcome = null;
         if (version != null && version < applied) outcome = IdentitySaveOutcome.STALE_IGNORED;
+        // 版本化换键必须推进版本，否则相同版本的旧键重试也会满足自动改绑条件。
+        else if (target.moving() && version != null && version.equals(applied)) {
+            fail("SOURCE_VERSION_CONFLICT", "sourceVersion", "%s与当前绑定使用相同版本 %d，变更外部 ID 须提交更高版本"
+                    .formatted(sourceReference(key), version));
+        }
         else if (Objects.equals(previous.get("payload_hash"), digest) && Objects.equals(applied, version)) outcome = IdentitySaveOutcome.UNCHANGED;
         else if (version != null && version.equals(applied)) fail("SOURCE_VERSION_CONFLICT", "sourceVersion",
                 "%s的版本 %d 已同步，本次内容与该版本不一致。如资料已变更，请提交更高版本"

@@ -63,6 +63,7 @@ request.get = async (url, config={}) => {
   return []
 }
 request.put=async(url,payload)=>{state.writes.push({url,payload});return {}}
+request.post=async(url,payload)=>{state.writes.push({url,payload});return {}}
 const pinia=createPinia()
 const app=createApp({setup:()=>()=>{
   const key=state.mode+state.revision
@@ -153,6 +154,23 @@ try {
 
   await mount('position')
   assert.equal((await calls()).some(c => c.url.startsWith('/system/org/')), false)
+  assert.equal(await page.getByText('适用单位', { exact: true }).count(), 0)
+  assert.equal(await page.getByText('人员数量', { exact: true }).count(), 0)
+  await page.getByRole('button', { name: '新增职务', exact: true }).click()
+  const createPosition = page.getByRole('dialog', { name: '新增职务', exact: true })
+  await createPosition.waitFor()
+  assert.equal(await createPosition.getByText('人员数量', { exact: true }).count(), 0)
+  assert.equal(await createPosition.getByText('适用单位', { exact: true }).count(), 0)
+  await createPosition.getByPlaceholder('如：部门负责人').fill('审核员')
+  await createPosition.getByPlaceholder('如：UNIT_LEADER').fill('REVIEWER')
+  await createPosition.getByRole('button', { name: '保存职务', exact: true }).click()
+  await createPosition.waitFor({ state: 'hidden' })
+  const created = await page.evaluate(() => orgSelectionTest.state.writes.at(-1))
+  assert.equal(created.url, '/system/position')
+  assert.equal(created.payload.positionCode, 'REVIEWER')
+  assert.equal(Object.hasOwn(created.payload, 'holderMode'), false)
+  assert.equal(Object.hasOwn(created.payload, 'applicableUnitType'), false)
+
   await page.getByRole('tab', { name: '职务人员' }).click()
   const panel = page.locator('.organization-panel')
   await panel.getByText('测试集团', { exact: true }).waitFor()
@@ -167,14 +185,22 @@ try {
   await assignment.getByRole('button', { name: '取消', exact: true }).click()
   assert.equal((await calls()).filter(c => c.url.startsWith('/system/org/')).length, before)
 
-  await mount('assignment', { open: true, lockedUnit: null, lockedUser: { id: 'u1', username: 'test', deptId: 'dept54' } })
+  await mount('assignment', { open: true, lockedUnit: { id: 'other', type: 'org', orgName: '其他集团' }, lockedUser: null })
+  await assignment.locator('.user-selector .selector-input.multiple').waitFor()
+  await assignment.getByRole('button', { name: '保存', exact: true }).click()
+  await assignment.waitFor({ state: 'hidden' })
+  assert.deepEqual(await page.evaluate(() => orgSelectionTest.state.writes.at(-1).payload), {
+    organizationUnitId: 'other', positionCode: 'LEADER', userIds: ['u1'], expectedUserIds: ['u1']
+  })
+
+  await mount('assignment', { open: true, lockedUnit: null, lockedUser: { id: 'u2', username: 'test2', deptId: 'dept54' }, writes: [] })
   await assignment.locator('.organization-selector input').waitFor()
   await page.waitForFunction(() => document.querySelector('.el-dialog .organization-selector input')?.value === '部门54')
   assert.equal(await assignment.locator('.organization-selector input').inputValue(), '部门54')
   await assignment.getByRole('button', { name: '设置职务', exact: true }).click()
   await page.waitForFunction(() => orgSelectionTest.state.writes.length > 0)
   assert.deepEqual(await page.evaluate(() => orgSelectionTest.state.writes.at(-1).payload), {
-    organizationUnitId: 'dept54', positionCode: 'LEADER', userIds: ['u1'], expectedUserIds: ['u1']
+    organizationUnitId: 'dept54', positionCode: 'LEADER', userIds: ['u1', 'u2'], expectedUserIds: ['u1']
   })
 
   await mount('user')

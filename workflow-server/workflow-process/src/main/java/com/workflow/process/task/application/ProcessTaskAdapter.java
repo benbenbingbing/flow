@@ -18,14 +18,13 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** 聚合任务查询、办理和干预入口，保留原有任务身份、发布规则与幂等校验。 */
+/** 聚合调用方已授权的任务查询、办理和干预。流程引擎状态、发布规则和幂等由宿主维护。 */
 @Component
 @RequiredArgsConstructor
 public class ProcessTaskAdapter implements ProcessTaskPort {
     private final ProcessQueryAdapter queries;
     private final ProcessTaskCommandAdapter commands;
     private final ProcessTaskInterventionAdapter interventions;
-    private final TaskActionService taskActions;
     private final TaskDetailService taskDetails;
 
     @Override
@@ -33,7 +32,7 @@ public class ProcessTaskAdapter implements ProcessTaskPort {
         return queries.findActiveTask(taskId);
     }
 
-    /** 先校验待办身份，之后才解析表单，避免仅凭实例读取权限看到办理信息。 */
+    /** 返回调用方已授权的活动任务摘要及当前发布表单。 */
     @Override
     public ProcessTaskDetail getTaskDetail(String taskId) {
         ProcessValues.required(taskId, "taskId");
@@ -41,8 +40,6 @@ public class ProcessTaskAdapter implements ProcessTaskPort {
                 .orElseThrow(() -> new ProcessOperationException("TASK_NOT_FOUND", "活动任务不存在", taskId));
         boolean addSign = "ADD_SIGN".equals(task.kind());
         try {
-            if (addSign) taskDetails.requireLocalAddSignTaskAccess(taskId);
-            else taskActions.requireTaskAccess(taskId);
             var capabilities = getTaskCapabilities(taskId);
             var form = taskDetails.findActiveTaskForm(taskId, addSign);
             return new ProcessTaskDetail(task, queries.requireInstance(task.instanceId()).businessReference(),

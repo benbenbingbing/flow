@@ -60,6 +60,37 @@ class EntityUserPathAdapterTest {
         assertEquals(3, description.versions().size());
     }
 
+    @Test void historicalSystemSubmitterIsSelectableAndResolvesByUserIdInPinnedPath() {
+        EntityField submitter = field("submitterId", EntityField.FieldType.STRING, null);
+        submitter.setFieldName("提交人ID");
+        submitter.setIsSystem(true);
+        root.setFields(List.of(submitter));
+
+        var option = adapter.options("expense", List.of()).get(0);
+        assertEquals("提交人ID", option.label());
+        assertTrue(option.terminal());
+        assertFalse(option.multiple());
+        assertNull(option.disabledReason());
+        var submitterPath = List.of(option.step());
+        var description = adapter.describe("expense", submitterPath, List.of());
+        when(mapper.select(any())).thenReturn(
+                List.of(Map.of("id", "r1", "link_value", "u1")),
+                List.of(Map.of("id", "u1", "deleted", 0)),
+                List.of(Map.of("id", "u1", "username", "alice")));
+        assertEquals(List.of("alice"), adapter.readUserKeys("expense", "r1", submitterPath, description.versions()));
+        verify(mapper).select(argThat(sql -> sql.sql().contains("`submitter_id` AS link_value")));
+        assertEquals(EntityField.FieldType.STRING, submitter.getFieldType());
+
+        // 历史快照没有目标实体 ID，提交人仍只接受用户主键，不能降级查同名账号。
+        when(mapper.select(any())).thenReturn(List.of(Map.of("id", "r1", "link_value", "missing")), List.of());
+        assertTrue(adapter.readUserKeys("expense", "r1", submitterPath, description.versions()).isEmpty());
+        verify(mapper, never()).select(argThat(sql -> sql.sql().contains("username IN")));
+
+        submitter.setIsSystem(false);
+        assertTrue(adapter.options("expense", List.of()).isEmpty());
+        assertThrows(EntityUserReferenceException.class, () -> adapter.describe("expense", submitterPath, List.of()));
+    }
+
     @Test void userDepartmentCreatorMayReturnToTheSameUser() {
         when(mapper.select(any())).thenReturn(
                 List.of(Map.of("id", "r1", "link_value", "u1")),

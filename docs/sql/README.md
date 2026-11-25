@@ -6,6 +6,26 @@
 
 `sys_user` 的认证模式和密码列注释反映当前应用行为。外部账号初始使用 `EXTERNAL_ONLY`，有权限的重置将认证模式切换为 `EXTERNAL_AND_LOCAL_PASSWORD`。现有列可保存新增模式值，本次只更新空库列用途注释。
 
+## 2026-11-25 同步 V146 提交人用户关系
+
+同时核对 SQL 和 Java 迁移，工作区原最高版本为 V145。新增 [V146__submitter_system_user_reference.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V146__submitter_system_user_reference.sql)，将有效动态实体的系统字段 `submitterId` 升级为 `REFERENCE`，引用系统用户实体。已发布历史文档及其指纹保持原值，流程关系解析兼容旧快照。
+
+七份空库脚本均为 **202 张表、2,816 个字段**，其中 `entity_field` 为 32 列。空库没有待转换的动态实体字段行，因此七份脚本仅更新版本说明。逐方言核对表名和字段清单，并对比确认该说明之外的结构、索引、约束、用途注释和种子与本次修改前一致。
+
+在 H2 的 MySQL、PostgreSQL、Oracle 三种兼容模式执行 V146、校验迁移记录并重复运行，覆盖系统字段升级、普通同名字段和已删除行保留，以及发布历史原文保留。七种目标数据库均未实机迁移或全量导入。
+
+迁移文件清单为新增 **V146__submitter_system_user_reference.sql**。修改、删除或重命名历史 SQL 和 Java 迁移的文件均无。
+
+## 2026-11-24 同步 V145 移除职务单位类型和人数限制
+
+同时核对 SQL 和 Java 迁移，原最高版本 V144。本次新增 [V145__remove_position_restrictions.java](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V145__remove_position_restrictions.java)，移除 `sys_position.applicable_unit_type`、`sys_position.holder_mode` 及其检查约束。迁移保留职务和当前任职数据。组织、部门共用职务定义，负责人也可设置多人。
+
+七份空库脚本均为 **202 张表、2,816 个字段**，其中 `sys_position` 为 13 列。保留职务主键、编码唯一性、状态排序索引、其余检查约束、任职关系约束及内置 `UNIT_LEADER` 种子，种子写入与 13 列结构对应。
+
+验证覆盖 H2 的 MySQL、PostgreSQL、Oracle 三种兼容模式及七份脚本的表列清单。隔离 MySQL 8.0 用 Flyway 执行 V145、校验并再次运行，隔离 PostgreSQL 15 使用 JDBC 执行同一 Java 迁移并验证重入。两库均验证了已有任职、追加人员和对应空库脚本的职务 DDL 与种子。未连接业务库或执行全库导入。Oracle、达梦、人大金仓及两种 OceanBase 未实机升级。
+
+迁移文件清单为新增 **V145__remove_position_restrictions.java**，历史 SQL 和 Java 迁移的修改、删除、重命名均为无。
+
 ## 2026-11-18 同步 V144 合并流程发起时机
 
 同时检查 SQL 和 Java 迁移，原最高版本为工作区已有的 V143；本轮新增 [`V144__merge_process_started_into_start_after.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V144__merge_process_started_into_start_after.sql)，将全部旧 `PROCESS_STARTED` 配置迁到 `PROCESS_START_EXECUTED`（发起后），不按处理器用途转到发起前。`PROCESS_COMPLETED` 改称流程正常结束后；当前20项标准时机（流程7、用户任务节点12、连线1），见[发起边界及顺序](../flow-action-timing-extension.md#v144-合并发起时机)。

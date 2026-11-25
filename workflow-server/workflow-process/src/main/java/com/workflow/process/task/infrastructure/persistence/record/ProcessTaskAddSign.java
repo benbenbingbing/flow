@@ -25,7 +25,7 @@ public class ProcessTaskAddSign {
     private String nodeId;
     /** 加签类型（如 before前加签/after后加签/parallel并行加签） */
     private String operationType;
-    /** 操作人ID */
+    /** 开放编排的责任人。源任务提交后保存实际提交人，供异步收口恢复审批历史归属。 */
     private String operatorId;
     /** 加签操作备注 */
     private String comment;

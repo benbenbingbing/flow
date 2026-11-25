@@ -264,10 +264,9 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 |---|---|---|---|---|
 | `enabled` | 是否启用审批意见区域 | `true`（默认） | `false` 时隐藏审批意见输入框 | 前端不显示意见区 |
 | `commentLabel` | 审批意见输入框标签 | `审批意见` | 前端展示文本 | 可自定义为“审批备注”等 |
-| `options` | 审批操作选项数组 | 默认 `[{label:'通过',value:'approve',type:'primary',showComment:true,remarkRequired:false}, {label:'驳回',value:'reject',type:'danger',showComment:true,remarkRequired:false}]` | 决定审批按钮展示、流程变量 `approved` 取值、历史记录 actionLabel | 按钮样式、备注必填、分支条件 |
+| `options` | 审批操作选项数组 | 默认选项为「通过」(`approve`) 和「驳回」(`reject`) | 决定审批选项展示、流程变量 `approved` 取值、历史记录 actionLabel | 选项显示、备注配置、分支条件 |
 | `options[i].label` | 按钮显示文本 | 如 `通过`、`同意，需要会签` | 前端按钮文字、审批历史 actionLabel | 持久化到 `process_task.action_label` |
 | `options[i].value` | 选项值（流程变量值） | 如 `approve`/`reject`/`needMeeting` | 写入 Flowable 变量 `approved`，供网关条件使用 | 网关条件按 value 判断 |
-| `options[i].type` | 按钮样式 | `primary`/`success`/`warning`/`danger` | Element UI 按钮类型 | 视觉呈现正确 |
 | `options[i].showComment` | 是否显示备注输入框 | `true`/`false` | 控制备注区显隐 | 选中该选项时显示/隐藏备注 |
 | `options[i].remarkRequired` | 备注是否必填 | `true`/`false` | 备注为空时拒绝提交 | 仅当 `showComment=true` 时有效 |
 

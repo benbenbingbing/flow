@@ -41,11 +41,13 @@ import java.util.Optional;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -509,13 +511,16 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals("P001", insertCaptor.getValue().get("code"));
         assertFalse(insertCaptor.getValue().containsKey("data_no"));
         assertFalse(insertCaptor.getValue().containsKey("title"));
+        var startOrder = inOrder(fixture.dynamicMapper, fixture.processRuntimePort);
+        startOrder.verify(fixture.dynamicMapper).update(eq("wf_parent"),
+                argThat(update -> update.containsKey("submitter_id")));
         ArgumentCaptor<ProcessStartRequest> startCaptor = ArgumentCaptor.forClass(ProcessStartRequest.class);
-        verify(fixture.processRuntimePort).start(startCaptor.capture());
+        startOrder.verify(fixture.processRuntimePort).start(startCaptor.capture());
         assertEquals("P001", startCaptor.getValue().code());
 
         ArgumentCaptor<Map<String, Object>> updateCaptor =
                 ArgumentCaptor.forClass(Map.class);
-        verify(fixture.dynamicMapper).update(
+        startOrder.verify(fixture.dynamicMapper).update(
                 eq("wf_parent"),
                 updateCaptor.capture());
         Map<String, Object> updateData = updateCaptor.getValue();

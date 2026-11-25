@@ -29,17 +29,30 @@ public class TaskOperationApplicationService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> operations(String taskId) {
+        return operations(taskId, false);
+    }
+
+    /** 计算调用方已授权任务的已发布能力，保留加签和引擎状态。 */
+    @Transactional(readOnly = true)
+    public Map<String, Object> operationsForPort(String taskId) {
+        return operations(taskId, true);
+    }
+
+    private Map<String, Object> operations(String taskId, boolean portCall) {
         if (taskAddSignService.isAddSignTask(taskId)) {
             // 本地加签仅有办理能力，不能继承源引擎任务的退回、知会等管理操作。
-            var authorized = localAddSignAccess.requireCurrentUserAccess(taskId, null);
+            var authorized = portCall ? localAddSignAccess.requireActiveForPort(taskId, null)
+                    : localAddSignAccess.requireCurrentUserAccess(taskId, null);
             boolean active = !authorized.sourceTask().isSuspended();
             return Map.of("approve", active, "reject", active);
         }
-        Map<String, Object> operations = new LinkedHashMap<>(taskAddSignService.operations(taskId));
+        Map<String, Object> operations = new LinkedHashMap<>(portCall ? taskAddSignService.operationsForPort(taskId)
+                : taskAddSignService.operations(taskId));
         if (Boolean.FALSE.equals(operations.get("approve"))) return operations;
         operations.put("manualCc", ccRuntimeService.isManualCcAllowed(taskId));
         NodeOperationCapabilityService.OperationCapabilities capabilities =
-                nodeOperationCapabilityService.availableCapabilities(taskId);
+                portCall ? nodeOperationCapabilityService.availableCapabilitiesForPort(taskId)
+                        : nodeOperationCapabilityService.availableCapabilities(taskId);
 
         // 固有运行状态与节点配置采用 AND，配置不能重新开放正在加签等场景下已关闭的动作。
         boolean intrinsicTransfer = Boolean.TRUE.equals(operations.get("transfer"));
@@ -59,7 +72,9 @@ public class TaskOperationApplicationService {
         // 存量流程仍保留矩阵对其它旧动作的准确约束；新三开关会令旧矩阵自动失效。
         if (nodeOperationDecisionService != null) {
             Map<String, NodeOperationDecisionService.ActionDecision>
-                    decisions = nodeOperationDecisionService.availableActions(taskId);
+                    decisions = portCall ? nodeOperationDecisionService.availableActionsForPort(
+                            taskId, com.workflow.admin.security.context.UserContext.getUserId())
+                            : nodeOperationDecisionService.availableActions(taskId);
             operations.put("approve", Boolean.TRUE.equals(operations.get("approve"))
                     && decisions.get("approve").allowed());
             operations.put("reject", Boolean.TRUE.equals(operations.get("reject"))
@@ -77,11 +92,18 @@ public class TaskOperationApplicationService {
      */
     @Transactional(rollbackFor = Exception.class)
     public int manualCc(String taskId, TaskCcRequest request) {
+        return manualCc(taskId, request, null);
+    }
+
+    /** 调用方授权后，历史节点策略仍验证原因和接收人等请求条件。 */
+    @Transactional(rollbackFor = Exception.class)
+    public int manualCcForPort(String taskId, TaskCcRequest request, String operatorId) {
+        return manualCc(taskId, request, java.util.Objects.requireNonNull(operatorId));
+    }
+
+    private int manualCc(String taskId, TaskCcRequest request, String authorizedOperator) {
         if (nodeOperationDecisionService != null) {
-            nodeOperationDecisionService.requireAllowed(
-                    taskId,
-                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.MANUAL_CC,
-                    com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+            var context = NodeOperationDecisionService.CheckContext
                             .ofTarget(
                                     request.getComment(),
                                     request.getUserIds() == null
@@ -89,8 +111,13 @@ public class TaskOperationApplicationService {
                                             : new java.util.LinkedHashSet<>(request.getUserIds()),
                                     null,
                                     null,
-                                    Map.of()));
+                                    Map.of());
+            nodeOperationDecisionService.requireAllowed(
+                    taskId,
+                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.MANUAL_CC,
+                    authorizedOperator == null ? context : context.authorizedByCaller(authorizedOperator));
         }
-        return ccRuntimeService.manualCc(taskId, request);
+        return authorizedOperator == null ? ccRuntimeService.manualCc(taskId, request)
+                : ccRuntimeService.manualCcForPort(taskId, request, authorizedOperator);
     }
 }

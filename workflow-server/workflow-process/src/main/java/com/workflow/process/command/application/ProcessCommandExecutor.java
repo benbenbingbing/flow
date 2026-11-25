@@ -47,17 +47,26 @@ public class ProcessCommandExecutor {
     @Transactional(rollbackFor = Exception.class)
     public <T> Execution<T> execute(CommandMeta meta, String commandType, Object command,
                                     Class<T> resultType, Supplier<Outcome<T>> work) {
-        return execute(access.invocationKey(), meta, commandType, command, resultType, work);
+        return execute(access.invocationKey(), null, meta, commandType, command, resultType, work);
+    }
+
+    /** 隔离与页面共用命令类型的 Port 回执，防止页面重放调用方已授权的操作。 */
+    @Transactional(rollbackFor = Exception.class)
+    public <T> Execution<T> executeForPort(CommandMeta meta, String commandType, Object command,
+            Class<T> resultType, Supplier<Outcome<T>> work) {
+        String priorScope = access.invocationKey();
+        return execute("port:" + priorScope, priorScope, meta, commandType, command, resultType, work);
     }
 
     /** 后台命令使用显式审计标识隔离回执。摘要限制范围长度，且与登录和发布动作的回执分开。 */
     @Transactional(rollbackFor = Exception.class)
     public <T> Execution<T> executeForOperator(String operatorId, CommandMeta meta, String commandType,
             Object command, Class<T> resultType, Supplier<Outcome<T>> work) {
-        return execute("operator:" + digest(Objects.requireNonNull(operatorId)), meta, commandType, command, resultType, work);
+        return execute("operator:" + digest(Objects.requireNonNull(operatorId)), null, meta, commandType, command,
+                resultType, work);
     }
 
-    private <T> Execution<T> execute(String scope, CommandMeta meta, String commandType, Object command,
+    private <T> Execution<T> execute(String scope, String priorScope, CommandMeta meta, String commandType, Object command,
             Class<T> resultType, Supplier<Outcome<T>> work) {
         String id = digest(scope + "\n" + meta.requestId());
         // 同事务中的动作回调可以再次进入公共端口；应在读取自己尚未完成的回执前报告重入。
@@ -66,6 +75,13 @@ public class ProcessCommandExecutor {
         String hash = digest(commandType + "\n" + encode(command));
         ProcessCommandRecord existing = records.selectById(id);
         if (existing != null) return replay(existing, hash, resultType);
+        if (priorScope != null) {
+            // 旧版本的 Java 办理和页面回执使用同一范围。Java 只重放同范围、同载荷的成功结果。
+            var previous = records.selectById(digest(priorScope + "\n" + meta.requestId()));
+            if (previous != null && "SUCCESS".equals(previous.getStatus()) && hash.equals(previous.getCommandHash())) {
+                return replay(previous, hash, resultType);
+            }
+        }
 
         ProcessCommandRecord record = new ProcessCommandRecord();
         record.setId(id);

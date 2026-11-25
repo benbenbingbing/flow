@@ -63,6 +63,7 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
     private final TaskOperationApplicationService taskOperations;
     private final TaskApprovalQueryService approvalQueries;
     private final NodeOperationDecisionService decisions;
+    private final com.workflow.process.task.application.TaskIdentityAccessService identities;
 
     /** 读取指定实例，实际缺失时返回空。Port 调用方决定实例访问范围。 */
     public Optional<ProcessInstanceView> findInstance(String instanceId) {
@@ -168,7 +169,7 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
         var task = tasks.createTaskQuery().taskId(taskId).singleResult();
         if (task != null) {
             if (checkAccess) access.requireRead(task.getProcessInstanceId());
-            return Optional.of(engineTaskView(task));
+            return Optional.of(engineTaskView(task, checkAccess));
         }
         var mirror = processTasks.getTaskByTaskId(taskId);
         if (mirror == null || !isActiveLocal(mirror)) return Optional.empty();
@@ -179,27 +180,28 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
     /** 返回全部活动分支及已激活的本地加签任务；排序稳定，不隐式挑选第一项。 */
     public List<ProcessTaskView> listActiveTasks(String instanceId) {
         requireInstance(instanceId);
-        return activeTasks(instanceId);
+        return activeTasks(instanceId, false);
     }
 
     /** 供动作上下文按当前授权范围读取指定实例的活动任务。 */
     public List<ProcessTaskView> listReadableActiveTasks(String instanceId) {
         findReadableInstance(instanceId).orElseThrow(() -> new ProcessOperationException(
                 "PROCESS_NOT_FOUND", "流程实例不存在", instanceId));
-        return activeTasks(instanceId);
+        return activeTasks(instanceId, true);
     }
 
-    private List<ProcessTaskView> activeTasks(String instanceId) {
+    private List<ProcessTaskView> activeTasks(String instanceId, boolean checkAccess) {
         var result = new ArrayList<ProcessTaskView>();
-        tasks.createTaskQuery().processInstanceId(instanceId).list().stream().map(this::engineTaskView).forEach(result::add);
+        tasks.createTaskQuery().processInstanceId(instanceId).list().stream()
+                .map(task -> engineTaskView(task, checkAccess)).forEach(result::add);
         processTasks.getTasksByProcessInstance(instanceId).stream().filter(this::isActiveLocal)
                 .map(projection::mirror).forEach(result::add);
         return result.stream().sorted(order(ProcessTaskView::createTime, ProcessTaskView::taskId, ProcessSort.OLDEST_FIRST)).toList();
     }
 
     /** 引擎判断任务是否存活，平台镜像补充加签造成的等待状态；不以旧镜像替换实时办理人。 */
-    private ProcessTaskView engineTaskView(org.flowable.task.api.Task task) {
-        var view = projection.task(task);
+    private ProcessTaskView engineTaskView(org.flowable.task.api.Task task, boolean checkAccess) {
+        var view = checkAccess ? projection.task(task) : projection.taskForPort(task);
         var mirror = processTasks.getTaskByTaskId(task.getId());
         if (mirror == null || !Objects.equals(view.instanceId(), mirror.getProcessInstanceId())
                 || !(ProcessTask.STATUS_WAITING.equals(mirror.getStatus()) || ProcessTask.STATUS_HOLD.equals(mirror.getStatus()))
@@ -284,7 +286,9 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
         }
         for (var item : commands.selectList(Wrappers.<ProcessCommandRecord>lambdaQuery()
                 .eq(ProcessCommandRecord::getProcessInstanceId, query.processInstanceId()).eq(ProcessCommandRecord::getStatus, "SUCCESS"))) {
-            String operator = item.getInvocationScope().startsWith("user:") ? item.getInvocationScope().substring(5) : null;
+            String scope = item.getInvocationScope();
+            if (scope.startsWith("port:")) scope = scope.substring(5);
+            String operator = scope.startsWith("user:") ? scope.substring(5) : null;
             // 命令回执显式以 UTC 写入，与旧业务表日期采用不同且已声明的存储约定。
             result.add(new ProcessOperationView(item.getId(), item.getRequestId(), item.getProcessInstanceId(), item.getTaskId(),
                     item.getCommandType(), operator, item.getCreateTime().toInstant(ZoneOffset.UTC), null));
@@ -304,22 +308,23 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
                         Comparator.nullsLast(Comparator.naturalOrder()))).toList();
     }
 
-    /** 操作能力用于提示，命令执行仍需重新检查发布规则和任务状态。 */
+    /** 调用方授权任务。能力仅反映当前发布规则和任务状态，命令执行仍需在事务中重验。 */
     public TaskCapabilities getTaskCapabilities(String taskId) {
-        access.requireActor();
         return legacy(taskId, () -> {
             if (addSignUsers.findByGeneratedTaskId(taskId) != null) {
-                localAccess.requireCurrentUserAccess(taskId, null);
+                var local = localAccess.requireActiveForPort(taskId, null);
                 Map<String, ActionCapability> actions = new LinkedHashMap<>();
                 for (String action : List.of("approve", "reject", "transfer", "addSign", "manualCc", "claim", "returnToNode", "resubmit")) {
-                    boolean allowed = Set.of("approve", "reject").contains(action);
-                    actions.put(action, new ActionCapability(allowed, allowed ? null : "LOCAL_ADD_SIGN_UNSUPPORTED",
-                            allowed ? null : "本地加签任务仅支持通过或驳回"));
+                    boolean supported = Set.of("approve", "reject").contains(action);
+                    boolean allowed = supported && !local.sourceTask().isSuspended();
+                    actions.put(action, new ActionCapability(allowed,
+                            allowed ? null : supported ? "PROCESS_STATE_CHANGED" : "LOCAL_ADD_SIGN_UNSUPPORTED",
+                            allowed ? null : supported ? "任务所属流程已挂起" : "本地加签任务仅支持通过或驳回"));
                 }
                 return new TaskCapabilities(actions, List.of(), List.of());
             }
-            var intrinsic = taskOperations.operations(taskId);
-            var policy = decisions.availableActions(taskId);
+            var intrinsic = taskOperations.operationsForPort(taskId);
+            var policy = decisions.availableActionsForPort(taskId, com.workflow.admin.security.context.UserContext.getUserId());
             Map<String, ActionCapability> actions = new LinkedHashMap<>();
             intrinsic.forEach((key, value) -> {
                 if (!(value instanceof Boolean allowed)) return;
@@ -328,7 +333,7 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
                         ? decision.reasonCode() : "TASK_STATE_RESTRICTED", allowed ? null : decision != null && !decision.allowed()
                         ? decision.message() : "当前任务状态不允许该操作"));
             });
-            var task = findReadableActiveTask(taskId).orElseThrow(() -> new ProcessOperationException("TASK_NOT_FOUND", "任务不存在", taskId));
+            var task = findActiveTask(taskId).orElseThrow(() -> new ProcessOperationException("TASK_NOT_FOUND", "任务不存在", taskId));
             actions.put("claim", new ActionCapability(task.canClaim(), task.canClaim() ? null : "TASK_NOT_CLAIMABLE", null));
             var reject = policy.get("reject");
             List<String> targets = reject == null || !reject.allowed() ? List.of() : reject.rule().allowedRejectTargets().stream().sorted().toList();
@@ -336,15 +341,14 @@ public class ProcessQueryAdapter implements ProcessHistoryPort, ProcessNextAppro
             boolean canReturn = !targets.isEmpty() && !addSignOpen && Boolean.TRUE.equals(intrinsic.get("reject"));
             actions.put("returnToNode", new ActionCapability(canReturn,
                     canReturn ? null : "TASK_ACTION_NOT_ALLOWED", canReturn ? null : "当前没有可立即退回的目标"));
-            var actor = access.requireActor();
             var instance = historic(task.instanceId());
             String starter = instance == null ? null : instance.getStartUserId();
-            boolean canResubmit = !addSignOpen && starter != null
-                    && (starter.equals(actor.userId()) || starter.equals(actor.username()))
+            boolean canResubmit = !addSignOpen && "todo".equals(task.status()) && starter != null
                     && (Boolean.TRUE.equals(tasks.getVariableLocal(taskId,
                             com.workflow.process.task.application.TaskHistoryReturnService.RESUBMIT_MARKER))
                     || Boolean.TRUE.equals(runtime.getVariable(task.instanceId(), "_rejected_"))
-                    || "reject".equals(runtime.getVariable(task.instanceId(), "approved")));
+                    || "reject".equals(runtime.getVariable(task.instanceId(), "approved")))
+                    && identities.isAssignedOrCandidate(tasks.createTaskQuery().taskId(taskId).singleResult(), starter);
             actions.put("resubmit", new ActionCapability(canResubmit,
                     canResubmit ? null : "TASK_ACTION_NOT_ALLOWED", canResubmit ? null : "当前不是发起人的退回待办"));
             List<String> types = ((List<?>) intrinsic.getOrDefault("addSignTypes", List.of())).stream().map(String::valueOf).toList();

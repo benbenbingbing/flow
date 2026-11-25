@@ -24,12 +24,12 @@ public final class IdentitySqlProvider {
     private String objectTable(Map<String, Object> args) {
         return args.get("type") == IdentityObjectType.USER ? "sys_user" : "sys_organization";
     }
-    /** 表名和列名仅由对象类型决定，编码参数绑定并沿用目标列的排序规则。 */
-    public String countIdentityCode(Map<String, Object> args) {
-        boolean user = args.get("type") == IdentityObjectType.USER;
-        String table = user ? "sys_user" : "sys_organization";
-        String column = user ? "username" : "org_code";
-        return "SELECT COUNT(*) FROM " + table + " WHERE " + column + " = #{code}";
+    /** 用唯一索引按数据库排序规则定位候选，实际编码交给应用复核大小写和空格。 */
+    public String selectObjectByCode(Map<String, Object> args) {
+        if (args.get("type") == IdentityObjectType.USER) {
+            return "SELECT id, username AS identity_code, status, deleted, authentication_mode FROM sys_user WHERE username = #{code}";
+        }
+        return "SELECT id, org_code AS identity_code, status, deleted FROM sys_organization WHERE org_code = #{code}";
     }
     public String readExtension(Map<String, Object> args) {
         validate(args);

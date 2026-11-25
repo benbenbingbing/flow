@@ -12,7 +12,6 @@ import com.workflow.port.system.error.identity.position.OrganizationPositionDire
 import com.workflow.port.system.SysOrganizationPort;
 import com.workflow.port.system.model.identity.position.OrganizationUnitSnapshot;
 import com.workflow.port.system.model.identity.position.OrganizationUnitStateView;
-import com.workflow.port.system.model.identity.position.PositionDefinitionView;
 import com.workflow.port.system.model.identity.position.PositionDirectoryResultCode;
 import com.workflow.port.system.model.identity.position.PositionHolderResolution;
 import com.workflow.port.system.model.identity.position.PositionHolderView;
@@ -121,16 +120,13 @@ public class RelativeOrgPositionPersonResolver
                 RelativeOrgPositionConfig.parse(request.extraParams());
         config.validateAssignmentMode(
                 request.assignmentMode(), request.multiInstance());
-        PositionDefinitionView position;
         try {
-            position = positions.requireEnabledPosition(
-                    config.positionCode());
+            positions.requireEnabledPosition(config.positionCode());
         } catch (OrganizationPositionDirectoryException exception) {
             throw new IllegalArgumentException(
                     exception.errorCode().name() + ": " + exception.getMessage(),
                     exception);
         }
-        validateApplicableUnitTypes(position, config);
         if (config.hierarchy().mode() == LookupMode.BUSINESS_LEVEL
                 && !organizations.isOrganizationBusinessLevelEnabled(
                 config.hierarchy().businessLevelCode())) {
@@ -643,36 +639,6 @@ public class RelativeOrgPositionPersonResolver
         }
         trace.directoryRevision = current.directoryRevision();
         trace.scanned(frozenUnit, depth, "UNIT_ACTIVE");
-    }
-
-    /**
-     * 校验适用单元类型集合；不满足约束时阻止后续处理。
-     *
-     * @param position 位置，作为 {@code IllegalArgumentException} 的输入影响后续处理
-     * @param config 配置内容，决定后续适用单元类型集合的处理规则
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private void validateApplicableUnitTypes(
-            PositionDefinitionView position,
-            RelativeOrgPositionConfig config) {
-        String applicable = position.applicableUnitType() == null
-                ? "" : position.applicableUnitType().trim().toUpperCase(Locale.ROOT);
-        if ("ANY".equals(applicable)) {
-            return;
-        }
-        String allowed = switch (applicable) {
-            case "ORG" -> "org";
-            case "DEPT" -> "dept";
-            default -> throw new IllegalArgumentException(
-                    "POSITION_UNIT_TYPE_MISMATCH: 职务适用单位类型无效: "
-                            + position.applicableUnitType());
-        };
-        if (!config.hierarchy().eligibleUnitTypes().stream()
-                .allMatch(allowed::equals)) {
-            throw new IllegalArgumentException(
-                    "POSITION_UNIT_TYPE_MISMATCH: eligibleUnitTypes 超出职务适用范围 "
-                            + applicable);
-        }
     }
 
     /**

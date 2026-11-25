@@ -43,8 +43,6 @@ public class PositionDefinitionService {
      * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
      * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
      * @param keyword 关键字，作为 {@code and} 的输入影响后续处理
-     * @param applicableUnitType 适用单元类型标识，决定后续位置定义采用的处理分支
-     * @param holderMode 持有者模式标识，决定后续位置定义采用的处理分支
      * @param status 状态标识，决定后续位置定义采用的处理分支
      * @return 符合条件的位置视图结果，供调用方继续处理
      */
@@ -52,26 +50,13 @@ public class PositionDefinitionService {
             int pageNum,
             int pageSize,
             String keyword,
-            String applicableUnitType,
-            String holderMode,
             String status) {
         int safePage = Math.max(pageNum, 1);
         int safeSize = Math.min(Math.max(pageSize, 1), 100);
-        String normalizedUnitType = optionalEnum(
-                applicableUnitType, SysPosition.ApplicableUnitType.class,
-                "适用单位类型");
-        String normalizedHolderMode = optionalEnum(
-                holderMode, SysPosition.HolderMode.class, "任职模式");
         String normalizedStatus = optionalEnum(
                 status, SysPosition.Status.class, "职务状态");
         LambdaQueryWrapper<SysPosition> query =
                 new LambdaQueryWrapper<SysPosition>()
-                        .eq(StringUtils.hasText(normalizedUnitType),
-                                SysPosition::getApplicableUnitType,
-                                normalizedUnitType)
-                        .eq(StringUtils.hasText(normalizedHolderMode),
-                                SysPosition::getHolderMode,
-                                normalizedHolderMode)
                         .eq(StringUtils.hasText(normalizedStatus),
                                 SysPosition::getStatus,
                                 normalizedStatus)
@@ -95,19 +80,11 @@ public class PositionDefinitionService {
     /**
      * 返回任职表单与流程设计器可选择的启用职务。
      *
-     * @param applicableUnitType 适用单元类型标识，决定后续启用采用的处理分支
      * @return 位置视图集合，供调用方遍历或展示
      */
-    public List<PositionViews.PositionView> enabled(String applicableUnitType) {
-        String unitType = optionalEnum(
-                applicableUnitType,
-                SysPosition.ApplicableUnitType.class,
-                "适用单位类型");
-        if (SysPosition.ApplicableUnitType.ANY.name().equals(unitType)) {
-            unitType = null;
-        }
+    public List<PositionViews.PositionView> enabled() {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        return positionMapper.selectEnabled(unitType).stream()
+        return positionMapper.selectEnabled().stream()
                 // 选项接口不暴露跨范围任职数量，也不为每行扫描流程历史。
                 .map(position -> basicView(position, 0, 0, now))
                 .toList();
@@ -163,12 +140,6 @@ public class PositionDefinitionService {
         SysPosition position = new SysPosition();
         position.setPositionCode(code);
         position.setPositionName(requiredText(request.positionName(), "职务名称"));
-        position.setApplicableUnitType(requiredEnum(
-                request.applicableUnitType(),
-                SysPosition.ApplicableUnitType.class,
-                "适用单位类型"));
-        position.setHolderMode(requiredEnum(
-                request.holderMode(), SysPosition.HolderMode.class, "任职模式"));
         position.setBuiltIn(false);
         position.setStatus(SysPosition.Status.ENABLED.name());
         position.setSortOrder(nonNegative(request.sortOrder(), 0, "排序"));
@@ -209,44 +180,9 @@ public class PositionDefinitionService {
         }
         SysPosition current = requireLocked(id);
         int expectedRevision = requireRevision(request.revision(), current);
-        String unitType = requiredEnum(
-                request.applicableUnitType(),
-                SysPosition.ApplicableUnitType.class,
-                "适用单位类型");
-        String holderMode = requiredEnum(
-                request.holderMode(), SysPosition.HolderMode.class, "任职模式");
-
-        if (Boolean.TRUE.equals(current.getBuiltIn())
-                && (!current.getApplicableUnitType().equals(unitType)
-                    || !current.getHolderMode().equals(holderMode))) {
-            throw new PositionManagementException(
-                    409,
-                    PositionErrorCode.POSITION_REFERENCED,
-                    "内置负责人职务的适用单位类型和单人模式不可修改");
-        }
-
-        if (!SysPosition.ApplicableUnitType.ANY.name().equals(unitType)
-                && !unitType.equals(current.getApplicableUnitType())
-                && positionMapper.countAssignmentsOutsideUnitType(
-                        id, unitType.toLowerCase(Locale.ROOT)) > 0) {
-            throw new PositionManagementException(
-                    409,
-                    PositionErrorCode.POSITION_UNIT_TYPE_MISMATCH,
-                    "现有任职包含不适用于新单位类型的组织节点");
-        }
-        if (SysPosition.HolderMode.MULTIPLE.name().equals(current.getHolderMode())
-                && SysPosition.HolderMode.SINGLE.name().equals(holderMode)
-                && positionMapper.countUnitsWithMultipleHolders(id) > 0) {
-            throw new PositionManagementException(
-                    409,
-                    PositionErrorCode.POSITION_HOLDER_MODE_CONFLICT,
-                    "现有组织存在多名职务人员，不能切换为单人职务");
-        }
         int changed = positionMapper.updateDefinition(
                 id,
                 requiredText(request.positionName(), "职务名称"),
-                unitType,
-                holderMode,
                 nonNegative(request.sortOrder(), 0, "排序"),
                 trimToNull(request.description()),
                 requireActor(),
@@ -370,8 +306,6 @@ public class PositionDefinitionService {
                 position.getId(),
                 position.getPositionCode(),
                 position.getPositionName(),
-                position.getApplicableUnitType(),
-                position.getHolderMode(),
                 Boolean.TRUE.equals(position.getBuiltIn()),
                 position.getStatus(),
                 position.getSortOrder() == null ? 0 : position.getSortOrder(),

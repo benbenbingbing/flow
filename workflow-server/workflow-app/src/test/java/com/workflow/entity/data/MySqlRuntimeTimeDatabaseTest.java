@@ -109,7 +109,7 @@ class MySqlRuntimeTimeDatabaseTest {
 
     @Test void positionAndLeaderWritesKeepUtcTimestampsAndOptimisticRevision() {
         try (var f = new Fixture()) {
-            f.table("sys_position", "id VARCHAR(64) PRIMARY KEY, position_name VARCHAR(100), applicable_unit_type VARCHAR(32), holder_mode VARCHAR(32), sort_order INT, description TEXT, updated_by VARCHAR(64), revision INT, deleted INT, status VARCHAR(32), update_time DATETIME(6)");
+            f.table("sys_position", "id VARCHAR(64) PRIMARY KEY, position_name VARCHAR(100), sort_order INT, description TEXT, updated_by VARCHAR(64), revision INT, deleted INT, status VARCHAR(32), update_time DATETIME(6)");
             f.table("sys_organization", "id VARCHAR(64) PRIMARY KEY, leader_id VARCHAR(64), leader_name VARCHAR(100), deleted INT, update_time DATETIME(6)");
             var h = new Harness(f, SysPositionMapper.class, SysOrganizationMapper.class);
             h.jdbc.update("INSERT INTO sys_position(id,revision,deleted,status) VALUES ('p',1,0,'ENABLED')");
@@ -117,7 +117,7 @@ class MySqlRuntimeTimeDatabaseTest {
             h.tx.executeWithoutResult(status -> {
                 h.jdbc.execute("SET time_zone = '+09:00'");
                 var positions = h.mapper(SysPositionMapper.class);
-                assertEquals(1, positions.updateDefinition("p", "Position", "TEAM", "SINGLE", 1, "notes", "actor", 1));
+                assertEquals(1, positions.updateDefinition("p", "Position", 1, "notes", "actor", 1));
                 assertEquals(0, positions.updateStatus("p", "DISABLED", "stale", 1));
                 assertEquals(1, positions.updateStatus("p", "DISABLED", "actor", 2));
                 assertEquals(1, positions.softDelete("p", "actor", 3));

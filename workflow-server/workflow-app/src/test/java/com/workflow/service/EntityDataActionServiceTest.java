@@ -874,17 +874,18 @@ class EntityDataActionServiceTest {
         @Test
         void portCapabilitiesUsesThePublishedRowActionsAndIncludesDenialReason() {
                 var record = row("1", "A-1");
-                when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(record);
-                when(capabilityService.evaluateRowActionForConfig("asset", null, "edit", record))
+                when(dynamicService.findById("asset", "1")).thenReturn(record);
+                when(capabilityService.evaluateMutationForPort("asset", null, "edit", record))
                                 .thenReturn(EntityActionCapabilityDTO.allowed());
                 for (String key : List.of("delete", "batchDelete", "restartProcess")) {
-                        when(capabilityService.evaluateRowActionForConfig("asset", null, key, record))
+                        when(capabilityService.evaluateMutationForPort("asset", null, key, record))
                                         .thenReturn(EntityActionCapabilityDTO.hidden("当前状态不允许"));
                 }
 
                 var capabilities = service.getRecordCapabilities("asset", "1", null);
 
-                verify(capabilityService).requireStandardPermission("asset", EntityPermissionAction.VIEW);
+                verify(capabilityService, never()).requireStandardPermission("asset", EntityPermissionAction.VIEW);
+                verify(dynamicService, never()).findAccessibleById("asset", "1", null);
                 assertEquals(true, capabilities.get("edit").enabled());
                 assertEquals(false, capabilities.get("delete").enabled());
                 assertEquals("当前状态不允许", capabilities.get("delete").reason());

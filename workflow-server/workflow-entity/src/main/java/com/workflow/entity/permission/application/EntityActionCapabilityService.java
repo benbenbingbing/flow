@@ -611,14 +611,7 @@ public class EntityActionCapabilityService {
             // 实体 currentTaskId/assignee 可能来自兄弟任务或过期投影，不能作为审批授权。
             return EntityActionCapabilityDTO.hidden("当前用户没有可办理的审批任务");
         }
-        EntityStatus status = row != null && StringUtils.hasText(row.getStatus())
-                ? statusMapper.findByEntityAndCode(entityCode, row.getStatus()) : null;
-        EntityActionCapabilityDTO conditions = evaluateConditions(
-                new EntityActionRule[] {mandatoryRule, overrideRule},
-                row,
-                user,
-                status == null ? null : status.getStatusCategory(),
-                true);
+        EntityActionCapabilityDTO conditions = approvalConditions(entityCode, row, mandatoryRule, overrideRule, user);
         if (!conditions.isVisible() || !conditions.isEnabled()) {
             // 任务 ID 只会在所有条件通过后附加，失败能力不泄露待办标识。
             return conditions;
@@ -627,6 +620,18 @@ public class EntityActionCapabilityService {
                 actionableTaskId,
                 assigneeLookup.findActionableTaskName(row, user, actionableTaskId)
                         .orElse(null));
+    }
+
+    /** 待办已由调用方授权，仍计算发布按钮依赖的状态、字段和其它业务关系。 */
+    public EntityActionCapabilityDTO evaluateApprovalConditionsForPort(
+            String entityCode, EntityDataDTO row, EntityActionRule mandatoryRule, EntityActionRule overrideRule) {
+        return approvalConditions(entityCode, row, mandatoryRule, overrideRule, currentUser());
+    }
+
+    private EntityActionCapabilityDTO approvalConditions(String entityCode, EntityDataDTO row,
+            EntityActionRule mandatoryRule, EntityActionRule overrideRule, SysUser user) {
+        return evaluateConditions(new EntityActionRule[] {mandatoryRule, overrideRule},
+                row, user, statusCategory(entityCode, row), true);
     }
 
     /**
@@ -816,7 +821,7 @@ public class EntityActionCapabilityService {
         return evaluateRestartAction(entityCode, row, true);
     }
 
-    /** 重新发起仍受历史轮次、数据状态和发起人身份约束。 */
+    /** 重新发起始终检查历史轮次和数据状态。页面另行检查原发起人身份。 */
     public EntityActionCapabilityDTO evaluateRestartAction(
             String entityCode, EntityDataDTO row, boolean checkPermission) {
         if (checkPermission && (!PermissionUtil.hasPermission(EntityPermissionAction.RESTART_PROCESS.permissionCode(entityCode))
@@ -827,9 +832,12 @@ public class EntityActionCapabilityService {
                 || !"WITHDRAWN".equals(statusCategory(entityCode, row))) {
             return EntityActionCapabilityDTO.hidden("仅已撤回的数据可以重新发起");
         }
-        if (!processRuntimePort.canRestart(entityCode, row.getId(), row.getProcessInstanceId(),
-                UserContext.getUserId())) {
-            return EntityActionCapabilityDTO.hidden("仅原发起人可重新发起最新的已撤回流程");
+        boolean canRestart = checkPermission
+                ? processRuntimePort.canRestart(entityCode, row.getId(), row.getProcessInstanceId(), UserContext.getUserId())
+                : processRuntimePort.canRestartLatest(entityCode, row.getId(), row.getProcessInstanceId());
+        if (!canRestart) {
+            return EntityActionCapabilityDTO.hidden(checkPermission ? "仅原发起人可重新发起最新的已撤回流程"
+                    : "仅最新的已撤回流程可以重新发起");
         }
         return EntityActionCapabilityDTO.allowed();
     }

@@ -151,7 +151,9 @@ public class EntityUserPathMetadata {
         String targetCode = target(source, field);
         if (targetCode == null) throw invalid("字段不是可遍历实体关系");
         Entity target = context.entity(targetCode);
-        boolean legacyUser = !source.system() && !StringUtils.hasText(field.getRefEntityId()) && "sys_user".equals(targetCode);
+        boolean legacyUser = !source.system() && "sys_user".equals(targetCode)
+                && !StringUtils.hasText(field.getRefEntityId())
+                && !isSystemSubmitter(field.getFieldCode(), Boolean.TRUE.equals(field.getIsSystem()));
         return new Hop(source, target, field, false, field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE, legacyUser);
     }
 
@@ -161,9 +163,12 @@ public class EntityUserPathMetadata {
                 .orElseThrow(() -> invalid("字段不存在或未发布: " + entity.code() + "." + code));
     }
 
-    /** 现代 refEntityId 是权威目标；旧字段类型只在没有现代引用时适用。 */
+    /** 系统字段按固定契约解释，业务关系优先使用 refEntityId。 */
     private String target(Entity source, EntityField field) {
         if (source.system()) return SYSTEM_LINKS.get(source.code() + "." + field.getFieldCode());
+        // 旧发布快照将提交人存为文本元数据，但物理列一直保存用户主键。
+        // 在编译关系时解释该系统字段，历史快照原文和已钉定指纹仍然有效。
+        if (isSystemSubmitter(field.getFieldCode(), Boolean.TRUE.equals(field.getIsSystem()))) return "sys_user";
         if (field.getFieldType() == null) return null;
         if (!Set.of(EntityField.FieldType.USER, EntityField.FieldType.DEPT, EntityField.FieldType.REFERENCE,
                 EntityField.FieldType.MULTI_REFERENCE).contains(field.getFieldType())) return null;
@@ -178,6 +183,11 @@ public class EntityUserPathMetadata {
             case "ROLE" -> "sys_role"; case "GROUP" -> "sys_group";
             default -> null;
         };
+    }
+
+    /** 关系编译和配置导入预检共用此识别规则，以系统标记区分同名自定义字段。 */
+    public static boolean isSystemSubmitter(String fieldCode, boolean systemField) {
+        return systemField && "submitterId".equals(fieldCode);
     }
 
     private final class Context {

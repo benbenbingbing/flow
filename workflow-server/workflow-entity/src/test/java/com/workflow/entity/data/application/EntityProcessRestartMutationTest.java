@@ -89,7 +89,8 @@ class EntityProcessRestartMutationTest {
     @AfterEach void cleanup() { UserContext.clear(); }
 
     @Test void restartingPreservesIdentityAndUsesSavedCompleteDataThenRejectsOldSubmission() {
-        EntityProcessRestartContext.execute("expense", "record", "old", () -> service.update("expense", "record", request));
+        EntityProcessRestartContext.execute("expense", "record", "old", false,
+                () -> service.update("expense", "record", request));
         ArgumentCaptor<ProcessStartRequest> start = ArgumentCaptor.forClass(ProcessStartRequest.class);
         verify(processes).start(start.capture());
         assertEquals("record", start.getValue().entityRecordId());
@@ -101,7 +102,7 @@ class EntityProcessRestartMutationTest {
         assertEquals("RUNNING", stored.get("process_status"));
         assertEquals("WITHDRAWN", stored.get("status")); // 未配置开始连线，不能隐式覆盖实体状态。
         assertThrows(BusinessConflictException.class, () -> EntityProcessRestartContext.execute(
-                "expense", "record", "old", () -> service.update("expense", "record", request)));
+                "expense", "record", "old", false, () -> service.update("expense", "record", request)));
         verify(processes, times(1)).start(any());
         verifyNoInteractions(codes);
     }
@@ -110,8 +111,23 @@ class EntityProcessRestartMutationTest {
         assertThrows(BusinessForbiddenException.class, () -> service.update("expense", "record", request));
         when(processes.canRestart("expense", "record", "old", "starter")).thenReturn(false);
         assertThrows(BusinessConflictException.class, () -> EntityProcessRestartContext.execute(
-                "expense", "record", "old", () -> service.update("expense", "record", request)));
+                "expense", "record", "old", false, () -> service.update("expense", "record", request)));
         verify(mapper, never()).update(anyString(), anyMap());
         verify(processes, never()).start(any());
+    }
+
+    @Test void callerAuthorizedRestartUsesBusinessStateAndRecordsTheActualOperator() {
+        UserContext.setCurrentUser("integration-user", "integration-user");
+        assertThrows(BusinessConflictException.class, () -> EntityProcessRestartContext.execute(
+                "expense", "record", "old", false, () -> service.update("expense", "record", request)));
+        when(processes.canRestartLatest("expense", "record", "old")).thenReturn(true);
+
+        EntityProcessRestartContext.execute("expense", "record", "old", true,
+                () -> service.update("expense", "record", request));
+
+        ArgumentCaptor<ProcessStartRequest> start = ArgumentCaptor.forClass(ProcessStartRequest.class);
+        verify(processes).start(start.capture());
+        assertEquals("integration-user", start.getValue().submitterId());
+        assertEquals("new", stored.get("process_instance_id"));
     }
 }

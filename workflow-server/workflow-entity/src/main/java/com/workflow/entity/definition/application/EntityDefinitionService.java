@@ -56,6 +56,7 @@ public class EntityDefinitionService {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.EntityExcelConfigurationService> excelConfigurations;
     private static final String ORGANIZATION_ENTITY_CODE = "sys_organization";
+    private static final String USER_ENTITY_CODE = "sys_user";
     private final EntityDefinitionMapper entityMapper;
     @org.springframework.beans.factory.annotation.Autowired
     private EntityStatusService entityStatusService;
@@ -339,9 +340,9 @@ public class EntityDefinitionService {
                 EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder);
         fieldMapper.insert(processEndField);
 
-        // 7. submitterId - 提交人ID（不可编辑）
+        // 7. submitterId - 流程办理人可沿此关系读取首次提交人的用户记录。
         EntityField submitterIdField = createSystemField(entityId, "submitterId", "提交人ID",
-                EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder);
+                EntityField.FieldType.REFERENCE, "varchar(64)", 64, false, ++sortOrder);
         fieldMapper.insert(submitterIdField);
 
         // 8. submitterName - 提交人姓名（不可编辑）
@@ -415,6 +416,13 @@ public class EntityDefinitionService {
         field.setIsSystem(true); // 标记为系统字段
         field.setEditable(editable); // 是否可编辑
         field.setSortOrder(sortOrder);
+        if ("submitterId".equals(fieldCode)) {
+            field.setRefEntityType(EntityField.RefEntityType.USER);
+            entityMapper.findByEntityCode(USER_ENTITY_CODE)
+                    .filter(entity -> entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM)
+                    .map(EntityDefinition::getId)
+                    .ifPresent(field::setRefEntityId);
+        }
         return field;
     }
 
@@ -438,7 +446,7 @@ public class EntityDefinitionService {
         sortOrder = ensureSystemField(entityId, "processEndTime", "流程结束时间",
                 EntityField.FieldType.DATETIME, "datetime", null, sortOrder);
         sortOrder = ensureSystemField(entityId, "submitterId", "提交人ID",
-                EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
+                EntityField.FieldType.REFERENCE, "varchar(64)", 64, sortOrder);
         sortOrder = ensureSystemField(entityId, "submitterName", "提交人",
                 EntityField.FieldType.STRING, "varchar(100)", 100, sortOrder);
         sortOrder = ensureSystemField(entityId, "submitTime", "提交时间",

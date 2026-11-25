@@ -143,7 +143,7 @@ public class TaskActionService {
                 null,
                 List.of(),
                 true,
-                true, true, null);
+                true, true, null, false);
     }
 
     /**
@@ -189,7 +189,7 @@ public class TaskActionService {
                 nextApprovalScopeKey,
                 nextApproverSelections,
                 true,
-                true, true, null);
+                true, true, null, false);
     }
 
     /**
@@ -202,7 +202,16 @@ public class TaskActionService {
             String actionLabel, Map<String, Object> formData, String nextApprovalScopeKey,
             List<NextApproverSelectionRequest> nextApproverSelections, String returnTargetNodeId) {
         completeTaskInternal(taskId, userId, "reject", comment, null, actionLabel, formData,
-                nextApprovalScopeKey, nextApproverSelections, true, true, true, returnTargetNodeId);
+                nextApprovalScopeKey, nextApproverSelections, true, true, true, returnTargetNodeId, false);
+    }
+
+    /** 调用方已授权办理。节点条件、表单写入、选人重验和引擎推进按同一审批事务执行。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void completeTaskForPort(String taskId, String operatorId, String action, String comment,
+            String transferTo, String actionLabel, Map<String, Object> formData, String nextApprovalScopeKey,
+            List<NextApproverSelectionRequest> selections, String returnTargetNodeId) {
+        completeTaskInternal(taskId, operatorId, action, comment, transferTo, actionLabel, formData,
+                nextApprovalScopeKey, selections, false, true, true, returnTargetNodeId, true);
     }
 
     /**
@@ -232,7 +241,7 @@ public class TaskActionService {
                 null,
                 List.of(),
                 false,
-                false, false, null);
+                false, false, null, false);
     }
 
     /**
@@ -287,6 +296,7 @@ public class TaskActionService {
      * @param validateNextApprover 交互办理时为 true；后台收口前已判断手选需求时关闭
      * @param emitApprovalActions 是否为本次直接审批提交；后台执行已提交输入时为 false，防止重复执行业务动作
      * @param returnTargetNodeId 专用退回命令的目标约束，空值沿用旧表单兼容字段
+     * @param portCall 由调用方负责办理授权，同时执行完整的发布节点和审批规则
      */
     private void completeTaskInternal(String taskId, String userId, String action, String comment, String transferTo,
                                       String actionLabel, Map<String, Object> formData,
@@ -295,9 +305,10 @@ public class TaskActionService {
                                       boolean checkAccess,
                                       boolean validateNextApprover,
                                       boolean emitApprovalActions,
-                                      String returnTargetNodeId) {
+                                      String returnTargetNodeId,
+                                      boolean portCall) {
         comment = comment == null ? "" : comment;
-        requireConfiguredNodeOperation(taskId, action, comment, transferTo, formData, returnTargetNodeId);
+        requireConfiguredNodeOperation(taskId, action, comment, transferTo, formData, returnTargetNodeId, portCall);
         // 验证任务是否存在
         Task task = taskService.createTaskQuery()
                 .taskId(taskId)
@@ -329,7 +340,7 @@ public class TaskActionService {
         // 一次交互审批只执行一次统一前后动作；后台加签收口沿用已提交输入，不再次计作审批。
         if (transfer) operationActions.fire(operation, TASK_TRANSFERRING);
         else if (emitApprovalActions) operationActions.fire(operation, TASK_SUBMITTING);
-        if (checkAccess) {
+        if (checkAccess || portCall) {
             String currentIdentity = currentTaskIdentity();
             if (!StringUtils.hasText(assignee)) {
                 claimTaskForCurrentUser(task, currentIdentity);
@@ -513,7 +524,8 @@ public class TaskActionService {
             String comment,
             String transferTo,
             Map<String, Object> formData,
-            String returnTargetNodeId) {
+            String returnTargetNodeId,
+            boolean portCall) {
         // 授权映射必须与执行层共用同一归一化规则，否则 TRANSFERRED
         // 等同义状态值会在执行层变成转办，却绕过转办开关。
         String normalized = multiInstanceOutcomeService
@@ -537,6 +549,7 @@ public class TaskActionService {
         com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext context =
                 com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
                         .ofTarget(comment, targets, targetNodeId, null, requestVariables);
+        if (portCall) context = context.authorizedByCaller(UserContext.getUserId());
         if (operation == com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.TRANSFER) {
             nodeOperationCapabilityService.requireAllowed(taskId, operation, context);
             return;

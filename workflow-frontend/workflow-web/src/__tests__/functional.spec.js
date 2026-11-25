@@ -655,8 +655,8 @@ const organizationApiSource = readFileSync(
 )
 assert.match(
   organizationManagementSource,
-  /UNIT_LEADER[\s\S]*?saveOrganizationLeader/,
-  '组织负责人必须通过 UNIT_LEADER 专用写接口'
+  /function openLeaderAssignment\(\)[\s\S]*?positionAssignmentPosition\.value = \{ positionCode: 'UNIT_LEADER' \}/,
+  '组织负责人必须通过 UNIT_LEADER 完整任职集合设置'
 )
 assert.ok(
   organizationManagementSource.includes('PositionAssignmentDialog'),

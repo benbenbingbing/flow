@@ -32,7 +32,10 @@ public interface SysOrganizationPort {
     /** 返回由根至目标有序的父链，包含目标节点。 */
     List<Organization> listOrganizationAncestors(String organizationId);
 
-    /** 保存组织基础快照与扩展；同来源父级允许后到，父链未齐时隐藏于组织树，补齐后自动维护路径及下级。 */
+    /**
+     * 保存组织快照及扩展。来源键未命中时，按稳定编码自动定位可补绑或改绑的组织。
+     * 同来源父级允许后到，父链未齐时隐藏于组织树，补齐后自动维护路径及下级。
+     */
     IdentitySaveResult saveOrganization(OrganizationSaveModel model);
 
     /** 同来源最多 100 个组织，允许父级不在本批或尚未到达；按输入顺序返回，非法父链及其他错误整批回滚。 */

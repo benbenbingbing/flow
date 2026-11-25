@@ -3,20 +3,13 @@ package com.workflow.port.system.model.identity;
 import lombok.Builder;
 import java.util.List;
 
-/** biz 主动提交的组织快照；不包含负责人任职和产品权限。
+/** biz 主动提交的组织快照；来源键未命中时按稳定编码定位本地组织。
  * @param rawDataJson 可选单条来源 JSON 对象原文，在字段映射前取得；独立留存，不参与业务版本哈希，调用方须剔除凭据
  * @param mainFields 可选主表文本槽位；省略保留，携带时完整替换，参与来源业务版本校验
- * @param bindingChange 可选绑定修复，保留指定组织的本地 ID；改绑同时迁移来源子级引用
  */
 @Builder
 public record OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions,
-        String rawDataJson, IdentityMainFields mainFields, IdentityBindingChange bindingChange) {
-    /** 兼容未指定绑定修复的来源同步，继续按原有规则创建或更新。 */
-    public OrganizationSaveModel(ExternalIdentityKey key, Long sourceVersion, OrganizationBaseData base, List<OrganizationExtension> extensions,
-            String rawDataJson, IdentityMainFields mainFields) {
-        this(key, sourceVersion, base, extensions, rawDataJson, mainFields, null);
-    }
-
+        String rawDataJson, IdentityMainFields mainFields) {
     /**
      * 直接提交五个主表字段，供后续按来源文本查询和关联组织。
      * 五列按本次快照整体替换，单项 null 清空对应列。无需留存来源原文时 rawDataJson 可传 null。

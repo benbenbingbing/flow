@@ -43,11 +43,11 @@ public class PositionAssignmentService {
 
     /**
      * 原子替换一个组织内某职务的当前人员集合，保存后立即生效。
-     * 按职务、组织、用户顺序加锁，防止单人职务被并发写入多人。
+     * 按职务、组织、用户顺序加锁，串行化同一职务的人员变更。
      * expectedUserIds 必须是编辑时读取的集合；同一目标集合的重复提交直接成功。
      *
      * @param request 目标职务、组织及完整人员集合；空集合清空当前人员
-     * @throws PositionManagementException 范围越权、对象停用、人数不符或集合已变化时抛出
+     * @throws PositionManagementException 范围越权、对象停用或集合已变化时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(module = AuditModule.SYSTEM, action = AuditAction.CONFIGURE,
@@ -156,7 +156,7 @@ public class PositionAssignmentService {
 
     /** 当前负责人关系是唯一权威来源；在写事务内刷新兼容字段，无需定时生效对账。 */
     private void refreshLeaderProjection(String unitId) {
-        // 投影显示当前设置的人员；用户或单位停用由审批查询单独过滤，避免保留定时同步任务。
+        // 旧字段只存一人，按当前集合的 userId 顺序稳定投影首位；审批查找使用完整任职关系。
         List<SysPositionAssignment> holders = current(positionMapper.selectByCode(UNIT_LEADER).getId(), unitId);
         SysUser user = holders.isEmpty() ? null : userMapper.selectById(holders.get(0).getUserId());
         organizationMapper.updateLeaderProjection(unitId, user == null ? null : user.getId(),
@@ -168,20 +168,13 @@ public class PositionAssignmentService {
         return assignmentMapper.selectMembersForUpdate(positionId, unitId);
     }
 
-    /** 保存集合前校验对象状态、人数及人员归属；清空关系允许处理已停用对象。 */
+    /** 保存集合前校验对象状态及人员归属；清空关系允许处理已停用对象。 */
     private void validateTarget(SysPosition position, SysOrganization unit, Set<String> users) {
         if (!SysPosition.Status.ENABLED.name().equals(position.getStatus())) {
             throw error(409, PositionErrorCode.POSITION_STATUS_INVALID, "职务已停用");
         }
         if (!SysOrganization.Status.ENABLED.getValue().equals(unit.getStatus())) {
             throw error(409, PositionErrorCode.ORGANIZATION_UNIT_DISABLED, "组织已停用");
-        }
-        if (!"ANY".equals(position.getApplicableUnitType())
-                && !position.getApplicableUnitType().equalsIgnoreCase(unit.getType())) {
-            throw error(409, PositionErrorCode.POSITION_UNIT_TYPE_MISMATCH, "职务不适用于该组织类型");
-        }
-        if ("SINGLE".equals(position.getHolderMode()) && users.size() > 1) {
-            throw error(409, PositionErrorCode.SINGLE_POSITION_OCCUPIED, "该职务只能设置一名人员");
         }
         for (String userId : users) {
             SysUser user = userMapper.selectForUpdate(userId);
@@ -212,8 +205,8 @@ public class PositionAssignmentService {
 
     /** 对输入去重并稳定排序，重复保存不会新增关系，同时保证用户行锁的固定顺序。 */
     private Set<String> normalizedUsers(List<String> users) {
-        if (users == null || users.size() > 200 || users.stream().anyMatch(value -> !StringUtils.hasText(value))) {
-            throw error(400, PositionErrorCode.ASSIGNMENT_INVALID, "人员集合必填且最多包含 200 人");
+        if (users == null || users.stream().anyMatch(value -> !StringUtils.hasText(value))) {
+            throw error(400, PositionErrorCode.ASSIGNMENT_INVALID, "人员集合必填且人员 ID 不能为空");
         }
         return new TreeSet<>(users.stream().map(String::trim).toList());
     }

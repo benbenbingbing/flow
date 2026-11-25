@@ -760,7 +760,8 @@ public class EntityDataActionService {
                             updateRequest,
                             applied.origin(),
                             executionContext.businessTraceKey(),
-                            expectedRevision);
+                            expectedRevision,
+                            portCall);
                     if (portTraceKey != null) defaultSaved.set(saved);
                     return saved;
                 });
@@ -842,7 +843,8 @@ public class EntityDataActionService {
                         ? listEventOrigin(config)
                         : applied.origin(),
                 executionContext.businessTraceKey(),
-                expectedRevision);
+                expectedRevision,
+                javaSubmission);
     }
 
     /**
@@ -1138,14 +1140,12 @@ public class EntityDataActionService {
         }
     }
 
-    /** 能力查询按当前发布的列表和行范围计算，执行时仍重新检查。 */
+    /** 根据发布配置、记录状态和历史写入规则计算能力，调用方负责目标记录的授权。 */
     @Transactional(readOnly = true)
     public Map<String, RecordCapability> getRecordCapabilities(String entityCode, String id, String listKey) {
         requireDynamicRuntime(entityCode);
-        capabilityService.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);
         EntityListConfig config = resolveListConfig(entityCode, listKey, EntityListRuntimeContext.current());
-        requireConfiguredListPermission(config);
-        EntityDataDTO row = findAccessible(entityCode, id, config);
+        EntityDataDTO row = dynamicService.findById(entityCode, id);
         var result = new LinkedHashMap<String, RecordCapability>();
         if (historyWriteGuard != null) {
             try {
@@ -1159,7 +1159,7 @@ public class EntityDataActionService {
             }
         }
         for (String key : List.of("edit", "delete", "batchDelete", "restartProcess")) {
-            var capability = capabilityService.evaluateRowActionForConfig(entityCode, config, key, row);
+            var capability = capabilityService.evaluateMutationForPort(entityCode, config, key, row);
             result.put(key, new RecordCapability(capability.isVisible(), capability.isEnabled(), capability.getReason()));
         }
         return Map.copyOf(result);
@@ -1218,6 +1218,8 @@ public class EntityDataActionService {
      * @param updateRequest 更新请求，作为 {@code mutationPort.execute} 的输入影响后续处理
      * @param origin 来源，作为 {@code mutationContext} 的输入影响后续处理
      * @param traceKey 追踪键，后续用于授权校验、关联或幂等去重
+     * @param expectedRevision 已读记录修订号，供写锁下做并发校验
+     * @param callerAuthorized Java Port 调用方是否负责重新发起授权
      * @return 处理后的{@code mutate}更新结果，供调用方继续处理
      */
     private EntityDataDTO mutateUpdate(
@@ -1226,7 +1228,8 @@ public class EntityDataActionService {
             Map<String, Object> updateRequest,
             EventOrigin origin,
             String traceKey,
-            String expectedRevision) {
+            String expectedRevision,
+            boolean callerAuthorized) {
         // 修订来自 Java 命令，绕开发布事件可转换的输入，由变更执行器在持锁时校验。
         java.util.function.Supplier<EntityMutationResult> write = () -> mutationPort.execute(
                 new EntityMutationCommand(
@@ -1245,7 +1248,7 @@ public class EntityDataActionService {
                         expectedRevision));
         EntityMutationResult result = isRestart(updateRequest)
                 ? EntityProcessRestartContext.execute(entityCode, id,
-                        text(updateRequest.get("previousProcessInstanceId")), write)
+                        text(updateRequest.get("previousProcessInstanceId")), callerAuthorized, write)
                 : write.get();
         return entityData(
                 result.record(),

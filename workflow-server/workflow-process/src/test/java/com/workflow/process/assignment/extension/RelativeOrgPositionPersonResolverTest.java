@@ -52,7 +52,7 @@ class RelativeOrgPositionPersonResolverTest {
                 directory, positions, snapshotService);
         when(positions.requireEnabledPosition("UNIT_LEADER"))
                 .thenReturn(new PositionDefinitionView(
-                        "UNIT_LEADER", "负责人", "ANY", "MULTIPLE", 1));
+                        "UNIT_LEADER", "负责人", 1));
     }
 
     @Test

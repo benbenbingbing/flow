@@ -1,6 +1,5 @@
 package com.workflow.process.task.application;
 
-import com.workflow.core.error.ForbiddenException;
 import com.workflow.port.process.error.ProcessOperationException;
 import com.workflow.port.process.model.ProcessBusinessReference;
 import com.workflow.port.process.model.query.ProcessInstanceView;
@@ -16,18 +15,15 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ProcessTaskAdapterTest {
     private final ProcessQueryAdapter queries = mock(ProcessQueryAdapter.class);
-    private final TaskActionService actions = mock(TaskActionService.class);
     private final TaskDetailService details = mock(TaskDetailService.class);
     private final ProcessTaskAdapter port = new ProcessTaskAdapter(queries, mock(ProcessTaskCommandAdapter.class),
-            mock(ProcessTaskInterventionAdapter.class), actions, details);
+            mock(ProcessTaskInterventionAdapter.class), details);
 
     @Test
     void returnsOnlyAuthorizedTaskSummaryAndBusinessReference() {
@@ -50,17 +46,12 @@ class ProcessTaskAdapterTest {
         assertEquals(reference, result.businessReference());
         assertEquals("form-1", result.form().formId());
         assertEquals(capabilities, result.capabilities());
-        verify(actions).requireTaskAccess("task");
     }
 
     @Test
-    void readableInstanceDoesNotGrantTaskDetailAccess() {
-        var task = new ProcessTaskView("task", "task", "ENGINE", "instance", "node", "审核", "PENDING",
-                "another-user", null, null, false);
-        when(queries.findActiveTask("task")).thenReturn(Optional.of(task));
-        doThrow(new ForbiddenException("非候选人")).when(actions).requireTaskAccess("task");
-
-        assertEquals("PROCESS_ACCESS_DENIED",
+    void missingActiveTaskCannotProduceAFormSummary() {
+        when(queries.findActiveTask("task")).thenReturn(Optional.empty());
+        assertEquals("TASK_NOT_FOUND",
                 assertThrows(ProcessOperationException.class, () -> port.getTaskDetail("task")).getErrorCode());
 
         verifyNoInteractions(details);

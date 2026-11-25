@@ -25,7 +25,10 @@ public interface SysUserPort {
     /** 同一授权来源最多查 100 个外部 ID，按输入顺序去重，无映射的 ID 跳过。 */
     Map<String, String> findUserIdsBySource(String sourceCode, List<String> externalIds);
 
-    /** 保存用户基础快照及携带的扩展，映射、审计与资料一起提交；失败整次回滚。 */
+    /**
+     * 保存用户快照及携带的扩展。来源键未命中时，按稳定账号自动定位可补绑或改绑的外部预配账号。
+     * 映射、审计与资料一起提交；权限、编码或版本校验失败时整次回滚。
+     */
     IdentitySaveResult saveUser(UserSaveModel model);
 
     /** 同来源最多 100 个用户，整批原子提交；已有同库事务须为 READ_COMMITTED，由外层决定最终提交。 */
