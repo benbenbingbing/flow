@@ -75,3 +75,30 @@ test('内置 Excel 动作不能作为前置或缺失必需配置保存，普通�
   assert.match(validateEventStepChain([{ ...step, actionConfig: { operation: 'EXPORT', schemeRef: { mode: 'EXPLICIT' } } }], options), /补全操作和方案/)
   assert.match(validateEventStepChain([{ strategy: 'AFTER' }], options), /结果回填/)
 })
+
+test('实体查询往返保留目标和页面参数路径，表单回填和列表返回字段分别校验', async () => {
+  const { validateEventStepChain } = await import('../eventStepModel.js')
+  const { normalizeStep } = createEventStepEditor()
+  const saved = serializeEventStep(normalizeStep({
+    actionType: 'ENTITY_LOOKUP',
+    actionConfig: { entityCode: 'customer', idPath: 'input.params.customerId' },
+    outputMapping: [{ sourcePath: 'data.data.phone', targetPath: 'form.contact_phone', overwrite: 'IF_EMPTY', clearOnEmpty: false }],
+    strategy: 'BEFORE'
+  }, 0), 0)
+  assert.deepEqual(saved.actionConfig, { entityCode: 'customer', idPath: 'input.params.customerId' })
+  assert.equal(saved.outputMapping[0].overwrite, 'IF_EMPTY')
+  assert.equal('inputMapping' in saved, false)
+  assert.equal('extensionId' in saved, false)
+  const form = { ownerType: 'FORM', eventCode: 'FORM_OPEN', targetType: 'OWNER' }
+  assert.equal(validateEventStepChain([saved], form), '')
+  assert.match(validateEventStepChain([{ ...saved, outputMapping: [] }], form), /回填/)
+  assert.match(validateEventStepChain([saved], { ...form, eventCode: 'FORM_SAVE' }), /不支持/)
+
+  const list = { ownerType: 'LIST', eventCode: 'ROW_BUTTON_CLICK', targetType: 'BUTTON' }
+  const listStep = serializeEventStep(normalizeStep({
+    ...saved, strategy: 'REPLACE', actionConfig: { ...saved.actionConfig, fields: ['phone'] }
+  }, 0), 0)
+  assert.equal(JSON.parse(JSON.stringify(listStep)).outputMapping, undefined)
+  assert.equal(validateEventStepChain([listStep], list), '')
+  assert.match(validateEventStepChain([{ ...listStep, strategy: 'BEFORE' }], list), /主处理/)
+})

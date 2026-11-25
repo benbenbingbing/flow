@@ -547,6 +547,24 @@ public class EntityDataDynamicService implements com.workflow.port.entity.Entity
     }
 
     /**
+     * 事件按主键取数沿用详情的行范围。只组装主记录和多值属性，回填不读取关联子表。
+     * 范围内无匹配或无读取范围时返回 null，避免无权回填导致表单按钮回执事务回滚。
+     */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findVisibleMainById(String entityCode, String id) {
+        Map<String, Object> row;
+        try {
+            row = findAccessibleRecord(entityCode, id, null, true);
+        } catch (ForbiddenException unavailable) {
+            return null;
+        }
+        if (row == null) return null;
+        EntityDataDTO dto = toRuntimeDto(row, entityCode);
+        enrichMultiValues(entityCode, List.of(dto));
+        return dto;
+    }
+
+    /**
      * 为仅依赖主记录系统字段的按钮规则读取摘要，沿用详情相同的数据范围 SQL。
      * 不展开多值字段或关系子树；含业务字段/扩展规则的调用方必须使用完整聚合读取。
      * 返回值只供服务端能力判断，不能替代详情展示或提交授权。

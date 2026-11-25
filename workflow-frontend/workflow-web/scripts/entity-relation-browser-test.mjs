@@ -26,6 +26,7 @@ import DesignNode from '/src/components/FormNodeDesignItem.vue'
 import { formRelatedContentsAt } from '/src/shared/form-related-content.js'
 import ButtonConfig from '/src/components/ListButtonConfigPanel.vue'
 import DataTable from '/src/views/entity/components/EntityDataTable.vue'
+import EntityDataList from '/src/views/entity/EntityDataList.vue'
 import RelatedPanel from '/src/components/related-content/RelatedContentPanel.vue'
 import Designer from '/src/views/EntityFormDesignByEntity.vue'
 import { registerApplicationExtensions } from '/src/extensions/register.js'
@@ -64,6 +65,15 @@ const formRelease={id:'req-release',configId:'req-form',formId:'req-form',protoc
 const listFields=[{id:'name-col',fieldCode:'reqName',fieldName:'需求名称',fieldLabel:'需求名称',fieldType:'STRING',showInList:true}]
 const list={id:'req-list',entityId:'req',listName:'需求明细列表',listKey:'requirements',activeReleaseId:'list-release',publishedVersion:1,fields:listFields,viewConfig:{inputParameterSchema:{type:'object',properties:{sourceName:{type:'string'}}}}}
 const listRelease={id:'list-release',version:1,status:'ACTIVE',snapshotDocument:JSON.stringify({list})}
+const lookupFields=[{id:'contact-field',fieldCode:'contact_phone',fieldName:'联系电话',fieldLabel:'联系电话',fieldType:'STRING',componentType:'input'}]
+const lookupForm={id:'lookup-form',entityId:'all',formName:'客户回填表单',fields:lookupFields,viewConfig:{inputParameterSchema:{properties:{customerId:{type:'string'}},required:['customerId']}}}
+const lookupList={id:'lookup-list',entityId:'all',entityCode:'ALL',listKey:'lookup',configHash:'lookup-list-hash',
+ fields:[{fieldCode:'name',fieldName:'名称',showInList:true}],selectionConfig:{selectionMode:'MULTIPLE'},
+ viewConfig:{inputParameterSchema:{properties:{pageCustomerId:{type:'string',default:'0010'}}}},
+ toolbarConfig:[
+  {key:'lookupEvent',type:'custom',customMode:'event',label:'查询客户',enabled:true},
+  {key:'newWithCustomer',type:'custom',customMode:'open-form',label:'新建并带出客户',targetFormId:'lookup-form',targetFormMode:'CREATE',enabled:true,selectionRequirement:'SINGLE',parameterMappings:[{parameter:'customerId',sourceType:'FIELD',sourceField:'customer_id'}]}
+ ],toolbarCapabilities:{lookupEvent:{visible:true,enabled:true},newWithCustomer:{visible:true,enabled:true}}}
 const state=reactive({compositions:[],editorNodes:[],aggregateRuntime:false,aggregateData:{},published:false,sourceRecordId:'all-1',sourceData:{name:'未保存的验收名称'},parameterTest:false,calls:[],relationWrites:[],unexpected:[],catalogFailure:false,listButtonTest:false,buttons:[],savedButton:null,selectedRows:[],tableRows:[{id:'all-1',name:'验收一',actionCapabilities:{requirements:{visible:true,enabled:true}}},{id:'all-2',name:'验收二',actionCapabilities:{requirements:{visible:true,enabled:true}}}]})
 state.designerForm={id:'owner',entityId:'all',formName:'主从编辑验收',formKey:'ALL_main',status:1,revision:1,layoutType:'grid',viewConfig:'{}'}
 registerListRowAction('form-test-handler', context => {state.handlerCalls=(state.handlerCalls||0)+1;state.handlerRecord=context.row;return {message:'函数完成'}})
@@ -91,6 +101,16 @@ request.defaults.adapter=async config=>{
  }
  else if(url==='/entity-forms/owner/nodes/update'){
    assertRevision(config.params.expectedRevision);state.designerNodes=body;state.designerSaves.push(body);state.designerForm.revision++;data=body
+ }
+ else if(state.lookupTest&&url==='/entity/code/ALL')data={...source,storageMode:'DYNAMIC',fields:lookupFields}
+ else if(state.lookupTest&&url==='/entity-lists/ALL/lookup/schema')data=lookupList
+ else if(state.lookupTest&&url==='/entity-lists/ALL/lookup/query')data={records:[{id:'order-1',name:'客户订单',data:{customer_id:'0007'},actionCapabilities:{newWithCustomer:{visible:true,enabled:true}}}],total:1}
+ else if(state.lookupTest&&url==='/entity-forms/lookup-form/runtime')data={id:'lookup-form-release',configId:'lookup-form',protocolVersion:1,contentHash:'lookup-form-hash',configHash:'lookup-form-hash',snapshotDocument:JSON.stringify({form:lookupForm,legacyFields:lookupFields,nodes:[]})}
+ else if(state.lookupTest&&url==='/ui-runtime/form-actions/resolve')data=resolveLocalFormActions(lookupForm,body)
+ else if(state.lookupTest&&url==='/ui-runtime/events/TOOLBAR_BUTTON_CLICK/execute')data={message:'查询完成',effects:[]}
+ else if(state.lookupTest&&url==='/ui-runtime/events/FORM_OPEN/execute'){
+   // 浏览器覆盖真实列表参数映射和表单效果；查询与投影由后端专项测试执行。
+   data={effects:body.input?.params?.customerId==='0007'?[{type:'FIELD_MAPPING',data:{form:{contact_phone:'010-1234'}},mappings:[{targetPath:'form.contact_phone',overwrite:'IF_EMPTY',clearOnEmpty:false}]}]:[]}
  }
  else if(url==='/entity/req'||url==='/entity/code/ZDWREQ')data=target
  else if(url==='/entity-form/entity/req'){if(state.catalogFailure)throw Error('模拟目录加载失败');data=[form,{id:'draft',formName:'未发布表单',status:1}]}
@@ -190,6 +210,7 @@ const app=createApp({setup(){return()=>h('main',{style:'width:1080px;margin:20px
  state.visibilityTest?h('section',{id:'node-visibility-runtime'},[h(Runtime,{ref:visibilityRenderer,form:{id:'visibility-form',nodes:visibilityNodes,fields:[]},modelValue:state.visibilityData,'onUpdate:modelValue':value=>state.visibilityData=value,mode:state.visibilityMode,showHeader:false})]):null,
  state.viewHostTest?h('section',{id:'view-host'},[h(ViewFormFields,{entityData:{name:'主表名称'},approvalNormalForm:hostForm(),formReadonly:true,mode:'view',nodeRootParentId:'host-child',context:{record:{id:'all-3'}},entityCode:'ALL',entityDefinition:source,entityFields:hostFields})]):null,
  state.nativeHostTest?h(HostFormDialog,{ref:hostDialog,entityCode:'ALL',entityDefinition:{...source,fields:hostFields},entityFields:hostFields,defaultForm:hostForm()}):null,
+ state.lookupTest?h('section',{id:'entity-lookup-runtime'},[h(EntityDataList,{entityCode:'ALL',listKey:'lookup',embedded:true,defaultForm:lookupForm})]):null,
  state.designerTest?h('section',{id:'real-designer'},[h(RouterView,{key:state.designerRemount||0})]):null,
  h(RelatedPanel,{ref:relatedPanel,ownerType:'FORM',ownerId:'owner',sourceEntity:source,sourceFields:[{fieldCode:'name',fieldName:'验收名称'}],anchorOptions:placementNodes.map(node=>({value:node.id,label:(node.fieldName||node.nodeKey)+'（节点之后）',nodeType:node.nodeType}))}),
  state.aggregateRuntime?h('section',{id:'aggregate-runtime'},[h('h3','主从编辑运行时'),h(Runtime,{form:aggregateForm(),modelValue:state.aggregateData,'onUpdate:modelValue':value=>state.aggregateData=value,context:{record:{id:'all-1'}},mode:'edit',readonly:false,showHeader:false})]):null,
@@ -272,8 +293,19 @@ try {
   await evaluate('relationTest.settle()')
 
 
-  // 节点整体显隐同时覆盖运行时和真实设计器的保存回填。
-  if (process.argv.includes('--node-visibility')) {
+  if (process.argv.includes('--entity-lookup')) {
+    await evaluate('relationTest.state.lookupTest=true;relationTest.settle()')
+    await until("document.querySelector('#entity-lookup-runtime .el-table__row')?.innerText.includes('客户订单')")
+    await click('查询客户', "document.querySelector('#entity-lookup-runtime')")
+    await until("relationTest.state.calls.some(c=>c.url==='/ui-runtime/events/TOOLBAR_BUTTON_CLICK/execute'&&c.body.input?.params?.pageCustomerId==='0010')")
+    await evaluate("document.querySelector('#entity-lookup-runtime .el-table__row .el-checkbox').click();relationTest.settle()")
+    await click('新建并带出客户', "document.querySelector('#entity-lookup-runtime')")
+    await until("relationTest.state.calls.some(c=>c.url==='/ui-runtime/events/FORM_OPEN/execute'&&c.body.input?.params?.customerId==='0007')")
+    await until("[...document.querySelectorAll('.entity-data-form-dialog input')].some(e=>e.value==='010-1234')")
+    assert.deepEqual(errors, [])
+    console.log('entity lookup browser acceptance passed: list event parameters, selected row launches a new form, FORM_OPEN fills the draft')
+  } else if (process.argv.includes('--node-visibility')) {
+    // 节点整体显隐同时覆盖运行时和真实设计器的保存回填。
     await evaluate("relationTest.state.visibilityData={status:'DRAFT',value0:'保留的输入'};relationTest.state.visibilityMode='create';relationTest.state.visibilityTest=true;relationTest.settle()")
     assert.equal(await evaluate("document.querySelectorAll('#node-visibility-runtime .form-node-root-row > .el-col').length"),0)
     await evaluate("relationTest.state.visibilityData.status='ACTIVE';relationTest.settle()")

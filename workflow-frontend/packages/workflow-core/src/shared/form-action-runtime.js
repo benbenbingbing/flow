@@ -162,7 +162,9 @@ function buildCustomFormActionExecutionPayload(
     taskId: context.taskId || undefined,
     input: {
       mode: context.mode,
-      form: context.formData || {}
+      form: context.formData || {},
+      // 页面参数参与业务映射，按钮、待办及发布身份仍由服务端解析。
+      ...(context.params || context.parameters ? { params: context.params || context.parameters } : {})
     },
     // Provider 身份由服务端强类型上下文注入，不在可映射 context
     // 中重复 form/task/process 坐标。

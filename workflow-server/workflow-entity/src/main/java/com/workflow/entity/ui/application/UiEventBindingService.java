@@ -875,7 +875,7 @@ public class UiEventBindingService {
                     step.get("extensionId"), step.get("serviceId"));
             String operationContext = "";
             validateBuiltinAction(step, ownerType, targetType, eventCode);
-            if (ExcelEventAction.isExcelStep(step)) {
+            if (ExcelEventAction.isExcelStep(step) || EntityLookupEventStep.matches(step)) {
                 operationContext = ownerType;
             } else if (StringUtils.hasText(extensionId)) {
                 String operationCode = firstText(
@@ -951,6 +951,10 @@ public class UiEventBindingService {
     private void validateBuiltinAction(Map<String, Object> step, String ownerType,
             String targetType, String eventCode) {
         if (!step.containsKey("actionType")) {
+            return;
+        }
+        if (EntityLookupEventStep.matches(step)) {
+            EntityLookupEventStep.validate(step, ownerType, targetType, eventCode);
             return;
         }
         if (!ExcelEventAction.isExcelStep(step)) {

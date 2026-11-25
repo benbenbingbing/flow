@@ -14,7 +14,7 @@ async function setupFile(file, bindings, exposed = '') {
   compileScript(descriptor, { id: 'unified-test' })
   assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename: file, id: 'unified-test' }).errors, [])
   const script = descriptor.scriptSetup.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*;?\n/gm, '')
-  const values = { ...vue, FIELD_SCRIPT_EVENTS, ...bindings }
+  const values = { ...vue, FIELD_SCRIPT_EVENTS, onBeforeUnmount() {}, ...bindings }
   return new Function(...Object.keys(values), `${script}\nreturn { ${exposed} }`)(...Object.values(values))
 }
 
@@ -24,7 +24,8 @@ test('统一组件同时收到单字段值、当前行、节点和解码参数�
   const state = await setupFile('../FormFieldRenderer.vue', {
     formFieldProps: {}, formFieldEmits: [], defineProps: () => props,
     defineEmits: () => (...args) => events.push(args), defineExpose() {}, provideFieldScriptContext() {}, provide() {},
-    resolveFieldComponentDescriptor: () => ({ component: { name: 'Custom' }, capabilities: {} }), safeParseConfig: value => JSON.parse(value)
+    resolveFieldComponentDescriptor: () => ({ component: { name: 'Custom' }, capabilities: {} }), safeParseConfig: value => JSON.parse(value),
+    useFieldDictionaryOptions: () => vue.ref({})
   }, 'componentProps, updateValue, patchForm')
   assert.equal(state.componentProps.value.modelValue, 3)
   assert.equal(state.componentProps.value.formData, props.formData)

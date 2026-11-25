@@ -401,9 +401,15 @@ const effectiveEntityCode = computed(() =>
     currentTask.value
   )
 )
+const approvalInputParameters = computed(() => {
+  // 弹窗常驻在列表中，等实际记录加载后再校验表单必填参数。
+  if (!processDialogVisible.value || !entityData.value) return {}
+  return resolvePageParameters(effectiveFormConfig.value?.viewConfig,
+    launchRuntimeContext.value.params || launchRuntimeContext.value.parameters || {})
+})
 const approvalRuntimeContext = computed(() => ({
   ...launchRuntimeContext.value,
-  params: resolvePageParameters(effectiveFormConfig.value?.viewConfig, launchRuntimeContext.value.params || launchRuntimeContext.value.parameters || {}),
+  params: approvalInputParameters.value,
   entityCode: effectiveEntityCode.value,
   mode: approvalRuntimeMode.value,
   record: entityData.value,
@@ -932,6 +938,7 @@ async function handleFormAction(action: any) {
           entityDefinition: props.entityDefinition,
           entityFields: props.entityFields,
           parameters: context?.parameters || {},
+          params: approvalRuntimeContext.value.params,
           updateFormData: (value: any) => {
             if (isCurrent() && approvalRuntimeMode.value !== 'view') entityData.value = value
           },

@@ -5,16 +5,26 @@
       :key="row.rowKey || index"
       class="mapping-row"
     >
+      <el-select
+        v-if="sourceOptions"
+        :model-value="row.sourcePath"
+        filterable
+        placeholder="选择查询结果字段"
+        @update:model-value="update(index, 'sourcePath', $event)"
+      >
+        <el-option v-for="option in sourceOptions" :key="option.value" :label="option.label" :value="option.value" />
+      </el-select>
       <el-input
+        v-else
         :model-value="row.sourcePath"
         :placeholder="sourcePlaceholder"
         @update:model-value="update(index, 'sourcePath', $event)"
       />
       <el-select
-        v-if="mode === 'output' && fieldOptions.length"
+        v-if="mode === 'output' && (sourceOptions || fieldOptions.length)"
         :model-value="row.targetPath"
         filterable
-        allow-create
+        :allow-create="!sourceOptions"
         placeholder="选择回填字段"
         @update:model-value="update(index, 'targetPath', $event)"
       >
@@ -73,7 +83,8 @@ import { Delete } from '@element-plus/icons-vue'
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   mode: { type: String, default: 'output' },
-  fieldOptions: { type: Array, default: () => [] }
+  fieldOptions: { type: Array, default: () => [] },
+  sourceOptions: { type: Array, default: null }
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -97,8 +108,8 @@ function add() {
       rowKey: `mapping_${++rowSequence}`,
       sourcePath: '',
       targetPath: '',
-      overwrite: 'ALWAYS',
-      clearOnEmpty: true,
+      overwrite: props.sourceOptions ? 'IF_EMPTY' : 'ALWAYS',
+      clearOnEmpty: !props.sourceOptions,
       transform: 'IDENTITY',
       separator: ','
     }

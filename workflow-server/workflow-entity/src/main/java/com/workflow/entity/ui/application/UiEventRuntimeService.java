@@ -124,6 +124,7 @@ public class UiEventRuntimeService {
     private final ObjectMapper objectMapper;
     // Excel 解析器需要回调事件授权；延迟获取避免事件运行时与 Excel 运行时互相构造。
     private final ObjectProvider<EntityExcelRuntimeResolver> excelRuntimeResolver;
+    private final EntityLookupEventReader entityLookupReader;
 
     /**
      * 执行已发布事件。按钮和字段事件可直接调用此入口。
@@ -179,6 +180,7 @@ public class UiEventRuntimeService {
             if (checkPermission) requireExecutionPermission(request, chain);
             bindListFixedFilters(request, chain);
             canonicalizeFormButtonRequest(request);
+            resolveEventPageParameters(request, chain);
             bindTrustedPinnedExecution(request, chain);
             UiEventExecutionResult result;
             // Excel 准备 Provider 使用已鉴权的原始来源，不依赖可改写的接口输入。
@@ -287,7 +289,8 @@ public class UiEventRuntimeService {
                 steps(chain.steps(), "BEFORE")) {
             Object stepResult = executeStep(
                     step, request, chain, state, result);
-            if (stepResult instanceof Map<?, ?> map) {
+            // 查询回填是草稿效果；不能用它的部分 form 结构覆盖原始事件输入。
+            if (!EntityLookupEventStep.matches(step) && stepResult instanceof Map<?, ?> map) {
                 mutableInput(state).putAll(stringMap(map));
             }
             if (stepResult != null) {
@@ -733,7 +736,7 @@ public class UiEventRuntimeService {
      * 在任何 condition/inputMapping 运行前重建表单按钮输入。
      *
      * <p>原始 input 已通过统一结构校验；此处只保留精确
-     * {@code input.form} 业务树，并注入已发布按钮、已鉴权模式和记录。客户端
+     * {@code input.form} 和 {@code input.params} 业务树，并注入已发布按钮、已鉴权模式和记录。客户端
      * button/task/process/record/mode 均不能参与事件语义。FORM_BUTTON 的原始
      * context 不属于业务输入，全部丢弃后只注入服务端已验证的路由坐标。</p>
      *
@@ -768,6 +771,9 @@ public class UiEventRuntimeService {
         Map<String, Object> canonicalInput = new LinkedHashMap<>();
         canonicalInput.put("form", rawForm == null
                 ? Map.of() : immutableBusinessCopy(rawForm));
+        if (request.getInput() != null && request.getInput().containsKey("params")) {
+            canonicalInput.put("params", request.getInput().get("params"));
+        }
         canonicalInput.put("button", immutableBusinessCopy(
                 publishedButton));
         canonicalInput.put("mode", request.getServerAuthorizedMode());
@@ -786,6 +792,27 @@ public class UiEventRuntimeService {
         // 会绕过 canonical input 影响 condition 与 inputMapping。
         request.setSelectedIds(List.of());
         request.setSelection(null);
+    }
+
+    /** 页面参数按有效发布契约解析。旧入口仍可省略参数，兼容既有事件调用。 */
+    private void resolveEventPageParameters(UiEventExecuteRequest request,
+            UiEventBindingService.ResolvedEventChain chain) {
+        if (request.getInput() == null || !request.getInput().containsKey("params")
+                || UiDataSourceUsages.LIST_LOAD.equals(request.getEventCode())) return;
+        String configKey = switch (normalize(request.getConfigType())) {
+            case "FORM" -> "form";
+            case "LIST" -> "list";
+            default -> null;
+        };
+        if (configKey == null) return;
+        if (!(request.getInput().get("params") instanceof Map<?, ?> supplied)) {
+            throw new IllegalArgumentException("事件页面参数必须为对象");
+        }
+        Map<String, Object> view = PageParameterPolicy.map(
+                PageParameterPolicy.map(chain.snapshot().get(configKey)).get("viewConfig"));
+        Map<String, Object> input = new LinkedHashMap<>(request.getInput());
+        input.put("params", immutableBusinessCopy(PageParameterPolicy.resolve(view, stringMap(supplied))));
+        request.setInput(input);
     }
 
     /**
@@ -1106,7 +1133,11 @@ public class UiEventRuntimeService {
             Map<String, Object> state,
             UiEventExecutionResult result) {
         restoreListFilters(request, state);
-        if (step.containsKey("actionType")) {
+        EntityLookupEventStep.Config lookup = null;
+        if (EntityLookupEventStep.matches(step)) {
+            lookup = EntityLookupEventStep.validate(step, normalize(request.getConfigType()),
+                    normalize(request.getTargetType()), normalize(request.getEventCode()));
+        } else if (step.containsKey("actionType")) {
             if (!ExcelEventAction.isExcelStep(step)) {
                 throw new IllegalArgumentException("不支持的内置事件动作: " + step.get("actionType"));
             }
@@ -1121,6 +1152,9 @@ public class UiEventRuntimeService {
         String failurePolicy = normalize(text(
                 step.getOrDefault("failurePolicy", "STOP")));
         try {
+            if (lookup != null) {
+                return executeLookupStep(step, lookup, request, state, result);
+            }
             Object raw;
             String extensionId = firstText(
                     step.get("extensionId"), step.get("serviceId"));
@@ -1302,6 +1336,51 @@ public class UiEventRuntimeService {
             }
             throw exception;
         }
+    }
+
+    /**
+     * 用鉴权后重建的事件输入定位目标记录。列表主处理返回投影供后置步骤读取，
+     * 表单只发出仍有可读来源的字段效果，避免无结果时清掉已有草稿。
+     */
+    private Object executeLookupStep(Map<String, Object> step, EntityLookupEventStep.Config lookup,
+            UiEventExecuteRequest request, Map<String, Object> state, UiEventExecutionResult result) {
+        Map<String, Object> source = new LinkedHashMap<>(state);
+        source.put("input", request.getInput() == null ? Map.of() : request.getInput());
+        if (lookup.idPath().startsWith("input.selectedRows.") && request.getSelectedIds().size() != 1) {
+            throw new IllegalArgumentException("请恰好选中一条记录后再查询");
+        }
+        Object candidate = valueMapper.resolve(source, lookup.idPath());
+        // 主键以原始字符串传递，保留前导零和浏览器大整数精度。
+        if (candidate != null && !(candidate instanceof String)) {
+            throw new IllegalArgumentException("实体记录 ID 必须为文本");
+        }
+        String id = (String) candidate;
+        Map<String, Object> record = StringUtils.hasText(id)
+                ? entityLookupReader.read(lookup.entityCode(), id, lookup.fields()) : null;
+        if (record == null) {
+            trace(result, stepLabel(step), "SKIPPED", null);
+            return null;
+        }
+        trace(result, stepLabel(step), "SUCCESS", null);
+        if (!(step.get("outputMapping") instanceof List<?> mappings)) return record;
+
+        Map<String, Object> values = PageParameterPolicy.map(record.get("data"));
+        List<?> readableMappings = mappings.stream()
+                .filter(mapping -> EntityLookupEventStep.hasSource(PageParameterPolicy.map(mapping), values))
+                .toList();
+        if (readableMappings.isEmpty()) return null;
+        Object mapped = valueMapper.apply(readableMappings, Map.of("data", record), Map.of());
+        Map<String, Object> effect = new LinkedHashMap<>();
+        effect.put("type", "FIELD_MAPPING");
+        effect.put("data", mapped);
+        effect.put("mappings", readableMappings);
+        if (lookup.idPath().startsWith("input.form.")) {
+            // 允许用户在按钮查询期间继续编辑；ID 已变化时，迟到的回填不再适用。
+            effect.put("sourceField", lookup.idPath().substring("input.form.".length()));
+            effect.put("sourceValue", id);
+        }
+        result.getEffects().add(effect);
+        return mapped;
     }
 
     /**
@@ -1604,7 +1683,7 @@ public class UiEventRuntimeService {
                 step.get("extensionId"),
                 step.get("operationCode"),
                 step.get("serviceId"),
-                ExcelEventAction.isExcelStep(step) ? "ENTITY_EXCEL" : "MAPPING");
+                text(step.get("actionType")), "MAPPING");
     }
 
     /**

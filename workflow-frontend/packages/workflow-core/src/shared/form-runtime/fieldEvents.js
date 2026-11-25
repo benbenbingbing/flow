@@ -19,7 +19,12 @@ export function buildFieldEventPayload(field, value, context, selection = null) 
   return {
     configType: 'FORM', configId: String(id), runtimeContext: buildRuntimeContext(context, form), configHash: form.configHash || context.configHash || undefined,
     entityCode: context.entityCode, targetType: 'FIELD', targetKey: String(field.fieldCode || field.fieldKey || field.id), recordId: context.row?.isNew ? undefined : context.record?.id,
-    selection, input: { value: (context.getFormData && Object.hasOwn(context.getFormData(), field.fieldCode) ? context.getFormData()[field.fieldCode] : value), form: context.getFormData?.() || context.record?.data || context.record || {}, selection: value }, context: { formId: String(id), mode: context.mode || '' }
+    selection, input: {
+      value: (context.getFormData && Object.hasOwn(context.getFormData(), field.fieldCode) ? context.getFormData()[field.fieldCode] : value),
+      form: context.getFormData?.() || context.record?.data || context.record || {},
+      selection: value,
+      ...(context.params || context.parameters ? { params: context.params || context.parameters } : {})
+    }, context: { formId: String(id), mode: context.mode || '' }
   }
 }
 
@@ -43,15 +48,20 @@ export async function applyRuntimeFieldEffects(result, { getRecord, setField, co
   const effects = Array.isArray(result?.effects) ? result.effects : []
   for (const effect of effects) {
     if (String(effect?.type || '').toUpperCase() !== 'FIELD_MAPPING') continue
+    let sourceValue = effect.sourceValue
+    const sourceChanged = () => effect.sourceField && getRecord()?.[effect.sourceField] !== sourceValue
     for (const mapping of Array.isArray(effect.mappings) ? effect.mappings : []) {
       if (!isCurrent()) return
+      if (sourceChanged()) break
       const target = String(mapping.targetPath || ''), path = target.replace(/^form\./, '').replace(/^data\./, '')
       if (!safePath(pathParts(path))) continue
       const value = resolve(effect.data, target), current = resolve(getRecord(), path), policy = String(mapping.overwrite || 'ALWAYS').toUpperCase()
       if (mapping.clearOnEmpty === false && empty(value)) continue
       if (policy === 'IF_EMPTY' && !empty(current)) continue
       if (policy === 'CONFIRM' && !empty(current) && current !== value && !(await confirmOverwrite?.(path))) continue
+      if (sourceChanged()) break
       set(path, value)
+      if (path === effect.sourceField) sourceValue = value
     }
   }
   if (!effects.length && result?.data && typeof result.data === 'object') {

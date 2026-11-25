@@ -256,7 +256,7 @@ class UiExcelBuiltinEventTest {
             when(provider.getObject()).thenReturn(excel);
             runtime = new UiEventRuntimeService(resolvedBindings, interfaces, new UiEventValueMapper(),
                     mock(EntitySelectionRuntimeService.class), mock(SystemOperationLogPort.class), capabilities, forms,
-                    receipts, mock(EntityDataDynamicService.class), json, provider);
+                    receipts, mock(EntityDataDynamicService.class), json, provider, null);
         }
 
         UiEventBindingService.ResolvedEventChain chain(UiEventExecuteRequest request, Map<String, Object> step) {

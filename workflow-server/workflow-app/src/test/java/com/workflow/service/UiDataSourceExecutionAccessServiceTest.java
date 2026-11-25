@@ -713,7 +713,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 bindings, interfaces, new UiEventValueMapper(), mock(EntitySelectionRuntimeService.class),
                 mock(SystemOperationLogPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
                 mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper,
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class), null);
 
         UiEventExecutionResult result = runtime.execute(event, input -> {
             assertEquals(parameters, input.get("params"));
@@ -1195,7 +1195,7 @@ class UiDataSourceExecutionAccessServiceTest {
                         mock(SystemEntityReadService.class), context.definitionMapper(), objectMapper),
                 mock(SystemOperationLogPort.class), permissions, mock(EntityFormActionService.class),
                 mock(UiEventExecutionReceiptService.class), entityData, objectMapper,
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class), null);
         UiEventExecuteRequest request = new UiEventExecuteRequest();
         request.setConfigType("FORM");
         request.setConfigId("form-1");

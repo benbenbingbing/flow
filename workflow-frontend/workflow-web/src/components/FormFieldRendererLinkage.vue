@@ -24,7 +24,7 @@ import { formFieldProps, formFieldEmits } from '@flow/workflow-core/extensions/c
 import { resolveComponentFormPatch } from '@flow/workflow-core/form-runtime/formModel'
 import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
 import { CUSTOM_VALIDATION_CONTEXT_KEY } from '@flow/workflow-core/form-custom-validation'
-import { computed, inject, ref, nextTick } from 'vue'
+import { computed, inject, ref, nextTick, onBeforeUnmount } from 'vue'
 import { showRequestError } from '@/shared/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { uiEventBindingApi } from '@/api/uiConfig'
@@ -42,6 +42,8 @@ const fieldComponentRef = ref(null)
 const uniquePrecheckContext = inject(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, null)
 const customValidationContext = inject(CUSTOM_VALIDATION_CONTEXT_KEY, null)
 const customValidationError = computed(() => customValidationContext?.errorFor(props.field) || '')
+let fieldEventSequence = 0
+onBeforeUnmount(() => { fieldEventSequence++ })
 
 async function handleRuntimeBlur(event) {
   emit('blur', event)
@@ -49,12 +51,19 @@ async function handleRuntimeBlur(event) {
 }
 
 async function handleRuntimeChange(value, field = props.field) {
+  // 字段变化与实体选择属于同一次编辑。旧请求迟到时，不能回填或触发旧选择的第二阶段。
+  const sequence = ++fieldEventSequence
+  const formData = currentFormData()
+  const session = props.context.initializationKey
+  const isCurrent = () => sequence === fieldEventSequence && formData === currentFormData()
+    && session === props.context.initializationKey
   emit('change', value)
-  await executeRuntimeEvent('FIELD_CHANGE', value, null, field)
+  await executeRuntimeEvent('FIELD_CHANGE', value, null, field, isCurrent)
   // 与设计器的事件能力判断一致，系统用户/部门引用也必须触发已开放的选择事件。
-  if (isEntitySelectionEventField(field)) {
-    await executeRuntimeEvent('ENTITY_SELECTED', value, value, field)
+  if (isCurrent() && isEntitySelectionEventField(field)) {
+    await executeRuntimeEvent('ENTITY_SELECTED', value, value, field, isCurrent)
   }
+  if (!isCurrent()) return
   // 事件回填可能修改条件字段，必须用全部 effect 落地后的最终数据预检。
   await checkChangeOnlyUniqueField(field)
   await customValidationContext?.checkField(field, 'CHANGE')
@@ -75,7 +84,7 @@ async function checkChangeOnlyUniqueField(field) {
   await uniquePrecheckContext.check(field, 'BLUR')
 }
 
-async function executeRuntimeEvent(eventCode, value, selection, field) {
+async function executeRuntimeEvent(eventCode, value, selection, field, isCurrent) {
   const payload = buildFieldEventPayload(field, value, {
     ...props.context, getFormData: currentFormData
   }, selection)
@@ -84,6 +93,7 @@ async function executeRuntimeEvent(eventCode, value, selection, field) {
     const result = await uiEventBindingApi.execute(eventCode, payload)
     await applyRuntimeFieldEffects(result, {
       getRecord: currentFormData,
+      isCurrent,
       setField: (code, next) => { currentFormData()[code] = next },
       async confirmOverwrite() {
         try {
@@ -92,8 +102,10 @@ async function executeRuntimeEvent(eventCode, value, selection, field) {
         } catch { return false }
       }
     })
-    if (result?.message) ElMessage.success(result.message)
-  } catch (error) { showRequestError(error, '字段事件处理失败') }
+    if (isCurrent() && result?.message) ElMessage.success(result.message)
+  } catch (error) {
+    if (isCurrent()) showRequestError(error, '字段事件处理失败')
+  }
 }
 
 function currentFormData() {

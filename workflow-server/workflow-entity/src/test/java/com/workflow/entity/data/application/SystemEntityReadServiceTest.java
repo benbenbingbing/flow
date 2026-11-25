@@ -29,6 +29,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -80,6 +81,7 @@ class SystemEntityReadServiceTest {
         when(businessMapper.selectRecords(any())).thenReturn(List.of(Map.of("id", "1", "menu_name", "测试菜单")));
 
         assertThrows(ForbiddenException.class, () -> service.findByIds("sys_menu", List.of("1")));
+        assertNull(service.findVisibleById("sys_menu", "1"));
 
         UserContext.clear();
         var port = new com.workflow.entity.data.infrastructure.adapter.SystemEntityQueryAdapter(service);

@@ -45,6 +45,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -73,8 +74,9 @@ class EntityDataDynamicServiceSubFormTest {
         when(permission.calculatePermission("parent", null, user))
                 .thenReturn(com.workflow.entity.permission.application.model.DataPermissionResult.allowAll());
         var objectMapper = new ObjectMapper();
+        var relations = mock(EntityRelationRuntimeService.class);
         var service = new EntityDataDynamicService(f.dynamicMapper, f.definitionMapper, f.dynamicTableService,
-                new EntityRuntimeRecordMapper(objectMapper), mock(EntityRelationRuntimeService.class),
+                new EntityRuntimeRecordMapper(objectMapper), relations,
                 f.multiValueRuntimeService, permission, users, f.snapshotService);
         com.workflow.admin.security.context.UserContext.setCurrentUser("u", "test-user");
         try {
@@ -92,8 +94,18 @@ class EntityDataDynamicServiceSubFormTest {
             when(permission.calculatePermission("parent", null, user)).thenReturn(filtered);
             when(f.dynamicMapper.selectByIdWithPermission("wf_parent", "filtered", filtered.getSqlCondition(), filtered.getSqlParameters()))
                     .thenReturn(Map.of("id", "filtered"));
+            when(f.dynamicMapper.selectByIdWithPermission("wf_parent", "outside-scope", filtered.getSqlCondition(), filtered.getSqlParameters()))
+                    .thenReturn(null);
             assertEquals("filtered", service.findAccessibleActionSummaryById("parent", "filtered", null).getId());
-            verify(f.dynamicMapper).selectByIdWithPermission("wf_parent", "filtered", filtered.getSqlCondition(), filtered.getSqlParameters());
+            assertEquals("filtered", service.findVisibleMainById("parent", "filtered").getId());
+            verify(f.dynamicMapper, org.mockito.Mockito.times(2))
+                    .selectByIdWithPermission("wf_parent", "filtered", filtered.getSqlCondition(), filtered.getSqlParameters());
+            assertNull(service.findVisibleMainById("parent", "outside-scope"));
+            org.mockito.Mockito.verifyNoInteractions(relations);
+            when(permission.calculatePermission("parent", null, user))
+                    .thenReturn(com.workflow.entity.permission.application.model.DataPermissionResult.denyAll());
+            assertNull(service.findVisibleMainById("parent", "denied"));
+            verify(f.dynamicMapper, never()).selectById("wf_parent", "denied");
         } finally { com.workflow.admin.security.context.UserContext.clear(); }
     }
 

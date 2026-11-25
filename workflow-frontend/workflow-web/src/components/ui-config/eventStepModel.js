@@ -3,6 +3,19 @@ export function isBuiltinExcelStep(step) {
   return step?.actionType === 'ENTITY_EXCEL'
 }
 
+export function isEntityLookupStep(step) {
+  return step?.actionType === 'ENTITY_LOOKUP'
+}
+
+/** 与发布契约一致，仅在具备当前记录、行或页面参数的入口提供查询步骤。 */
+export function canAddEntityLookup(ownerType, eventCode, targetType) {
+  if (ownerType === 'FORM') {
+    return ['FORM_OPEN', 'FORM_BUTTON_CLICK', 'FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK'].includes(eventCode)
+  }
+  return ownerType === 'LIST' && targetType === 'BUTTON'
+    && ['ROW_BUTTON_CLICK', 'TOOLBAR_BUTTON_CLICK'].includes(eventCode)
+}
+
 /** 面向配置人员的摘要；操作参数统一通过 Excel 快捷配置维护。 */
 export function builtinExcelSummary(step) {
   const config = step?.actionConfig || {}
@@ -36,7 +49,8 @@ export function createEventStepEditor() {
     return {
       ...step,
       // 深拷贝内置参数，事件编辑草稿不能修改列表中原绑定或其他按钮的数据。
-      ...(isBuiltinExcelStep(step) ? { actionConfig: JSON.parse(JSON.stringify(step.actionConfig || {})) } : {}),
+      ...(isBuiltinExcelStep(step) || isEntityLookupStep(step)
+        ? { actionConfig: JSON.parse(JSON.stringify(step.actionConfig || {})) } : {}),
       rowKey: `step_${++rowSequence}`,
       name: step.name || '',
       strategy: String(step.strategy || 'BEFORE').toUpperCase(),
@@ -107,6 +121,19 @@ export function serializeEventStep(step, index) {
       order: (index + 1) * 10, failurePolicy: step.failurePolicy
     }
   }
+  if (isEntityLookupStep(step)) {
+    return {
+      stepCode: step.stepCode || undefined,
+      name: step.name || undefined,
+      strategy: step.strategy,
+      actionType: 'ENTITY_LOOKUP',
+      actionConfig: JSON.parse(JSON.stringify(step.actionConfig || {})),
+      order: (index + 1) * 10,
+      condition: serializeCondition(step),
+      outputMapping: Array.isArray(step.actionConfig?.fields) ? undefined : cleanMappings(step.outputRows),
+      failurePolicy: step.failurePolicy
+    }
+  }
   return {
     stepCode: step.stepCode || undefined,
     name: step.name || undefined,
@@ -125,7 +152,7 @@ export function serializeEventStep(step, index) {
 }
 
 /** 校验可持久化步骤链；返回首个业务错误，空字符串表示可以提交。 */
-export function validateEventStepChain(steps, { inheritanceMode, formButtonExactTarget, formButtonEventSelected, interfaces }) {
+export function validateEventStepChain(steps, { inheritanceMode, formButtonExactTarget, formButtonEventSelected, interfaces, ownerType, eventCode, targetType }) {
   if (formButtonEventSelected && steps.some(step =>
     step.strategy === 'REPLACE'
     && Object.keys(step.condition || {}).length > 0)) {
@@ -141,6 +168,16 @@ export function validateEventStepChain(steps, { inheritanceMode, formButtonExact
     }
   }
   for (const step of steps) {
+    if (isEntityLookupStep(step)) {
+      if (!canAddEntityLookup(ownerType, eventCode, targetType)) return '当前事件不支持按 ID 查询实体'
+      if (!step.actionConfig?.entityCode || !step.actionConfig?.idPath) return '请选择目标实体和记录 ID 来源'
+      if (ownerType === 'LIST') {
+        if (step.strategy !== 'REPLACE' || !step.actionConfig?.fields?.length) return '列表查询需作为主处理并选择返回字段'
+      } else if (!step.outputMapping?.length) {
+        return '请配置查询结果要回填的字段'
+      }
+      continue
+    }
     if (isBuiltinExcelStep(step)) {
       if (step.strategy !== 'REPLACE' || step.failurePolicy !== 'STOP') return '内置 Excel 操作必须为主处理，失败时停止执行'
       if (!['IMPORT', 'EXPORT', 'TEMPLATE'].includes(step.actionConfig?.operation)

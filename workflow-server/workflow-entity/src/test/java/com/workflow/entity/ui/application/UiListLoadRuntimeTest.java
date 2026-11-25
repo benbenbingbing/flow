@@ -25,7 +25,7 @@ class UiListLoadRuntimeTest {
     private final UiEventRuntimeService runtime = new UiEventRuntimeService(
             bindings, interfaces, new UiEventValueMapper(), mock(EntitySelectionRuntimeService.class),
             mock(SystemOperationLogPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
-            mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper, mock(org.springframework.beans.factory.ObjectProvider.class));
+            mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper, mock(org.springframework.beans.factory.ObjectProvider.class), null);
 
     @Test
     void mappedReplacementRestoresFixedFiltersAndPinnedRelease() {

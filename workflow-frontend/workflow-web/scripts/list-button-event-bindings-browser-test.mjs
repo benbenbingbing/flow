@@ -15,6 +15,8 @@ import 'element-plus/dist/index.css'
 import Dialog from '/src/components/ui-config/EventBindingDialog.vue'
 import { listButtonEventOptions } from '/src/components/ui-config/listButtonEventTargets.js'
 import { uiEventBindingApi, uiExtensionApi } from '/src/api/uiConfig.js'
+import { entityApi } from '/src/api/entity.js'
+import { entityListConfigApi } from '/src/api/entityListConfig.js'
 const copy = value => JSON.parse(JSON.stringify(value))
 const events = ['LIST_LOAD','ROW_BUTTON_CLICK','TOOLBAR_BUTTON_CLICK']
 const button = (key,label) => ({key,label,type:'custom',customMode:'event'})
@@ -40,6 +42,11 @@ uiEventBindingApi.remove=async(id,revision)=>{
  const row=state.rows.find(r=>r.id===id);if(row.revision!==revision)throw Error('revision conflict');state.rows=state.rows.filter(r=>r.id!==id)
 }
 uiExtensionApi.availableInterfaces=async()=>[{extensionId:'test-interface',displayName:'验收接口',interfaceContextType:'LIST',interfaceKind:'READ',enabled:true}]
+const customer={id:'customer',entityCode:'customer',entityName:'客户',status:'PUBLISHED',storageMode:'DYNAMIC',fields:[{fieldCode:'phone',fieldName:'联系电话',fieldType:'STRING'}]}
+entityApi.getOptions=async()=>({records:[customer],total:1})
+entityApi.resolveOptions=async()=>[customer]
+entityApi.getByCode=async()=>customer
+entityListConfigApi.getById=async()=>({viewConfig:{inputParameterSchema:{properties:{customerId:{type:'string',title:'客户 ID'}}}}})
 const dialog=ref()
 const app=createApp({setup(){return()=>h(Dialog,{ref:dialog,ownerType:'LIST',ownerId:'list1',ownerLabel:'列表',buttonOptions:listButtonEventOptions(state.toolbar,state.row),onChanged:()=>state.changes++})}})
 app.use(createPinia()).use(ElementPlus,{locale:zhCn}).mount('#app')
@@ -172,6 +179,27 @@ try{
  await evaluate('eventTest.settle()');await clickText('保存绑定')
  assert.equal(await evaluate('eventTest.state.writes.at(-1).targetType'),'OWNER')
  assert.equal(await evaluate('eventTest.state.writes.at(-1).targetKey'),'')
+ // 通过真实实体选择器和参数选项保存列表内置查询，重新打开时按原配置回显。
+ await editBinding('操作列按钮：重新打开 (reopen)')
+ await clickText('按 ID 查询实体')
+ await clickText('请选择实体')
+ await evaluate(`document.querySelector('.entity-definition-picker-dialog .el-table__row').click();eventTest.settle()`)
+ await clickText('确认选择')
+ async function selectLookupOption(label, value) {
+   await evaluate(`[...${lastDialog}.querySelectorAll('.el-form-item')].find(e=>e.querySelector('.el-form-item__label')?.textContent.trim()===${JSON.stringify(label)}).querySelector('.el-select__wrapper').click()`)
+   await evaluate('eventTest.settle()')
+   await evaluate(`([...document.querySelectorAll('.el-select-dropdown__item')].filter(${visible})).find(e=>e.textContent.includes(${JSON.stringify(value)})).click();eventTest.settle()`)
+ }
+ await selectLookupOption('记录 ID 来源', '页面参数')
+ await selectLookupOption('返回字段', '联系电话')
+ await clickText('保存绑定')
+ const lookup=await evaluate('JSON.parse(JSON.stringify(eventTest.state.writes.at(-1).steps[0]))')
+ assert.equal(lookup.actionType,'ENTITY_LOOKUP')
+ assert.equal(lookup.strategy,'REPLACE')
+ assert.deepEqual(lookup.actionConfig,{entityCode:'customer',idPath:'input.params.customerId',fields:['phone']})
+ assert.equal(lookup.extensionId,undefined)
+ await editBinding('操作列按钮：重新打开 (reopen)')
+ assert.match(await evaluate(`${lastDialog}.innerText`),/联系电话/)
  assert.deepEqual(errors,[])
- console.log('list button event browser acceptance passed: multiple row/toolbar targets, public defaults, duplicate prevention, immutable editing identity, delete/recreate, dynamic buttons, orphan bindings, exact-button entry')
+ console.log('list button event browser acceptance passed: multiple row/toolbar targets, public defaults, duplicate prevention, immutable editing identity, delete/recreate, dynamic buttons, orphan bindings, exact-button entry, entity lookup configuration')
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}

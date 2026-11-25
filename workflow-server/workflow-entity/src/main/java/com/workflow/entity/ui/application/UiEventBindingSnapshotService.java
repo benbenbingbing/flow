@@ -548,7 +548,10 @@ public class UiEventBindingSnapshotService {
                 Map<String, Object> copy = new LinkedHashMap<>();
                 step.forEach((key, child) ->
                         copy.put(String.valueOf(key), child));
-                if (copy.containsKey("actionType")) {
+                if (EntityLookupEventStep.matches(copy)) {
+                    EntityLookupEventStep.validate(copy, normalize(binding.getOwnerType()),
+                            normalize(binding.getTargetType()), normalize(binding.getEventCode()));
+                } else if (copy.containsKey("actionType")) {
                     // Excel 内置动作无可变接口引用，FORM/LIST 都直接将参数纳入宿主
                     // 快照及内容摘要，发布后不会读取按钮草稿或另建接口定义。
                     if (!ExcelEventAction.isExcelStep(copy)) {
@@ -624,6 +627,11 @@ public class UiEventBindingSnapshotService {
             Map<?, ?> rawStep,
             Map<?, ?> binding) {
         Map<String, Object> step = (Map<String, Object>) rawStep;
+        if (EntityLookupEventStep.matches(step)) {
+            EntityLookupEventStep.validate(step, normalize(text(binding.get("ownerType"))),
+                    normalize(text(binding.get("targetType"))), normalize(text(binding.get("eventCode"))));
+            return;
+        }
         if (ExcelEventAction.isExcelStep(step)) {
             ExcelEventAction.validateStep(step, normalize(text(binding.get("ownerType"))),
                     normalize(text(binding.get("targetType"))), normalize(text(binding.get("eventCode"))));
@@ -762,7 +770,7 @@ public class UiEventBindingSnapshotService {
     }
 
     /**
-     * 恢复可编辑草稿时，接口保留 extensionId，内置 Excel 动作保留完整 actionConfig；
+     * 恢复可编辑草稿时，接口保留 extensionId，内置动作保留完整 actionConfig；
      * 两者都移除仅用于接口发布的钉定字段，参数不回读当前扩展或按钮草稿。
      *
      * @param rawSteps 原始步骤集合，供本方法处理草稿步骤集合时使用
@@ -783,6 +791,11 @@ public class UiEventBindingSnapshotService {
             Map<String, Object> copy = new LinkedHashMap<>();
             step.forEach((key, value) ->
                     copy.put(String.valueOf(key), value));
+            if (EntityLookupEventStep.matches(copy)) {
+                // 查询坐标必须由内置契约校验，不能提前解析或清洗掉不合法的接口引用。
+                result.add(copy);
+                continue;
+            }
             // 可编辑绑定不保存任何发布钉定字段；FORM_BUTTON_CLICK 发布时会
             // 再从权威扩展定义生成 v2 快照，其他事件也不能透传旧服务身份。
             normalizeDraftInterfaceReference(copy);
@@ -805,6 +818,7 @@ public class UiEventBindingSnapshotService {
             Map<?, ?> step,
             String configType,
             Map<String, UiExtensionDefinition> sourceCache) {
+        if (EntityLookupEventStep.matches(step)) return true;
         String serviceId = firstText(
                 step.get("extensionId"), step.get("serviceId"));
         String operationCode = text(step.get("operationCode"));

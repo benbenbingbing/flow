@@ -25,8 +25,9 @@
 
 <script setup>
 import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
+import { applyRuntimeFieldEffects } from '@flow/workflow-core/form-runtime/fieldEvents'
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Connection } from '@element-plus/icons-vue'
 import { useExtensionHost } from '@flow/workflow-extensions/host'
 import { getFormId } from '@flow/workflow-core/form-action-runtime'
@@ -107,6 +108,9 @@ async function executeFieldButtonEvent() {
     return
   }
   eventLoading.value = true
+  const target = currentFormData()
+  const session = props.context?.initializationKey
+  const isCurrent = () => target === currentFormData() && session === props.context?.initializationKey
   try {
     const result = await uiEventBindingApi.execute(
       'FIELD_BUTTON_CLICK',
@@ -124,7 +128,8 @@ async function executeFieldButtonEvent() {
         recordId: props.context?.record?.id || undefined,
         input: {
           value: localValue.value,
-          form: currentFormData(),
+          form: target,
+          params: props.context?.params || props.context?.parameters || {},
           source: 'ProjectAcceptanceScoreField'
         },
         context: {
@@ -133,7 +138,19 @@ async function executeFieldButtonEvent() {
         }
       }
     )
-    applyFieldEffects(result)
+    // 字段按钮沿用表单回填策略；只应用显式映射，保持此组件原有的结果范围。
+    await applyRuntimeFieldEffects({ effects: result?.effects }, {
+      getRecord: currentFormData,
+      setField: (key, value) => { target[key] = value },
+      isCurrent,
+      async confirmOverwrite() {
+        try {
+          await ElMessageBox.confirm('将更新已有字段内容，是否继续？', '确认回填', { type: 'warning' })
+          return true
+        } catch { return false }
+      }
+    })
+    if (!isCurrent()) return
     console.info(
       '[ProjectExtensionAcceptance] 字段按钮事件执行完成',
       {
@@ -162,50 +179,6 @@ function currentFormData() {
     : record || {}
 }
 
-function applyFieldEffects(result) {
-  const target = currentFormData()
-  const effects = Array.isArray(result?.effects)
-    ? result.effects
-    : []
-  effects
-    .filter(effect => effect?.type === 'FIELD_MAPPING')
-    .forEach(effect => {
-      const data = effect?.data || {}
-      const mappings = Array.isArray(effect?.mappings)
-        ? effect.mappings
-        : []
-      mappings.forEach(mapping => {
-        const targetPath = String(mapping?.targetPath || '')
-          .replace(/^form\./, '')
-          .replace(/^data\./, '')
-        if (!targetPath) return
-        const value = readPath(data, mapping.targetPath)
-        writePath(target, targetPath, value)
-      })
-    })
-}
-
-function readPath(source, path) {
-  return String(path || '')
-    .split('.')
-    .filter(Boolean)
-    .reduce((value, key) => value?.[key], source)
-}
-
-function writePath(target, path, value) {
-  const parts = String(path).split('.').filter(Boolean)
-  let current = target
-  parts.forEach((part, index) => {
-    if (index === parts.length - 1) {
-      current[part] = value
-      return
-    }
-    if (!current[part] || typeof current[part] !== 'object') {
-      current[part] = {}
-    }
-    current = current[part]
-  })
-}
 </script>
 
 <style scoped>

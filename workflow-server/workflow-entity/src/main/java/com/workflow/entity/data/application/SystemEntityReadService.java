@@ -327,6 +327,16 @@ public class SystemEntityReadService {
         return findByIdForPort(entityCode, id);
     }
 
+    /** 沿用实体详情权限与字段白名单，记录不可用时在读取事务内返回空值，供表单回填跳过。 */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findVisibleById(String entityCode, String id) {
+        try {
+            return findById(entityCode, id);
+        } catch (ForbiddenException unavailable) {
+            return null;
+        }
+    }
+
     /** 按已授权的系统实体及主键读取记录，继续应用字段白名单。 */
     @Transactional(readOnly = true)
     public EntityDataDTO findByIdForPort(String entityCode, String id) {

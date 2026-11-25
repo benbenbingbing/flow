@@ -1188,7 +1188,7 @@ const handleEventAction = async ({
       recordId: row?.id,
       selectedIds: recordIds,
       // 按钮、记录与选择集由服务端按发布快照和 ID 重建；客户端不提交可伪造副本。
-      input: { filters },
+      input: { filters, params: resolvedInputParameters.value },
       context: {
         ...(props.context || {}),
         listId: String(listConfig.value.id),

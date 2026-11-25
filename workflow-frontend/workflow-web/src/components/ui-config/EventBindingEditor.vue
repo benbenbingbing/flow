@@ -311,10 +311,15 @@
                     : '此事件没有居中的平台默认步骤；具体页面行为和触发方式见上方说明。' }}
               </div>
             </div>
-            <el-button type="primary" plain @click="addStep">
-              <el-icon><Plus /></el-icon>
-              增加步骤
-            </el-button>
+            <div>
+              <el-button v-if="lookupAvailable" plain :disabled="listMainStepExists" @click="addEntityLookup">
+                按 ID 查询实体
+              </el-button>
+              <el-button type="primary" plain @click="addStep">
+                <el-icon><Plus /></el-icon>
+                增加步骤
+              </el-button>
+            </div>
           </div>
 
           <div v-if="editor.steps.length" class="draft-chain">
@@ -398,7 +403,7 @@
                     :content="formButtonStepStrategyHelp"
                   />
                 </template>
-                <el-select v-model="step.strategy" :disabled="isBuiltinExcelStep(step)" @change="normalizeReplace(step)">
+                <el-select v-model="step.strategy" :disabled="isBuiltinExcelStep(step) || isListLookup(step)" @change="normalizeReplace(step)">
                   <el-option
                     v-for="option in stepStrategyOptions"
                     :key="option.value"
@@ -410,7 +415,7 @@
               <el-form-item v-if="isBuiltinExcelStep(step)" label="内置动作">
                 <el-tag>内置 Excel 操作</el-tag>
               </el-form-item>
-              <el-form-item v-else label="扩展接口">
+              <el-form-item v-else-if="!isEntityLookupStep(step)" label="扩展接口">
                 <template #label>
                   <ConfigHelpLabel
                     label="扩展接口"
@@ -460,6 +465,15 @@
               </el-form-item>
             </div>
 
+            <EntityLookupStepEditor
+              v-if="isEntityLookupStep(step)"
+              v-model:config="step.actionConfig"
+              :event-code="editor.eventCode"
+              :field-options="fieldOptions"
+              :parameter-options="lookupParameters"
+              @change-entity="step.outputRows = []"
+              @fields="step.lookupFields = $event"
+            />
             <el-alert
               v-if="isBuiltinExcelStep(step)"
               :title="builtinExcelSummary(step)"
@@ -467,7 +481,7 @@
               type="info" :closable="false" show-icon
             />
             <el-collapse v-else>
-              <el-collapse-item name="input">
+              <el-collapse-item v-if="!isEntityLookupStep(step)" name="input">
                 <template #title>
                   <ConfigHelpLabel
                     label="输入参数映射"
@@ -480,7 +494,7 @@
                   :field-options="fieldOptions"
                 />
               </el-collapse-item>
-              <el-collapse-item name="output">
+              <el-collapse-item v-if="!isListLookup(step)" name="output">
                 <template #title>
                   <ConfigHelpLabel
                     label="结果回填"
@@ -490,7 +504,8 @@
                 <EventMappingRows
                   v-model="step.outputRows"
                   mode="output"
-                  :field-options="fieldOptions"
+                  :field-options="isEntityLookupStep(step) ? lookupTargetFields : fieldOptions"
+                  :source-options="isEntityLookupStep(step) ? step.lookupFields || [] : null"
                 />
               </el-collapse-item>
               <el-collapse-item
@@ -566,7 +581,7 @@
 import ExcelButtonBinding from '@/components/excel/ExcelButtonBinding.vue'
 import { showRequestError } from '@/shared/request'
 
-import { isBuiltinExcelStep, builtinExcelSummary, validateEventStepChain, createEventStepEditor, parseEventDocument as parseJson, serializeEventStep as serializeStep } from './eventStepModel'
+import { isBuiltinExcelStep, isEntityLookupStep, canAddEntityLookup, builtinExcelSummary, validateEventStepChain, createEventStepEditor, parseEventDocument as parseJson, serializeEventStep as serializeStep } from './eventStepModel'
 import { computed, reactive, ref, watch } from 'vue'
 import {
   ArrowDown,
@@ -578,6 +593,10 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
+import EntityLookupStepEditor from './EntityLookupStepEditor.vue'
+import { getFormById } from '@/api/entityForm'
+import { entityListConfigApi } from '@/api/entityListConfig'
+import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
 import EventDefaultProcessingHelp from './EventDefaultProcessingHelp.vue'
 import { getEventDefaultProcessing as platformDefaultHelp } from './uiEventDefaultProcessing'
 import { getFormFieldComponentDescriptor } from '@/extensions/core/registries/formFieldRegistry.js'
@@ -667,6 +686,26 @@ let loadSequence = 0
 let interfaceSequence = 0
 
 const editor = reactive(emptyEditor())
+const lookupOwner = computed(() => String(props.ownerType).toUpperCase())
+const lookupAvailable = computed(() => canAddEntityLookup(lookupOwner.value, editor.eventCode, editor.targetType))
+const listMainStepExists = computed(() => lookupOwner.value === 'LIST' && editor.steps.some(step => step.strategy === 'REPLACE'))
+const lookupTargetFields = computed(() => props.fieldOptions.filter(field =>
+  !['id', 'processInstanceId', 'process_instance_id', 'processStatus', 'process_status',
+    'deleted', 'create_by', 'update_by', 'create_time', 'update_time'].includes(field.value)))
+const lookupParameters = ref([])
+watch(() => [dialogVisible.value, props.ownerId, lookupOwner.value, editor.steps.some(isEntityLookupStep)],
+  async ([visible, id, owner, hasLookup], _, onCleanup) => {
+    lookupParameters.value = []
+    if (!visible || !id || !hasLookup || !['FORM', 'LIST'].includes(owner)) return
+    let current = true
+    onCleanup(() => { current = false })
+    try {
+      const config = await (owner === 'FORM' ? getFormById(id) : entityListConfigApi.getById(id))
+      if (current) lookupParameters.value = getInputParameterDefinitions(parseJson(config?.viewConfig, {})?.inputParameterSchema)
+    } catch {
+      // 加载不到参数选项时仍可输入已知路径，运行时按发布声明校验。
+    }
+  })
 const selectedEventDefault = computed(() => platformDefaultHelp(editor.eventCode))
 
 const ownerTypeLabel = computed(() => ({
@@ -908,7 +947,7 @@ async function openEdit(row) {
   await loadAvailableInterfaces(editor.eventCode)
   if (sequence !== loadSequence) return
   editor.steps.forEach(step => {
-    if (isBuiltinExcelStep(step)) return
+    if (isBuiltinExcelStep(step) || isEntityLookupStep(step)) return
     step.extensionId = resolveInterfaceExtensionId({
       extensionId: step.extensionId,
       serviceId: step.legacyServiceId,
@@ -921,6 +960,21 @@ async function openEdit(row) {
 function addStep() {
   editor.steps.push(normalizeStep({
     strategy: defaultNewStepStrategy(),
+    failurePolicy: 'STOP'
+  }, editor.steps.length))
+}
+
+function isListLookup(step) {
+  return lookupOwner.value === 'LIST' && isEntityLookupStep(step)
+}
+
+function addEntityLookup() {
+  if (!lookupAvailable.value || listMainStepExists.value) return
+  const list = lookupOwner.value === 'LIST'
+  editor.steps.push(normalizeStep({
+    actionType: 'ENTITY_LOOKUP',
+    actionConfig: { entityCode: '', idPath: '', ...(list ? { fields: [] } : {}) },
+    strategy: list ? 'REPLACE' : defaultNewStepStrategy(),
     failurePolicy: 'STOP'
   }, editor.steps.length))
 }
@@ -958,9 +1012,9 @@ function normalizeReplace(current) {
   editor.steps.forEach(step => {
     if (step !== current && step.strategy === 'REPLACE') {
       // 内置 Excel 动作只能承担主处理，不能在另选主处理时静默降为前置步骤。
-      if (isBuiltinExcelStep(step)) {
+      if (isBuiltinExcelStep(step) || isListLookup(step)) {
         current.strategy = 'BEFORE'
-        ElMessage.warning('请先移除内置 Excel 主处理，再配置其他主处理')
+        ElMessage.warning('请先移除现有的内置主处理，再配置其他主处理')
         return
       }
       step.strategy = 'BEFORE'
@@ -1052,7 +1106,10 @@ async function save() {
     inheritanceMode: editor.inheritanceMode,
     formButtonExactTarget: formButtonExactTarget.value,
     formButtonEventSelected: formButtonEventSelected.value,
-    interfaces: interfaces.value
+    interfaces: interfaces.value,
+    ownerType: lookupOwner.value,
+    eventCode: editor.eventCode,
+    targetType: editor.targetType
   })
   if (validationMessage) {
     ElMessage.warning(validationMessage)
@@ -1236,6 +1293,7 @@ function chainItems(row) {
   const after = steps.filter(step => step.strategy === 'AFTER')
   const label = step => {
     if (isBuiltinExcelStep(step)) return `内置 Excel 操作 · ${builtinExcelSummary(step)}`
+    if (isEntityLookupStep(step)) return step.name || '按 ID 查询实体'
     const item = interfaces.value.find(option =>
       option.extensionId === step.extensionId)
     return step.name || item?.displayName || '字段映射'

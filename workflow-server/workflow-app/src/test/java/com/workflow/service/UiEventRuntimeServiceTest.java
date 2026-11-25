@@ -108,7 +108,7 @@ class UiEventRuntimeServiceTest {
                 executionReceiptService,
                 entityDataService,
                 objectMapper,
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class), null);
         org.mockito.Mockito.lenient().when(
                 formActionService.requireCustomButton(
                         any(UiEventExecuteRequest.class),
@@ -1228,7 +1228,7 @@ class UiEventRuntimeServiceTest {
                 bindingService, dataSourceService, new UiEventValueMapper(),
                 selectionRuntimeService, auditPort, actionCapabilityService,
                 formActionService, executionReceiptService, entityDataService, objectMapper,
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class), null);
         UiEventExecuteRequest request = request(eventCode, "singleUser");
         request.setConfigType("FORM");
         request.setConfigId("form-1");
@@ -1286,7 +1286,7 @@ class UiEventRuntimeServiceTest {
                 bindingService, dataSourceService, new UiEventValueMapper(),
                 selectionRuntimeService, auditPort, actionCapabilityService,
                 formActionService, executionReceiptService, entityDataService, objectMapper,
-                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class), null);
         UiEventExecuteRequest request = request(eventCode, "");
         request.setConfigType("FORM");
         request.setConfigId("form-1");
