@@ -20,6 +20,7 @@
 | 典型任务 | Java 方法 |
 | --- | --- |
 | 查用户、保存来源用户 | `SysUserPort.pageUsers()`、`saveUser()` |
+| 为已确认身份的启用用户登录 | `SysUserPort.loginWithUserName()` |
 | 按编码查外部系统或读取对接参数 | `SysExternalSystemPort.findByCode()`、`findConfigurationByCode()` |
 | 后台同步任务按编码读取已启用外部系统的参数 | `SysExternalSystemPort.findConfigurationForService()` |
 | 用 HR 员工或部门 ID 查平台 ID | `SysUserPort.findUserIdBySource()`、`SysOrganizationPort.findOrganizationIdBySource()` |
@@ -56,7 +57,7 @@
 | [`SysUserGroupTagPort`](src/main/java/com/workflow/port/system/SysUserGroupTagPort.java) | `sys_group_tag`、`sys_user_group_tag` | 校验组内标签，按标签展开成员 | 流程候选人解析 |
 | [`SysUserHandoverPort`](src/main/java/com/workflow/port/system/SysUserHandoverPort.java) | `sys_user` | 查交接涉及的用户，支持事务内锁定 | 流程交接 |
 | [`SysUserLookupPort`](src/main/java/com/workflow/port/system/SysUserLookupPort.java) | `sys_user` | 按用户键解析平台身份和可见名称 | 平台身份解析 |
-| [`SysUserPort`](src/main/java/com/workflow/port/system/SysUserPort.java) | `sys_user` | 分页查人、批量按 ID 或用户名查人、查来源 ID 映射、保存来源用户及扩展 | biz、身份同步 |
+| [`SysUserPort`](src/main/java/com/workflow/port/system/SysUserPort.java) | `sys_user` | 分页查人、批量按 ID 或用户名查人、按用户名登录、查来源 ID 映射、保存来源用户及扩展 | biz、身份同步 |
 | [`SysUserRolePort`](src/main/java/com/workflow/port/system/SysUserRolePort.java) | `sys_user_role` | 查用户角色、批量替换角色 | biz、平台 |
 | [`SystemEntityDefinitionPort`](src/main/java/com/workflow/port/system/SystemEntityDefinitionPort.java) | 系统实体定义 | 查已登记的可读实体、字段和首选显示字段 | biz、平台 |
 | [`SystemEntityRecordPort`](src/main/java/com/workflow/port/system/SystemEntityRecordPort.java) | 开放系统实体 | 单查、批量回显、支持排序和字段投影的分页 | biz、平台 |

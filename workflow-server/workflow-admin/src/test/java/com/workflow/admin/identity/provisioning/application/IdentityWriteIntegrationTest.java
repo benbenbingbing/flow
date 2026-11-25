@@ -1,5 +1,6 @@
 package com.workflow.admin.identity.provisioning.application;
 
+import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.identity.extension.application.*;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentitySourceSnapshotMapper;
@@ -150,7 +151,8 @@ class IdentityWriteIntegrationTest {
         var directory = new IdentityDirectoryQueryAdapter(users, actualUserMapper, null, null, null);
         SysUserPort port = new SystemIdentityAdapter(directory, service, extensions,
                 mock(OrganizationPositionDirectoryAdapter.class), mock(IdentityMembershipManagementAdapter.class),
-                mock(IdentityDirectoryAdapter.class), new IdentitySourceLookupService(persistence));
+                mock(IdentityDirectoryAdapter.class), new IdentitySourceLookupService(persistence),
+                mock(AuthSessionService.class));
         var saved = tx.execute(status -> port.saveUser(user("E1", 1L, "alice", null, List.of())));
         var result = port.findUsersByIds(List.of(saved.localId()));
         assertEquals(List.of(saved.localId()), result.stream().map(IdentityUser::id).toList());

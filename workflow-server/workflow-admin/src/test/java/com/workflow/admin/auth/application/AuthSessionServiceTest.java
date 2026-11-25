@@ -9,23 +9,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.workflow.admin.auth.infrastructure.persistence.mapper.AuthRefreshSessionMapper;
 import com.workflow.admin.auth.infrastructure.persistence.record.AuthRefreshSessionRecord;
 import com.workflow.admin.auth.infrastructure.security.JwtTokenInspection;
 import com.workflow.admin.auth.infrastructure.security.JwtUtil;
+import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.platform.model.audit.AuditAction;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -36,6 +45,8 @@ class AuthSessionServiceTest {
 
     private static final Instant NOW =
             Instant.now().minusSeconds(5);
+
+    private final SystemOperationLogPort audit = mock(SystemOperationLogPort.class);
 
     @BeforeAll
     static void initializeJwt() {
@@ -101,6 +112,57 @@ class AuthSessionServiceTest {
         assertEquals(
                 bundle.sessionId(),
                 inspection.sessionId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {SysUser.LOCAL_PASSWORD, SysUser.EXTERNAL_ONLY, SysUser.EXTERNAL_AND_LOCAL_PASSWORD})
+    void trustedBusinessLoginIssuesAccessTokenWithoutCheckingPassword(String authenticationMode) {
+        AuthRefreshSessionMapper mapper = mock(AuthRefreshSessionMapper.class);
+        SysUserService userService = mock(SysUserService.class);
+        SysUser user = activeUser();
+        user.setAuthenticationMode(authenticationMode);
+        user.setPasswordResetRequired(true);
+        SysRole role = new SysRole();
+        role.setRoleCode("reviewer");
+        user.setRoles(List.of(role));
+        when(userService.getByUsername("alice")).thenReturn(user);
+        when(mapper.insert(anyString(), anyString(), anyString(), anyLong(), any(), any(), any(), any()))
+                .thenReturn(1);
+
+        var login = service(mapper, userService).loginWithUserName("alice").orElseThrow();
+
+        assertEquals("user-1", login.getId());
+        assertEquals("alice", login.getUsername());
+        assertEquals(List.of("reviewer"), login.getRoles());
+        assertTrue(login.getPasswordResetRequired());
+        assertEquals(NOW.plus(Duration.ofMinutes(15)).toString(), login.getTokenExpiresAt());
+        JwtTokenInspection token = JwtUtil.inspectToken(login.getToken());
+        assertEquals(JwtTokenInspection.Status.VALID, token.status());
+        assertEquals("user-1", token.userId());
+        verify(mapper).insert(anyString(), anyString(), anyString(), anyLong(), any(), any(), any(), any());
+        verify(userService).getByUsername("alice");
+        verifyNoMoreInteractions(userService);
+        verify(audit).record(argThat(event -> event.action() == AuditAction.LOGIN
+                && token.sessionId().equals(event.targetId())));
+    }
+
+    @Test
+    void trustedBusinessLoginRejectsBlankUnknownAndDisabledUsersWithoutCreatingSession() {
+        AuthRefreshSessionMapper mapper = mock(AuthRefreshSessionMapper.class);
+        SysUserService userService = mock(SysUserService.class);
+        SysUser disabledUser = activeUser();
+        disabledUser.setStatus(SysUser.Status.DISABLED.getValue());
+        when(userService.getByUsername("alice")).thenReturn(disabledUser);
+        AuthSessionService sessions = service(mapper, userService);
+
+        assertTrue(sessions.loginWithUserName(null).isEmpty());
+        assertTrue(sessions.loginWithUserName(" ").isEmpty());
+        assertTrue(sessions.loginWithUserName("missing").isEmpty());
+        assertTrue(sessions.loginWithUserName("alice").isEmpty());
+        verify(userService).getByUsername("missing");
+        verify(userService).getByUsername("alice");
+        verifyNoMoreInteractions(userService);
+        verifyNoInteractions(mapper, audit);
     }
 
     @Test
@@ -214,6 +276,7 @@ class AuthSessionServiceTest {
                 userService,
                 new AuthSessionProperties(),
                 mock(AuthSessionMetrics.class),
+                audit,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

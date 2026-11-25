@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** 用户资料查询与来源同步，目录、来源映射及扩展查询由调用方授权，来源写入沿用来源配置。 */
+/** 用户资料查询与来源同步由调用方授权，登录入口供已确认用户身份的业务调用。 */
 public interface SysUserPort {
     /** 根据用户筛选条件查询目录页。 */
     UserPage pageUsers(UserQuery query);
@@ -16,6 +16,15 @@ public interface SysUserPort {
 
     /** 通过准确用户名批量取目录详情，保持输入顺序去重，最多 100 个。 */
     List<IdentityUser> findUsersByUsernames(List<String> usernames);
+
+    /**
+     * 为启用用户创建登录会话。调用方须已确认该用户名对应的身份，本方法仅执行平台账号状态校验。
+     *
+     * @param username 本地用户名，沿用平台登录的账号查询规则
+     * @return 包含用户资料、角色和访问令牌的登录信息。用户名为空、用户不存在或停用时返回空
+     * @throws IllegalStateException 无法创建登录会话时抛出
+     */
+    Optional<LoginUserInfo> loginWithUserName(String username);
 
     /** 按来源外部 ID 解析本地用户 ID。未绑定、已退休或已删除的映射为空。 */
     default Optional<String> findUserIdBySource(String sourceCode, String externalId) {

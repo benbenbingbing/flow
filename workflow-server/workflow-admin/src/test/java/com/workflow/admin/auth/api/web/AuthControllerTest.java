@@ -12,6 +12,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.auth.api.request.ChangePasswordDTO;
 import com.workflow.admin.auth.api.request.LoginDTO;
 import com.workflow.admin.auth.infrastructure.config.AuthSessionProperties;
@@ -140,7 +142,12 @@ class AuthControllerTest {
         request.setScheme(secure ? "https" : "http");
         MockHttpServletResponse loginResponse = new MockHttpServletResponse();
 
-        assertEquals(200, controller.login(login, request, loginResponse).getCode());
+        var result = controller.login(login, request, loginResponse);
+        assertEquals(200, result.getCode());
+        JsonNode json = new ObjectMapper().valueToTree(result.getData());
+        assertEquals("access-for-test", json.path("token").asText());
+        assertEquals(tokens.accessTokenExpiresAt().toString(), json.path("tokenExpiresAt").asText());
+        assertTrue(json.path("passwordResetRequired").isBoolean());
         MockCookie cookie = assertRefreshCookie(loginResponse, secure);
         request.setCookies(cookie);
         MockHttpServletResponse refreshResponse = new MockHttpServletResponse();

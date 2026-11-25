@@ -1,14 +1,19 @@
 package com.workflow.admin.auth.application;
 
 import com.workflow.admin.auth.infrastructure.config.AuthSessionProperties;
-
 import com.workflow.admin.auth.infrastructure.persistence.mapper.AuthRefreshSessionMapper;
 import com.workflow.admin.auth.infrastructure.persistence.record.AuthRefreshSessionRecord;
 import com.workflow.admin.auth.infrastructure.security.JwtAccessToken;
 import com.workflow.admin.auth.infrastructure.security.JwtTokenInspection;
 import com.workflow.admin.auth.infrastructure.security.JwtUtil;
+import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.port.platform.SystemOperationLogPort;
+import com.workflow.port.platform.model.audit.AuditAction;
+import com.workflow.port.platform.model.audit.AuditModule;
+import com.workflow.port.platform.model.audit.SystemAuditEvent;
+import com.workflow.port.system.model.identity.LoginUserInfo;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -20,6 +25,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +52,8 @@ public class AuthSessionService {
     private final AuthSessionProperties properties;
     /** 会话指标。 */
     private final AuthSessionMetrics metrics;
+    /** 登录审计，用于追溯业务发起的会话签发。 */
+    private final SystemOperationLogPort audit;
     /** 可替换时钟，便于测试过期边界。 */
     private final Clock clock;
 
@@ -55,18 +64,21 @@ public class AuthSessionService {
      * @param userService 用户服务，保存在对象中供后续校验、查询或展示
      * @param properties 属性集合，保存在对象中供后续校验、查询或展示
      * @param metrics 指标集合，保存在对象中供后续校验、查询或展示
+     * @param audit 登录审计端口
      */
     @Autowired
     public AuthSessionService(
             AuthRefreshSessionMapper sessionMapper,
             SysUserService userService,
             AuthSessionProperties properties,
-            AuthSessionMetrics metrics) {
+            AuthSessionMetrics metrics,
+            SystemOperationLogPort audit) {
         this(
                 sessionMapper,
                 userService,
                 properties,
                 metrics,
+                audit,
                 Clock.systemUTC());
     }
 
@@ -77,6 +89,7 @@ public class AuthSessionService {
      * @param userService 用户服务依赖，保存到当前对象供后续业务方法调用
      * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
      * @param metrics 指标集合依赖，保存到当前对象供后续业务方法调用
+     * @param audit 登录审计端口
      * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
      */
     AuthSessionService(
@@ -84,17 +97,19 @@ public class AuthSessionService {
             SysUserService userService,
             AuthSessionProperties properties,
             AuthSessionMetrics metrics,
+            SystemOperationLogPort audit,
             Clock clock) {
         this.sessionMapper = sessionMapper;
         this.userService = userService;
         this.properties = properties;
         this.metrics = metrics;
+        this.audit = audit;
         this.clock = clock;
         validateProperties();
     }
 
     /**
-     * 验证登录密码后创建新的浏览器刷新会话。
+     * 为已通过身份校验的启用用户创建新的浏览器刷新会话。
      *
      * @param user 已验证用户
      * @return 新会话的令牌组合
@@ -102,6 +117,42 @@ public class AuthSessionService {
     @Transactional(rollbackFor = Exception.class)
     public AuthTokenBundle createSession(SysUser user) {
         requireEnabledUser(user);
+        return issueSession(user);
+    }
+
+    /**
+     * 为可信业务已确认的身份签发访问凭证，通过同一会话机制执行账号停用和令牌撤销。
+     *
+     * @param username 本地用户名，沿用平台登录的账号查询规则
+     * @return 新会话的登录信息，空白用户名、不存在或未启用的用户返回空
+     * @throws IllegalStateException 会话写入失败
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Optional<LoginUserInfo> loginWithUserName(String username) {
+        if (username == null || username.isBlank()) {
+            return Optional.empty();
+        }
+        SysUser user = userService.getByUsername(username);
+        // 可信调用方已完成身份确认，外部账号和本地账号沿用相同的启用状态规则。
+        if (!isEnabledUser(user)) {
+            return Optional.empty();
+        }
+        AuthTokenBundle tokens = issueSession(user);
+        // 操作人取自审计上下文，目标记录本次签发凭证所属的会话与账号。
+        audit.record(SystemAuditEvent.builder()
+                .module(AuditModule.SECURITY)
+                .action(AuditAction.LOGIN)
+                .operationName("业务按用户名登录")
+                .targetType("AUTH_SESSION")
+                .targetId(tokens.sessionId())
+                .targetName(user.getUsername())
+                .summary("业务按用户名登录成功")
+                .build());
+        return Optional.of(loginUserInfo(tokens));
+    }
+
+    /** 生成可撤销的服务端会话和令牌。调用方须在事务内完成用户状态校验后调用。 */
+    private AuthTokenBundle issueSession(SysUser user) {
         Instant now = clock.instant();
         Instant absoluteExpiry = now.plus(properties.getAbsoluteTimeout());
         Instant idleExpiry = minimum(
@@ -129,6 +180,34 @@ public class AuthSessionService {
                 sessionId,
                 absoluteExpiry,
                 tokenVersion);
+    }
+
+    /**
+     * 将登录或续期后的会话转换为对外返回的用户资料和访问凭证。
+     *
+     * @param tokens 已签发的会话令牌组合
+     * @return 用户资料、Access Token 和有效期
+     */
+    public static LoginUserInfo loginUserInfo(AuthTokenBundle tokens) {
+        return loginUserInfo(tokens.user(), tokens.accessToken(), tokens.accessTokenExpiresAt().toString());
+    }
+
+    /**
+     * 将已登录的用户转换为当前用户资料，供客户端恢复展示状态。
+     *
+     * @param user 已登录的用户
+     * @return 当前用户资料
+     */
+    public static LoginUserInfo loginUserInfo(SysUser user) {
+        return loginUserInfo(user, null, null);
+    }
+
+    private static LoginUserInfo loginUserInfo(SysUser user, String token, String tokenExpiresAt) {
+        List<String> roleCodes = user.getRoles() == null ? null
+                : user.getRoles().stream().map(SysRole::getRoleCode).toList();
+        return new LoginUserInfo(user.getId(), user.getUsername(), user.getNickname(), user.getAvatar(),
+                user.getEmail(), user.getPhone(), roleCodes, token, tokenExpiresAt,
+                Boolean.TRUE.equals(user.getPasswordResetRequired()));
     }
 
     /**
@@ -428,14 +507,16 @@ public class AuthSessionService {
      * @param user 目标用户信息，后续用于权限计算或业务规则判断
      */
     private void requireEnabledUser(SysUser user) {
-        if (user == null
-                || !SysUser.Status.ENABLED.getValue()
-                        .equals(user.getStatus())) {
+        if (!isEnabledUser(user)) {
             throw failure(
                     "issue",
                     AuthErrorCode.ACCOUNT_DISABLED,
                     "账号已禁用");
         }
+    }
+
+    private static boolean isEnabledUser(SysUser user) {
+        return user != null && SysUser.Status.ENABLED.getValue().equals(user.getStatus());
     }
 
     /**

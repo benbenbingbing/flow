@@ -1,5 +1,6 @@
 package com.workflow.admin.identity.infrastructure.adapter;
 
+import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.identity.extension.application.IdentityExtensionService;
 import com.workflow.admin.identity.position.infrastructure.adapter.OrganizationPositionDirectoryAdapter;
 import com.workflow.admin.identity.provisioning.application.IdentityWriteService;
@@ -31,6 +32,7 @@ public class SystemIdentityAdapter implements SysUserPort, SysOrganizationPort, 
     private final IdentityMembershipManagementAdapter memberships;
     private final IdentityDirectoryAdapter groups;
     private final IdentitySourceLookupService sources;
+    private final AuthSessionService loginSessions;
 
     @Override
     public UserPage pageUsers(UserQuery query) {
@@ -45,6 +47,11 @@ public class SystemIdentityAdapter implements SysUserPort, SysOrganizationPort, 
     @Override
     public List<IdentityUser> findUsersByUsernames(List<String> usernames) {
         return directory.findUsersByUsernames(usernames);
+    }
+
+    @Override
+    public Optional<LoginUserInfo> loginWithUserName(String username) {
+        return loginSessions.loginWithUserName(username);
     }
 
     @Override

@@ -22,7 +22,7 @@ import com.workflow.admin.auth.api.request.ChangePasswordDTO;
 import com.workflow.admin.auth.api.request.LoginDTO;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.admin.auth.api.response.LoginUserVO;
+import com.workflow.port.system.model.identity.LoginUserInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDateTime;
 import java.time.Duration;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 
@@ -79,7 +78,7 @@ public class AuthController {
      */
     @PublicApi
     @PostMapping("/login")
-    public Result<LoginUserVO> login(
+    public Result<LoginUserInfo> login(
             @Validated @RequestBody LoginDTO loginDTO,
             HttpServletRequest request,
             HttpServletResponse response) {
@@ -139,7 +138,7 @@ public class AuthController {
 
         AuthTokenBundle tokens =
                 authSessionService.createSession(user);
-        LoginUserVO loginUser = toLoginUser(tokens);
+        LoginUserInfo loginUser = AuthSessionService.loginUserInfo(tokens);
         writeRefreshCookie(response, tokens);
 
         recordLogin(
@@ -153,10 +152,10 @@ public class AuthController {
     /**
      * 获取当前登录用户信息。
      *
-     * @return 符合条件的{@code result<login}用户{@code vo>}结果，供调用方继续处理
+     * @return 当前登录用户的资料，供客户端恢复展示状态
      */
     @GetMapping("/current")
-    public Result<LoginUserVO> getCurrentUser() {
+    public Result<LoginUserInfo> getCurrentUser() {
         String userId = UserContext.getUserId();
         if (userId == null) {
             return Result.error("未登录");
@@ -165,7 +164,7 @@ public class AuthController {
         if (user == null) {
             return Result.error("用户不存在");
         }
-        return Result.success(toLoginUser(user));
+        return Result.success(AuthSessionService.loginUserInfo(user));
     }
 
     /**
@@ -235,7 +234,7 @@ public class AuthController {
      */
     @PublicApi
     @PostMapping("/refresh")
-    public Result<LoginUserVO> refresh(
+    public Result<LoginUserInfo> refresh(
             HttpServletRequest request,
             HttpServletResponse response) {
         try {
@@ -243,7 +242,7 @@ public class AuthController {
                     authSessionService.refresh(
                             readRefreshToken(request));
             writeRefreshCookie(response, tokens);
-            return Result.success(toLoginUser(tokens));
+            return Result.success(AuthSessionService.loginUserInfo(tokens));
         } catch (AuthSessionException exception) {
             clearRefreshCookie(response);
             response.setStatus(
@@ -268,46 +267,6 @@ public class AuthController {
         }
         return Result.success(
                 PermissionUtil.getUserPermissions(userId));
-    }
-
-    /**
-     * 转换为{@code login}用户；输出作为后续校验或处理的输入。
-     *
-     * @param user 目标用户信息，后续用于权限计算或业务规则判断
-     * @return 转换为后的{@code login}用户结果，供调用方继续处理
-     */
-    private LoginUserVO toLoginUser(SysUser user) {
-        LoginUserVO loginUser = new LoginUserVO();
-        loginUser.setId(user.getId());
-        loginUser.setUsername(user.getUsername());
-        loginUser.setNickname(user.getNickname());
-        loginUser.setAvatar(user.getAvatar());
-        loginUser.setEmail(user.getEmail());
-        loginUser.setPhone(user.getPhone());
-        loginUser.setPasswordResetRequired(
-                Boolean.TRUE.equals(user.getPasswordResetRequired()));
-        if (user.getRoles() != null) {
-            loginUser.setRoles(user.getRoles().stream()
-                    .map(role -> role.getRoleCode())
-                    .collect(Collectors.toList()));
-        }
-        return loginUser;
-    }
-
-    /**
-     * 转换为{@code login}用户；输出作为后续校验或处理的输入。
-     *
-     * @param tokens {@code tokens}，作为 {@code loginUser.setToken} 的输入影响后续处理
-     * @return 转换为后的{@code login}用户结果，供调用方继续处理
-     */
-    private LoginUserVO toLoginUser(
-            AuthTokenBundle tokens) {
-        LoginUserVO loginUser =
-                toLoginUser(tokens.user());
-        loginUser.setToken(tokens.accessToken());
-        loginUser.setTokenExpiresAt(
-                tokens.accessTokenExpiresAt().toString());
-        return loginUser;
     }
 
     /**
