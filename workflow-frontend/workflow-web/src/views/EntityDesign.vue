@@ -76,11 +76,11 @@
             </el-button>
             <el-tooltip
               v-if="!isSystemEntity"
-              content="批量保存字段修改及列表增删、排序；已单独保存的属性无需重复保存"
+              content="批量保存新增字段、属性修改和排序。删除字段时会立即生效。"
               placement="top"
             >
               <span>
-                <el-button type="primary" size="small" :disabled="!isDirty" @click="handleSave">
+                <el-button type="primary" size="small" :disabled="!isDirty || isFieldWritePending" :loading="savingAllFields" @click="handleSave">
                   <el-icon><Check /></el-icon>保存全部字段
                 </el-button>
               </span>
@@ -126,7 +126,8 @@
                   </el-button>
                 </el-tooltip>
                 <el-tooltip v-if="!field.isPublished" content="删除未发布字段" placement="top">
-                  <el-button class="action-btn delete" text circle aria-label="删除字段" @click.stop="deleteField(field)">
+                  <el-button class="action-btn delete" text circle aria-label="删除字段"
+                    :disabled="isFieldWritePending" @click.stop="handleDeleteField(field)">
                     <el-icon><Delete /></el-icon>
                   </el-button>
                 </el-tooltip>
@@ -550,7 +551,7 @@
               <el-button
                 type="primary"
                 :loading="savingSelectedField"
-                :disabled="!isSelectedFieldDirty"
+                :disabled="!isSelectedFieldDirty || isFieldWritePending"
                 @click="handleSaveSelectedField"
               >
                 <el-icon><Check /></el-icon>保存当前属性
@@ -1062,6 +1063,7 @@ const loadError = ref('')
 const showSystemFields = ref(true)
 const entityBaseline = ref('')
 const selectedField = ref(null)
+const savingAllFields = ref(false)
 // 标题跟随当前字段及其草稿更新，未选中字段时保留通用标题。
 const selectedFieldTitle = computed(() => selectedField.value
   ? `${selectedField.value.fieldName || '未命名字段'}（${selectedField.value.fieldCode || '尚未设置字段编码'}）`
@@ -1073,7 +1075,9 @@ const canConfigureEntityDefaultEvents = computed(() => Boolean(entityData.value?
 const { handleFieldTypeChange, validateFieldRules } =
   useEntityValidationRules(selectedField)
 const {
+  handleDeleteField,
   handleSaveSelectedField,
+  isFieldWritePending,
   isSelectedFieldDirty,
   normalizeFieldForEditing,
   normalizeFieldForSave,
@@ -1087,8 +1091,13 @@ const {
   selectedField,
   entityBaseline,
   isSystemEntity,
+  savingAllFields,
   validateFieldRules,
-  onSaved: field => selectField(field)
+  onSaved: field => selectField(field),
+  onDeleted: fieldId => {
+    // 默认事件使用服务端已保存字段，删除后同步从候选项移除。
+    entityData.value.fields = (entityData.value.fields || []).filter(field => field.id !== fieldId)
+  }
 })
 const entityFingerprint = () => JSON.stringify({
   entity: {
@@ -1365,20 +1374,6 @@ const openBoundDict = (manage) => {
   boundDictVisible.value = true
 }
 
-// 删除字段
-const deleteField = (field) => {
-  const index = fields.value.indexOf(field)
-  if (index < 0) return
-  if (field.isPublished) {
-    ElMessage.warning('已发布的字段不能删除，请先修改字段配置')
-    return
-  }
-  fields.value.splice(index, 1)
-  if (selectedField.value && !fields.value.find(f => f === selectedField.value)) {
-    selectedField.value = null
-  }
-}
-
 // 移动字段
 const moveField = (field, direction) => {
   const index = fields.value.indexOf(field)
@@ -1428,6 +1423,7 @@ const convertToFormField = (field) => {
 
 // 保存
 const handleSave = async (options = {}) => {
+  if (isFieldWritePending.value) return false
   const silent = options?.silent === true
   if (isSystemEntity.value) {
     ElMessage.warning('平台系统实体字段由数据库自动同步，不能在设计器中修改')
@@ -1438,6 +1434,7 @@ const handleSave = async (options = {}) => {
     if (!validateEntityField(field, true)) return false
   }
 
+  savingAllFields.value = true
   try {
     await entityApi.update(entityId, {
       ...entityData.value,
@@ -1450,6 +1447,8 @@ const handleSave = async (options = {}) => {
     console.error(error)
     showRequestError(error, '保存失败')
     return false
+  } finally {
+    savingAllFields.value = false
   }
 }
 

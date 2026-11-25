@@ -7,6 +7,7 @@ import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import org.junit.jupiter.api.Test;
@@ -42,7 +43,8 @@ class EntityFieldRelationDecouplingTest {
                         relationMapper,
                         mock(EntityFieldFileItemService.class),
                         mock(EntityFieldValidationRuleService.class),
-                        mock(SystemEntityFieldPolicy.class));
+                        mock(SystemEntityFieldPolicy.class),
+                        mock(EntityFieldOptionMapper.class));
         EntityFieldDTO field = new EntityFieldDTO();
         field.setFieldCode("details");
         field.setFieldName("订单明细");
@@ -71,7 +73,8 @@ class EntityFieldRelationDecouplingTest {
                         relationMapper,
                         mock(EntityFieldFileItemService.class),
                         mock(EntityFieldValidationRuleService.class),
-                        mock(SystemEntityFieldPolicy.class));
+                        mock(SystemEntityFieldPolicy.class),
+                        mock(EntityFieldOptionMapper.class));
 
         service.syncRelations(
                 new EntityDefinition(),

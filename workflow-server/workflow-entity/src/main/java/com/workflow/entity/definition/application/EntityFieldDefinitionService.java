@@ -12,6 +12,7 @@ import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 实体字段定义的增量保存与关系同步服务。
+ * 实体字段定义的增量维护服务。
  */
 @Service
 @RequiredArgsConstructor
@@ -37,6 +38,7 @@ public class EntityFieldDefinitionService {
     private final EntityFieldFileItemService fileItemService;
     private final EntityFieldValidationRuleService validationRuleService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
+    private final EntityFieldOptionMapper historicalOptionCleanup;
 
     /**
      * 创建字段；结果供后续流程传递或持久化。
@@ -98,6 +100,56 @@ public class EntityFieldDefinitionService {
         updateDefinition(current, dto);
         entityMapper.touchUpdateTime(entityId);
         return convertToDTOWithRelation(entity, current);
+    }
+
+    /**
+     * 删除指定实体下的未发布业务字段，并清理它的草稿配置。
+     *
+     * @param entityId 所属实体 ID，用于锁定实体并与发布串行执行
+     * @param fieldId 字段 ID，重复删除同一字段时可直接返回
+     * @throws BusinessConflictException 字段已发布、属于系统字段或实体由系统维护
+     * @throws IllegalArgumentException 字段属于其他实体
+     */
+    @Transactional
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体字段",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_FIELD",
+            targetIdArg = 1)
+    public void deleteField(String entityId, String fieldId) {
+        requireDynamicEntity(entityId);
+        EntityField field = fieldMapper.findByIdForUpdate(fieldId);
+        if (field == null) {
+            return;
+        }
+        if (!Objects.equals(entityId, field.getEntityId())) {
+            throw new IllegalArgumentException("实体字段不存在: " + fieldId);
+        }
+        deleteDefinition(field);
+        entityMapper.touchUpdateTime(entityId);
+    }
+
+    /**
+     * 在调用方已锁定实体行的事务内删除字段，供单字段删除和全量保存共用。
+     *
+     * @param field 持锁后读取的字段定义，用于判断是否已进入已发布结构
+     * @throws BusinessConflictException 字段已发布或属于系统字段
+     */
+    public void deleteDefinition(EntityField field) {
+        if (Boolean.TRUE.equals(field.getIsSystem())) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_FIELD_PROTECTED", "系统字段不能删除: " + field.getFieldCode());
+        }
+        if (Boolean.TRUE.equals(field.getIsPublished())) {
+            throw new BusinessConflictException(
+                    "ENTITY_FIELD_PUBLISHED", "已发布的字段不能删除: " + field.getFieldCode());
+        }
+        // 附件项和历史选项按字段 ID 独立存储，随草稿在同一事务内清理。
+        fileItemService.deleteByFieldId(field.getId());
+        historicalOptionCleanup.deleteByFieldId(field.getId());
+        fieldMapper.deleteById(field.getId());
     }
 
     /**
@@ -223,7 +275,7 @@ public class EntityFieldDefinitionService {
         if (storageMode == EntityDefinition.StorageMode.SYSTEM) {
             throw new BusinessConflictException(
                     "ENTITY_SYSTEM_DEFINITION_PROTECTED",
-                    "平台系统实体字段由系统目录自动维护，不能单独保存");
+                    "平台系统实体字段由系统目录自动维护");
         }
         return entity;
     }

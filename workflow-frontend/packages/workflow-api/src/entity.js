@@ -83,6 +83,13 @@ const entityApi = {
   },
 
   /**
+   * 立即删除指定的未发布业务字段。
+   */
+  deleteField(entityId, fieldId) {
+    return request.post(`/entity/${entityId}/fields/${fieldId}/delete`)
+  },
+
+  /**
    * 删除实体定义
    */
   delete(id) {

@@ -6,6 +6,7 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelation
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,8 @@ class EntityFieldDictionaryBindingTest {
     private final EntityFieldDefinitionService service = new EntityFieldDefinitionService(
             entityMapper, fieldMapper, mock(EntityRelationMapper.class),
             mock(EntityFieldFileItemService.class),
-            mock(EntityFieldValidationRuleService.class), mock(SystemEntityFieldPolicy.class));
+            mock(EntityFieldValidationRuleService.class), mock(SystemEntityFieldPolicy.class),
+            mock(EntityFieldOptionMapper.class));
 
     @ParameterizedTest
     @EnumSource(value = EntityField.FieldType.class, names = {"SELECT", "RADIO", "MULTI_SELECT", "CHECKBOX"})

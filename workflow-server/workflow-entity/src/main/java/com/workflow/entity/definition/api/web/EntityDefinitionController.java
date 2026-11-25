@@ -157,6 +157,22 @@ public class EntityDefinitionController {
         return ApiResponse.success(
                 fieldDefinitionService.updateField(entityId, fieldId, dto));
     }
+
+    /**
+     * 删除单个未发布业务字段，成功后字段定义立即移除。
+     *
+     * @param entityId 字段所属实体 ID
+     * @param fieldId 待删除的字段 ID
+     * @return 删除操作的结果
+     */
+    @PostMapping("/{entityId}/fields/{fieldId}/delete")
+    @RequiresPermission("entity:definition:manage")
+    public ApiResponse<Void> deleteField(
+            @PathVariable String entityId,
+            @PathVariable String fieldId) {
+        fieldDefinitionService.deleteField(entityId, fieldId);
+        return ApiResponse.success();
+    }
     
     /**
      * 删除实体定义

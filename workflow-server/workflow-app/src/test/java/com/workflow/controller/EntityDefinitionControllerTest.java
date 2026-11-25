@@ -245,6 +245,16 @@ public class EntityDefinitionControllerTest {
                 any(EntityFieldDTO.class));
     }
 
+    /** 单字段删除只提交所属实体和目标字段的 ID。 */
+    @Test
+    void testDeleteField() throws Exception {
+        mockMvc.perform(post("/api/entity/1/fields/f1/delete"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(fieldDefinitionService).deleteField("1", "f1");
+    }
+
     /** 测试删除实体定义接口，断言返回 200 且 delete 方法被正确调用 */
     @Test
     void testDelete() throws Exception {

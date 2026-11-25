@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi } from '@/api/entity'
+import { showRequestError } from '@/shared/request'
 import {
   attachmentFileTypesToString,
   normalizeAttachmentFileTypes
@@ -101,11 +102,18 @@ export function useEntityFieldDraftSave({
   selectedField,
   entityBaseline,
   isSystemEntity,
+  savingAllFields,
   validateFieldRules,
-  onSaved
+  onSaved,
+  onDeleted
 }) {
   const fieldBaselines = ref(new Map())
   const savingSelectedField = ref(false)
+  const deletingField = ref(false)
+  // 避免全量保存用旧列表写回刚删除的字段，也避免单字段保存与删除交错。
+  const isFieldWritePending = computed(() =>
+    savingAllFields.value || savingSelectedField.value || deletingField.value
+  )
   const fieldIdentity = field => String(field?.id || '')
   const fieldFingerprint = field =>
     JSON.stringify(normalizeEntityFieldForSave(field))
@@ -220,6 +228,7 @@ export function useEntityFieldDraftSave({
   const handleSaveSelectedField = async () => {
     const field = selectedField.value
     if (!field || isSystemEntity.value) return
+    if (isFieldWritePending.value) return
     if (!validateEntityField(field, true)) return
 
     const currentIndex = fields.value.indexOf(field)
@@ -255,8 +264,49 @@ export function useEntityFieldDraftSave({
     }
   }
 
+  /** 确认后立即删除指定草稿字段，保留列表中其他字段的编辑和排序。 */
+  const handleDeleteField = async (field) => {
+    if (isSystemEntity.value || isFieldWritePending.value || !fields.value.includes(field)) return
+    if (field.isSystem) return
+    if (field.isPublished) {
+      ElMessage.warning('已发布的字段不能删除')
+      return
+    }
+
+    deletingField.value = true
+    try {
+      await ElMessageBox.confirm(
+        `确认删除字段「${field.fieldName || field.fieldCode || '未命名字段'}」？`,
+        '删除字段',
+        { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+      )
+
+      if (!isTemporaryField(field)) {
+        await entityApi.deleteField(entityId, field.id)
+        // 只从已保存基线移除目标字段，避免把其他未保存修改标记为已保存。
+        if (entityBaseline.value) {
+          const baseline = JSON.parse(entityBaseline.value)
+          baseline.fields = baseline.fields.filter(item => item.id !== field.id)
+          entityBaseline.value = JSON.stringify(baseline)
+        }
+        fieldBaselines.value.delete(fieldIdentity(field))
+        onDeleted?.(field.id)
+      }
+      fields.value = fields.value.filter(item => item !== field)
+      if (selectedField.value === field) selectedField.value = null
+      ElMessage.success('字段已删除')
+    } catch (error) {
+      if (error === 'cancel' || error === 'close') return
+      showRequestError(error, '删除字段失败')
+    } finally {
+      deletingField.value = false
+    }
+  }
+
   return {
+    handleDeleteField,
     handleSaveSelectedField,
+    isFieldWritePending,
     isSelectedFieldDirty,
     normalizeFieldForEditing: normalizeEntityFieldForEditing,
     normalizeFieldForSave: normalizeEntityFieldForSave,

@@ -42,6 +42,7 @@ import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -71,7 +72,6 @@ public class EntityDefinitionService {
     private final EntityPublishHistoryService publishHistoryService;
     private final EntitySchemaPublishLock schemaPublishLock;
     private final EntityFieldFileItemService fileItemService;
-    private final com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper historicalOptionCleanup;
     private final EntityFieldValidationRuleService fieldValidationRuleService;
     private final EntityFieldDefinitionService fieldDefinitionService;
     private final EntityRelationDefinitionService relationDefinitionService;
@@ -537,8 +537,7 @@ public class EntityDefinitionService {
     }
 
     /**
-     * 更新实体定义
-     * 注意：实体发布后，已保存的字段不能再删除，只能添加新字段
+     * 更新实体定义。提交完整字段列表时，省略的未发布业务字段会被删除。
      *
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param dto DTO，作为 {@code validateFieldCodeUnique} 的输入影响后续处理
@@ -568,8 +567,6 @@ public class EntityDefinitionService {
             return convertToDTO(existing);
         }
 
-        // 检查实体是否已发布
-        boolean isPublished = existing.getStatus() == EntityDefinition.Status.PUBLISHED;
         EntityDefinition.LifecycleMode currentMode = lifecycleMode(existing);
         EntityDefinition.LifecycleMode requestedMode = dto.getLifecycleMode() == null
                 ? currentMode
@@ -605,34 +602,21 @@ public class EntityDefinitionService {
 
         // 更新字段
         if (dto.getFields() != null) {
-            // 获取现有字段
-            List<EntityField> existingFields = fieldMapper.findByEntityId(id);
+            List<EntityField> existingFields = fieldMapper.findByEntityIdForUpdate(id);
             Map<String, EntityField> existingFieldMap = existingFields.stream()
                     .collect(Collectors.toMap(EntityField::getFieldCode, f -> f));
 
             // 收集需要保留的字段编码
-            List<String> newFieldCodes = dto.getFields().stream()
+            Set<String> newFieldCodes = dto.getFields().stream()
                     .map(EntityFieldDTO::getFieldCode)
                     .filter(code -> code != null && !code.isEmpty())
-                    .collect(Collectors.toList());
+                    .collect(Collectors.toSet());
 
-            if (isPublished) {
-                // 已发布的实体：不允许删除字段，只能添加新字段
-                for (EntityField existingField : existingFields) {
-                    if (!Boolean.TRUE.equals(existingField.getIsSystem()) &&
-                            !newFieldCodes.contains(existingField.getFieldCode())) {
-                        throw new RuntimeException("实体已发布，不允许删除字段: " + existingField.getFieldCode() +
-                                "。已发布的实体只能添加新字段，不能删除已有字段。");
-                    }
-                }
-            } else {
-                // 未发布的实体：可以删除非系统字段
-                for (EntityField field : existingFields) {
-                    if (!Boolean.TRUE.equals(field.getIsSystem()) &&
-                            !newFieldCodes.contains(field.getFieldCode())) {
-                        historicalOptionCleanup.deleteByFieldId(field.getId());
-                        fieldMapper.deleteById(field.getId());
-                    }
+            // 系统字段可以从提交中省略。业务字段是否可删除由持锁读取的字段发布状态决定。
+            for (EntityField field : existingFields) {
+                if (!Boolean.TRUE.equals(field.getIsSystem()) &&
+                        !newFieldCodes.contains(field.getFieldCode())) {
+                    fieldDefinitionService.deleteDefinition(field);
                 }
             }
 

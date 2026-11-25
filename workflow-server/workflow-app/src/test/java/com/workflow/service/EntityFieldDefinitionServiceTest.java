@@ -10,6 +10,7 @@ import com.workflow.entity.definition.application.EntityFieldValidationRuleServi
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,8 @@ class EntityFieldDefinitionServiceTest {
     @Mock
     private EntityFieldFileItemService fileItemService;
 
+    @Mock
+    private EntityFieldOptionMapper historicalOptionCleanup;
 
     @Mock
     private EntityFieldValidationRuleService validationRuleService;
@@ -86,6 +89,54 @@ class EntityFieldDefinitionServiceTest {
         existingField.setIsSystem(false);
         existingField.setIsPublished(false);
 
+    }
+
+    @Test
+    void publishedEntityAllowsDeletingAnUnpublishedField() {
+        entity.setStatus(EntityDefinition.Status.PUBLISHED);
+        when(entityMapper.findByIdForUpdate("1")).thenReturn(Optional.of(entity));
+        when(fieldMapper.findByIdForUpdate("f1")).thenReturn(existingField);
+
+        fieldService.deleteField("1", "f1");
+
+        var writes = inOrder(entityMapper, fieldMapper, fileItemService, historicalOptionCleanup);
+        writes.verify(entityMapper).findByIdForUpdate("1");
+        writes.verify(fieldMapper).findByIdForUpdate("f1");
+        writes.verify(fileItemService).deleteByFieldId("f1");
+        writes.verify(historicalOptionCleanup).deleteByFieldId("f1");
+        writes.verify(fieldMapper).deleteById("f1");
+        writes.verify(entityMapper).touchUpdateTime("1");
+    }
+
+    @Test
+    void fieldDeletionRejectsPublishedSystemAndForeignFields() {
+        entity.setStatus(EntityDefinition.Status.DRAFT);
+        when(entityMapper.findByIdForUpdate("1")).thenReturn(Optional.of(entity));
+        when(fieldMapper.findByIdForUpdate("f1")).thenReturn(existingField);
+
+        existingField.setIsPublished(true);
+        assertEquals("ENTITY_FIELD_PUBLISHED", assertThrows(BusinessConflictException.class,
+                () -> fieldService.deleteField("1", "f1")).getErrorCode());
+
+        existingField.setIsPublished(false);
+        existingField.setIsSystem(true);
+        assertEquals("ENTITY_SYSTEM_FIELD_PROTECTED", assertThrows(BusinessConflictException.class,
+                () -> fieldService.deleteField("1", "f1")).getErrorCode());
+
+        existingField.setEntityId("2");
+        assertThrows(IllegalArgumentException.class, () -> fieldService.deleteField("1", "f1"));
+        verify(fieldMapper, never()).deleteById(anyString());
+        verify(entityMapper, never()).touchUpdateTime(anyString());
+    }
+
+    @Test
+    void retryingDeletionOfAnAbsentFieldSucceedsWithoutWrites() {
+        when(entityMapper.findByIdForUpdate("1")).thenReturn(Optional.of(entity));
+
+        fieldService.deleteField("1", "f1");
+
+        verify(fieldMapper, never()).deleteById(anyString());
+        verify(entityMapper, never()).touchUpdateTime(anyString());
     }
 
     @Test

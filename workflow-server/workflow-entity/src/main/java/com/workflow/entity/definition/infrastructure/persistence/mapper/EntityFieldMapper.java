@@ -28,6 +28,31 @@ public interface EntityFieldMapper extends BaseMapper<EntityField> {
     }
 
     /**
+     * 在实体行锁内读取当前字段版本，供全量更新校验发布状态。
+     * 普通查询在可重复读事务中可能沿用等待实体行锁之前的快照。
+     *
+     * @param entityId 已锁定的实体 ID
+     * @return 参与本次更新的字段定义
+     */
+    default List<EntityField> findByEntityIdForUpdate(String entityId) {
+        return selectList(Wrappers.<EntityField>lambdaQuery()
+                .eq(EntityField::getEntityId, entityId)
+                .last("FOR UPDATE"));
+    }
+
+    /**
+     * 在实体行锁内读取待删除字段的当前版本，避免使用旧的字段发布状态。
+     *
+     * @param fieldId 待删除的字段 ID
+     * @return 当前字段定义，已删除时返回 null
+     */
+    default EntityField findByIdForUpdate(String fieldId) {
+        return selectOne(Wrappers.<EntityField>lambdaQuery()
+                .eq(EntityField::getId, fieldId)
+                .last("FOR UPDATE"));
+    }
+
+    /**
      * 根据实体ID删除字段
      *
      * @param entityId 实体ID，后续用于删除实体ID时定位或关联目标

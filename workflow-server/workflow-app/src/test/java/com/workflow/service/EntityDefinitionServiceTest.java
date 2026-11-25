@@ -6,7 +6,6 @@ import com.workflow.entity.data.application.EntityPhysicalTableNaming;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldDefinitionService;
-import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
 import com.workflow.entity.definition.application.EntityRelationDefinitionService;
@@ -109,9 +108,6 @@ public class EntityDefinitionServiceTest {
 
     @Mock
     private EntityRecordTeamService entityRecordTeamService;
-
-    @Mock
-    private EntityFieldOptionMapper historicalOptionCleanup;
 
     @Mock
     private EntityFieldValidationRuleService fieldValidationRuleService;
@@ -485,7 +481,7 @@ public class EntityDefinitionServiceTest {
         dto.setFields(List.of(fieldDTO));
 
         when(entityMapper.selectById("1")).thenReturn(testEntity);
-        when(fieldMapper.findByEntityId("1"))
+        when(fieldMapper.findByEntityIdForUpdate("1"))
                 .thenReturn(List.of(testField));
 
         entityService.update("1", dto);
@@ -493,6 +489,26 @@ public class EntityDefinitionServiceTest {
         verify(fieldDefinitionService).updateDefinition(
                 testField,
                 fieldDTO);
+    }
+
+    /** 已发布实体的全量保存仍可删除省略的未发布业务字段，系统字段可以省略。 */
+    @Test
+    void bulkUpdateDelegatesDraftDeletionOnPublishedEntity() {
+        testEntity.setStatus(EntityDefinition.Status.PUBLISHED);
+        testField.setIsPublished(false);
+        EntityField systemField = new EntityField();
+        systemField.setFieldCode("id");
+        systemField.setIsSystem(true);
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityIdForUpdate("1")).thenReturn(List.of(testField, systemField));
+
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityName("测试实体");
+        dto.setFields(List.of());
+        entityService.update("1", dto);
+
+        verify(fieldDefinitionService).deleteDefinition(testField);
+        verify(fieldDefinitionService, never()).deleteDefinition(systemField);
     }
 
     /** 批量实体更新必须复用字段结构锁，不能吞掉已发布 USER 引用元数据冲突。 */
@@ -520,7 +536,7 @@ public class EntityDefinitionServiceTest {
         dto.setFields(List.of(approverDTO));
 
         when(entityMapper.selectById("1")).thenReturn(testEntity);
-        when(fieldMapper.findByEntityId("1"))
+        when(fieldMapper.findByEntityIdForUpdate("1"))
                 .thenReturn(List.of(approverField));
         BusinessConflictException locked =
                 new BusinessConflictException(
@@ -564,7 +580,7 @@ public class EntityDefinitionServiceTest {
         dto.setFields(List.of(detailDTO));
 
         when(entityMapper.selectById("1")).thenReturn(testEntity);
-        when(fieldMapper.findByEntityId("1")).thenReturn(List.of(detailField));
+        when(fieldMapper.findByEntityIdForUpdate("1")).thenReturn(List.of(detailField));
 
         entityService.update("1", dto);
 
