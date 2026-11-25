@@ -167,6 +167,8 @@ watch(() => subFormMeta.value.refEntityId, async (id, _old, onCleanup) => {
 const childReleaseIdentity = ref('')
 let releaseLoadSequence = 0
 let childInitializationSequence = 0
+let nextDraftRowKey = 0
+const draftRowKeys = new WeakMap()
 let childRuntimeCache = new WeakMap()
 
 watch(
@@ -464,19 +466,27 @@ async function initializeChildRows() {
   try {
     await Promise.all(rows.map(async (row, index) => {
       if (!row || typeof row !== 'object') return
+      // 新行会复用被删除行的下标；稳定行身份避免漏掉初值或在用户清空后重复初始化。
+      if (!row.id && !draftRowKeys.has(row)) draftRowKeys.set(row, ++nextDraftRowKey)
+      const rowKey = row.id ? 'saved:' + row.id : 'draft:' + draftRowKeys.get(row)
       const scopedRuntime = childDataSourceRuntime(row, index)
       await scopedRuntime.initialize({
         form: childForm,
         fields: runtimeFields.value,
         nodes: runtimeNodes.value,
         record: row,
+        runtimeContext: {
+          row: rowRuntimeContext(row, index),
+          rootParentId: runtimeRootParentId.value,
+          readonly: isDisabled.value
+        },
         recordId: `${parentRecordId}:${fieldCode}:${index}`,
         initializationKey: [
           'nested',
           childReleaseIdentity.value || childForm.id || 'form',
           parentRecordId,
           fieldCode,
-          index
+          rowKey
         ].join(':')
       })
     }))

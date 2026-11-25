@@ -47,6 +47,29 @@ function evaluateSafeExpression(expression) {
   return Number.isNaN(result) ? null : result
 }
 
+/**
+ * 按值联动公式读取字段原值。字段值以数据传入解析器，避免引号、反斜线或函数名改变公式语义。
+ * now 可由表单初始化统一传入，确保同一批初值使用同一个本地日期。
+ */
+export function evaluateLinkageExpression(expression, fields, now = new Date()) {
+  try {
+    const value = new ExpressionParser(tokenizeExpression(expression), fields, now).parse()
+    return typeof value === 'number' && !Number.isFinite(value) ? null : value
+  } catch {
+    return null
+  }
+}
+
+/** 校验配置语法及函数参数个数，不要求设计时提供实际字段值。 */
+export function getLinkageExpressionError(expression) {
+  try {
+    new ExpressionParser(tokenizeExpression(expression), {}).parse()
+    return ''
+  } catch (error) {
+    return error.message
+  }
+}
+
 function tokenizeExpression(expression) {
   const tokens = []
   let index = 0
@@ -55,6 +78,26 @@ function tokenizeExpression(expression) {
     const char = expression[index]
     if (/\s/.test(char)) {
       index++
+      continue
+    }
+
+    const comparison = expression.slice(index, index + 2)
+    if (['==', '!=', '<=', '>='].includes(comparison)) {
+      tokens.push({ type: comparison })
+      index += 2
+      continue
+    }
+    if (char === '<' || char === '>') {
+      tokens.push({ type: char })
+      index++
+      continue
+    }
+
+    if ((char === '$' || char === '#') && expression[index + 1] === '{') {
+      const reference = /^[$#]\{(?:field\.)?(\w+)\}/.exec(expression.slice(index))
+      if (!reference) throw new Error('字段引用格式错误')
+      tokens.push({ type: 'field', value: reference[1] })
+      index += reference[0].length
       continue
     }
 
@@ -116,9 +159,11 @@ function tokenizeExpression(expression) {
 }
 
 class ExpressionParser {
-  constructor(tokens) {
+  constructor(tokens, fields, now = new Date()) {
     this.tokens = tokens
     this.position = 0
+    this.fields = fields
+    this.now = now
   }
 
   parse() {
@@ -128,11 +173,20 @@ class ExpressionParser {
   }
 
   parseExpression() {
+    const left = this.parseSum()
+    const operator = this.peek().type
+    if (!Object.hasOwn(comparisons, operator)) return left
+    this.expect(operator)
+    return comparisons[operator](left, this.parseSum())
+  }
+
+  parseSum() {
     let value = this.parseTerm()
     while (this.match('+') || this.match('-')) {
       const operator = this.previous().type
       const right = this.parseTerm()
-      value = operator === '+' ? value + right : value - right
+      if (value == null || right == null || value === '' || right === '') value = null
+      else value = operator === '+' ? value + right : value - right
     }
     return value
   }
@@ -142,15 +196,20 @@ class ExpressionParser {
     while (this.match('*') || this.match('/') || this.match('%')) {
       const operator = this.previous().type
       const right = this.parseUnary()
-      if (operator === '*') value *= right
-      if (operator === '/') value /= right
-      if (operator === '%') value %= right
+      // 空字段不隐式折算成 0，避免日期公式在天数尚未填写时提前得到有效日期。
+      if (value == null || right == null || value === '' || right === '') value = null
+      else if (operator === '*') value *= right
+      else if (operator === '/') value /= right
+      else value %= right
     }
     return value
   }
 
   parseUnary() {
-    if (this.match('-')) return -this.parseUnary()
+    if (this.match('-')) {
+      const value = this.parseUnary()
+      return value == null || value === '' ? null : -value
+    }
     if (this.match('+')) return this.parseUnary()
     return this.parsePrimary()
   }
@@ -160,8 +219,16 @@ class ExpressionParser {
       return this.previous().value
     }
 
+    if (this.match('field')) return this.fieldValue(this.previous().value)
+
     if (this.match('identifier')) {
       const functionName = this.previous().value
+      if (this.fields && !this.check('(')) {
+        if (functionName === 'true') return true
+        if (functionName === 'false') return false
+        if (functionName === 'null') return null
+        return this.fieldValue(functionName)
+      }
       this.expect('(')
       const args = []
       if (!this.check(')')) {
@@ -170,7 +237,11 @@ class ExpressionParser {
         } while (this.match(','))
       }
       this.expect(')')
-      return this.callFunction(functionName, args)
+      const name = functionName.toUpperCase()
+      if (!Object.hasOwn(formulaFunctions, name)) throw new Error('不支持的函数 ' + functionName)
+      const { parameters, calculate } = formulaFunctions[name]
+      if (args.length !== parameters) throw new Error(name + ' 需要 ' + parameters + ' 个参数')
+      return calculate(args, this.now)
     }
 
     if (this.match('(')) {
@@ -182,16 +253,10 @@ class ExpressionParser {
     throw new Error('表达式格式错误')
   }
 
-  callFunction(functionName, args) {
-    const functions = {
-      datediff,
-      workdaydiff
-    }
-    const fn = functions[functionName]
-    if (!fn) {
-      throw new Error(`不支持的函数: ${functionName}`)
-    }
-    return fn(...args)
+  fieldValue(key) {
+    const value = this.fields && Object.hasOwn(this.fields, key) ? this.fields[key] : null
+    if (value instanceof Date) return value
+    return ['string', 'number', 'boolean'].includes(typeof value) ? value : null
   }
 
   match(type) {
@@ -216,6 +281,42 @@ class ExpressionParser {
   previous() {
     return this.tokens[this.position - 1]
   }
+}
+
+const comparisons = {
+  '==': (left, right) => left === right,
+  '!=': (left, right) => left !== right,
+  '<': (left, right) => left != null && right != null && left < right,
+  '<=': (left, right) => left != null && right != null && left <= right,
+  '>': (left, right) => left != null && right != null && left > right,
+  '>=': (left, right) => left != null && right != null && left >= right
+}
+
+const formulaFunctions = {
+  TODAY: { parameters: 0, calculate: (_, now) => localDateText(now) },
+  ADD_DAYS: { parameters: 2, calculate: ([date, days]) => addCalendarDays(date, days) },
+  DATEDIFF: { parameters: 2, calculate: ([start, end]) => datediff(start, end) },
+  WORKDAYDIFF: { parameters: 2, calculate: ([start, end]) => workdaydiff(start, end) },
+  IF: { parameters: 3, calculate: ([condition, yes, no]) => condition == null ? null : [true, 1, '1', 'true'].includes(condition) ? yes : no }
+}
+
+function localDateText(date) {
+  return [String(date.getFullYear()).padStart(4, '0'), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-')
+}
+
+/** 日历日期使用 UTC 做加减，避免浏览器夏令时和跨时区转换造成日期偏移。 */
+function addCalendarDays(value, days) {
+  const text = value instanceof Date ? localDateText(value) : value
+  if (typeof text !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return null
+  if (!(typeof days === 'number' || typeof days === 'string' && /^[+-]?\d+$/.test(days.trim()))) return null
+  const offset = Number(days)
+  if (!Number.isSafeInteger(offset)) return null
+  const date = new Date(text + 'T00:00:00Z')
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== text) return null
+  date.setUTCDate(date.getUTCDate() + offset)
+  return Number.isFinite(date.getTime()) && date.getUTCFullYear() >= 0 && date.getUTCFullYear() <= 9999
+    ? date.toISOString().slice(0, 10)
+    : null
 }
 
 // 计算日期差（天数）

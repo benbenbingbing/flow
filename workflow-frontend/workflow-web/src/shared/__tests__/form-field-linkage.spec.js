@@ -115,6 +115,27 @@ assert.equal(rootMapping.valueFormula, '${amount} * 2')
 assert.equal('valueMapping' in LinkageEngine.getFieldLinkageRules(rootMapping), false)
 assert.equal(LinkageEngine.processAllLinkages([rootMapping], { amount: 5, source: 'a' }).values.mapped, 10)
 
+// 公式的函数名和字符串不会转成字段引用，计算时机随发布节点序列化。
+const dateField = { id: 'due_date', nodeType: 'FIELD', fieldId: 'due_date', fieldCode: 'due_date', fieldType: 'DATE' }
+const dateModel = readFieldValueLinkage(dateField)
+Object.assign(dateModel, {
+  valueEnabled: true, sourceType: 'formula', formulaMode: 'initial',
+  formula: 'IF(status == "delayed", ADD_DAYS(start, 7), ADD_DAYS(start, 3))'
+})
+updateFieldValueLinkage(dateField, dateModel, 'value')
+const datePayload = buildFormNodePayload(dateField, { componentProps: JSON.parse(dateField.componentProps) })
+const reloadedDate = { fieldCode: 'due_date', componentProps: datePayload.props.componentProps }
+const reloadedDateModel = readFieldValueLinkage(reloadedDate)
+assert.equal(reloadedDateModel.formulaMode, 'initial')
+assert.equal(reloadedDateModel.formula, 'IF(${status} == "delayed", ADD_DAYS(${start}, 7), ADD_DAYS(${start}, 3))')
+assert.equal(getFieldValueLinkageError(reloadedDateModel), '')
+const formulaInput = { status: 'delayed', start: '2026-11-25', due_date: '' }
+assert.deepEqual(LinkageEngine.processAllLinkages([reloadedDate], formulaInput).values, {})
+reloadedDateModel.formulaMode = 'reactive'
+updateFieldValueLinkage(reloadedDate, reloadedDateModel, 'value')
+assert.equal(LinkageEngine.processAllLinkages([reloadedDate], formulaInput).values.due_date, '2026-12-02')
+assert.equal(readFieldValueLinkage(reloadedDate).formulaMode, 'reactive')
+
 // 兜底随节点保存和重载，精确规则优先，空值是否参与由配置决定。
 const mappedField = { id: 'mapped', nodeType: 'FIELD', fieldId: 'mapped', fieldCode: 'mapped', fieldType: 'STRING' }
 const mappedModel = readFieldValueLinkage(mappedField)

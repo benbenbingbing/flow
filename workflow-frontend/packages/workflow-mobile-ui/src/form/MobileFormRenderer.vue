@@ -18,6 +18,7 @@ import { computed, inject, nextTick, onBeforeUnmount, provide, ref, unref, watch
 import { Loading as VanLoading } from 'vant'
 import { getFieldKey, applyRuntimeFieldDefaults } from '@flow/workflow-core/form-runtime'
 import { resolveComponentFormPatch, projectRuntimeFields, settleRuntimeLinkages, runtimeFieldState, validateRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
+import { applyInitialFormulaDefaults } from '@flow/workflow-core/utils/linkageEngine'
 import { createFormUniquePrecheckController, resolveFormUniqueRuntimeIdentity, resolveFormFieldUniqueness } from '@flow/workflow-core/form-field-uniqueness'
 import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
 import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
@@ -102,7 +103,12 @@ async function initialize() {
   const version = ++generation; loading.value = true; loadError.value = ''
   try {
     if (!props.readonly && props.mode !== 'view') applyRuntimeFieldDefaults(record.value, props.form, props.entityFields)
-    await props.dataSourceRuntime?.initialize({ form: props.form, fields: fields.value, nodes: projection.value.nodes, record: record.value, recordId: props.context.recordId || record.value.id, initializationKey: props.context.initializationKey, runtimeContext: props.context })
+    if (props.dataSourceRuntime) {
+      await props.dataSourceRuntime.initialize({ form: props.form, fields: fields.value, nodes: projection.value.nodes, record: record.value, recordId: props.context.recordId || record.value.id, initializationKey: props.context.initializationKey, runtimeContext: { ...props.context, mode: props.mode, readonly: props.readonly, rootParentId: props.rootParentId } })
+    } else if (!props.readonly && (props.context.row?.isNew ?? (props.mode === 'create'))) {
+      // 部分表单入口没有接口运行时，公式初值仍随记录初始化填入。
+      applyInitialFormulaDefaults(fields.value, record.value)
+    }
   } catch (cause) { if (version === generation) loadError.value = cause.message || '表单初始化失败' }
   finally { if (version === generation) loading.value = false }
 }

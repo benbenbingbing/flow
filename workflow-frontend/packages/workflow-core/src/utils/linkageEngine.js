@@ -2,7 +2,7 @@
  * 表单字段联动引擎
  * 支持显隐控制、值联动、选项联动、计算字段
  */
-import { evaluateExpression } from './calcEngine.js'
+import { evaluateExpression, evaluateLinkageExpression } from './calcEngine.js'
 import {
   collectFlowConditionProperties,
   evaluateFlowConditionExpression,
@@ -62,7 +62,7 @@ export const LinkageEngine = {
       'disabledConditionConfig', 'disabledRule',
       'requiredConditionConfig', 'requiredRule',
       'calculationFormula', 'calculationPrecision', 'calculationEditable',
-      'optionsLinkage', 'valueFormula', 'valueMapping', 'attachmentItemRequiredRules'
+      'optionsLinkage', 'valueFormula', 'valueFormulaMode', 'valueMapping', 'attachmentItemRequiredRules'
     ]
 
     // 1. 优先读取直接挂在字段根属性上的规则
@@ -177,6 +177,11 @@ export const LinkageEngine = {
    */
   calculate(formula, formData) {
     if (!formula) return null
+
+    // 已有算术公式沿用数值转换；函数、比较和新式字段引用共用值联动解析器。
+    if (/\b[A-Za-z_]\w*\s*\(|[$#]\{field\.|#\{|[<>=!"']/.test(formula)) {
+      return evaluateLinkageExpression(formula, formData)
+    }
 
     try {
       let expr = formula
@@ -373,28 +378,13 @@ export const LinkageEngine = {
         }
       }
 
-      // 处理值公式
-      if (rules.valueFormula && result.values[fieldKey] === undefined) {
-        let expr = rules.valueFormula
-        if (!expr.includes('${')) {
-          expr = expr.replace(/\b([a-zA-Z_]\w*)\b/g, (match, key) => {
-            const value = formData[key]
-            return typeof value === 'string' ? `'${value}'` : (value ?? 'null')
-          })
-        } else {
-          expr = expr.replace(/\$\{(\w+)\}/g, (match, key) => {
-            const value = formData[key]
-            return typeof value === 'string' ? `'${value}'` : (value ?? 'null')
-          })
-        }
-        const evaluatedValue = evaluateExpression(expr, {})
-        if (evaluatedValue !== undefined) {
-          result.values[fieldKey] = evaluatedValue
-        }
+      // 初值公式由新增生命周期执行；联动刷新不能覆盖手工修改或重新填入已清空的值。
+      if (rules.valueFormulaMode !== 'initial' && rules.valueFormula && result.values[fieldKey] === undefined) {
+        result.values[fieldKey] = evaluateLinkageExpression(rules.valueFormula, formData)
       }
 
       // 处理计算字段
-      if (rules.calculationFormula && result.values[fieldKey] === undefined) {
+      if (rules.valueFormulaMode !== 'initial' && rules.calculationFormula && result.values[fieldKey] === undefined) {
         result.values[fieldKey] = this.calculate(rules.calculationFormula, formData)
       }
 
@@ -440,10 +430,8 @@ export const LinkageEngine = {
           return true
         }
       }
-      if (rules.calculationFormula && rules.calculationFormula.includes(changedField)) {
-        return true
-      }
-      if (rules.valueFormula && rules.valueFormula.includes(changedField)) {
+      if (rules.valueFormulaMode !== 'initial'
+          && [rules.calculationFormula, rules.valueFormula].some(formula => formula?.includes(changedField))) {
         return true
       }
       if (rules.optionsLinkage && rules.optionsLinkage.dependsOn === changedField) {
@@ -466,6 +454,39 @@ export const LinkageEngine = {
       return false
     })
   }
+}
+
+/**
+ * 为新增记录补齐空字段的公式初值。由宿主在初始化时调用，常规联动与编辑不会运行。
+ * 支持引用同表单的其他初值，按可求值的顺序填充；缺值和无法求值的公式保留原值。
+ */
+export function applyInitialFormulaDefaults(fields, record) {
+  const pending = fields.flatMap(field => {
+    const key = field.fieldCode || field.fieldKey
+    if (field.isDisplayOnly || !key || ['__proto__', 'constructor', 'prototype'].includes(key)) return []
+    const rules = LinkageEngine.getFieldLinkageRules(field)
+    const formula = rules.calculationFormula || rules.valueFormula
+    return rules.valueFormulaMode === 'initial' && formula ? [{ key, formula }] : []
+  })
+  if (!pending.length) return
+  const now = new Date()
+  // 布局顺序与公式依赖无关；只有确实写入新值时才继续尝试尚未解析的字段。
+  let progressed
+  do {
+    progressed = false
+    for (let index = pending.length - 1; index >= 0; index--) {
+      const { key, formula } = pending[index]
+      if (record[key] != null && record[key] !== '') {
+        pending.splice(index, 1)
+        continue
+      }
+      const value = evaluateLinkageExpression(formula, record, now)
+      if (value == null || value === '') continue
+      record[key] = value
+      pending.splice(index, 1)
+      progressed = true
+    }
+  } while (progressed && pending.length)
 }
 
 export default LinkageEngine

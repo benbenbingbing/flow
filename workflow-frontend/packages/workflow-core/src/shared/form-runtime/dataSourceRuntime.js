@@ -1,6 +1,8 @@
 import { buildRuntimeContext } from './context.js'
 import { resolvePageParameters, initializePageFields, pageParameterFields } from '../page-parameters.js'
 import { safeParseConfig } from '../config-runtime/index.js'
+import { projectRuntimeFields } from './formModel.js'
+import { applyInitialFormulaDefaults } from '../../utils/linkageEngine.js'
 
 function parseBindings(value) {
   return safeParseConfig(value) || {}
@@ -325,7 +327,7 @@ export function createFormDataSourceRuntime(options) {
 
   /**
    * 同一表单、记录和模式只初始化一次；initializationKey 由宿主在重新加载时显式更换。
-   * record 是后续渲染/提交使用的可变模型，按页面参数、生命周期绑定、字段默认值顺序写入。
+   * record 是后续渲染/提交使用的可变模型，先应用参数与接口绑定，再用公式填补空字段。
    */
   async function initialize({
     form,
@@ -409,6 +411,14 @@ export function createFormDataSourceRuntime(options) {
         if (computedValue !== null && computedValue !== undefined) {
           record[fieldCode] = computedValue?.value ?? computedValue
         }
+      }
+      // 子表行拥有自己的新增状态，在编辑主表时添加的行也应获得自己的初值。
+      const isNew = runtimeContext.row?.isNew ?? (runtimeMode === 'create')
+      if (isNew && !runtimeContext.readonly && ![true, 1, '1'].includes(form?.isReadonly)) {
+        const formulaFields = nodes.length ? projectRuntimeFields(
+          { fields, nodes }, [], { rootParentId: runtimeContext.rootParentId || '' }
+        ).fields : fields
+        applyInitialFormulaDefaults(formulaFields, record)
       }
     } catch (error) {
       initialized.delete(initializationKey)

@@ -189,7 +189,7 @@ import FormActionBar from './FormActionBar.vue'
 import RelatedContentRuntime from './related-content/RelatedContentRuntime.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from '../extensions/builtin/fields/components/SectionField.vue'
-import LinkageEngine from '@flow/workflow-core/utils/linkageEngine'
+import LinkageEngine, { applyInitialFormulaDefaults } from '@flow/workflow-core/utils/linkageEngine'
 import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
 import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
@@ -713,7 +713,7 @@ function applyCalculatedValues() {
   nextTick(() => {
     fields.forEach(field => {
       const rules = LinkageEngine.getFieldLinkageRules(field)
-      if (rules.calculationFormula) {
+      if (rules.calculationFormula && rules.valueFormulaMode !== 'initial') {
         const fieldKey = field.fieldCode || field.fieldKey
         const calculatedValue = LinkageEngine.calculate(rules.calculationFormula, formData.value)
         if (calculatedValue !== null && formData.value[fieldKey] !== calculatedValue) {
@@ -737,6 +737,10 @@ function handleFieldChange(fieldKey, value) {
 
 // 初始化
 onMounted(() => {
+  // 设计预览不参加新增弹窗生命周期，使用当前草稿单独演示公式初值。
+  if (props.designPreview && props.mode === 'create' && !props.readonly) {
+    applyInitialFormulaDefaults(runtimeContext.value.scriptFields, formData.value)
+  }
   updateLinkageState()
   applyLinkageValues()
   applyCalculatedValues()

@@ -979,6 +979,7 @@
       </div>
       <div class="preview-container">
         <FormPreviewLinkage
+          :key="previewMode"
           :form="previewForm"
           design-preview
           :mode="previewMode"

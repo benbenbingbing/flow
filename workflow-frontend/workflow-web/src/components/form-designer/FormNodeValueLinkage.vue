@@ -4,7 +4,7 @@
       <h4>值联动</h4>
       <el-switch v-model="model.valueEnabled" :disabled="disabled" aria-label="启用值联动" @change="persist('value')" />
     </div>
-    <p class="linkage-description">根据其他字段的值映射或计算当前字段值。</p>
+    <p class="linkage-description">映射其他字段的值，或用公式设置初值、随字段变化计算。</p>
     <template v-if="model.valueEnabled">
       <el-form-item label="数据来源">
         <el-radio-group v-model="model.sourceType" :disabled="disabled" @change="persist('value')">
@@ -48,10 +48,39 @@
           </div>
         </el-form-item>
       </template>
-      <el-form-item v-else label="计算公式">
-        <el-input v-model="model.formula" :disabled="disabled" type="textarea" :rows="3" placeholder="如：${quantity} * ${price}" @input="persist('value')" />
-        <div class="linkage-description">支持 + - * / ( )，使用 ${字段编码} 引用字段值。</div>
-      </el-form-item>
+      <template v-else>
+        <el-form-item label="计算时机">
+          <el-radio-group v-model="model.formulaMode" :disabled="disabled" @change="persist('value')">
+            <el-radio value="reactive">实时联动</el-radio>
+            <el-radio value="initial">仅新增时填一次</el-radio>
+          </el-radio-group>
+          <div v-if="model.formulaMode === 'initial'" class="linkage-description">
+            新增表单打开时填充空字段，填写后可修改或清空。
+          </div>
+        </el-form-item>
+        <el-form-item label="计算公式">
+          <div class="linkage-rows">
+            <el-input ref="formulaInput" v-model="model.formula" :disabled="disabled" type="textarea" :rows="3" :placeholder="formulaPlaceholder" @input="persist('value')" />
+            <div class="formula-tools">
+              <el-select :model-value="''" :disabled="disabled || !availableFields.length" filterable placeholder="插入字段" aria-label="插入字段" @change="code => insertFormula('${' + code + '}')">
+                <el-option v-for="item in availableFields" :key="fieldKey(item)" :label="item.fieldName || item.fieldLabel || fieldKey(item)" :value="fieldKey(item)" />
+              </el-select>
+              <el-dropdown trigger="click" :disabled="disabled" @command="insertFormula">
+                <el-button :disabled="disabled">插入函数</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="TODAY()">TODAY() · 当前日期</el-dropdown-item>
+                    <el-dropdown-item command="ADD_DAYS(TODAY(), 3)">ADD_DAYS · 日期加减天数</el-dropdown-item>
+                    <el-dropdown-item command="DATEDIFF(TODAY(), ADD_DAYS(TODAY(), 3))">DATEDIFF · 日期相差天数</el-dropdown-item>
+                    <el-dropdown-item command="IF(true, TODAY(), ADD_DAYS(TODAY(), 7))">IF · 按条件取值</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+            <div class="formula-help">用 ${字段编码} 引用字段。支持四则运算、比较和日期函数。</div>
+          </div>
+        </el-form-item>
+      </template>
     </template>
 
     <SettingsCapability :disabled="disabled || !supportsOptions" reason="仅选择类组件支持选项联动">
@@ -88,7 +117,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import SettingsCapability from '@/components/SettingsCapability.vue'
 import { useFieldValueLinkage } from '@/composables/useFieldValueLinkage'
@@ -107,6 +136,25 @@ const supportsOptions = computed(() => ['select', 'select_multiple', 'radio', 'c
 const dictionaryOptions = useFieldDictionaryOptions(() => [props.field])
 const currentOptions = computed(() => dictionaryOptions.value[props.field.dictType] || [])
 const { model, persist: persistDraft } = useFieldValueLinkage(() => props.field, () => props.disabled)
+const formulaInput = ref()
+const formulaPlaceholder = computed(() => String(props.field.fieldType).toUpperCase() === 'DATE'
+  ? '例如 ADD_DAYS(TODAY(), 3)'
+  : '例如 ${quantity} * ${price}')
+
+/** 在光标处插入或替换所选片段，保留用户已经写好的表达式。 */
+async function insertFormula(fragment) {
+  if (props.disabled) return
+  const input = formulaInput.value?.textarea
+  const formula = model.value.formula
+  const start = input?.selectionStart ?? formula.length
+  const end = input?.selectionEnd ?? start
+  model.value.formula = formula.slice(0, start) + fragment + formula.slice(end)
+  persist('value')
+  await nextTick()
+  input?.focus()
+  input?.setSelectionRange(start + fragment.length, start + fragment.length)
+}
+
 function persist(group) {
   if (props.disabled || group === 'options' && !supportsOptions.value) return
   persistDraft(group)
@@ -139,6 +187,9 @@ function removeRow(group, index) {
 .mapping-row > .el-input, .fallback-source { flex: 1; min-width: 0; }
 .fallback-source { box-sizing: border-box; padding: 0 11px; border-radius: 4px; background: var(--el-fill-color-light); color: var(--el-text-color-regular); }
 .mapping-actions { display: flex; flex-wrap: wrap; }
+.formula-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.formula-tools :deep(.el-select) { max-width: 180px; }
+.formula-help { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
 .linkage-rows > .el-button { align-self: flex-start; }
 .node-value-linkage :deep(.el-select) { width: 100%; }
 </style>

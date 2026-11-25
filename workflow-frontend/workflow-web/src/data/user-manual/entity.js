@@ -937,7 +937,7 @@ export default {
                 { field: '显示条件', meaning: '条件组满足时显示当前字段。', defaultLimit: '默认关闭；可添加条件和嵌套条件组，每组可选全部满足 AND 或任一满足 OR；支持 ==、!=、>、<、>=、<=、contains、empty、notEmpty。', effect: '表单值变化时动态显示或隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
                 { field: '接口取值', meaning: '通过受控数据源获取默认值或计算结果。', defaultLimit: '在“数据与扩展 → 数据源绑定”中选择接口；实体引用的筛选范围在“引用选择配置”中选择已发布列表。', effect: '在扩展管理中注册接口，设计器保存 extensionId，并按绑定用途应用返回值。', publish: 'Provider 统一处理数据权限、超时和审计；选择列表发布后生效。' },
-                { field: '值联动：公式', meaning: '根据其他字段计算。', defaultLimit: '支持 + - * / ( )，使用 ${fieldCode}。', effect: '字段变化时重新计算。', publish: '空值、除零和字符串转数字必须测试。' }
+                { field: '值联动：公式', meaning: '用字段引用、算术、比较和日期函数计算值。', defaultLimit: '可插入字段或函数。例如 ADD_DAYS(TODAY(), 3) 取浏览器本地日期的三天后。', effect: '实时联动随表单变化重算。仅新增时填一次会在打开新增表单时填充空字段，之后可修改或清空。', publish: '保存字段属性并发布表单。可在表单预览的新增模式检查初值。' }
               ]
             }
           ]

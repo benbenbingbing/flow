@@ -1,8 +1,9 @@
 import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { isFlowConditionGroupComplete, parseFlowConditionConfig } from '@flow/workflow-core/utils/flowConditionGroups'
+import { getLinkageExpressionError } from '@flow/workflow-core/utils/calcEngine'
 
-const VALUE_KEYS = ['valueMapping', 'valueFormula', 'calculationFormula', 'calculationPrecision', 'calculationEditable']
+const VALUE_KEYS = ['valueMapping', 'valueFormula', 'valueFormulaMode', 'calculationFormula', 'calculationPrecision', 'calculationEditable']
 const clone = value => JSON.parse(JSON.stringify(value))
 
 /** 只替换当前编辑器负责的键，保留状态条件和其他组件参数，移除废弃接口规则。 */
@@ -43,6 +44,7 @@ export function readFieldValueLinkage(field) {
     sourceType: calculation || !rules.valueMapping && Object.hasOwn(rules, 'valueFormula') ? 'formula' : 'field',
     formulaKey: calculation ? 'calculationFormula' : 'valueFormula',
     formula: rules.calculationFormula ?? rules.valueFormula ?? '',
+    formulaMode: rules.valueFormulaMode === 'initial' ? 'initial' : 'reactive',
     sourceField: rules.valueMapping?.sourceField || '',
     mappings: clone(rules.valueMapping?.rules || []),
     fallback: clone(rules.valueMapping?.fallback ?? null),
@@ -66,8 +68,8 @@ export function updateFieldValueLinkage(field, model, group) {
       patch.valueMapping = { sourceField: model.sourceField, rules: model.mappings }
       if (model.fallback) patch.valueMapping.fallback = model.fallback
     } else {
-      // 保持历史公式字段引用的输入兼容；显式 ${...} 表达式不作改写。
-      patch[model.formulaKey] = model.formula.includes('${') ? model.formula : model.formula.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, '${$1}')
+      patch[model.formulaKey] = normalizeFormulaReferences(model.formula)
+      if (model.formulaMode === 'initial') patch.valueFormulaMode = 'initial'
       if (model.formulaKey === 'calculationFormula') {
         const current = LinkageEngine.getFieldLinkageRules(field)
         for (const key of ['calculationPrecision', 'calculationEditable']) {
@@ -79,10 +81,24 @@ export function updateFieldValueLinkage(field, model, group) {
   patchFieldLinkageRules(field, VALUE_KEYS, patch)
 }
 
+/** 兼容以裸字段名书写的旧公式；函数、字符串和显式字段引用保留原样。 */
+function normalizeFormulaReferences(formula) {
+  const tokens = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[$#]\{[^}]*\}|\b[A-Za-z_]\w*\b/g
+  return formula.replace(tokens, (token, index) => {
+    if (!/^[A-Za-z_]/.test(token) || ['true', 'false', 'null'].includes(token)
+        || /^\s*\(/.test(formula.slice(index + token.length))) return token
+    return '${' + token + '}'
+  })
+}
+
 /** 保存前检查未完成或互相覆盖的映射，空字符串本身可作为合法映射值。 */
 export function getFieldValueLinkageError(model) {
   if (model.valueEnabled) {
-    if (model.sourceType === 'formula' && !model.formula.trim()) return '请填写值联动的计算公式或关闭值联动'
+    if (model.sourceType === 'formula') {
+      if (!model.formula.trim()) return '请填写值联动的计算公式或关闭值联动'
+      const error = getLinkageExpressionError(model.formula)
+      if (error) return '的计算公式有误（' + error + '）'
+    }
     if (model.sourceType === 'field') {
       if (!model.sourceField || (!model.mappings.length && !model.fallback)) return '请填写值联动的源字段和映射规则，或关闭值联动'
       if (new Set(model.mappings.map(row => String(row.sourceValue))).size !== model.mappings.length) return '值联动的源值不能重复'

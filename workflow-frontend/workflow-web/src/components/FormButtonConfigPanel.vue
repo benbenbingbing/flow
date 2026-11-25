@@ -82,9 +82,7 @@
           </template>
         </el-table-column>
         <el-table-column label="执行方式" min-width="170">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openAdvanced(row)">{{ FORM_CUSTOM_ACTION_MODES.find(item => item.value === row.customMode)?.label || '业务接口 / 事件链' }}</el-button>
-          </template>
+          <template #default>平台默认执行</template>
         </el-table-column>
         <el-table-column label="适用模式" min-width="210">
           <template #default="{ row }">
@@ -330,7 +328,7 @@
               link
               type="primary"
               :title="`更多设置（${ruleSummary(row)}）`"
-              @click="openAdvanced(row)"
+              @click="openCustomButtonSettings(row)"
             >
               更多
             </el-button>
@@ -502,7 +500,6 @@ import {
 } from '@/shared/action-rules'
 import {
   FORM_ACTION_MODES,
-  FORM_CUSTOM_ACTION_MODES,
   formButtonExecutionError,
   FORM_ACTION_KEY_PATTERN,
   FORM_ACTION_PERMISSION_PATTERN,
@@ -752,7 +749,7 @@ function addCustomButton() {
   }, draft.value.customButtons.length)
   markLocallyCreated(button)
   draft.value.customButtons.push(button)
-  ElMessage.success('已添加按钮，请在“位置”列选择显示位置，在执行方式中配置按钮动作')
+  ElMessage.success('已添加按钮，请在“位置”列选择显示位置，点击“更多”配置按钮动作')
 }
 
 async function removeCustomButton(button) {
@@ -883,10 +880,10 @@ function ruleSummary(target) {
 }
 
 /**
- * “更多”使用独立按钮与条件草稿，只有完整校验并保存后才回写表格数据。
+ * 自定义按钮的“更多”使用独立按钮与条件草稿，只有完整校验并保存后才回写表格数据。
  * 旧版规则不在此处转换，项目上线前由配置人员清理并按 v2 结构重设。
  */
-function openAdvanced(button) {
+function openCustomButtonSettings(button) {
   const existingRule = button?.availabilityRule
   if (existingRule && existingRule.version !== ACTION_RULE_VERSION) {
     ElMessage.error('检测到旧版按钮条件，请先清理旧配置后再通过“更多”重新设置')
