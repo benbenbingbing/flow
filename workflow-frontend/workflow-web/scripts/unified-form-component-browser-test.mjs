@@ -315,23 +315,64 @@ try{
  }
  console.log('entity record configuration modal checks passed: single and multiple, cancel, parameter mapping save and reopen')
 
- // 计算区保留实时公式，切换配置视图不会清空公式。
+ // 三种值联动方式共用一个控件，切换时保留输入，保存时仅保留选中的规则。
+ const linkage = '.node-value-linkage'
+ const formulaInput = linkage + ' textarea[aria-label="计算公式"]'
+ const sourceValueInput = linkage + ' input[placeholder="源字段的值"]'
+ const targetValueInput = linkage + ' input[placeholder="当前字段的值"]'
+ const chooseLinkageMode = label => clickText(label, linkage + ' .el-radio')
+ const selectedLinkageMode = () => evaluate('document.querySelector(".node-value-linkage input[type=radio]:checked").value')
+ const savedLinkage = () => evaluate('JSON.parse(componentTest.state.designerNodes[0].propsDocument).componentProps.linkageRules || {}')
+ const openLinkage = async () => {
+  await openNode()
+  await clickText('联动与事件','[role="tab"]')
+ }
  await openNode()
  await clickText('数据与扩展','[role="tab"]')
  assert.equal(await evaluate('document.querySelectorAll(".data-source-usage-row").length'),0)
  assert.match(await evaluate('document.querySelector(".node-data-settings").innerText'),/表单事件 → 字段默认事件/)
  await clickText('联动与事件','[role="tab"]')
- await clickText('计算','.node-value-linkage .el-radio')
- assert.doesNotMatch(await evaluate('document.querySelector(".node-value-linkage").innerText'),/计算接口/)
- assert.equal(await evaluate('document.querySelector("[aria-label=启用公式计算]").getAttribute("aria-checked")'),'false')
- await click('[aria-label="启用公式计算"]')
- await enterValue('.node-value-linkage textarea[aria-label="计算公式"]','1 + 2')
- await clickText('字段值','.node-value-linkage .el-radio')
- await clickText('计算','.node-value-linkage .el-radio')
+ assert.equal(await selectedLinkageMode(),'none')
+ assert.doesNotMatch(await evaluate('document.querySelector(".node-value-linkage").innerText'),/计算接口|源字段|启用公式计算|启用字段映射/)
+ await chooseLinkageMode('字段映射')
+ await selectSetting('源字段','target',linkage)
+ await clickText('添加映射',linkage + ' button')
+ await enterValue(sourceValueInput,'A')
+ await enterValue(targetValueInput,'B')
+ await chooseLinkageMode('公式计算')
+ await enterValue(formulaInput,'1 + 2')
+ await chooseLinkageMode('字段映射')
+ assert.equal(await evaluate(`document.querySelector(${JSON.stringify(sourceValueInput)}).value`),'A')
+ assert.equal(await evaluate(`document.querySelector(${JSON.stringify(targetValueInput)}).value`),'B')
  await clickText('保存当前属性','.node-property-actions button')
- assert.equal(await evaluate('JSON.parse(componentTest.state.designerNodes[0].propsDocument).componentProps.linkageRules.valueFormula'),'1 + 2')
+ assert.deepEqual((await savedLinkage()).valueMapping,{sourceField:'target',rules:[{sourceValue:'A',targetValue:'B'}]})
+ assert.equal((await savedLinkage()).valueFormula,undefined)
  await closeNode()
- console.log('formula configuration checks passed: compute interface removed, formula round trip')
+
+ await openLinkage()
+ assert.equal(await selectedLinkageMode(),'field')
+ await chooseLinkageMode('公式计算')
+ await enterValue(formulaInput,'1 + 2')
+ await chooseLinkageMode('不启用')
+ assert.equal(await evaluate(`Boolean(document.querySelector(${JSON.stringify(formulaInput)}))`),false)
+ await chooseLinkageMode('公式计算')
+ assert.equal(await evaluate(`document.querySelector(${JSON.stringify(formulaInput)}).value`),'1 + 2')
+ await clickText('保存当前属性','.node-property-actions button')
+ assert.equal((await savedLinkage()).valueFormula,'1 + 2')
+ assert.equal((await savedLinkage()).valueMapping,undefined)
+ await closeNode()
+
+ await openLinkage()
+ assert.equal(await selectedLinkageMode(),'formula')
+ await chooseLinkageMode('不启用')
+ await clickText('保存当前属性','.node-property-actions button')
+ assert.equal((await savedLinkage()).valueMapping,undefined)
+ assert.equal((await savedLinkage()).valueFormula,undefined)
+ await closeNode()
+ await openLinkage()
+ assert.equal(await selectedLinkageMode(),'none')
+ await closeNode()
+ console.log('value linkage checks passed: single mode, draft input, exclusive save, disabled round trip')
 
  // 固定默认值在弹窗内暂存，配置行的布局应与组件类型一致。
  await openNode()

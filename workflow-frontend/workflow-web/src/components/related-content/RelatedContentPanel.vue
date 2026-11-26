@@ -10,10 +10,10 @@
       <div class="panel-heading">
         <div>
           <strong>关联内容</strong>
-          <span>在当前{{ ownerType === 'FORM' ? '表单' : '列表' }}中组合其他实体的表单或列表</span>
+          <span>将已发布的表单或列表添加到当前{{ ownerType === 'FORM' ? '表单' : '列表' }}</span>
         </div>
-        <el-button link type="primary" :disabled="!ownerId || loading" @click="openExtension">扩展页面</el-button>
-        <el-button type="primary" :disabled="!ownerId || loading" @click="openCreate">
+        <el-button link type="primary" :disabled="!ownerId || loading" @click="openSameRecord">添加当前记录页面</el-button>
+        <el-button v-if="ownerType === 'LIST'" type="primary" :disabled="!ownerId || loading" @click="openCreate">
           <el-icon><Plus /></el-icon>
           新增关联内容
         </el-button>
@@ -23,18 +23,16 @@
     <div v-if="embedded" class="panel-heading">
       <div>
         <strong>关联内容</strong>
-        <span>在当前{{ ownerType === 'FORM' ? '表单' : '列表' }}中组合其他实体的表单或列表</span>
+        <span>将已发布的表单或列表添加到当前{{ ownerType === 'FORM' ? '表单' : '列表' }}</span>
       </div>
-      <el-button link type="primary" :disabled="!ownerId || loading" @click="openExtension">扩展页面</el-button>
-      <el-button type="primary" :disabled="!ownerId || loading" @click="openCreate">
-        <el-icon><Plus /></el-icon>
-        新增关联内容
-      </el-button>
+      <el-button link type="primary" :disabled="!ownerId || loading" @click="openSameRecord">添加当前记录页面</el-button>
     </div>
 
     <div v-loading="loading" class="panel-body">
       <el-alert
-        title="关联内容引用实体关系，只设置展示和操作。需随主表保存的子表单或明细，请从表单左侧的组成关系添加；当前记录或接口取数请使用“扩展页面”。"
+        :title="ownerType === 'FORM'
+          ? '从表单左侧的“实体关系”添加关联表单或列表，也可在组成关系下添加随主表保存的子表单或明细。同一条记录的其他页面可在这里添加。'
+          : '选择实体关系添加关联表单或列表。同一条记录的其他页面可在这里添加。'"
         type="info"
         :closable="false"
         show-icon
@@ -73,7 +71,7 @@
         description="还没有关联内容"
         :image-size="92"
       >
-        <el-button type="primary" @click="openCreate">配置第一项关联内容</el-button>
+        <el-button v-if="ownerType === 'LIST'" type="primary" @click="openCreate">配置第一项关联内容</el-button>
       </el-empty>
 
       <div v-else class="content-list">
@@ -165,7 +163,7 @@ const props = defineProps({
   anchorOptions: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['count-change', 'changed', 'loaded', 'configure-buttons', 'edit-draft', 'create-draft', 'delete-draft', 'refresh-drafts'])
+const emit = defineEmits(['count-change', 'changed', 'loaded', 'configure-buttons', 'edit-draft', 'create-same-record-draft', 'delete-draft', 'refresh-drafts'])
 const visible = ref(false)
 // 表单设置直接承载面板；列表仍使用独立抽屉，共用同一套配置与保存逻辑。
 const drawerProps = computed(() => ({
@@ -238,13 +236,12 @@ async function open(item = null) {
 }
 
 function openCreate() {
-  if (props.draftMode) return emit('create-draft', { extension: false })
   dialogRef.value?.open()
 }
 
-function openExtension() {
-  if (props.draftMode) return emit('create-draft', { extension: true })
-  dialogRef.value?.open(null, { extension: true })
+function openSameRecord() {
+  if (props.draftMode) return emit('create-same-record-draft')
+  dialogRef.value?.open(null, { sameRecord: true })
 }
 
 function openEdit(item) {
@@ -308,7 +305,7 @@ watch(
   { immediate: true }
 )
 
-defineExpose({ open, load, remove, openCreate })
+defineExpose({ open, load, remove })
 </script>
 
 <style scoped>

@@ -2208,8 +2208,8 @@ const inlineValueLinkage = readFileSync(path.join(root, 'src/components/form-des
   assert.ok(formDesigner.includes(marker), `字段联动缺少独立卡片或内联配置: ${marker}`)
 })
 assert.ok(
-  ['启用字段映射', '启用公式计算', '启用选项联动'].every(marker => inlineValueLinkage.includes(marker)),
-  '值与计算应内联字段映射、实时公式和选项联动'
+  ['v-model="valueLinkageMode"', '>不启用<', '>字段映射<', '>公式计算<', '启用选项联动'].every(marker => inlineValueLinkage.includes(marker)),
+  '值联动方式应使用一个三选一控件，选项联动独立启用'
 )
 assert.equal(formDesigner.includes('showLinkageConfig'), false, '字段联动不再通过弹窗编辑')
 const linkageConditionRuleEditor = readFileSync(

@@ -1,5 +1,3 @@
-
-
 export function fieldOptions(fields = []) {
   return (Array.isArray(fields) ? fields : [])
     .filter(field => field?.uiConfigurable !== false && field?.fieldCode)
@@ -35,22 +33,6 @@ export function contentScopedFieldOptions(entityOptions, contentFields, contentT
   return entityOptions.filter(option => allowed.has(String(option.value)))
 }
 
-export function schemaFieldOptions(schema) {
-  const document = typeof schema === 'string' ? safeParse(schema) : (schema || {})
-  return Object.entries(document?.properties || {}).map(([key, value]) => ({
-    value: key,
-    label: value?.title || value?.description || key
-  }))
-}
-
-export function safeParse(value) {
-  try {
-    return value ? JSON.parse(value) : {}
-  } catch {
-    return {}
-  }
-}
-
 export function isPublishedAsset(item = {}) {
   if (item.activeReleaseId || Number(item.publishedVersion || 0) > 0) return true
   // status=1 在历史表单/列表中仅表示启用，并不代表已有可钉定的发布快照。
@@ -64,13 +46,4 @@ export function normalizeRows(response) {
   if (Array.isArray(response?.data)) return response.data
   if (Array.isArray(response?.list)) return response.list
   return []
-}
-
-export function interfaceScopeLabel(item) {
-  return {
-    GLOBAL: '全部实体可用',
-    ENTITY: '所选实体可用',
-    FORM: '历史范围（按所属实体使用）',
-    LIST: '历史范围（按所属实体使用）'
-  }[item.scopeType] || '受控范围'
 }

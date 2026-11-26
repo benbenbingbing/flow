@@ -18,7 +18,7 @@ if (mode === 'entities') { component = (await import('/src/views/EntityList.vue'
 if (mode === 'data') { component = (await import('/src/views/entity/EntityDataList.vue')).default; path = '/data'; props = { entityCode: 'test', listKey: 'main' } }
 if (mode === 'related') {
   const Related = (await import('/src/components/related-content/RelatedContentConfigDialog.vue')).default
-  component = { setup() { const dialog = ref(); return () => h('main', [h('button', { onClick: () => dialog.value.open(null, { extension: true }) }, '打开关联内容'), h(Related, { ref: dialog, ownerType: 'FORM', ownerId: 'form-test', sourceEntity: { id: 'entity-test', entityCode: 'test', entityName: '测试实体' }, sourceFields: [field] })]) } }
+  component = { setup() { const dialog = ref(); return () => h('main', [h('button', { onClick: () => dialog.value.open(null, { sameRecord: true }) }, '打开关联内容'), h(Related, { ref: dialog, ownerType: 'FORM', ownerId: 'form-test', sourceEntity: { id: 'entity-test', entityCode: 'test', entityName: '测试实体' }, sourceFields: [field] })]) } }
   path = '/related'
 }
 if (mode === 'events') {

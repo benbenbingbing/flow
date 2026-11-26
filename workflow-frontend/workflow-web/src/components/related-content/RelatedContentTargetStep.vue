@@ -3,7 +3,6 @@ import RelatedContentPageSettings from './RelatedContentPageSettings.vue'
 import RelatedContentLayoutSettings from './RelatedContentLayoutSettings.vue'
 import RelatedContentVisibilitySettings from './RelatedContentVisibilitySettings.vue'
 import SettingsSection from '../SettingsSection.vue'
-import EntityDefinitionPicker from '../EntityDefinitionPicker.vue'
 import StepHeading from './RelatedContentStepHeading.vue'
 import FormContentDisplaySettings from '../form-designer/FormContentDisplaySettings.vue'
 import ConfigHelpLabel from '../ConfigHelpLabel.vue'
@@ -23,7 +22,7 @@ defineProps({
   targetParameterSchema: { type: Object, default: () => ({}) },
   sourceReadableFieldOptions: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['handleTargetEntitySelected', 'handleContentTypeChange', 'handleTargetContentChange', 'handlePositionChange', 'handleAnchorChange'])
+const emit = defineEmits(['handleContentTypeChange', 'handleTargetContentChange', 'handlePositionChange', 'handleAnchorChange'])
 </script>
 <template>
   <component :is="section === 'all' ? 'section' : SettingsSection" :title="section === 'basic' ? '显示与布局' : '关联配置'" :default-expanded="true" primary>
@@ -52,7 +51,7 @@ const emit = defineEmits(['handleTargetEntitySelected', 'handleContentTypeChange
         <slot name="relation-binding" />
         <el-form-item label="目标实体" required>
           <span v-if="isRelationBound" class="inherited-target">{{ editor.config.target.entityName || editor.config.target.entityCode }}（由实体关系确定）</span>
-          <EntityDefinitionPicker v-else v-model="editor.config.target.entityId" value-key="id" title="选择目标实体" :query="{ status: 'PUBLISHED' }" @selected="emit('handleTargetEntitySelected', $event)" />
+          <span v-else>{{ editor.config.target.entityName || editor.config.target.entityCode }}{{ editor.config.relation.type === 'SAME_RECORD' ? '（当前实体）' : '' }}</span>
         </el-form-item>
         <el-form-item v-if="isRelationBound && relationMatchText" label="匹配规则">
           <span class="relation-match-rule">{{ relationMatchText }}</span>

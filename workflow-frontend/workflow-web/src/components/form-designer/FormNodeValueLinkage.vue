@@ -1,67 +1,53 @@
 <template>
   <div class="node-value-linkage">
-    <div class="linkage-heading"><h4>值联动</h4></div>
-    <el-form-item label="配置类型">
-      <el-radio-group v-model="valuePanel" :disabled="disabled">
-        <el-radio value="field">字段值</el-radio>
-        <el-radio value="formula">计算</el-radio>
+    <el-form-item label="值联动方式">
+      <el-radio-group v-model="valueLinkageMode" :disabled="disabled" aria-label="值联动方式">
+        <el-radio value="none">不启用</el-radio>
+        <el-radio value="field">字段映射</el-radio>
+        <el-radio value="formula">公式计算</el-radio>
       </el-radio-group>
     </el-form-item>
-    <template v-if="valuePanel === 'field'">
-      <el-form-item label="字段映射">
-        <el-switch :model-value="fieldMappingEnabled" :disabled="disabled" aria-label="启用字段映射"
-          @change="setValueSource('field', $event)" />
+    <template v-if="valueLinkageMode === 'field'">
+      <el-form-item label="源字段">
+        <el-select v-model="model.sourceField" :disabled="disabled" placeholder="选择源字段" @change="persist('value')">
+          <el-option v-for="item in availableFields" :key="fieldKey(item)" :label="item.fieldName || item.fieldLabel || fieldKey(item)" :value="fieldKey(item)" />
+        </el-select>
       </el-form-item>
-      <template v-if="fieldMappingEnabled">
-        <el-form-item label="源字段">
-          <el-select v-model="model.sourceField" :disabled="disabled" placeholder="选择源字段" @change="persist('value')">
-            <el-option v-for="item in availableFields" :key="fieldKey(item)" :label="item.fieldName || item.fieldLabel || fieldKey(item)" :value="fieldKey(item)" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="映射规则">
-          <div class="linkage-rows">
-            <div v-for="(row, index) in model.mappings" :key="index" class="mapping-row">
-              <el-input v-model="row.sourceValue" :disabled="disabled" placeholder="源字段的值" @input="persist('value')" />
-              <span>→</span>
-              <el-input v-model="row.targetValue" :disabled="disabled" placeholder="当前字段的值" @input="persist('value')" />
-              <el-button :disabled="disabled" type="danger" text aria-label="删除值映射" @click="removeRow('value', index)"><el-icon><Delete /></el-icon></el-button>
-            </div>
-            <template v-if="model.fallback">
-              <div class="mapping-row">
-                <span class="fallback-source">其他值（未匹配时）</span>
-                <span>→</span>
-                <el-input
-                  v-model="model.fallback.targetValue"
-                  :disabled="disabled"
-                  aria-label="其他值的回填值"
-                  placeholder="当前字段的值，留空则清空"
-                  @input="persist('value')"
-                />
-                <el-button :disabled="disabled" type="danger" text aria-label="删除其他值映射" @click="setFallback(null)"><el-icon><Delete /></el-icon></el-button>
-              </div>
-              <el-checkbox v-model="model.fallback.includeEmpty" :disabled="disabled" @change="persist('value')">空值也按其他处理</el-checkbox>
-            </template>
-            <div class="mapping-actions">
-              <el-button :disabled="disabled" type="primary" text @click="addRow('value')"><el-icon><Plus /></el-icon>添加映射</el-button>
-              <el-button v-if="!model.fallback" :disabled="disabled" type="primary" text @click="setFallback({ targetValue: '', includeEmpty: false })"><el-icon><Plus /></el-icon>添加其他值映射</el-button>
-            </div>
+      <el-form-item label="映射规则">
+        <div class="linkage-rows">
+          <div v-for="(row, index) in model.mappings" :key="index" class="mapping-row">
+            <el-input v-model="row.sourceValue" :disabled="disabled" placeholder="源字段的值" @input="persist('value')" />
+            <span>→</span>
+            <el-input v-model="row.targetValue" :disabled="disabled" placeholder="当前字段的值" @input="persist('value')" />
+            <el-button :disabled="disabled" type="danger" text aria-label="删除值映射" @click="removeRow('value', index)"><el-icon><Delete /></el-icon></el-button>
           </div>
-        </el-form-item>
-      </template>
-    </template>
-    <template v-else>
-      <el-form-item label="公式计算">
-        <div class="formula-controls">
-          <el-switch :model-value="formulaEnabled" :disabled="disabled" aria-label="启用公式计算"
-            @change="setValueSource('formula', $event)" />
-          <span>随依赖字段变化实时计算</span>
+          <template v-if="model.fallback">
+            <div class="mapping-row">
+              <span class="fallback-source">其他值（未匹配时）</span>
+              <span>→</span>
+              <el-input
+                v-model="model.fallback.targetValue"
+                :disabled="disabled"
+                aria-label="其他值的回填值"
+                placeholder="当前字段的值，留空则清空"
+                @input="persist('value')"
+              />
+              <el-button :disabled="disabled" type="danger" text aria-label="删除其他值映射" @click="setFallback(null)"><el-icon><Delete /></el-icon></el-button>
+            </div>
+            <el-checkbox v-model="model.fallback.includeEmpty" :disabled="disabled" @change="persist('value')">空值也按其他处理</el-checkbox>
+          </template>
+          <div class="mapping-actions">
+            <el-button :disabled="disabled" type="primary" text @click="addRow('value')"><el-icon><Plus /></el-icon>添加映射</el-button>
+            <el-button v-if="!model.fallback" :disabled="disabled" type="primary" text @click="setFallback({ targetValue: '', includeEmpty: false })"><el-icon><Plus /></el-icon>添加其他值映射</el-button>
+          </div>
         </div>
       </el-form-item>
-      <el-form-item v-if="formulaEnabled" label="公式">
-        <FormNodeFormulaInput v-model="model.formula" :fields="availableFields" :disabled="disabled"
-          :placeholder="formulaPlaceholder" @update:model-value="persist('value')" />
-      </el-form-item>
     </template>
+    <el-form-item v-else-if="valueLinkageMode === 'formula'" label="公式">
+      <div class="linkage-description">随依赖字段变化实时计算</div>
+      <FormNodeFormulaInput v-model="model.formula" :fields="availableFields" :disabled="disabled"
+        :placeholder="formulaPlaceholder" @update:model-value="persist('value')" />
+    </el-form-item>
 
     <SettingsCapability :disabled="disabled || !supportsOptions" reason="仅选择类组件支持选项联动">
       <div class="options-linkage">
@@ -112,13 +98,12 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import FormNodeFormulaInput from './FormNodeFormulaInput.vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import SettingsCapability from '@/components/SettingsCapability.vue'
 import { useFieldValueLinkage } from '@/composables/useFieldValueLinkage'
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
-import { readFieldValueLinkage } from '@/shared/form-field-linkage'
 import { getDefaultFormFieldComponentType } from '@flow/workflow-core/extensions/core/fieldPolicy'
 
 const props = defineProps({
@@ -134,14 +119,16 @@ const supportsOptions = computed(() => ['select', 'select_multiple', 'radio', 'c
 const dictionaryOptions = useFieldDictionaryOptions(() => [props.field])
 const currentOptions = computed(() => dictionaryOptions.value[props.field.dictType] || [])
 const { model, persist: persistDraft } = useFieldValueLinkage(() => props.field, () => props.disabled)
-const fieldMappingEnabled = computed(() => model.value.valueEnabled && model.value.sourceType === 'field')
-const formulaEnabled = computed(() => model.value.valueEnabled && model.value.sourceType === 'formula')
-const valuePanel = ref('field')
-// 切换配置视图时保留当前启用的规则，直到用户切换对应开关。
-watch(() => props.field, field => {
-  const { valueEnabled, sourceType } = readFieldValueLinkage(field)
-  valuePanel.value = valueEnabled ? sourceType : 'field'
-}, { immediate: true })
+// 选中项决定节点草稿中的取值规则，暂未选中的输入保留在编辑器草稿中，方便保存前切回。
+const valueLinkageMode = computed({
+  get: () => model.value.valueEnabled ? model.value.sourceType : 'none',
+  set(mode) {
+    if (props.disabled) return
+    model.value.valueEnabled = mode !== 'none'
+    if (model.value.valueEnabled) model.value.sourceType = mode
+    persist('value')
+  }
+})
 const formulaPlaceholder = computed(() => String(props.field.fieldType).toUpperCase() === 'DATE'
   ? '例如 ADD_DAYS(TODAY(), 3)'
   : '例如 ${quantity} * ${price}')
@@ -149,12 +136,6 @@ const formulaPlaceholder = computed(() => String(props.field.fieldType).toUpperC
 function persist(group) {
   if (props.disabled || group === 'options' && !supportsOptions.value) return
   persistDraft(group)
-}
-function setValueSource(source, enabled) {
-  if (props.disabled) return
-  model.value.sourceType = source
-  model.value.valueEnabled = enabled
-  persist('value')
 }
 function toggleOptions(enabled) {
   if (enabled) model.value.optionsMode = props.inheritsOptionsInterface ? 'query' : 'filter'
@@ -190,8 +171,6 @@ function removeRow(group, index) {
 .linkage-heading, .mapping-row { display: flex; align-items: center; gap: 8px; }
 .linkage-heading { justify-content: space-between; }
 .linkage-heading h4 { margin: 0; font-size: 14px; }
-.node-value-linkage > .linkage-heading { margin-bottom: 8px; }
-.formula-controls { display: flex; align-items: center; gap: 8px; color: var(--el-text-color-secondary); }
 .linkage-description { margin: 6px 0 12px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
 .options-linkage { border-top: 1px solid var(--el-border-color-lighter); padding-top: 16px; margin-top: 16px; }
 .linkage-rows, .filter-row { display: flex; flex-direction: column; gap: 8px; width: 100%; }

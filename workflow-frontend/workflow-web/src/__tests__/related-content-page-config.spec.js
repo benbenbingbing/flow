@@ -9,6 +9,7 @@ const listDesigner = read('src/views/EntityListConfigDesign.vue')
 const panel = read('src/components/related-content/RelatedContentPanel.vue')
 const dialog = read('src/components/related-content/RelatedContentConfigDialog.vue')
   + read('src/components/related-content/RelatedContentTargetStep.vue')
+  + read('src/components/related-content/RelatedContentPageSettings.vue')
 const api = read('src/api/uiComposition.js')
 const runtime = read('src/components/related-content/RelatedContentRuntime.vue')
 const runtimeApi = read('../packages/workflow-api/src/uiCompositionRuntime.js')
@@ -32,24 +33,19 @@ const publishDialog = read('src/components/UiConfigPublishDialog.vue')
   '匹配规则',
   '选择已定义的实体关系',
   '允许做什么',
-  '特殊情况怎么处理',
   '使用一条真实数据测试',
   'sourceTestRecordId',
   '实际筛选条件',
   '目标记录示例',
-  '当前配置可由平台默认能力完成，无需特殊处理。',
   'ConfigHelpLabel',
-  'parameterMappings',
-  '数据或动作扩展接口',
-  '自定义组件',
-  '组件版本',
-  'failurePolicy'
+  'parameterMappings'
 ].forEach(marker => {
   assert.ok(dialog.includes(marker), `关系展示／扩展页面编辑器缺少：${marker}`)
 })
 
 ;[
   '新增关联内容',
+  '添加当前记录页面',
   '编辑',
   '删除',
   'describeRelatedContent',
@@ -70,7 +66,6 @@ assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions'), '缺少�
 ;[
   'compositionContext',
   'targetContentHash',
-  'failurePolicy',
   '未找到关联数据',
   '请先保存当前记录'
 ].forEach(marker => {
@@ -116,6 +111,8 @@ assert.ok(publishDialog.includes("ENTITY_SCHEMA: '实体定义'"), '发布前未
 assert.ok(publishDialog.includes('dependencyVersionLabel'), '发布依赖缺少业务化版本说明')
 
 assert.doesNotMatch(dialog, /需要随主表单一起保存|新增记录设置|新增初值|目标内容独立保存|最终权限如何确定|actionSettings/, '关联操作只保留动作选项，移除说明和专属初值设置')
+assert.doesNotMatch(dialog, /title="页面扩展"|使用扩展接口|availableInterfaces|增加操作接口/, '关联属性不可再配置接口或展示覆盖')
+assert.ok(formDesigner.includes("availableRelatedContentSettingsTabs = availableNodeSettingsTabs.filter(tab => tab.value !== 'extension')"), '表单关联内容属性不再提供数据与扩展页签')
 assert.ok(dialog.includes('PageParameterMappingEditor'), '子页面仍可配置统一参数传递')
 assert.ok(formDesigner.includes('FormRelationPicker'), '真正主从编辑保留实体关系入口')
 assert.ok(formRuntime.includes('@patch-form="applyFieldPatch"'), '实体引用字段的回填仍需经过表单联动')

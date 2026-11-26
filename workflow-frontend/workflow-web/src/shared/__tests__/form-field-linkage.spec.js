@@ -86,6 +86,20 @@ try {
   assert.deepEqual(saved.linkageRules.optionsLinkage.filterRules, { a: [0, 'b'], b: [] })
   assert.deepEqual(LinkageEngine.getLinkedOptions([{ value: 0 }, { value: 'b' }, { value: 'c' }], saved.linkageRules.optionsLinkage, { kind: 'a' }), [{ value: 0 }, { value: 'b' }])
 
+  // 临时切到字段映射时，公式不进节点数据，切回仍可恢复历史计算参数。
+  draft.sourceType = 'field'
+  editor.persist('value')
+  await nextTick()
+  assert.equal(LinkageEngine.getFieldLinkageRules(current).calculationPrecision, undefined)
+  draft.sourceType = 'formula'
+  editor.persist('value')
+  await nextTick()
+  saved = JSON.parse(current.componentProps)
+  assert.equal(saved.linkageRules.calculationFormula, '${amount} * 3')
+  assert.equal(saved.linkageRules.calculationPrecision, 0)
+  assert.equal(saved.linkageRules.calculationEditable, true)
+  assert.equal(saved.linkageRules.valueMapping, undefined)
+
   editor.model.value.valueEnabled = false
   editor.persist('value')
   saved = JSON.parse(current.componentProps)

@@ -59,6 +59,8 @@ export function readFieldValueLinkage(field) {
     sourceType: calculation || !rules.valueMapping && valueFormula ? 'formula' : 'field',
     formulaKey: calculation ? 'calculationFormula' : 'valueFormula',
     formula: isReactive ? rules.calculationFormula ?? rules.valueFormula ?? '' : '',
+    calculationPrecision: calculation ? rules.calculationPrecision : undefined,
+    calculationEditable: calculation ? rules.calculationEditable : undefined,
     sourceField: rules.valueMapping?.sourceField || '',
     mappings: clone(rules.valueMapping?.rules || []),
     fallback: clone(rules.valueMapping?.fallback ?? null),
@@ -89,9 +91,9 @@ export function updateFieldValueLinkage(field, model, group) {
     } else {
       patch[model.formulaKey] = normalizeFormulaReferences(model.formula)
       if (model.formulaKey === 'calculationFormula') {
-        const current = LinkageEngine.getFieldLinkageRules(field)
+        // 切到其他方式会清除节点里的旧公式规则，切回时从编辑器草稿恢复历史计算设置。
         for (const key of ['calculationPrecision', 'calculationEditable']) {
-          if (Object.hasOwn(current, key)) patch[key] = current[key]
+          if (model[key] !== undefined) patch[key] = model[key]
         }
       }
     }
@@ -113,12 +115,12 @@ function normalizeFormulaReferences(formula) {
 export function getFieldValueLinkageError(model, { querySourceAvailable = true, fieldCodes } = {}) {
   if (model.valueEnabled) {
     if (model.sourceType === 'formula') {
-      if (!model.formula.trim()) return '请填写公式或关闭公式计算'
+      if (!model.formula.trim()) return '请填写公式，或将值联动方式设为“不启用”'
       const error = getLinkageExpressionError(model.formula)
       if (error) return '的计算公式有误（' + error + '）'
     }
     if (model.sourceType === 'field') {
-      if (!model.sourceField || (!model.mappings.length && !model.fallback)) return '请填写源字段和映射规则，或关闭字段映射'
+      if (!model.sourceField || (!model.mappings.length && !model.fallback)) return '请填写源字段和映射规则，或将值联动方式设为“不启用”'
       if (new Set(model.mappings.map(row => String(row.sourceValue))).size !== model.mappings.length) return '值联动的源值不能重复'
     }
   }

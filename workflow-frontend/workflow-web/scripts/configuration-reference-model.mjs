@@ -91,6 +91,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^row\\.(enabled|key|label|modes|perm|placement|slotKey|sort)$'
   ]),
   source('src/components/form-designer/FormNodeValueLinkage.vue', '实体配置', '表单字段联动', [
+    '^valueLinkageMode$',
     '^model\\.',
     '^row\\.'
   ]),
@@ -1961,17 +1962,13 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: true,
     expectedEffect: '新增、编辑或查看入口没有指定表单时优先解析该表单的当前已发布配置。'
   },
-  'src/components/form-designer/FormNodeValueLinkage.vue:model.valueEnabled': {
-    label: '启用值联动',
-    meaning: '启用其他字段变化后的值映射或公式计算。',
-    example: true,
-    expectedEffect: '来源字段变化时重新计算并更新当前字段值。'
-  },
-  'src/components/form-designer/FormNodeValueLinkage.vue:model.sourceType': {
-    label: '数据来源',
-    meaning: '选择通过源字段值映射还是计算公式获取当前字段值。',
+  'src/components/form-designer/FormNodeValueLinkage.vue:valueLinkageMode': {
+    label: '值联动方式',
+    meaning: '选择不启用、字段映射或公式计算。',
+    configureWhen: '当前字段需要按另一个字段的值回填，或随依赖字段变化重新计算时。',
+    skipWhen: '当前字段无需根据其他字段自动赋值时，保持默认的“不启用”。',
     example: 'field',
-    expectedEffect: '字段值方式按映射规则匹配，公式方式计算表达式结果。'
+    expectedEffect: '字段映射按源值匹配规则，公式计算随依赖变化写入表达式结果，不启用时停用当前字段的值联动。'
   },
   'src/components/form-designer/FormNodeValueLinkage.vue:model.formula': {
     label: '计算公式',

@@ -85,7 +85,7 @@ function optionLabel(options, value, fallback = '') {
   return options.find(item => item.value === value)?.label || fallback || value || '-'
 }
 
-export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {} } = {}) {
+export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {}, sameRecord = false } = {}) {
   const normalizedOwnerType = String(ownerType || 'FORM').toUpperCase()
   const compositionKey = createRelatedContentKey()
   const listOwner = normalizedOwnerType === 'LIST'
@@ -108,9 +108,10 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
         entityName: sourceEntity.entityName || ''
       },
       target: {
-        entityId: '',
-        entityCode: '',
-        entityName: '',
+        // 当前记录页面复用宿主实体，只有目标表单或列表需要选择。
+        entityId: sameRecord ? sourceEntity.id || '' : '',
+        entityCode: sameRecord ? sourceEntity.entityCode || '' : '',
+        entityName: sameRecord ? sourceEntity.entityName || '' : '',
         contentType: 'FORM',
         contentId: '',
         contentKey: '',
@@ -121,7 +122,7 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
         loadMode: 'ON_DEMAND'
       },
       relation: {
-        type: 'ENTITY_RELATION',
+        type: sameRecord ? 'SAME_RECORD' : 'ENTITY_RELATION',
         relationCode: '',
         relationName: '',
         sourceField: '',

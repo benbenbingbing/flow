@@ -150,12 +150,15 @@ try{
  // 一级页签切换与关联面板首次挂载、关闭后重开，都必须保留原有编辑能力。
  await verifyTabs()
  assert.equal(await evaluate("document.querySelector('.related-content-panel.is-embedded').innerText.includes('关联需求')"),true)
+ const formPanel = "document.querySelector('.related-content-panel.is-embedded')"
+ assert.equal(await evaluate(`${formPanel}.innerText.includes('新增关联内容')`),false)
+ assert.equal(await evaluate(`${formPanel}.innerText.includes('添加当前记录页面')`),true)
  await close();await evaluate('layoutTest.openRelated()');await evaluate('layoutTest.settle()')
  assert.equal(await evaluate(`[...document.querySelectorAll('.el-drawer')].filter(${visible}).length`),1,'表单关联内容不应再打开第二层抽屉')
  const relatedImage=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-related-settings.png',Buffer.from(relatedImage.data,'base64'))
  async function clickButton(label,selector){await evaluate(`(()=>{const el=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&e.textContent.trim()===${JSON.stringify(label)});if(!el)throw Error('找不到按钮 '+${JSON.stringify(label)});el.click()})();layoutTest.settle()`)}
  await clickButton('编辑','.related-content-panel.is-embedded button')
- assert.equal(await evaluate(`document.querySelector('.related-content-config-dialog').innerText.includes('编辑关联内容')`),true)
+ assert.equal(await evaluate(`document.querySelector('.related-content-config-dialog').innerText.includes('关系展示设置')`),true)
  await clickButton('取消','.related-content-config-dialog button')
  await clickButton('删除','.related-content-panel.is-embedded button')
  await clickButton('确认删除','.el-message-box button')
@@ -163,8 +166,12 @@ try{
  assert.equal(await evaluate('layoutTest.state.relatedChanges'),1)
  await close();await evaluate('layoutTest.openRelated()');await evaluate('layoutTest.settle()')
  assert.equal(await evaluate("document.querySelector('.related-content-panel.is-embedded').innerText.includes('还没有关联内容')"),true)
+ assert.equal(await evaluate(`${formPanel}.innerText.includes('配置第一项关联内容')`),false,'表单空状态也不得进入通用创建')
  await close();await evaluate('layoutTest.standalonePanel.value.open()');await evaluate('layoutTest.settle()')
  assert.equal(await evaluate(`document.querySelector('.el-drawer.related-content-panel').innerText.includes('去操作列按钮设置')`),true,'列表继续使用原有独立关联抽屉')
+ assert.equal(await evaluate(`document.querySelector('.el-drawer.related-content-panel').innerText.includes('新增关联内容')`),true,'列表仍可从独立抽屉新增关联')
+ await clickButton('新增关联内容','.el-drawer.related-content-panel button')
+ assert.equal(await evaluate("Boolean(document.querySelector('.related-content-config-dialog .relation-binding-select'))"),true)
  assert.deepEqual(errors,[])
  console.log('form layout browser acceptance passed: grid and labels, settings tab order, embedded related content edit/delete/reopen, standalone list drawer, JSON reload, narrow viewport')
  }

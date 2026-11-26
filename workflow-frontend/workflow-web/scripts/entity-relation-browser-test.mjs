@@ -834,27 +834,22 @@ try {
   assert.equal(await evaluate('relationTest.state.compositions[0].config.relation.relationCode'),'reqRelation')
   assert.deepEqual(await evaluate('Array.from(relationTest.state.compositions[0].config.actions)'),['EDIT'], '列表也支持独立编辑，切换页面后应保留兼容动作')
 
-  // 新建业务关联必须选择目录中的关系；扩展页面另有入口，不能再次输入字段匹配条件。
-  await click('新增关联内容',"document.querySelector('.related-content-panel')")
-  await until(`${dialog}?.querySelector('.relation-binding-select .el-select__placeholder')?.textContent.trim()==='选择已定义的实体关系'`)
-  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),2)
-  assert.equal(await evaluate(`[...${dialog}.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存显示配置').disabled`),true)
-  await evaluate(`${dialog}.querySelector('.relation-binding-select .el-select__wrapper').click()`)
-  await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('所属需求'))")
-  await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('所属需求')).click()")
-  await until(`${relationMatch}?.textContent.trim()==='当前记录.acceptance_id = ZDWREQ.id'`)
-  assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods').length`),0)
-  await evaluate(`${dialog}.querySelector('.target-content-select .el-select__wrapper').click()`)
-  await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('需求详情表单'))")
-  await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('需求详情表单')).click()")
-  await click('保存显示配置',dialog)
+  // 从侧栏创建时，关联实体和匹配规则随实体关系带入，当前记录页面继续在设置中添加。
+  await evaluate("document.querySelector('.related-content-panel .el-drawer__close-btn').click();relationTest.settle()")
+  const reverseRelation = "[...document.querySelectorAll('#picker .relation-item')].find(e=>e.querySelector('strong')?.textContent==='所属需求')"
+  await click('选择表单', reverseRelation)
+  const relationDialog = "document.querySelector('.el-dialog .target-form')?.closest('.el-dialog')"
+  await until(`${relationDialog}?.innerText.includes('当前记录.acceptance_id = ZDWREQ.id')`)
+  await click('添加到表单', relationDialog)
   await until("relationTest.state.compositions.some(c=>c.config.relation.direction==='REVERSE')")
   assert.equal(await evaluate("relationTest.state.compositions.find(c=>c.config.relation.direction==='REVERSE').config.target.contentType"),'FORM')
-  await click('扩展页面',"document.querySelector('.related-content-panel')")
-  await until(`${dialog}?.innerText.includes('扩展页面')`)
-  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),4)
-  assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-binding-select, .relation-match-rule, .inherited-target').length`),0,'扩展页面不应继承业务实体关系')
-  assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods button').length`),1)
+  await evaluate('relationTest.relatedPanel.value.open();relationTest.settle()')
+  await click('添加当前记录页面',"document.querySelector('.related-content-panel')")
+  await until(`${dialog}?.innerText.includes('当前记录页面')`)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),3)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-binding-select, .relation-match-rule, .inherited-target').length`),0,'当前记录页面不应继承业务实体关系')
+  assert.equal(await evaluate(`${dialog}.innerText.includes('（当前实体）')`),true)
+  assert.equal(await evaluate(`/页面扩展|使用扩展接口/.test(${dialog}.innerText)`),false)
   await click('取消',dialog)
 
   // 关联操作不再显示主从跳转或新增初值；左侧真实主从编辑入口保持可用。

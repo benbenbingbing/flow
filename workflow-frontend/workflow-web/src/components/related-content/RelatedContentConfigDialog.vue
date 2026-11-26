@@ -22,9 +22,8 @@
     <div v-loading="catalogLoading" class="related-content-editor">
       <el-steps v-if="!embedded" :active="stepNumber(activeStep) - 1" align-center finish-status="success">
         <el-step description="目标和位置" />
-        <el-step v-if="!isRelationBound" description="当前记录或扩展接口" />
+        <el-step v-if="!isRelationBound" description="数据来源" />
         <el-step description="查看或操作范围" />
-        <el-step v-if="!isRelationBound" description="复杂能力兜底" />
       </el-steps>
 
       <div class="step-content">
@@ -42,7 +41,6 @@
           :availableAnchorOptions="availableAnchorOptions"
           :target-parameter-schema="targetParameterSchema"
           :source-readable-field-options="sourceReadableFieldOptions"
-          @handleTargetEntitySelected="handleTargetEntitySelected"
           @handleContentTypeChange="handleContentTypeChange"
           @handleTargetContentChange="handleTargetContentChange"
           @handlePositionChange="handlePositionChange"
@@ -70,56 +68,15 @@
             v-if="!embedded"
             number="2"
             title="数据来源"
-            description="扩展页面使用当前记录或受控接口取数；业务关联请通过实体关系配置。"
+            description="目标页面按自己的参数声明接收来源页面传入的值。"
           />
           <el-alert
-            v-if="recommendationText"
-            :title="recommendationText"
-            type="success"
+            v-if="hasLegacyExtension"
+            title="此处已有旧版页面扩展配置。可在目标页面维护数据源、动作或组件，如需替换，请重新添加关联内容。"
+            type="info"
             :closable="false"
             show-icon
-            class="recommendation-alert"
           />
-          <el-form label-width="126px" class="related-form">
-            <el-form-item required>
-              <template #label>
-                <ConfigHelpLabel
-                  label="数据来源"
-                  content="当前记录用于同一条数据的另一张页面；扩展接口用于受控查询或计算，仍需遵守实体数据权限。"
-                />
-              </template>
-              <div class="relation-methods">
-                <button
-                  v-for="option in relationOptions"
-                  :key="option.value"
-                  type="button"
-                  class="selection-card"
-                  :class="{ 'is-selected': editor.config.relation.type === option.value }"
-                  @click="handleRelationTypeChange(option.value)"
-                >
-                  <span>
-                    {{ option.label }}
-                    <el-tag
-                      v-if="recommendedRelation.type === option.value"
-                      type="success"
-                      size="small"
-                      effect="plain"
-                    >推荐</el-tag>
-                  </span>
-                  <small>{{ option.description }}</small>
-                </button>
-              </div>
-            </el-form-item>
-
-            <el-alert
-              v-if="editor.config.relation.type === 'INTERFACE_SERVICE'"
-              :title="embedded ? '请在“数据与扩展”中选择负责查找目标数据的扩展接口。' : '请在第 4 步选择负责查找目标数据的扩展接口。普通关联失败时不会自动调用扩展接口。'"
-              type="info"
-              :closable="false"
-              show-icon
-            />
-          </el-form>
-
           <div class="relation-preview">
             <div>
               <strong>关联结果说明</strong>
@@ -208,347 +165,29 @@
 
         </component>
 
-        <component v-if="!isRelationBound" :is="embedded ? SettingsSection : 'section'" title="页面扩展" :default-expanded="true" v-show="!embedded ? activeStep === 4 : settingsTab === 'extension'">
-          <StepHeading
-            :number="String(stepNumber(4))"
-            v-if="!embedded" title="特殊情况怎么处理"
-            description="普通配置无法满足时，选择开发人员已经注册的扩展接口或自定义组件。"
-          />
-          <el-alert
-            v-if="!embedded && specialMode === 'NONE'"
-            title="当前配置可由平台默认能力完成，无需特殊处理。"
-            type="success"
-            :closable="false"
-            show-icon
-          />
-          <el-collapse v-model="advancedSections" class="special-collapse">
-            <el-collapse-item name="special">
-              <template #title>
-                <div class="collapse-heading">
-                  <span>特殊处理</span>
-                  <small>复杂查询、外部能力或专业界面</small>
-                </div>
-              </template>
-
-              <div class="special-choice-grid">
-                <label v-if="!isRelationBound" class="special-choice" :class="{ 'is-selected': useInterfaceService }">
-                  <el-checkbox
-                    :model-value="useInterfaceService"
-                    :disabled="editor.config.relation.type === 'INTERFACE_SERVICE'"
-                    @change="toggleSpecial('INTERFACE_SERVICE', $event)"
-                  >使用数据或动作扩展接口</el-checkbox>
-                  <small>复杂查询、计算、聚合或受控业务操作。</small>
-                </label>
-                <label class="special-choice" :class="{ 'is-selected': useCustomComponent }">
-                  <el-checkbox
-                    :model-value="useCustomComponent"
-                    @change="toggleSpecial('CUSTOM_COMPONENT', $event)"
-                  >使用自定义组件</el-checkbox>
-                  <small>甘特图、地图、拓扑图、看板和其他专业交互。</small>
-                </label>
-              </div>
-
-              <div v-if="!isRelationBound && useInterfaceService" class="special-config-card">
-                <div class="special-config-card__heading">
-                  <div>
-                    <strong>数据或动作扩展接口</strong>
-                    <span>只能选择已注册能力，页面不能填写地址、密钥、脚本或 SQL。</span>
-                  </div>
-                  <el-tag effect="plain">服务端重新鉴权</el-tag>
-                </div>
-                <el-checkbox
-                  :model-value="useDataInterfaceService"
-                  :disabled="editor.config.relation.type === 'INTERFACE_SERVICE'"
-                  class="data-service-toggle"
-                  @change="toggleDataInterfaceService"
-                >使用接口查找目标数据</el-checkbox>
-                <el-form v-if="useDataInterfaceService" label-width="104px">
-                  <div class="two-column-form">
-                    <el-form-item required>
-                      <template #label>
-                        <ConfigHelpLabel
-                          label="扩展接口"
-                          content="是什么：开发人员注册并声明输入输出的完整业务接口。何时使用：普通关系无法表达复杂查询、计算或外部系统调用时。结果：运行时按当前用户权限调用固定接口。"
-                        />
-                      </template>
-                      <el-select
-                        v-model="editor.config.specialHandling.interfaceService.extensionId"
-                        filterable
-                        placeholder="选择已注册扩展接口"
-                        style="width: 100%"
-                        @change="handleDataInterfaceChange"
-                      >
-                        <el-option
-                          v-for="item in dataInterfaces"
-                          :key="item.extensionId"
-                          :label="item.displayName || item.extensionKey"
-                          :value="item.extensionId"
-                        >
-                          <div class="business-option">
-                            <span>{{ item.displayName || item.extensionKey }}</span>
-                            <small>{{ item.extensionKey }} · {{ interfaceScopeLabel(item) }}</small>
-                          </div>
-                        </el-option>
-                      </el-select>
-                    </el-form-item>
-                  </div>
-
-                  <ServiceMappingEditor
-                    v-model="editor.config.specialHandling.interfaceService.inputMappings"
-                    title="输入字段映射"
-                    description="把当前记录字段传给扩展接口。只有接口声明过的参数可选。"
-                    :left-options="sourceFieldOptions"
-                    :right-options="interfaceInputOptions"
-                    left-label="当前字段"
-                    right-label="接口参数"
-                    empty-text="该接口暂无输入映射"
-                  />
-                  <ServiceMappingEditor
-                    v-model="editor.config.specialHandling.interfaceService.outputMappings"
-                    title="关联结果映射"
-                    description="告诉平台接口返回的哪一项代表目标记录、目标筛选条件或明确的空结果。"
-                    :left-options="interfaceOutputOptions"
-                    :right-options="interfaceResultOptions"
-                    left-label="返回结果"
-                    right-label="用于查找目标数据"
-                    empty-text="尚未说明如何从接口结果找到目标数据"
-                    class="mapping-section"
-                  />
-                </el-form>
-
-                <div class="action-service-section">
-                  <div class="special-config-card__heading">
-                    <div>
-                      <strong>操作接口（可选）</strong>
-                      <span>把一个已注册扩展接口绑定到页面操作；运行时只使用发布时固定的接口和字段映射。</span>
-                    </div>
-                    <el-button type="primary" plain :icon="Plus" @click="addActionService">
-                      增加操作接口
-                    </el-button>
-                  </div>
-                  <el-alert
-                    title="只读操作可同步返回校验、计算或界面结果；本地写入会重新校验实体、记录和字段权限。外部写入需要异步任务能力，当前不可发布。"
-                    type="info"
-                    :closable="false"
-                    show-icon
-                  />
-                  <el-card
-                    v-for="(binding, bindingIndex) in editor.config.specialHandling.actionServices"
-                    :key="bindingIndex"
-                    shadow="never"
-                    class="action-service-card"
-                  >
-                    <template #header>
-                      <div class="special-config-card__heading">
-                        <strong>操作接口 {{ bindingIndex + 1 }}</strong>
-                        <el-button text type="danger" @click="removeActionService(bindingIndex)">删除</el-button>
-                      </div>
-                    </template>
-                    <el-form label-width="104px">
-                      <div class="two-column-form">
-                        <el-form-item required>
-                          <template #label>
-                            <ConfigHelpLabel
-                              label="扩展接口"
-                              content="是什么：开发人员注册的完整受控业务接口。何时使用：页面标准操作不能完成复杂校验、计算或批量写入时。结果：发布后固定接口定义，不能由浏览器临时替换。"
-                            />
-                          </template>
-                          <el-select
-                            v-model="binding.extensionId"
-                            filterable
-                            placeholder="选择已注册扩展接口"
-                            style="width: 100%"
-                            @change="handleActionInterfaceChange(binding)"
-                          >
-                            <el-option
-                              v-for="item in actionInterfaces"
-                              :key="item.extensionId"
-                              :label="item.displayName || item.extensionKey"
-                              :value="item.extensionId"
-                            >
-                              <div class="business-option">
-                                <span>{{ item.displayName || item.extensionKey }}</span>
-                                <small>{{ actionInterfaceDescription(item) }}</small>
-                              </div>
-                            </el-option>
-                          </el-select>
-                        </el-form-item>
-                        <el-form-item required>
-                          <template #label>
-                            <ConfigHelpLabel
-                              label="用于操作"
-                              content="是什么：用户执行哪个页面操作时调用该接口。何时使用：可选择已启用的标准操作，或使用扩展接口自己的业务名称作为独立操作。结果：自定义组件只能调用这里明确发布的接口。"
-                            />
-                          </template>
-                          <el-select v-model="binding.actionKey" placeholder="选择页面操作" style="width: 100%">
-                            <el-option
-                              v-for="option in actionKeyOptions(binding)"
-                              :key="option.value"
-                              :label="option.label"
-                              :value="option.value"
-                            />
-                          </el-select>
-                        </el-form-item>
-                        <el-form-item required>
-                          <template #label>
-                            <ConfigHelpLabel
-                              label="失败时"
-                              content="是什么：该接口动作失败后的处理。何时使用：只读动作可显示错误、占位或隐藏结果；写入动作必须停止并显示错误。结果：不会忽略权限或继续执行不完整写入。"
-                            />
-                          </template>
-                          <el-select v-model="binding.failurePolicy" style="width: 100%">
-                            <el-option
-                              v-for="option in actionFailureOptions(binding)"
-                              :key="option.value"
-                              :label="option.label"
-                              :value="option.value"
-                            />
-                          </el-select>
-                        </el-form-item>
-                      </div>
-                      <ServiceMappingEditor
-                        v-model="binding.inputMappings"
-                        title="输入字段映射"
-                        description="只传当前记录、已选择目标记录中明确选择的字段，不会把整行数据交给接口。"
-                        :left-options="actionInputSourceOptions"
-                        :right-options="actionInputOptions(binding)"
-                        left-label="页面数据"
-                        right-label="接口参数"
-                        empty-text="未配置时只传当前记录 ID"
-                      />
-                      <ServiceMappingEditor
-                        v-model="binding.outputMappings"
-                        title="输出字段映射"
-                        description="选择允许返回给页面或自定义组件的结果字段。"
-                        :left-options="actionOutputOptions(binding)"
-                        :right-options="actionOutputOptions(binding)"
-                        left-label="接口结果"
-                        right-label="页面结果"
-                        empty-text="未配置时按接口已声明的输出结构返回"
-                      />
-                    </el-form>
-                  </el-card>
-                  <el-empty
-                    v-if="!editor.config.specialHandling.actionServices.length"
-                    description="暂无操作接口"
-                    :image-size="52"
-                  />
-                </div>
-              </div>
-
-              <div v-if="useCustomComponent" class="special-config-card">
-                <div class="special-config-card__heading">
-                  <div>
-                    <strong>自定义组件</strong>
-                    <span>仅允许平台审核并随应用部署的组件；平台查询和动作入口仍会独立校验权限。</span>
-                  </div>
-                  <el-tag effect="plain">固定精确版本</el-tag>
-                </div>
-                <el-form label-width="104px">
-                  <div class="two-column-form">
-                    <el-form-item required>
-                      <template #label>
-                        <ConfigHelpLabel
-                          label="自定义组件"
-                          content="是什么：开发人员提交并经平台审核的专业展示与交互组件，不是运行任意第三方脚本的沙箱。何时使用：普通表单或列表无法呈现甘特图、地图、拓扑等界面时。结果：发布后固定已审核版本，通过平台入口查询或操作时仍会重新校验权限。"
-                        />
-                      </template>
-                      <el-select
-                        v-model="editor.config.specialHandling.customComponent.name"
-                        filterable
-                        placeholder="选择已注册组件"
-                        style="width: 100%"
-                        @change="handleCustomComponentChange"
-                      >
-                        <el-option
-                          v-for="component in customComponentOptions"
-                          :key="component.value"
-                          :label="component.label"
-                          :value="component.value"
-                        >
-                          <div class="business-option">
-                            <span>{{ component.label }}</span>
-                            <small><template v-if="component.description">{{ component.description }}</template></small>
-                          </div>
-                        </el-option>
-                      </el-select>
-                    </el-form-item>
-                    <el-form-item required>
-                      <template #label>
-                        <ConfigHelpLabel
-                          label="组件版本"
-                          content="是什么：该组件已经注册的精确版本。何时使用：已有页面需要保持原交互时选原版本，新能力经过验证后再升级。结果：发布后不会自动跟随最新版。"
-                        />
-                      </template>
-                      <el-select
-                        v-model="editor.config.specialHandling.customComponent.version"
-                        placeholder="选择精确版本"
-                        style="width: 100%"
-                        @change="handleCustomComponentVersionChange"
-                      >
-                        <el-option
-                          v-for="component in customComponentVersionOptions"
-                          :key="component.version"
-                          :label="`版本 ${component.version}`"
-                          :value="Number(component.version)"
-                        />
-                      </el-select>
-                    </el-form-item>
-                  </div>
-                  <ConfigSchemaEditor
-                    v-if="selectedCustomComponentSchema.length"
-                    v-model="editor.config.specialHandling.customComponent.props"
-                    :schema="selectedCustomComponentSchema"
-                  />
-                  <el-empty v-else description="该组件无需额外参数" :image-size="52" />
-                </el-form>
-              </div>
-
-              <el-form v-if="specialMode !== 'NONE'" label-width="104px" class="failure-policy-form">
-                <el-form-item>
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="失败时"
-                      content="是什么：扩展接口或组件不可用时的页面表现。何时使用：所有特殊处理都必须明确选择。结果：只显示错误、占位或隐藏，不会退化为查询全部或忽略权限。"
-                    />
-                  </template>
-                  <el-radio-group v-model="editor.config.specialHandling.failurePolicy">
-                    <el-radio
-                      v-for="option in failureOptions"
-                      :key="option.value"
-                      :value="option.value"
-                    >{{ option.label }}</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-              </el-form>
-            </el-collapse-item>
-          </el-collapse>
-        </component>
-
-          <div v-if="!embedded && activeStep === stepIds[stepIds.length - 1]" class="review-card">
-            <div class="review-card__heading">
-              <strong>保存前确认</strong>
-              <el-tag :type="localValidation.valid ? 'success' : 'danger'" effect="plain">
-                {{ localValidation.valid ? '配置完整' : `${localValidation.errors.length} 项待完善` }}
-              </el-tag>
-            </div>
-            <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="显示效果">{{ naturalSummary }}</el-descriptions-item>
-              <el-descriptions-item label="数据关联">{{ relationSummary }}</el-descriptions-item>
-              <el-descriptions-item label="允许操作">{{ actionSummary }}</el-descriptions-item>
-              <el-descriptions-item v-if="!isRelationBound" label="特殊处理">{{ specialSummary }}</el-descriptions-item>
-            </el-descriptions>
-            <div v-if="!localValidation.valid" class="validation-errors">
-              <button
-                v-for="error in localValidation.errors"
-                :key="`${error.step}-${error.field}-${error.message}`"
-                type="button"
-                @click="activeStep = visibleStep(error.step)"
-              >
-                第 {{ stepNumber(visibleStep(error.step)) }} 步：{{ error.message }}
-              </button>
-            </div>
+        <div v-if="!embedded && activeStep === stepIds[stepIds.length - 1]" class="review-card">
+          <div class="review-card__heading">
+            <strong>保存前确认</strong>
+            <el-tag :type="localValidation.valid ? 'success' : 'danger'" effect="plain">
+              {{ localValidation.valid ? '配置完整' : `${localValidation.errors.length} 项待完善` }}
+            </el-tag>
           </div>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="显示效果">{{ naturalSummary }}</el-descriptions-item>
+            <el-descriptions-item label="数据关联">{{ relationSummary }}</el-descriptions-item>
+            <el-descriptions-item label="允许操作">{{ actionSummary }}</el-descriptions-item>
+          </el-descriptions>
+          <div v-if="!localValidation.valid" class="validation-errors">
+            <button
+              v-for="error in localValidation.errors"
+              :key="`${error.step}-${error.field}-${error.message}`"
+              type="button"
+              @click="activeStep = visibleStep(error.step)"
+            >
+              第 {{ stepNumber(visibleStep(error.step)) }} 步：{{ error.message }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -559,7 +198,7 @@
           <el-button v-if="activeStep > 1" @click="goPrevious">上一步</el-button>
           <el-button v-if="stepNumber(activeStep) < stepIds.length" type="primary" @click="goNext">下一步</el-button>
           <el-button
-            v-if="isRelationBound || activeStep === 4"
+            v-if="isRelationBound || activeStep === 3"
             type="primary"
             :loading="saving"
             :disabled="catalogLoading || !!relationBindingError || (isRelationBound && !boundEntityRelation)"
@@ -577,21 +216,16 @@ import { showRequestError } from '@/shared/request'
 import StepHeading from './RelatedContentStepHeading.vue'
 
 import RelatedContentTargetStep from './RelatedContentTargetStep.vue'
-import { fieldOptions, contentScopedFieldOptions, schemaFieldOptions, isPublishedAsset, normalizeRows, interfaceScopeLabel } from './relatedContentOptions.js'
+import { fieldOptions, contentScopedFieldOptions, isPublishedAsset, normalizeRows } from './relatedContentOptions.js'
 
-import { computed, defineComponent, h, reactive, ref, resolveComponent, watch } from 'vue'
-import { Plus, Delete } from '@element-plus/icons-vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElDialog, ElMessage } from 'element-plus'
 import RelatedContentPageSettings from './RelatedContentPageSettings.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
-import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
 import { validatePageParameterMappings } from '@flow/workflow-core/page-parameters'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
-import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
-import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import EntitySelector from '@/components/EntitySelector.vue'
-import { entityApi } from '@/api/entity'
 import { getFormsByEntity, getEntityFields, getFormRuntimeRelease } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityRelationApi } from '@/api/entityRelation'
@@ -599,93 +233,23 @@ import { relationContentType, relationTarget, relationUsageKey, relationMatchLab
 import { applyEntityRelationBinding } from '@/shared/relation-content'
 import { normalizeRelatedContentActionBar } from '@/shared/related-content-presentation'
 import { uiCompositionApi } from '@/api/uiComposition'
-import { uiExtensionApi } from '@/api/uiConfig'
 import {
-  normalizeInterfaceExtension,
-  normalizeInterfaceExtensions
-} from '@/components/ui-config/interfaceExtensionModel'
-import {
-  getCustomFormComponentOptions,
-  getCustomFormComponentVersionOptions,
   getCustomFormDescriptor,
-  getCustomListComponentOptions,
-  getCustomListComponentVersionOptions,
   getCustomListDescriptor
 } from '@/extensions/core/registries/customComponentRegistry.js'
 import {
   RELATED_CONTENT_ACTION_OPTIONS,
-  RELATED_CONTENT_FAILURE_OPTIONS,
-  RELATED_CONTENT_RELATION_OPTIONS,
   RELATED_CONTENT_TYPE_OPTIONS,
   buildRelatedContentPayload,
   createEmptyRelatedContent,
   describeRelatedContent,
   describeRelatedContentActions,
   describeRelatedContentRelation,
-  describeRelatedContentSpecial,
   normalizeRelatedContent,
   relatedContentPositionOptions,
   updateRelatedContentAnchor,
   validateRelatedContent
 } from '@/shared/related-content'
-
-const ServiceMappingEditor = defineComponent({
-  props: {
-    modelValue: { type: Array, default: () => [] },
-    title: { type: String, required: true },
-    description: { type: String, default: '' },
-    leftOptions: { type: Array, default: () => [] },
-    rightOptions: { type: Array, default: () => [] },
-    leftLabel: { type: String, default: '来源' },
-    rightLabel: { type: String, default: '目标' },
-    emptyText: { type: String, default: '暂无映射' }
-  },
-  emits: ['update:modelValue'],
-  setup(props, { emit }) {
-    const update = (index, key, value) => emit('update:modelValue', props.modelValue.map(
-      (row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row
-    ))
-    const remove = index => emit('update:modelValue', props.modelValue.filter((_, rowIndex) => rowIndex !== index))
-    const add = () => emit('update:modelValue', [
-      ...props.modelValue,
-      { source: '', target: '' }
-    ])
-    const select = (row, index, key, options, placeholder) => h(resolveComponent('el-select'), {
-      modelValue: row[key],
-      filterable: true,
-      placeholder,
-      style: 'width: 100%',
-      'onUpdate:modelValue': value => update(index, key, value)
-    }, () => options.map(option => h(resolveComponent('el-option'), {
-      key: option.value,
-      label: option.label,
-      value: option.value
-    })))
-    return () => h('div', { class: 'service-mapping' }, [
-      h('div', { class: 'service-mapping__heading' }, [
-        h('div', [h('strong', props.title), h('small', props.description)]),
-        h(resolveComponent('el-button'), { icon: Plus, onClick: add }, () => '增加映射')
-      ]),
-      props.modelValue.length
-        ? h('div', { class: 'service-mapping__rows' }, [
-            h('div', { class: 'service-mapping__labels' }, [props.leftLabel, props.rightLabel, '操作'].map(label => h('span', label))),
-            ...props.modelValue.map((row, index) => h('div', { class: 'service-mapping__row', key: index }, [
-              select(row, index, 'source', props.leftOptions, `选择${props.leftLabel}`),
-              select(row, index, 'target', props.rightOptions, `选择${props.rightLabel}`),
-              h(resolveComponent('el-button'), {
-                text: true,
-                circle: true,
-                icon: Delete,
-                title: '删除映射',
-                'aria-label': '删除映射',
-                onClick: () => remove(index)
-              })
-            ]))
-          ])
-        : h('div', { class: 'service-mapping__empty' }, props.emptyText)
-    ])
-  }
-})
 
 const props = defineProps({
   embedded: { type: Boolean, default: false },
@@ -707,12 +271,9 @@ const testing = ref(false)
 const catalogLoading = ref(false)
 const targetCatalogLoading = ref(false)
 const activeStep = ref(1)
-const advancedSections = ref([])
-const targetEntity = ref(null)
 const targetForms = ref([])
 const targetLists = ref([])
 const targetFields = ref([])
-const targetContentFields = ref([])
 const targetParameterSchema = ref({})
 let targetSchemaSequence = 0
 const sourceRelations = ref([])
@@ -721,12 +282,6 @@ const boundRelationCode = ref('')
 const boundRelationKey = ref('')
 const canSelectBinding = ref(false)
 const relationBindingError = ref('')
-const dataInterfaceOptions = ref([])
-const actionInterfaceOptions = ref([])
-// 首次启用时还没有 extensionId，用本地编辑状态先展开选择器，不把此状态写入发布配置。
-const dataInterfaceSelectionOpen = ref(false)
-const recommendedRelation = ref({ type: '' })
-const recommendationText = ref('')
 const testResult = ref(null)
 const sourceTestRecordId = ref('')
 const editor = reactive(createEmptyRelatedContent({
@@ -742,10 +297,14 @@ const boundEntityRelation = computed(() => sourceRelations.value.find(item => bo
     && (item.direction === 'REVERSE'
       ? String(item.parentEntityId) === String(editor.config.target.entityId)
       : !item.parentEntityId || String(item.parentEntityId) === String(props.sourceEntity.id))))
-const dialogTitle = computed(() => isRelationBound.value ? '关系展示设置' : '扩展页面')
+const dialogTitle = computed(() => isRelationBound.value
+  ? '关系展示设置'
+  : editor.config.relation.type === 'SAME_RECORD' ? '当前记录页面' : '关联内容设置')
+const hasLegacyExtension = computed(() => editor.config.relation.type === 'INTERFACE_SERVICE'
+  || editor.config.specialHandling.mode !== 'NONE')
 // 普通关系统一沿用目标页面渲染，仅保留展示位置与操作范围两个步骤。
-const stepIds = computed(() => isRelationBound.value ? [1, 3] : [1, 2, 3, 4])
-const visibleStep = step => isRelationBound.value ? (step <= 2 ? 1 : 3) : step
+const stepIds = computed(() => isRelationBound.value ? [1, 3] : [1, 2, 3])
+const visibleStep = step => isRelationBound.value && step <= 2 ? 1 : Math.min(step, 3)
 const stepNumber = step => stepIds.value.indexOf(step) + 1
 
 const selectedEntityRelation = computed(() => isRelationBound.value ? boundEntityRelation.value : null)
@@ -754,14 +313,7 @@ const contentTypeOptions = computed(() => RELATED_CONTENT_TYPE_OPTIONS.map(optio
   value: option.value,
   disabled: !!selectedEntityRelation.value && option.value !== relationContentType(selectedEntityRelation.value)
 })))
-const relationOptions = computed(() => RELATED_CONTENT_RELATION_OPTIONS.filter(option => {
-  if (option.value === 'INTERFACE_SERVICE') return true
-  if (option.value !== 'SAME_RECORD') return false
-  return String(props.sourceEntity.id || '') === String(editor.config.target.entityId || '')
-    || String(props.sourceEntity.entityCode || '') === String(editor.config.target.entityCode || '')
-}))
 const actionOptions = RELATED_CONTENT_ACTION_OPTIONS
-const failureOptions = RELATED_CONTENT_FAILURE_OPTIONS
 const positionOptions = computed(() => relatedContentPositionOptions(props.ownerType))
 const availableAnchorOptions = computed(() => {
   if (editor.config.presentation.position !== 'TAB') return props.anchorOptions
@@ -772,10 +324,11 @@ const targetContentOptions = computed(() => {
   const rows = editor.config.target.contentType === 'FORM'
     ? targetForms.value
     : targetLists.value
-  return rows.filter(item => !isRelationBound.value || (
+  // 关联目录沿用固定目标实体，并排除当前页面，避免配置出直接循环引用。
+  return rows.filter(item =>
     (!item.entityId || String(item.entityId) === String(editor.config.target.entityId))
-    && !(props.ownerType === 'FORM' && editor.config.target.contentType === 'FORM' && String(item.id) === String(props.ownerId))
-  )).map(item => {
+    && !(props.ownerType === editor.config.target.contentType && String(item.id) === String(props.ownerId))
+  ).map(item => {
     const isForm = editor.config.target.contentType === 'FORM'
     return {
       ...item,
@@ -796,88 +349,9 @@ const sourceReadableFieldOptions = computed(() => contentScopedFieldOptions(
   props.ownerType,
   false
 ))
-const targetReadableFieldOptions = computed(() => contentScopedFieldOptions(
-  targetFieldOptions.value,
-  targetContentFields.value,
-  editor.config.target.contentType,
-  false
-))
-const dataInterfaces = computed(() =>
-  normalizeInterfaceExtensions(dataInterfaceOptions.value)
-    .filter(item => item.enabled && item.interfaceKind === 'READ')
-)
-const actionInterfaces = computed(() =>
-  normalizeInterfaceExtensions(actionInterfaceOptions.value)
-    .filter(item => item.enabled)
-)
-const selectedDataInterface = computed(() => dataInterfaces.value.find(item =>
-  String(item.extensionId) === String(
-    editor.config.specialHandling.interfaceService?.extensionId
-  )
-))
-const interfaceInputOptions = computed(() =>
-  schemaFieldOptions(selectedDataInterface.value?.inputSchema)
-)
-const interfaceOutputOptions = computed(() =>
-  schemaFieldOptions(selectedDataInterface.value?.outputSchema)
-)
-const actionInputSourceOptions = computed(() => [
-  ...sourceReadableFieldOptions.value.map(option => ({
-    value: `source.${option.value}`,
-    label: `当前记录 · ${option.label}`
-  })),
-  ...targetReadableFieldOptions.value.map(option => ({
-    value: `target.${option.value}`,
-    label: `选中目标 · ${option.label}`
-  })),
-  { value: 'targetIds', label: '全部已选择目标记录 ID' }
-])
-const interfaceResultOptions = computed(() => {
-  const options = targetFieldOptions.value.map(option => ({
-    value: `fixedFilters.${option.value}`,
-    label: `按目标字段“${option.label}”筛选`
-  }))
-  if (editor.config.target.contentType === 'FORM') {
-    options.unshift({
-      value: 'targetRecordId',
-      label: '作为目标记录 ID'
-    })
-  }
-  options.push({
-    value: 'matchNone',
-    label: '作为“明确没有匹配数据”标记'
-  })
-  return options
-})
-const formComponentOptions = getCustomFormComponentOptions('RELATED_CONTENT')
-const listComponentOptions = getCustomListComponentOptions('RELATED_CONTENT')
-const customComponentOptions = computed(() => editor.config.target.contentType === 'FORM'
-  ? formComponentOptions
-  : listComponentOptions)
-const customComponentVersionOptions = computed(() => {
-  const name = editor.config.specialHandling.customComponent.name
-  if (!name) return []
-  return editor.config.target.contentType === 'FORM'
-    ? getCustomFormComponentVersionOptions(name, 'RELATED_CONTENT')
-    : getCustomListComponentVersionOptions(name, 'RELATED_CONTENT')
-})
-const selectedCustomComponent = computed(() => customComponentOptions.value.find(option =>
-  option.value === editor.config.specialHandling.customComponent.name))
-const selectedCustomComponentSchema = computed(() => {
-  const name = editor.config.specialHandling.customComponent.name
-  const version = editor.config.specialHandling.customComponent.version
-  return resolveCustomComponentDescriptor(name, version)?.configSchema || []
-})
-const specialMode = computed(() => editor.config.specialHandling.mode || 'NONE')
-const useInterfaceService = computed(() => ['INTERFACE_SERVICE', 'BOTH'].includes(specialMode.value))
-const useDataInterfaceService = computed(() => editor.config.relation.type === 'INTERFACE_SERVICE'
-  || dataInterfaceSelectionOpen.value
-  || Boolean(editor.config.specialHandling.interfaceService?.extensionId))
-const useCustomComponent = computed(() => ['CUSTOM_COMPONENT', 'BOTH'].includes(specialMode.value))
 const naturalSummary = computed(() => describeRelatedContent(editor, props.sourceEntity.entityName || '当前页面'))
 const relationSummary = computed(() => describeRelatedContentRelation(editor))
 const actionSummary = computed(() => describeRelatedContentActions(editor))
-const specialSummary = computed(() => describeRelatedContentSpecial(editor))
 const localValidation = computed(() => {
   const result = validateRelatedContent(editor, props.ownerType)
   const parameterError = validatePageParameterMappings(editor.config.parameterMappings, targetParameterSchema.value, sourceReadableFieldOptions.value.map(item => item.raw))
@@ -895,41 +369,22 @@ const canTest = computed(() => Boolean(
   && editor.config.target.contentId
   && validateRelatedContent(editor, props.ownerType).errors.every(error => error.step !== 2)
 ))
-async function loadCommonCatalog() {
+async function loadRelationCatalog() {
+  if (!isRelationBound.value || !props.sourceEntity.id) return
   catalogLoading.value = true
   try {
-    const [relations, dataRows, actionRows] = await Promise.all([
-      props.sourceEntity.id
-        ? entityRelationApi.available(props.sourceEntity.id).catch(error => {
-          if (isRelationBound.value) relationBindingError.value = error?.message || '实体关系加载失败，请关闭后重试'
-          return []
-        })
-        : Promise.resolve([]),
-      isRelationBound.value ? Promise.resolve([]) : uiExtensionApi.availableInterfaces({
-        ownerType: String(props.ownerType).toUpperCase(),
-        ownerId: String(props.ownerId),
-        bindingCode: 'RELATED_CONTENT_RESOLVE'
-      }).catch(() => []),
-      isRelationBound.value ? Promise.resolve([]) : uiExtensionApi.availableInterfaces({
-        ownerType: String(props.ownerType).toUpperCase(),
-        ownerId: String(props.ownerId),
-        bindingCode: 'RELATED_CONTENT_ACTION'
-      }).catch(() => [])
-    ])
-    sourceRelations.value = normalizeRows(relations)
-    // 普通关系不再加载接口目录；独立扩展页面的两种 bindingCode 仍由服务端分别筛选。
-    dataInterfaceOptions.value = normalizeRows(dataRows)
-    actionInterfaceOptions.value = normalizeRows(actionRows)
+    sourceRelations.value = normalizeRows(await entityRelationApi.available(props.sourceEntity.id))
+  } catch (error) {
+    relationBindingError.value = error?.message || '实体关系加载失败，请关闭后重试'
   } finally {
     catalogLoading.value = false
   }
 }
 
-async function loadTargetCatalog(entityId, { recommend = false } = {}) {
+async function loadTargetCatalog(entityId) {
   targetForms.value = []
   targetLists.value = []
   targetFields.value = []
-  targetContentFields.value = []
   if (!entityId) return
   targetCatalogLoading.value = true
   try {
@@ -941,15 +396,13 @@ async function loadTargetCatalog(entityId, { recommend = false } = {}) {
     targetForms.value = normalizeRows(formRows)
     targetLists.value = normalizeRows(listRows)
     targetFields.value = normalizeRows(fieldRows)
-    if (recommend) applyRecommendation()
   } finally {
     targetCatalogLoading.value = false
   }
 }
 
-async function loadTargetContentFields(contentId = editor.config.target.contentId) {
+async function loadTargetParameterSchema(contentId = editor.config.target.contentId) {
   const sequence = ++targetSchemaSequence
-  targetContentFields.value = []
   targetParameterSchema.value = {}
   if (!contentId) return
   try {
@@ -962,20 +415,9 @@ async function loadTargetContentFields(contentId = editor.config.target.contentI
     const snapshot = safeParseConfig(release?.snapshotDocument)
     const content = isForm ? snapshot.form : (snapshot.config || snapshot.list)
     targetParameterSchema.value = safeParseConfig(content?.viewConfig).inputParameterSchema || {}
-    targetContentFields.value = normalizeRows(isForm ? snapshot.legacyFields : (snapshot.list?.fields || snapshot.fields))
   } catch {
-    // 目录加载失败时退回实体字段；发布和运行时仍按精确快照 fail-closed。
-    targetContentFields.value = []
+    // 无法取得参数声明时保持空目录，由发布校验检查实际目标参数。
   }
-}
-
-function applyRecommendation() {
-  if (isRelationBound.value) return
-  const type = String(props.sourceEntity.id) === String(editor.config.target.entityId) ? 'SAME_RECORD' : 'INTERFACE_SERVICE'
-  editor.config.relation = { type }
-  recommendedRelation.value = { type }
-  recommendationText.value = type === 'SAME_RECORD' ? '展示当前记录的另一张页面，不建立新的业务关系。' : '跨实体扩展页面由受控接口提供数据。普通业务关联请使用实体关系。'
-  handleRelationTypeChange(type)
 }
 
 /** 新建展示只引用关系身份，不复制字段匹配条件；正反向使用也共享同一条定义。 */
@@ -986,26 +428,13 @@ async function selectBinding() {
   relationBindingError.value = ''
   editor.config.relation = { type: 'ENTITY_RELATION', relationCode: relation.relationCode, direction: relation.direction || 'FORWARD' }
   delete editor.config.presentation.listOptions
+  loadTargetParameterSchema('')
   editor.config.target = { ...relationTarget(relation), contentType: relationContentType(relation), contentId: '', contentKey: '', contentName: '' }
   resetIncompatibleButtonAppearance()
   editor.config.actions = ['VIEW']
   if (!editor.config.name) editor.config.name = relation.relationName
   applyEntityRelationBinding(editor, relation)
   await loadTargetCatalog(editor.config.target.entityId)
-}
-
-async function handleTargetEntitySelected(entity) {
-  targetEntity.value = entity || null
-  Object.assign(editor.config.target, {
-    entityId: entity?.id || '',
-    entityCode: entity?.entityCode || '',
-    entityName: entity?.entityName || entity?.entityCode || '',
-    contentId: '',
-    contentKey: '',
-    contentName: ''
-  })
-  editor.config.relation = { type: 'INTERFACE_SERVICE' }
-  await loadTargetCatalog(entity?.id, { recommend: true })
 }
 
 function handleContentTypeChange() {
@@ -1016,7 +445,7 @@ function handleContentTypeChange() {
     contentKey: '',
     contentName: ''
   })
-  targetContentFields.value = []
+  loadTargetParameterSchema('')
   updateRelatedContentAnchor(editor, props.ownerType)
 }
 
@@ -1042,7 +471,7 @@ async function handleTargetContentChange(id) {
   if (!editor.config.name && option?.name) {
     editor.config.name = `${option.name}关联内容`
   }
-  await loadTargetContentFields(id)
+  await loadTargetParameterSchema(id)
 }
 
 function handlePositionChange() {
@@ -1060,14 +489,6 @@ function handleAnchorChange(value) {
   editor.anchorKey = value || ''
   delete editor.config.presentation.anchorSide
   editor.anchorType = value ? 'FORM_NODE' : 'OWNER'
-}
-
-function handleRelationTypeChange(type) {
-  editor.config.relation.type = type
-  if (type === 'INTERFACE_SERVICE') {
-    toggleSpecial('INTERFACE_SERVICE', true)
-    advancedSections.value = ['special']
-  }
 }
 
 function isActionDisabled(action) {
@@ -1091,149 +512,6 @@ function toggleAction(action, checked) {
     values.add('VIEW')
   }
   editor.config.actions = Array.from(values)
-}
-
-function updateSpecialMode({ service = useInterfaceService.value, component = useCustomComponent.value }) {
-  editor.config.specialHandling.mode = service && component
-    ? 'BOTH'
-    : service
-      ? 'INTERFACE_SERVICE'
-      : component
-        ? 'CUSTOM_COMPONENT'
-        : 'NONE'
-}
-
-function toggleSpecial(type, checked) {
-  if (type === 'INTERFACE_SERVICE') {
-    if (!checked) {
-      dataInterfaceSelectionOpen.value = false
-      Object.assign(editor.config.specialHandling.interfaceService, {
-        extensionId: '',
-        extensionName: '',
-        inputMappings: [],
-        outputMappings: []
-      })
-      editor.config.specialHandling.actionServices = []
-    }
-    updateSpecialMode({ service: checked, component: useCustomComponent.value })
-  } else {
-    updateSpecialMode({ service: useInterfaceService.value, component: checked })
-  }
-}
-
-function toggleDataInterfaceService(checked) {
-  dataInterfaceSelectionOpen.value = checked
-  if (checked) {
-    updateSpecialMode({ service: true, component: useCustomComponent.value })
-    return
-  }
-  Object.assign(editor.config.specialHandling.interfaceService, {
-    extensionId: '',
-    extensionName: '',
-    inputMappings: [],
-    outputMappings: []
-  })
-}
-
-function addActionService() {
-  updateSpecialMode({ service: true, component: useCustomComponent.value })
-  editor.config.specialHandling.actionServices.push({
-    actionKey: '',
-    extensionId: '',
-    extensionName: '',
-    inputMappings: [],
-    outputMappings: [],
-    failurePolicy: 'ERROR'
-  })
-}
-
-function removeActionService(index) {
-  editor.config.specialHandling.actionServices.splice(index, 1)
-}
-
-function actionInterface(binding) {
-  return actionInterfaces.value.find(item =>
-    String(item.extensionId) === String(binding.extensionId))
-}
-
-function actionInterfaceDescription(value) {
-  const item = normalizeInterfaceExtension(value)
-  if (item.interfaceKind === 'READ') {
-    return '同步读取、校验或计算'
-  }
-  return '受控写入 · 服务端重新鉴权并校验发布能力'
-}
-
-function actionKeyOptions(binding) {
-  const enabled = actionOptions.filter(option =>
-    option.value === 'VIEW'
-      && editor.config.actions.includes(option.value))
-  const item = actionInterface(binding)
-  return [
-    ...enabled,
-    ...(item?.extensionKey ? [{
-      value: item.extensionKey,
-      label: `${item.displayName || item.extensionKey}（独立操作）`
-    }] : [])
-  ].filter((item, index, rows) => rows.findIndex(row => row.value === item.value) === index)
-}
-
-function actionInputOptions(binding) {
-  return schemaFieldOptions(actionInterface(binding)?.inputSchema)
-}
-
-function actionOutputOptions(binding) {
-  return schemaFieldOptions(actionInterface(binding)?.outputSchema)
-}
-
-function actionFailureOptions(binding) {
-  return actionInterface(binding)?.interfaceKind === 'WRITE'
-    ? failureOptions.filter(option => option.value === 'ERROR')
-    : failureOptions
-}
-
-function handleActionInterfaceChange(binding) {
-  const item = actionInterface(binding)
-  Object.assign(binding, {
-    extensionName: item?.displayName || item?.extensionKey || '',
-    actionKey: item?.extensionKey || '',
-    inputMappings: [],
-    outputMappings: [],
-    failurePolicy: 'ERROR'
-  })
-}
-
-function handleDataInterfaceChange(id) {
-  const item = dataInterfaces.value.find(value =>
-    String(value.extensionId) === String(id))
-  Object.assign(editor.config.specialHandling.interfaceService, {
-    extensionName: item?.displayName || item?.extensionKey || '',
-    inputMappings: [],
-    outputMappings: []
-  })
-}
-
-function handleCustomComponentChange(name) {
-  const component = customComponentOptions.value.find(item => item.value === name)
-  Object.assign(editor.config.specialHandling.customComponent, {
-    displayName: component?.label || name || '',
-    version: Number(component?.version || 1),
-    artifactDigest: component?.artifactDigest || '',
-    props: {}
-  })
-}
-
-function handleCustomComponentVersionChange() {
-  const component = resolveCustomComponentDescriptor(
-    editor.config.specialHandling.customComponent.name,
-    editor.config.specialHandling.customComponent.version
-  )
-  Object.assign(editor.config.specialHandling.customComponent, {
-    displayName: component?.label
-      || editor.config.specialHandling.customComponent.displayName,
-    artifactDigest: component?.artifactDigest || '',
-    props: {}
-  })
 }
 
 function resolveCustomComponentDescriptor(name, version) {
@@ -1373,36 +651,32 @@ async function save() {
   }
 }
 
-async function open(value = null, { extension = false } = {}) {
+async function open(value = null, { sameRecord = false } = {}) {
   hydrating = true
   value = value ? JSON.parse(JSON.stringify(value)) : value
   const next = value
     ? normalizeRelatedContent(value, { ownerType: props.ownerType, sourceEntity: props.sourceEntity })
-    : createEmptyRelatedContent({ ownerType: props.ownerType, sourceEntity: props.sourceEntity })
+    : createEmptyRelatedContent({ ownerType: props.ownerType, sourceEntity: props.sourceEntity, sameRecord })
   // 打开历史草稿时先按当前呈现方式修正挂载语义，避免旧版组合在界面上出现
   // “未选择入口”，并确保不修改任何业务字段。
   updateRelatedContentAnchor(next, props.ownerType)
   if (!value) next.orderKey = (props.existingCount + 1) * 1000000
   Object.keys(editor).forEach(key => delete editor[key])
   Object.assign(editor, next)
-  dataInterfaceSelectionOpen.value = false
-  isRelationBound.value = value ? !['SAME_RECORD', 'INTERFACE_SERVICE'].includes(next.config.relation.type) : !extension
+  isRelationBound.value = !['SAME_RECORD', 'INTERFACE_SERVICE'].includes(next.config.relation.type)
   canSelectBinding.value = isRelationBound.value && (!value || next.config.relation.type !== 'ENTITY_RELATION')
   if (canSelectBinding.value) editor.config.relation = { type: 'ENTITY_RELATION', relationCode: '' }
-  else if (!value) editor.config.relation = { type: 'INTERFACE_SERVICE' }
   boundRelationKey.value = ''
   boundRelationCode.value = isRelationBound.value ? next.config.relation.relationCode : ''
   sourceRelations.value = []
   relationBindingError.value = ''
   syncCustomComponentArtifactDigest()
   activeStep.value = 1
-  advancedSections.value = []
-  recommendationText.value = ''
-  recommendedRelation.value = { type: '' }
   testResult.value = null
   sourceTestRecordId.value = ''
+  loadTargetParameterSchema('')
   visible.value = true
-  await loadCommonCatalog()
+  await loadRelationCatalog()
   if (isRelationBound.value && !canSelectBinding.value && !relationBindingError.value) {
     try {
       applyBoundRelationWithButtonAppearance(boundEntityRelation.value)
@@ -1411,15 +685,8 @@ async function open(value = null, { extension = false } = {}) {
     }
   }
   if (editor.config.target.entityId) {
-    const [resolved] = await entityApi.resolveOptions({
-      ids: [String(editor.config.target.entityId)]
-    }).catch(() => [])
-    targetEntity.value = resolved || editor.config.target
     await loadTargetCatalog(editor.config.target.entityId)
-    await loadTargetContentFields(editor.config.target.contentId)
-  }
-  if (props.embedded || editor.config.specialHandling.mode !== 'NONE') {
-    advancedSections.value = ['special']
+    await loadTargetParameterSchema(editor.config.target.contentId)
   }
   hydrating = false
   if (props.embedded) emit('draft-change', JSON.parse(JSON.stringify(editor)))
@@ -1435,7 +702,6 @@ watch(() => props.modelValue?.revision, () => {
   if (!props.embedded || hydrating || !props.modelValue) return
   hydrating = true
   Object.assign(editor, normalizeRelatedContent(props.modelValue, { ownerType: props.ownerType, sourceEntity: props.sourceEntity }))
-  dataInterfaceSelectionOpen.value = false
   hydrating = false
 })
 watch(() => props.modelValue?.compositionKey, () => {
@@ -1448,28 +714,21 @@ defineExpose({ open })
 .dialog-heading,
 .dialog-footer,
 .relation-preview,
-.special-config-card__heading,
-.review-card__heading,
-.service-mapping__heading {
+.review-card__heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-.dialog-heading > div,
-.special-config-card__heading > div,
-.service-mapping__heading > div {
+.dialog-heading > div {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 3px;
 }
 
-.dialog-heading span,
-.collapse-heading small,
-.special-config-card__heading span,
-.service-mapping__heading small {
+.dialog-heading span {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.55;
@@ -1485,94 +744,6 @@ defineExpose({ open })
   padding: 20px 22px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
-}
-
-.two-column-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 24px;
-}
-
-.stacked-control {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.business-option {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  line-height: 1.35;
-}
-
-.business-option small {
-  overflow: hidden;
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recommendation-alert,
-.field-match-alert {
-  margin-bottom: 18px;
-}
-
-.relation-methods {
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.selection-card {
-  display: flex;
-  min-height: 72px;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  padding: 12px 14px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 7px;
-  background: var(--el-bg-color);
-  color: var(--el-text-color-primary);
-  cursor: pointer;
-  text-align: left;
-}
-
-.selection-card:hover,
-.selection-card.is-selected {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-}
-
-.selection-card > span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.selection-card small,
-.special-choice small {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.field-match-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr);
-  align-items: center;
-}
-
-.match-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--el-text-color-secondary);
 }
 
 .relation-preview {
@@ -1629,103 +800,6 @@ defineExpose({ open })
   margin-right: 0;
 }
 
-.special-choice-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.special-choice {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, auto) 20px;
-  gap: 4px 8px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 7px;
-  cursor: pointer;
-}
-
-.special-choice small {
-  grid-column: 1 / -1;
-}
-
-.special-choice.is-selected {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-}
-
-.special-collapse {
-  margin-top: 14px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 7px;
-  padding: 0 16px;
-}
-
-.collapse-heading {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-
-.special-config-card {
-  margin-top: 14px;
-  padding: 16px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 7px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.special-config-card__heading {
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.service-mapping {
-  margin-top: 14px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  background: var(--el-bg-color);
-}
-
-.service-mapping__heading {
-  padding: 12px 14px;
-  background: var(--el-fill-color-light);
-}
-
-.service-mapping__labels,
-.service-mapping__row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 12px;
-}
-
-.service-mapping__labels {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.service-mapping__row {
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.service-mapping__empty {
-  padding: 18px;
-  color: var(--el-text-color-secondary);
-  text-align: center;
-}
-
-.mapping-section,
-.failure-policy-form {
-  margin-top: 14px;
-}
-
 .review-card {
   margin-top: 18px;
   padding: 16px;
@@ -1759,20 +833,6 @@ defineExpose({ open })
 }
 
 @media (max-width: 820px) {
-  .two-column-form,
-  .relation-methods,
-  .special-choice-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .field-match-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .match-arrow {
-    transform: rotate(90deg);
-  }
-
   .dialog-footer {
     align-items: stretch;
     flex-direction: column;

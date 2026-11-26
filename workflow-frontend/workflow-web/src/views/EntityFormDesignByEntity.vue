@@ -271,7 +271,9 @@
             <el-tab-pane v-for="tab in availableRelatedContentSettingsTabs" :key="tab.value" :label="tab.label" :name="tab.value" />
           </el-tabs>
           <el-scrollbar class="node-property-scrollbar">
-            <RelatedContentConfigDialog v-loading="saving || savingNode" :key="selectedRelatedKey" embedded owner-type="FORM" :owner-id="form.id || ''" :model-value="selectedRelatedContent" :settings-tab="activeNodeSettingsTab" :source-entity="entityInfo" :source-fields="entityFields" :source-content-fields="formFields" :anchor-options="relatedContentAnchorOptions" :existing-count="relatedContents.length" @draft-change="updateRelatedContentDraft" />
+            <el-config-provider size="small">
+              <RelatedContentConfigDialog v-loading="saving || savingNode" :key="selectedRelatedKey" class="related-content-property-editor" embedded owner-type="FORM" :owner-id="form.id || ''" :model-value="selectedRelatedContent" :settings-tab="activeNodeSettingsTab" :source-entity="entityInfo" :source-fields="entityFields" :source-content-fields="formFields" :anchor-options="relatedContentAnchorOptions" :existing-count="relatedContents.length" @draft-change="updateRelatedContentDraft" />
+            </el-config-provider>
           </el-scrollbar>
         </template>
         <template v-else-if="selectedField">
@@ -1015,7 +1017,7 @@
           embedded draft-mode
           :items="relatedContents"
           @edit-draft="openRelatedContent"
-          @create-draft="createRelatedContentDraft"
+          @create-same-record-draft="createSameRecordContentDraft"
           @delete-draft="deleteRelatedContentDraft"
           @refresh-drafts="refreshRelatedContentDrafts"
           owner-type="FORM"
@@ -1563,8 +1565,7 @@ function openFormSettings(tab = 'basic', behaviorTab = '') {
 }
 
 /** 所有关联入口定位同一草稿，只有默认页签不同，不能重读服务端覆盖输入。 */
-async function openRelatedContent(item = null) {
-  if (!item?.config) return createRelatedContentDraft()
+async function openRelatedContent(item) {
   return openRelatedContentProperties(item, 'child-pages')
 }
 
@@ -1572,15 +1573,14 @@ async function openRelatedContentProperties(item, tab = 'basic') {
   if (!item?.config) return
   selectedField.value = null
   selectedRelatedKey.value = relatedContentIdentity(item)
-  activeNodeSettingsTab.value = availableRelatedContentSettingsTabs.value.some(item => item.value === tab)
+  activeNodeSettingsTab.value = availableRelatedContentSettingsTabs.some(item => item.value === tab)
     ? tab : 'child-pages'
   showFormSettings.value = false
   propertyDrawerVisible.value = true
 }
 
-function createRelatedContentDraft({ extension = false } = {}) {
-  const item = createEmptyRelatedContent({ ownerType: 'FORM', sourceEntity: entityInfo.value })
-  if (extension) item.config.relation = { type: 'INTERFACE_SERVICE' }
+function createSameRecordContentDraft() {
+  const item = createEmptyRelatedContent({ ownerType: 'FORM', sourceEntity: entityInfo.value, sameRecord: true })
   item.orderKey = Math.max(0, ...relatedContents.value.map(row => Number(row.orderKey) || 0)) + 1000000
   addRelatedContentDraft(item)
 }
@@ -2068,12 +2068,8 @@ const availableNodeSettingsTabs = [
   { value: 'child-pages', label: '子页面' },
   { value: 'extension', label: '数据与扩展' }
 ]
-// 普通关联不再覆盖目标页面组件，移除空页签；独立扩展和普通字段仍保留各自的扩展设置。
-const availableRelatedContentSettingsTabs = computed(() =>
-  ['SAME_RECORD', 'INTERFACE_SERVICE'].includes(selectedRelatedContent.value?.config.relation?.type)
-    ? availableNodeSettingsTabs
-    : availableNodeSettingsTabs.filter(tab => tab.value !== 'extension')
-)
+// 关联内容只负责引用页面、传递参数及控制展示和操作。
+const availableRelatedContentSettingsTabs = availableNodeSettingsTabs.filter(tab => tab.value !== 'extension')
 const selectedNodeDirty = computed(() => {
   const field = selectedField.value
   if (!field?.revision) return true
@@ -4914,6 +4910,19 @@ onMounted(async () => {
 
 .property-form {
   padding: 16px;
+}
+
+.related-content-property-editor {
+  font-size: var(--el-font-size-small);
+}
+
+/* 独立文本标题不继承控件尺寸，按抽屉的分组标题规格对齐。 */
+.related-content-property-editor :deep(.rule-title),
+.related-content-property-editor :deep(.flow-condition-group.depth-1 > .group-header > .group-title > span:first-child),
+.related-content-property-editor :deep(.parameter-heading > strong),
+.related-content-property-editor :deep(.relation-preview strong) {
+  font-size: var(--el-font-size-base);
+  line-height: 20px;
 }
 
 .component-type-row {
