@@ -1,3 +1,5 @@
+import { mobileBase } from './deploymentPath.js'
+
 const DEFAULT_REDIRECT = '/inbox/todo'
 const LOCAL_ORIGIN = 'https://mobile.invalid'
 
@@ -9,22 +11,23 @@ export function resolveLoginRedirect(value) {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(value)) return DEFAULT_REDIRECT
   try {
     const target = new URL(value, LOCAL_ORIGIN)
-    // 先归一化点路径，再解码路径检查；查询参数内的 URL 只是业务数据，不参与跳转判断。
+    // 归一化点路径以保留部署前缀，再解码路径检查。查询参数只作为业务数据保留。
     const pathname = decodeURIComponent(target.pathname)
     if (target.origin !== LOCAL_ORIGIN || pathname.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(pathname) || /^\/(?:m\/)?login\/?$/i.test(pathname)) return DEFAULT_REDIRECT
-    return value
+    return `${target.pathname}${target.search}${target.hash}`
   } catch {
     return DEFAULT_REDIRECT
   }
 }
 
 /**
- * 会话失效通过整页导航重新登录时，将浏览器的 /m/ 地址转回路由内部路径。
+ * 会话失效通过整页导航重新登录时，按实际部署基址将浏览器地址转回路由内部路径。
  * 已处于登录页则不再导航，确保已有的回跳参数不会被登录地址覆盖。
  */
-export function buildMobileLoginUrl({ pathname = '', search = '', hash = '' } = {}) {
-  if (/^\/m\/login\/?$/i.test(pathname)) return null
-  const fullPath = pathname.startsWith('/m/') ? `${pathname.slice(2)}${search}${hash}` : DEFAULT_REDIRECT
+export function buildMobileLoginUrl({ pathname = '', search = '', hash = '' } = {}, base = mobileBase) {
+  const loginPath = `${base}login`
+  if (pathname.toLowerCase().replace(/\/$/, '') === loginPath.toLowerCase()) return null
+  const fullPath = pathname.startsWith(base) ? `${pathname.slice(base.length - 1)}${search}${hash}` : DEFAULT_REDIRECT
   const query = new URLSearchParams({ redirect: resolveLoginRedirect(fullPath) })
-  return `/m/login?${query}`
+  return `${loginPath}?${query}`
 }

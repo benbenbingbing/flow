@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { showFailToast } from 'vant'
 import { buildMobileLoginUrl } from '../loginRedirect.js'
+import { apiBase } from '../deploymentPath.js'
 import {
   createRequestRuntime, createAuthApi, createProcessTaskApi, createEntityApi,
   createFileApi, createUiConfigApi, createUiCompositionRuntimeApi, createFormRuntimeApi,
@@ -35,7 +36,7 @@ function goToLogin() {
   if (target) globalThis.location.assign(target)
 }
 export const transport = createRequestRuntime({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api', getSession: () => session,
+  baseURL: apiBase, getSession: () => session,
   notifyError: message => showFailToast(message), getOrigin: () => globalThis.location?.origin,
   onAuthExpired: goToLogin,
   onPasswordResetRequired: () => { state.userInfo = { ...state.userInfo, passwordResetRequired: true }; goToLogin() }

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# envsubst 会将此前缀写入 Nginx 正则和 HTML，限制为可直接用于两者的路径段。
+case "${FLOW_WEB_CONTEXT_PATH:-}" in
+    ""|/) export FLOW_WEB_CONTEXT_PATH="" ;;
+    *[!a-zA-Z0-9_/-]*|*//*|*/|[!/]* )
+        printf '%s\n' 'FLOW_WEB_CONTEXT_PATH must be / or a path such as /flow without a trailing slash' >&2
+        exit 1
+        ;;
+esac

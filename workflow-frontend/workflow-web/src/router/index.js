@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getPermissions } from '@/api/auth'
 import { restoreAuthSession } from '@/shared/request'
+import { webBase } from '@/shared/deployment-path'
 import { authReturnTarget, authRouteLocation, resolveLoginRedirect } from '@/shared/login-redirect'
 import Layout from '@/views/Layout.vue'
 
@@ -406,7 +407,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(webBase),
   routes
 })
 

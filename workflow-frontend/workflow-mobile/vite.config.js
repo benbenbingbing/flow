@@ -6,10 +6,12 @@ import { mobileExtensionsPlugin } from '../scripts/mobile-extensions.mjs'
 import { discoverBusinessModules } from '../scripts/extensions/modules.mjs'
 
 const envDir = fileURLToPath(new URL('../..', import.meta.url))
+const contextPath = (process.env.FLOW_WEB_CONTEXT_PATH || '').replace(/\/$/, '')
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, envDir, '')
   return {
-    base: '/m/', envDir,
+    // 容器在运行时确定公开前缀，独立构建则直接使用构建环境的前缀。
+    base: process.env.FLOW_GATEWAY_BUILD === '1' ? './' : `${contextPath}/m/`, envDir,
     define: { 'import.meta.env.VITE_WEB_PORT': JSON.stringify(process.env.WEB_PORT || env.WEB_PORT || '3000') },
     // 从业务目录发现公开包，新增模块不要求在移动应用另行登记。
     optimizeDeps: { exclude: ['@flow/workflow-extensions', '@flow/workflow-core', '@flow/workflow-api', '@flow/workflow-mobile-ui', ...[...discoverBusinessModules().values()].map(module => module.name)] },
@@ -17,7 +19,13 @@ export default defineConfig(({ mode }) => {
     resolve: { dedupe: ['vue', 'pinia', 'vue-router'] },
     server: {
       host: '0.0.0.0', port: Number(process.env.MOBILE_PORT || env.MOBILE_PORT || 3001), strictPort: true,
-      proxy: { '/api': { target: process.env.VITE_API_PROXY_TARGET || env.VITE_API_PROXY_TARGET || `http://127.0.0.1:${env.SERVER_PORT || 8080}`, changeOrigin: true } }
+      proxy: {
+        [`${contextPath}/api`]: {
+          target: process.env.VITE_API_PROXY_TARGET || env.VITE_API_PROXY_TARGET || `http://127.0.0.1:${env.SERVER_PORT || 8080}`,
+          changeOrigin: true,
+          rewrite: path => path.slice(contextPath.length)
+        }
+      }
     }
   }
 })

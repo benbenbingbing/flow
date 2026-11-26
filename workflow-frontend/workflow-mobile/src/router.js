@@ -1,9 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { loadIdentity, session, transport } from './adapters/services.js'
 import { resolveLoginRedirect } from './loginRedirect.js'
+import { mobileBase } from './deploymentPath.js'
 
 export const router = createRouter({
-  history: createWebHistory('/m/'),
+  history: createWebHistory(mobileBase),
   routes: [
     { path: '/', redirect: '/inbox/todo' },
     { path: '/login', name: 'login', component: () => import('./pages/Login.vue') },

@@ -96,6 +96,28 @@ containers rather than only running `docker compose restart`. Log in again after
 the change and confirm that `/api/auth/refresh` sends `flow_refresh_token` and
 returns 200 when the page reloads.
 
+## Hosting Flow under a path prefix
+
+Set `FLOW_WEB_CONTEXT_PATH=/flow` in the Compose deployment `.env`, or set
+`web.contextPath: /flow` in Helm values. With the current web image, the same
+setting moves the admin sign-in to `/flow/login`, the mobile app to `/flow/m/`,
+and the browser API to `/flow/api/`. The web container serves the SPA entry for
+deep links and maps the refresh cookie to `/flow/api/auth`. The Spring server
+can keep its default cookie path and internal API paths.
+
+For a separate reverse proxy or gateway, route `/flow` and `/flow/…` to the
+web container on port 8080 and forward the request path with its prefix intact.
+The Helm Ingress sets this route from `web.contextPath` when enabled. Embed
+continues to use its separate host and ingress paths. Leave the setting empty
+or use `/` for a root deployment.
+
+For a standalone static build, run `FLOW_WEB_CONTEXT_PATH=/flow npm run build`
+from `workflow-frontend`. Configure the gateway to serve the build under `/flow`,
+return the corresponding entry HTML for SPA routes, and forward `/flow/api/` to
+the server's `/api/`. Set the server's `AUTH_SESSION_COOKIE_PATH=/flow/api/auth`
+if that gateway does not rewrite the cookie path. If `VITE_API_BASE_URL` is
+explicitly configured, set it to the actual public API URL.
+
 ## Optional Nacos service registration
 
 Nacos discovery is disabled by default. The application uses an existing Nacos

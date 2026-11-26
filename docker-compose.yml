@@ -161,6 +161,7 @@ services:
         condition: service_healthy
     environment:
       SERVER_UPSTREAM: server:8080
+      FLOW_WEB_CONTEXT_PATH: ${FLOW_WEB_CONTEXT_PATH:-}
     ports:
       - "${WEB_PORT:-3000}:8080"
     healthcheck:

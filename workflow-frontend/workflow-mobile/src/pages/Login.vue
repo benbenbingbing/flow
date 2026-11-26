@@ -22,10 +22,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { Form as VanForm, Field as VanField, Button as VanButton } from 'vant'
 import { login, logout, session } from '../adapters/services.js'
 import { resolveLoginRedirect } from '../loginRedirect.js'
+import { webBase } from '../deploymentPath.js'
 const router = useRouter()
 const route = useRoute()
 const username = ref(''), password = ref(''), loading = ref(false), error = ref('')
-const pcUrl = import.meta.env.VITE_PC_URL || (import.meta.env.DEV ? `${location.protocol}//${location.hostname}:${import.meta.env.VITE_WEB_PORT || 3000}/` : '/')
+const pcUrl = import.meta.env.VITE_PC_URL || (import.meta.env.DEV ? `${location.protocol}//${location.hostname}:${import.meta.env.VITE_WEB_PORT || 3000}${webBase}` : webBase)
 /** 登录与身份加载全部成功后替换登录页，回退操作不会再次落入登录表单。 */
 async function submit() {
   if (loading.value) return

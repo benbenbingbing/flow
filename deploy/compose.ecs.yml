@@ -79,6 +79,8 @@ services:
     depends_on:
       server:
         condition: service_healthy
+    environment:
+      FLOW_WEB_CONTEXT_PATH: ${FLOW_WEB_CONTEXT_PATH:-}
     ports:
       - "${WEB_PORT:-80}:8080"
     healthcheck:

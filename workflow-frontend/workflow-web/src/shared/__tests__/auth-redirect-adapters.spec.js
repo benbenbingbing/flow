@@ -3,13 +3,14 @@ import { readFile } from 'node:fs/promises'
 import { babelParse } from '@vue/compiler-sfc'
 import { createPinia, setActivePinia } from 'pinia'
 import { buildAuthRedirectUrl } from '../login-redirect.js'
+import { webApiBase } from '../deployment-path.js'
 
 // 执行真实请求适配器注册的回调，确保安全 helper 已接到 401/428 的实际导航出口。
 const source = await readFile(new URL('../request/index.js', import.meta.url), 'utf8')
 const ast = babelParse(source, { sourceType: 'module' })
 const declaration = ast.program.body.find(node => node.type === 'VariableDeclaration'
   && node.declarations.some(item => item.id.name === 'runtime'))
-const code = source.slice(declaration.start, declaration.end).replace('import.meta.env?.VITE_API_BASE_URL', 'undefined')
+const code = source.slice(declaration.start, declaration.end)
 const target = '/process/progress/instance-1?taskId=task-1#history'
 /** 浏览器 Location.href 接受站内相对地址，Node URL.href 只接受完整 URL，夹具需保留这一差别。 */
 function browserLocation(path) {
@@ -24,8 +25,9 @@ function browserLocation(path) {
   }
 }
 const browser = { location: browserLocation(target) }
-const options = new Function('createRequestRuntime', 'useUserStore', 'ElMessage', 'globalThis', 'buildAuthRedirectUrl',
-  `${code}\nreturn runtime`)(value => value, () => ({}), { error() {} }, browser, buildAuthRedirectUrl)
+const options = new Function('createRequestRuntime', 'useUserStore', 'ElMessage', 'globalThis', 'buildAuthRedirectUrl', 'webApiBase',
+  `${code}\nreturn runtime`)(value => value, () => ({}), { error() {} }, browser, buildAuthRedirectUrl, webApiBase)
+assert.equal(options.baseURL, '/api')
 options.onAuthExpired()
 assert.equal(browser.location.pathname, '/login')
 assert.equal(browser.location.searchParams.get('redirect'), target)

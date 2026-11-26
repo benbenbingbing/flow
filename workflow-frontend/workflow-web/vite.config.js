@@ -6,8 +6,11 @@ import { resolve } from 'path'
 import { discoverBusinessModules } from '../scripts/extensions/modules.mjs'
 
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080'
+const contextPath = (process.env.FLOW_WEB_CONTEXT_PATH || '').replace(/\/$/, '')
 
 export default defineConfig({
+  // 容器由网关写入公开基址，产物使用相对资源路径，允许同一镜像挂载到不同前缀。
+  base: process.env.FLOW_GATEWAY_BUILD === '1' ? './' : `${contextPath}/`,
   plugins: [workflowBoundaryPlugin('pc'), flowExtensionsPlugin(), vue()],
   build: {
     chunkSizeWarningLimit: 1000,
@@ -43,9 +46,10 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': {
+      [`${contextPath}/api`]: {
         target: apiProxyTarget,
         changeOrigin: true,
+        rewrite: path => path.slice(contextPath.length),
       },
     },
   },

@@ -1,11 +1,12 @@
 import { createRequestRuntime, notifyRequestError } from '@flow/workflow-api/request'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { webApiBase } from '@/shared/deployment-path'
 import { buildAuthRedirectUrl } from '@/shared/login-redirect'
 
 /** PC 与 Embed 的宿主适配；共享 transport 不依赖桌面 UI 或应用 store。 */
 const runtime = createRequestRuntime({
-  baseURL: import.meta.env?.VITE_API_BASE_URL || '/api',
+  baseURL: webApiBase,
   getSession: () => useUserStore(),
   notifyError: message => ElMessage.error(message),
   getOrigin: () => globalThis.location?.origin,

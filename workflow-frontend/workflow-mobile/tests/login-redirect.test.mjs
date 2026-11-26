@@ -6,6 +6,7 @@ test('登录回跳保留单据完整路径、查询参数和锚点', () => {
   const target = '/process/instance-test?kind=todo&taskId=task-test&from=%E9%80%9A%E7%9F%A5#history'
   assert.equal(resolveLoginRedirect(target), target)
   assert.equal(resolveLoginRedirect('/inbox/cc'), '/inbox/cc')
+  assert.equal(resolveLoginRedirect('/inbox/../../inbox/cc'), '/inbox/cc')
   assert.equal(resolveLoginRedirect('/process/id?source=https%3A%2F%2Fexample.com'), '/process/id?source=https%3A%2F%2Fexample.com')
 })
 
@@ -30,4 +31,14 @@ test('会话失效使用移动站点前缀并对回跳参数整体编码', () =>
 test('登录页收到会话失效通知时保留已有回跳参数', () => {
   assert.equal(buildMobileLoginUrl({ pathname: '/m/login', search: '?redirect=%2Fprocess%2Fid' }), null)
   assert.equal(buildMobileLoginUrl({ pathname: '/m/login/' }), null)
+})
+
+test('网关前缀只出现在跳转地址，回跳参数保留移动端内部路由', () => {
+  const base = '/gateway/flow/m/'
+  const target = '/process/instance-test?taskId=task-test#history'
+  const location = new URL(`${base.slice(0, -1)}${target}`, 'https://flow.test')
+  const login = new URL(buildMobileLoginUrl(location, base), location)
+  assert.equal(login.pathname, `${base}login`)
+  assert.equal(login.searchParams.get('redirect'), target)
+  assert.equal(buildMobileLoginUrl(login, base), null)
 })

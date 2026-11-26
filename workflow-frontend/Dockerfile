@@ -17,11 +17,13 @@ COPY workflow-web workflow-web
 COPY workflow-mobile workflow-mobile
 # 不传参数时读取仓库配置；显式 none 构建不包含任何业务的基础产品。
 ARG FLOW_FRONTEND_MODULES
-RUN if [ -z "$FLOW_FRONTEND_MODULES" ]; then unset FLOW_FRONTEND_MODULES; fi; npm run build
+RUN if [ -z "$FLOW_FRONTEND_MODULES" ]; then unset FLOW_FRONTEND_MODULES; fi; FLOW_GATEWAY_BUILD=1 npm run build
 
 FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:44e36330f74d4f3a1d4e222acca9e23b401fb87811a7597024502bb759c4dd49
 ENV SERVER_UPSTREAM=server:8080
-ENV NGINX_ENVSUBST_FILTER=SERVER_UPSTREAM
+ENV FLOW_WEB_CONTEXT_PATH=""
+ENV NGINX_ENVSUBST_FILTER="^(SERVER_UPSTREAM|FLOW_WEB_CONTEXT_PATH)$"
+COPY --chmod=755 docker/15-web-context-path.envsh /docker-entrypoint.d/15-web-context-path.envsh
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/workflow-web/dist /usr/share/nginx/html
 COPY --from=build /app/workflow-mobile/dist /usr/share/nginx/html/m

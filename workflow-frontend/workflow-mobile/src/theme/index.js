@@ -1,4 +1,5 @@
 import { DEFAULT_MOBILE_THEME, mobileThemeVariables, normalizeMobileTheme } from '@flow/workflow-core/mobile-theme'
+import { apiBase } from '../deploymentPath.js'
 
 /** 只写入移动文档的变量，根节点与 body 同步以覆盖 teleport 弹窗和 Vant 基础变量。 */
 export function applyTheme(config, documentRef = document) {
@@ -19,7 +20,7 @@ export async function loadSystemTheme({ fetchImpl = fetch, documentRef = documen
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const base = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
+    const base = apiBase.replace(/\/$/, '')
     const response = await fetchImpl(`${base}/system/mobile-theme`, { cache: 'no-store', credentials: 'omit', signal: controller.signal })
     if (!response.ok) throw new Error('主题读取失败')
     const result = await response.json()

@@ -36,6 +36,8 @@ server:
     minAvailable: 1
 
 web:
+  # 浏览器公开路径，示例 /flow。留空时从域名根目录提供服务。
+  contextPath: ""
   image:
     repository: registry.example.com/flow-web
     tag: "1.0.0"
