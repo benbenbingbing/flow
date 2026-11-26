@@ -268,7 +268,7 @@
         </template>
         <template v-if="selectedRelatedContent">
           <el-tabs v-model="activeNodeSettingsTab" class="node-settings-tabs" stretch>
-            <el-tab-pane v-for="tab in availableRelatedContentSettingsTabs" :key="tab.value" :label="tab.label" :name="tab.value" />
+            <el-tab-pane v-for="tab in availableNodeSettingsTabs" :key="tab.value" :label="tab.label" :name="tab.value" />
           </el-tabs>
           <el-scrollbar class="node-property-scrollbar">
             <el-config-provider size="small">
@@ -849,8 +849,6 @@
                 </template>
               </SettingsSection>
 
-              <FormNodeDataSettings />
-
               <SettingsSection
                 v-show="activeNodeSettingsTab === 'rules'"
                 title="附件项逻辑必填"
@@ -923,6 +921,7 @@
                 </div>
               </SettingsSection>
 
+              <FormNodeDataSettings />
             </el-form>
           </el-scrollbar>
         </template>
@@ -1573,7 +1572,7 @@ async function openRelatedContentProperties(item, tab = 'basic') {
   if (!item?.config) return
   selectedField.value = null
   selectedRelatedKey.value = relatedContentIdentity(item)
-  activeNodeSettingsTab.value = availableRelatedContentSettingsTabs.some(item => item.value === tab)
+  activeNodeSettingsTab.value = availableNodeSettingsTabs.some(item => item.value === tab)
     ? tab : 'child-pages'
   showFormSettings.value = false
   propertyDrawerVisible.value = true
@@ -1637,8 +1636,7 @@ function validateRelatedContentDrafts(onlyKey) {
     if (!relatedDraftState.dirty(item)) continue
     const validation = validateRelatedContent(item, 'FORM')
     if (!validation.valid) {
-      // 扩展配置已归到独立标签页，保存失败时直接定位到对应入口。
-      openRelatedContentProperties(item, validation.errors[0]?.step === 4 ? 'extension' : 'child-pages')
+      openRelatedContent(item)
       throw new Error(validation.errors[0].message)
     }
   }
@@ -2065,11 +2063,8 @@ const availableNodeSettingsTabs = [
   { value: 'basic', label: '基础与布局' },
   { value: 'rules', label: '数据校验' },
   { value: 'interaction', label: '联动与事件' },
-  { value: 'child-pages', label: '子页面' },
-  { value: 'extension', label: '数据与扩展' }
+  { value: 'child-pages', label: '子页面' }
 ]
-// 关联内容只负责引用页面、传递参数及控制展示和操作。
-const availableRelatedContentSettingsTabs = availableNodeSettingsTabs.filter(tab => tab.value !== 'extension')
 const selectedNodeDirty = computed(() => {
   const field = selectedField.value
   if (!field?.revision) return true

@@ -91,6 +91,8 @@ request.defaults.adapter=async config=>{
  else if(url==='/entity/options/resolve')data=[target]
  else if(url==='/entity/all')data={...source,fields:[{id:'source-name',fieldCode:'name',fieldName:'验收名称',fieldType:'STRING'}]}
  else if(url==='/entity-form/owner'&&method==='get')data=state.designerForm
+ else if(state.nodeDataSourcesTest&&url==='/ui-extensions/available-interfaces')data=config.params?.bindingCode==='SUBFORM_ROWS'
+   ?[{extensionId:'child-row-source',extensionKey:'child_rows',displayName:'初始明细'}]:[]
  else if(url==='/entity-form/owner/fields'||url==='/system/menu/entity-permission-options'||url==='/ui-extensions')data=[]
  else if(url==='/entity-forms/owner/nodes')data=state.designerNodes
  else if(url==='/entity-forms/owner/diff')data={changed:!!state.publicationEnabled&&!state.designerPublished,discardableChanged:!!state.publicationEnabled&&!state.designerPublished,canDiscardDraft:!!state.publicationEnabled&&!state.designerPublished,draftHash:'draft',activeHash:'active',changedItems:[],changedSections:['关联内容']}
@@ -297,7 +299,46 @@ try {
   await evaluate('relationTest.settle()')
 
 
-  if (process.argv.includes('--inline-form-open')) {
+  if (process.argv.includes('--node-data-sources')) {
+    const designer = "document.getElementById('real-designer')"
+    const drawer = "[...document.querySelectorAll('.node-property-drawer')].find(e=>e.getClientRects().length)"
+    const dataSource = `[...${drawer}.querySelectorAll('.settings-section')].find(e=>e.querySelector('.settings-section__heading strong')?.textContent==='子表数据源')`
+    const rows = `${dataSource}.querySelector('.data-source-usage-row')`
+    const readTabLabels = () => evaluate(`[...${drawer}.querySelectorAll('.node-settings-tabs .el-tabs__item')].map(e=>e.textContent)`)
+    const openDataSource = async () => {
+      await evaluate(`[...${drawer}.querySelectorAll('.el-tabs__item')].find(e=>e.textContent==='子页面').click();relationTest.settle()`)
+      await until(`${dataSource}?.getClientRects().length`)
+      await evaluate(`${dataSource}.querySelector('.settings-section__header').click();relationTest.settle()`)
+    }
+    // 用真实组成关系添加两种主从节点，覆盖新页签入口和原绑定文档的保存。
+    for (const [relationType, nodeType] of [['ONE_TO_ONE', 'SUB_FORM'], ['ONE_TO_MANY', 'REPEATER']]) {
+      await evaluate(`relationTest.relations.find(r=>r.relationCode==='ownedDetails').relationType='${relationType}';relationTest.state.nodeDataSourcesTest=true;relationTest.state.designerTest=true;relationTest.state.designerNodes=[];relationTest.state.designerSaves=[];relationTest.state.designerRemount=(relationTest.state.designerRemount||0)+1;relationTest.settle()`)
+      await until(`${designer}?.querySelector('.relation-item') && !${designer}.querySelector('.el-loading-mask')`)
+      await click('添加主从编辑', designer)
+      await until("document.body.innerText.includes('选择子记录使用的表单')")
+      await click('添加到表单')
+      await until(`${drawer}?.innerText.includes('组成明细')`)
+      assert.deepEqual(await readTabLabels(), ['基础与布局','数据校验','联动与事件','子页面'])
+      await openDataSource()
+      assert.deepEqual(await evaluate(`[...${dataSource}.querySelectorAll('.data-source-usage-row > span:first-child')].map(e=>e.textContent)`), ['子表行数据','加载后处理','提交前处理'])
+      await evaluate(`${rows}.click();${dataSource}.querySelector('.el-select__wrapper').click();relationTest.settle()`)
+      const option = "[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.trim()==='初始明细 (child_rows)')"
+      await until(option)
+      await evaluate(`${option}.click();${dataSource}.querySelector('.property-advanced summary').click();relationTest.settle()`)
+      const input = `${dataSource}.querySelector('textarea[aria-label="输入映射"]')`
+      await evaluate(`${input}.value='{"ownerName":"data.name"}';${input}.dispatchEvent(new Event('input',{bubbles:true}));relationTest.settle()`)
+      await click('保存全部', designer)
+      await until('relationTest.state.designerSaves.length===1')
+      const saved = await evaluate('JSON.parse(JSON.stringify(relationTest.state.designerNodes[0]))')
+      assert.equal(saved.nodeType, nodeType)
+      assert.deepEqual(JSON.parse(saved.dataSourceBindingsDocument).SUBFORM_ROWS, {
+        extensionId: 'child-row-source', inputMapping: { ownerName: 'data.name' }, outputMapping: {}
+      })
+      await evaluate(`${drawer}?.querySelector('.el-drawer__close-btn')?.click();relationTest.settle()`)
+    }
+    assert.deepEqual(errors, [])
+    console.log('child data source settings passed for subform and detail table')
+  } else if (process.argv.includes('--inline-form-open')) {
     await evaluate(`(()=>{
       const state=relationTest.state;
       state.inlineSaveTest=true;state.inlineOpenResult='打开事件回填';
@@ -1041,7 +1082,6 @@ try {
   await click('添加到表单')
   const nodeDrawer = "[...document.querySelectorAll('.el-drawer')].find(e=>e.getClientRects().length&&e.querySelector('.node-settings-tabs'))"
   await until(`${nodeDrawer}?.innerText.includes('组成明细')`)
-  assert.equal(await evaluate(`[...${nodeDrawer}.querySelectorAll('.node-settings-tabs .el-tabs__item')].some(e=>e.textContent==='数据与扩展')`),true,'真实组成节点仍保留自身的字段数据配置')
   await evaluate(`[...${nodeDrawer}.querySelectorAll('.el-tabs__item')].find(e=>e.textContent.includes('子页面')).click();relationTest.settle()`)
   const childSettings = `[...${nodeDrawer}.querySelectorAll('.settings-section')].find(e=>e.querySelector('.settings-section__heading strong')?.textContent==='子表单配置')`
   assert.equal(await evaluate(`${childSettings}.classList.contains('is-disabled')`),false,'组成节点的子页面属性必须激活')
@@ -1166,7 +1206,7 @@ try {
   assert.deepEqual(await evaluate('Array.from(relationTest.state.unexpected)'), [], '出现未覆盖的 API 路径')
   console.log(compositionEditorOnly
     ? 'composition editor browser acceptance passed: actionable navigation, absent composition guidance, current publication without versions, aggregate child drafts, active child settings, one-to-one stable bindings, save and designer reload'
-    : 'entity relation browser acceptance passed: inline related form create/update, validation, save failure retention, permission/readonly, duplicate submission and stale response isolation, independent child drafts protected across host save/close/discard; relation definition, form/list runtime, permissions and parameters; nested target relation isolation at owner/field/Tab anchors without changing standalone forms; unified five-tab properties, shared local drafts across sidebar/canvas/settings, nested Tab selection, composition nodes, save failure and retry, refresh retention, child list options, separate outer/list heights, automatic save before publication and local change/deletion undo')
+    : 'entity relation browser acceptance passed: inline related form create/update, validation, save failure retention, permission/readonly, duplicate submission and stale response isolation, independent child drafts protected across host save/close/discard; relation definition, form/list runtime, permissions and parameters; nested target relation isolation at owner/field/Tab anchors without changing standalone forms; unified node properties, shared local drafts across sidebar/canvas/settings, nested Tab selection, composition nodes, save failure and retry, refresh retention, child list options, separate outer/list heights, automatic save before publication and local change/deletion undo')
   }
 } finally {
   if(errors.length) console.error(errors)

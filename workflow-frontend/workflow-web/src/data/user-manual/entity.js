@@ -687,7 +687,7 @@ export default {
                 { field: '节点拖拽', meaning: '悬停或选中节点后，拖拽右上角手柄调整同级顺序，或移动到区块、栅格、Tab 页、折叠面板、子表和明细表等兼容容器。Tab 页使用 Tab 集合内的页签拖拽手柄。', defaultLimit: 'TAB 只能进入 TAB_SET；普通节点不能直接进入 TAB_SET；禁止放入自身、后代或形成超过 8 层的结构。排序保存期间暂时禁用再次拖拽。', effect: '已保存节点立即通过独立排序接口携带 expectedRevision 写入草稿；未保存节点先更新本地树，点击“保存草稿”后落库。失败或 409 时重新加载服务器节点和 revision。', publish: '拖拽只修改草稿位置，不影响当前激活发布版本；发布前应在草稿预览中核对嵌套布局。' },
                 { field: '表单设置', meaning: '在“表单事件”配置打开、加载后和提交前处理。', defaultLimit: '关闭抽屉不清除编辑值；标签位置和宽度统一保存在 viewConfig 中。', effect: '表单身份、默认状态、按钮、生命周期数据源和事件不再散落在画布顶部；渲染方式及扩展配置保留在表单设计工作区。', publish: '只调整编辑入口，继续保存原 viewConfig、数据源绑定、事件绑定和扩展字段。' },
                 { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；顶部只读展示名称、类型、绑定、编码、父级和保存状态。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '抽屉底部只保存当前节点；页面顶部只保存全部草稿，两个入口职责分离。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
-                { field: '节点属性页签', meaning: '属性按“基础与布局、数据校验、联动与事件、子页面、数据与扩展”组织。', defaultLimit: '所有配置项保持显示，不适用的配置置灰；已有兼容配置继续保留。', effect: '基础页维护默认值和条件状态；联动页直接维护值、选项和事件；子页面维护子表单、参数传递和子列表；数据与扩展维护引用选择、数据源和组件扩展。', publish: '分组和编辑方式不改变草稿、发布快照或运行时优先级。' },
+                { field: '节点属性页签', meaning: '属性按“基础与布局、数据校验、联动与事件、子页面”组织。', defaultLimit: '普通字段已有加载后或提交前绑定时，才显示维护入口。', effect: '基础与布局维护默认值、条件状态和组件配置。联动与事件维护值、选项、事件及已有加载与提交处理。子页面维护子表单、子表数据源、参数传递和子列表。', publish: '各配置随草稿保存，发布后生效。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
                 { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定；历史 RELATION 缺少 bindingRef 时先迁移修复，普通编辑不会自动解除绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
                 { field: '统一栅格布局', meaning: '新表单按节点 gridSpan 排列；历史垂直表单保持每项 24 格，历史水平表单保持每项 12 格。', defaultLimit: 'gridSpan 范围 1–24；兼容历史 span。', effect: '显式 GRID 容器优先决定其子节点排列，设计画布、草稿预览和发布运行时使用同一规则。', publish: '修改跨度后检查窄屏、长标签及嵌套 GRID。' },
@@ -910,9 +910,9 @@ export default {
               title: '节点类型可用 Usage',
               columns: optionColumns,
               rows: [
-                { option: 'FIELD', meaning: 'FIELD_OPTIONS、FIELD_DEFAULT，以及已有的 AFTER_LOAD、BEFORE_SUBMIT。', notes: '新建加载后和提交前处理请使用表单事件的“字段默认事件”分组。已有绑定可在原字段维护。' },
-                { option: 'SUB_FORM', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向子记录集合加载和子表生命周期；不能选择 FIELD_OPTIONS 或 FIELD_DEFAULT。' },
-                { option: 'REPEATER', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向一对多明细行；分页、最大行数和失败策略必须受平台限制。' },
+                { option: 'FIELD', meaning: 'FIELD_OPTIONS、FIELD_DEFAULT，以及已有的 AFTER_LOAD、BEFORE_SUBMIT。', notes: '在“表单事件 → 字段默认事件”新增加载后和提交前处理。已有绑定在字段的“联动与事件 → 已有加载与提交处理”维护。' },
+                { option: 'SUB_FORM', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '在“子页面 → 子表数据源”维护。无子行时可通过接口补充初始行。' },
+                { option: 'REPEATER', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '在“子页面 → 子表数据源”维护初始明细行、加载后和提交前处理。' },
                 { option: '表单级', meaning: '在表单事件中配置打开表单、加载后和提交前处理。', notes: '各步骤随表单发布生效。' }
               ]
             },

@@ -1,69 +1,5 @@
 <template>
   <div class="node-data-settings">
-    <p v-if="isFieldNode && activeNodeSettingsTab === 'extension'" class="form-tip">
-      加载后处理和提交前处理在「表单设置 → 表单事件 → 字段默认事件」中配置。
-    </p>
-    <SettingsSection
-      v-if="!isFieldNode || canConfigureSelectedNodeDataSource"
-      :disabled="!canConfigureSelectedNodeDataSource"
-      disabled-reason="当前节点不支持数据源绑定"
-      v-show="activeNodeSettingsTab === 'extension'"
-      title="数据源绑定"
-      :description="isFieldNode ? '维护当前字段已有的数据源绑定' : '按用途配置子表行数据、加载和提交处理'"
-    >
-      <template #summary>
-        <el-tag
-          size="small"
-          :type="selectedNodeDataSourceBindingCount ? 'success' : 'info'"
-        >
-          {{ selectedNodeDataSourceBindingCount
-            ? `${selectedNodeDataSourceBindingCount} 项`
-            : '未配置' }}
-        </el-tag>
-      </template>
-
-      <div class="data-source-usage-list">
-        <button
-          v-for="usage in availableNodeDataSourceUsages"
-          :key="usage.value"
-          type="button"
-          class="data-source-usage-row"
-          :class="{ active: selectedField.dataSourceUsage === usage.value }"
-          @click="selectNodeDataSourceUsage(usage.value)"
-        >
-          <span>{{ usage.label }}</span>
-          <el-tag
-            size="small"
-            :type="isNodeDataSourceUsageConfigured(usage.value) ? 'success' : 'info'"
-            effect="plain"
-          >
-            {{ isNodeDataSourceUsageConfigured(usage.value) ? '已配置' : '未配置' }}
-          </el-tag>
-        </button>
-      </div>
-
-      <SettingsCapability :disabled="!canEditSelectedDataSourceUsage" reason="请先选择当前节点支持的数据源用途">
-      <div class="data-source-editor-heading">
-        <strong>{{ selectedNodeDataSourceUsageLabel }}</strong>
-        <el-button
-          v-if="selectedField.interfaceExtensionId"
-          link
-          type="danger"
-          @click="clearSelectedNodeDataSourceBinding"
-        >
-          清除当前绑定
-        </el-button>
-      </div>
-      <FormNodeDataSourceBindingEditor
-        v-model:extension-id="selectedField.interfaceExtensionId"
-        v-model:input-mapping-text="selectedField.dataSourceInputMappingText"
-        v-model:output-mapping-text="selectedField.dataSourceOutputMappingText"
-        :interfaces="selectedNodeInterfaces"
-        :help="selectedDataSourceInterfaceHelp"
-      />
-      </SettingsCapability>
-    </SettingsSection>
-
     <SettingsSection v-if="isSubFormField(selectedField)" v-show="activeNodeSettingsTab === 'basic'" title="显示属性" :default-expanded="true" primary>
       <FormContentDisplaySettings
         :model-value="selectedField.fieldLabel"
@@ -165,6 +101,67 @@
         :parent-fields="entityFields"
         :child-ref-field-code="selectedField.childRefFieldCode || selectedField.refFieldCode || ''"
       />
+    </SettingsSection>
+
+    <SettingsSection
+      v-if="canConfigureSelectedNodeDataSource"
+      v-show="activeNodeSettingsTab === (isFieldNode ? 'interaction' : 'child-pages')"
+      :title="isFieldNode ? '已有加载与提交处理' : '子表数据源'"
+      :description="isFieldNode
+        ? '新增规则在「表单设置 → 表单事件 → 字段默认事件」中配置'
+        : '子表没有行时可通过接口补充初始行，也可配置加载后和提交前处理'"
+    >
+      <template #summary>
+        <el-tag
+          size="small"
+          :type="selectedNodeDataSourceBindingCount ? 'success' : 'info'"
+        >
+          {{ selectedNodeDataSourceBindingCount
+            ? `${selectedNodeDataSourceBindingCount} 项`
+            : '未配置' }}
+        </el-tag>
+      </template>
+
+      <div class="data-source-usage-list">
+        <button
+          v-for="usage in availableNodeDataSourceUsages"
+          :key="usage.value"
+          type="button"
+          class="data-source-usage-row"
+          :class="{ active: selectedField.dataSourceUsage === usage.value }"
+          @click="selectNodeDataSourceUsage(usage.value)"
+        >
+          <span>{{ usage.label }}</span>
+          <el-tag
+            size="small"
+            :type="isNodeDataSourceUsageConfigured(usage.value) ? 'success' : 'info'"
+            effect="plain"
+          >
+            {{ isNodeDataSourceUsageConfigured(usage.value) ? '已配置' : '未配置' }}
+          </el-tag>
+        </button>
+      </div>
+
+      <SettingsCapability :disabled="!canEditSelectedDataSourceUsage" reason="请先选择当前节点支持的数据源用途">
+        <div class="data-source-editor-heading">
+          <strong>{{ selectedNodeDataSourceUsageLabel }}</strong>
+          <el-button
+            v-if="canEditSelectedDataSourceUsage && (isFieldNode || selectedField.interfaceExtensionId)"
+            link
+            type="danger"
+            @click="clearSelectedNodeDataSourceBinding"
+          >
+            清除当前绑定
+          </el-button>
+        </div>
+        <FormNodeDataSourceBindingEditor
+          v-model:extension-id="selectedField.interfaceExtensionId"
+          v-model:input-mapping-text="selectedField.dataSourceInputMappingText"
+          v-model:output-mapping-text="selectedField.dataSourceOutputMappingText"
+          :interfaces="selectedNodeInterfaces"
+          :help="selectedDataSourceInterfaceHelp"
+        />
+      </SettingsCapability>
     </SettingsSection>
 
     <SettingsSection

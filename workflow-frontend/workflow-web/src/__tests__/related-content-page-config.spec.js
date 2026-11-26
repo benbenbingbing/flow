@@ -112,7 +112,7 @@ assert.ok(publishDialog.includes('dependencyVersionLabel'), '发布依赖缺少�
 
 assert.doesNotMatch(dialog, /需要随主表单一起保存|新增记录设置|新增初值|目标内容独立保存|最终权限如何确定|actionSettings/, '关联操作只保留动作选项，移除说明和专属初值设置')
 assert.doesNotMatch(dialog, /title="页面扩展"|使用扩展接口|availableInterfaces|增加操作接口/, '关联属性不可再配置接口或展示覆盖')
-assert.ok(formDesigner.includes("availableRelatedContentSettingsTabs = availableNodeSettingsTabs.filter(tab => tab.value !== 'extension')"), '表单关联内容属性不再提供数据与扩展页签')
+assert.doesNotMatch(formDesigner, /label: '数据与扩展'/, '表单节点与关联内容的属性抽屉均不再提供数据与扩展页签')
 assert.ok(dialog.includes('PageParameterMappingEditor'), '子页面仍可配置统一参数传递')
 assert.ok(formDesigner.includes('FormRelationPicker'), '真正主从编辑保留实体关系入口')
 assert.ok(formRuntime.includes('@patch-form="applyFieldPatch"'), '实体引用字段的回填仍需经过表单联动')

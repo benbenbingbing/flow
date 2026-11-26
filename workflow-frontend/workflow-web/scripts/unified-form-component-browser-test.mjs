@@ -252,7 +252,8 @@ try{
  assert.equal(JSON.parse(cascade.dataSourceBindingsDocument).FIELD_OPTIONS.extensionId,'FIELD_OPTIONS')
 
  await selectSetting('组件类型','数据选择器')
- await clickText('数据与扩展','[role="tab"]')
+ assert.equal(await evaluate('document.querySelectorAll(".node-settings-tabs [role=tab]").length'),4)
+ await clickText('联动与事件','[role="tab"]')
  assert.equal(await evaluate('document.querySelector(".node-data-settings .data-picker-settings")'),null)
  await clickText('基础与布局','[role="tab"]')
  await openConfig()
@@ -282,10 +283,13 @@ try{
  // 单选和多选共用已发布列表的参数契约，取消后保留旧值，确认后通过节点接口保存。
  for (const [id, title] of [['design-single', '实体记录单选'], ['design-multiple', '实体记录多选']]) {
   await openNode(id)
-  await clickText('数据与扩展','[role="tab"]')
+  await clickText('联动与事件','[role="tab"]')
   assert.doesNotMatch(await evaluate('document.querySelector(".node-data-settings").innerText'),/引用选择配置|列表参数映射/)
   const usageLabels=await evaluate('[...document.querySelectorAll(".data-source-usage-row > span:first-child")].map(e=>e.textContent.trim())')
   assert.deepEqual(usageLabels,id==='design-single'?['加载后处理']:[])
+  if(id==='design-single'){
+   assert.match(await evaluate('document.querySelector(".node-data-settings").innerText'),/已有加载与提交处理/)
+  }
   await clickText('基础与布局','[role="tab"]')
   await openConfig()
   assert.match(await evaluate(`document.querySelector('${componentConfig}').closest('[role="dialog"]').innerText`),new RegExp(title+'配置'))
@@ -315,6 +319,21 @@ try{
  }
  console.log('entity record configuration modal checks passed: single and multiple, cancel, parameter mapping save and reopen')
 
+ // 普通字段迁移入口后保留映射，保存清除时不得重新生成未配置的用途。
+ await openNode('design-single')
+ await clickText('联动与事件','[role="tab"]')
+ await clickText('已有加载与提交处理','.node-data-settings .settings-section__heading strong')
+ await click('.node-data-settings .property-advanced summary')
+ await enterValue('.node-data-settings textarea[aria-label="输入映射"]','{"recordId":"data.single"}')
+ await clickText('保存当前属性','.node-property-actions button')
+ const readLegacyBinding = () => evaluate(`JSON.parse(componentTest.state.designerNodes.find(node=>node.id==='design-single').dataSourceBindingsDocument || '{}').AFTER_LOAD ?? null`)
+ assert.deepEqual((await readLegacyBinding()).inputMapping,{recordId:'data.single'})
+ await clickText('清除当前绑定','.node-data-settings button')
+ assert.equal(await evaluate('document.querySelectorAll(".data-source-usage-row").length'),0)
+ await clickText('保存当前属性','.node-property-actions button')
+ assert.equal(await readLegacyBinding(),null)
+ await closeNode()
+
  // 三种值联动方式共用一个控件，切换时保留输入，保存时仅保留选中的规则。
  const linkage = '.node-value-linkage'
  const formulaInput = linkage + ' textarea[aria-label="计算公式"]'
@@ -327,11 +346,8 @@ try{
   await openNode()
   await clickText('联动与事件','[role="tab"]')
  }
- await openNode()
- await clickText('数据与扩展','[role="tab"]')
+ await openLinkage()
  assert.equal(await evaluate('document.querySelectorAll(".data-source-usage-row").length'),0)
- assert.match(await evaluate('document.querySelector(".node-data-settings").innerText'),/表单事件 → 字段默认事件/)
- await clickText('联动与事件','[role="tab"]')
  assert.equal(await selectedLinkageMode(),'none')
  assert.doesNotMatch(await evaluate('document.querySelector(".node-value-linkage").innerText'),/计算接口|源字段|启用公式计算|启用字段映射/)
  await chooseLinkageMode('字段映射')
