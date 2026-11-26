@@ -18,8 +18,8 @@ function readDraft(field) {
   return draft
 }
 
-export function getFieldLinkageDraftError(field) {
-  return getFieldValueLinkageError(readDraft(field).model)
+export function getFieldLinkageDraftError(field, options) {
+  return getFieldValueLinkageError(readDraft(field).model, options)
 }
 
 /** 配置随节点草稿保存，切换字段和页签不会重置未完成的联动输入。 */

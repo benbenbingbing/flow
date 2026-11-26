@@ -1,7 +1,7 @@
 <template>
   <div class="linkage-condition-rule">
-    <div class="rule-header">
-      <div>
+    <div class="rule-header" :class="{ 'rule-header--inline': inlineDescription }">
+      <div class="rule-heading">
         <div class="rule-title">{{ title }}</div>
         <div class="rule-description">{{ description }}</div>
       </div>
@@ -30,6 +30,7 @@
 
       <template v-else>
         <el-alert
+          v-if="showGroupTip"
           title="条件组可选择“全部满足”或“任一满足”，组内可以继续添加子条件组。"
           type="info"
           :closable="false"
@@ -54,6 +55,8 @@ import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
 defineProps({
   title: { type: String, required: true },
   description: { type: String, default: '' },
+  inlineDescription: Boolean,
+  showGroupTip: { type: Boolean, default: true },
   enabled: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   root: { type: Object, required: true },
@@ -101,6 +104,32 @@ const operatorOptions = [
   color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.rule-header--inline {
+  align-items: center;
+}
+
+.rule-header--inline .rule-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 20px;
+  min-width: 0;
+}
+
+.rule-header--inline .rule-title {
+  white-space: nowrap;
+}
+
+.rule-header--inline .rule-description {
+  min-width: 0;
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+
+.rule-header--inline .el-switch {
+  flex-shrink: 0;
 }
 
 .group-tip,

@@ -102,12 +102,13 @@ watch(() => [props.form.id, props.form.configHash, props.context.initializationK
 async function initialize() {
   const version = ++generation; loading.value = true; loadError.value = ''
   try {
-    if (!props.readonly && props.mode !== 'view') applyRuntimeFieldDefaults(record.value, props.form, props.entityFields)
+    const isNew = props.context.row?.isNew ?? (props.mode === 'create')
+    if (!props.readonly && props.mode !== 'view') applyRuntimeFieldDefaults(record.value, props.form, props.entityFields, { isNew })
     if (props.dataSourceRuntime) {
       await props.dataSourceRuntime.initialize({ form: props.form, fields: fields.value, nodes: projection.value.nodes, record: record.value, recordId: props.context.recordId || record.value.id, initializationKey: props.context.initializationKey, runtimeContext: { ...props.context, mode: props.mode, readonly: props.readonly, rootParentId: props.rootParentId } })
-    } else if (!props.readonly && (props.context.row?.isNew ?? (props.mode === 'create'))) {
+    } else if (!props.readonly && isNew) {
       // 部分表单入口没有接口运行时，公式初值仍随记录初始化填入。
-      applyInitialFormulaDefaults(fields.value, record.value)
+      applyInitialFormulaDefaults(fields.value, record.value, props.context)
     }
   } catch (cause) { if (version === generation) loadError.value = cause.message || '表单初始化失败' }
   finally { if (version === generation) loading.value = false }

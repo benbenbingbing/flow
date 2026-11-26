@@ -4,6 +4,7 @@ import { isFlowConditionGroupComplete, parseFlowConditionConfig } from '@flow/wo
 import { getLinkageExpressionError } from '@flow/workflow-core/utils/calcEngine'
 
 const VALUE_KEYS = ['valueMapping', 'valueFormula', 'valueFormulaMode', 'calculationFormula', 'calculationPrecision', 'calculationEditable']
+const INITIAL_FORMULA_KEYS = VALUE_KEYS.filter(key => key !== 'valueMapping')
 const clone = value => JSON.parse(JSON.stringify(value))
 
 /** 只替换当前编辑器负责的键，保留状态条件和其他组件参数，移除废弃接口规则。 */
@@ -34,21 +35,36 @@ export function fieldValueLinkageSignature(field) {
   return JSON.stringify([...VALUE_KEYS, 'optionsLinkage'].map(key => rules[key]))
 }
 
+/** 旧初值从联动规则读取，编辑联动时将它保存在独立属性，避免覆盖初值。 */
+export function readLegacyInitialFormula(field) {
+  const rules = LinkageEngine.getFieldLinkageRules(field)
+  return rules.valueFormulaMode === 'initial' ? rules.calculationFormula ?? rules.valueFormula ?? '' : ''
+}
+
+export function clearLegacyInitialFormula(field) {
+  if (LinkageEngine.getFieldLinkageRules(field).valueFormulaMode === 'initial') {
+    patchFieldLinkageRules(field, INITIAL_FORMULA_KEYS, {})
+  }
+}
+
 /** 旧计算规则在值联动中编辑，保留原键和精度等参数；打开面板本身不迁移数据。 */
 export function readFieldValueLinkage(field) {
   const rules = LinkageEngine.getFieldLinkageRules(field)
-  const calculation = Object.hasOwn(rules, 'calculationFormula')
+  const isReactive = rules.valueFormulaMode !== 'initial'
+  const calculation = isReactive && Object.hasOwn(rules, 'calculationFormula')
+  const valueFormula = isReactive && Object.hasOwn(rules, 'valueFormula')
   return {
-    valueEnabled: calculation || Object.hasOwn(rules, 'valueFormula') || !!rules.valueMapping,
+    valueEnabled: calculation || valueFormula || !!rules.valueMapping,
     // 历史运行时最后应用计算字段，所以同时存在旧规则时展示实际生效的公式。
-    sourceType: calculation || !rules.valueMapping && Object.hasOwn(rules, 'valueFormula') ? 'formula' : 'field',
+    sourceType: calculation || !rules.valueMapping && valueFormula ? 'formula' : 'field',
     formulaKey: calculation ? 'calculationFormula' : 'valueFormula',
-    formula: rules.calculationFormula ?? rules.valueFormula ?? '',
-    formulaMode: rules.valueFormulaMode === 'initial' ? 'initial' : 'reactive',
+    formula: isReactive ? rules.calculationFormula ?? rules.valueFormula ?? '' : '',
     sourceField: rules.valueMapping?.sourceField || '',
     mappings: clone(rules.valueMapping?.rules || []),
     fallback: clone(rules.valueMapping?.fallback ?? null),
     optionsEnabled: !!rules.optionsLinkage,
+    optionsMode: rules.optionsLinkage?.mode || 'filter',
+    parameterMappings: Array.isArray(rules.optionsLinkage?.parameterMappings) ? clone(rules.optionsLinkage.parameterMappings) : [],
     dependsOn: rules.optionsLinkage?.dependsOn || '',
     filters: Object.entries(rules.optionsLinkage?.filterRules || {}).map(([dependValue, allowedOptions]) => ({ dependValue, allowedOptions: clone(allowedOptions) }))
   }
@@ -57,11 +73,14 @@ export function readFieldValueLinkage(field) {
 /** 将一组内联输入同步到节点草稿；值和选项分别更新，互不清空。 */
 export function updateFieldValueLinkage(field, model, group) {
   if (group === 'options') {
-    patchFieldLinkageRules(field, ['optionsLinkage'], model.optionsEnabled ? {
-      optionsLinkage: { dependsOn: model.dependsOn, filterRules: Object.fromEntries(model.filters.map(row => [row.dependValue, row.allowedOptions])) }
-    } : {})
+    const optionsLinkage = model.optionsMode === 'query'
+      ? { mode: 'query', parameterMappings: model.parameterMappings }
+      : { dependsOn: model.dependsOn, filterRules: Object.fromEntries(model.filters.map(row => [row.dependValue, row.allowedOptions])) }
+    patchFieldLinkageRules(field, ['optionsLinkage'], model.optionsEnabled ? { optionsLinkage } : {})
     return
   }
+  const initialFormula = readLegacyInitialFormula(field)
+  if (initialFormula && field.defaultFormula == null) field.defaultFormula = initialFormula
   const patch = {}
   if (model.valueEnabled) {
     if (model.sourceType === 'field') {
@@ -69,7 +88,6 @@ export function updateFieldValueLinkage(field, model, group) {
       if (model.fallback) patch.valueMapping.fallback = model.fallback
     } else {
       patch[model.formulaKey] = normalizeFormulaReferences(model.formula)
-      if (model.formulaMode === 'initial') patch.valueFormulaMode = 'initial'
       if (model.formulaKey === 'calculationFormula') {
         const current = LinkageEngine.getFieldLinkageRules(field)
         for (const key of ['calculationPrecision', 'calculationEditable']) {
@@ -92,19 +110,28 @@ function normalizeFormulaReferences(formula) {
 }
 
 /** 保存前检查未完成或互相覆盖的映射，空字符串本身可作为合法映射值。 */
-export function getFieldValueLinkageError(model) {
+export function getFieldValueLinkageError(model, { querySourceAvailable = true, fieldCodes } = {}) {
   if (model.valueEnabled) {
     if (model.sourceType === 'formula') {
-      if (!model.formula.trim()) return '请填写值联动的计算公式或关闭值联动'
+      if (!model.formula.trim()) return '请填写公式或关闭公式计算'
       const error = getLinkageExpressionError(model.formula)
       if (error) return '的计算公式有误（' + error + '）'
     }
     if (model.sourceType === 'field') {
-      if (!model.sourceField || (!model.mappings.length && !model.fallback)) return '请填写值联动的源字段和映射规则，或关闭值联动'
+      if (!model.sourceField || (!model.mappings.length && !model.fallback)) return '请填写源字段和映射规则，或关闭字段映射'
       if (new Set(model.mappings.map(row => String(row.sourceValue))).size !== model.mappings.length) return '值联动的源值不能重复'
     }
   }
   if (model.optionsEnabled) {
+    if (model.optionsMode === 'query') {
+      if (!querySourceAvailable) return '请绑定实体只读选项接口后再配置选项联动查询'
+      const mappings = model.parameterMappings
+      if (!mappings.length || mappings.some(row => !row?.fieldCode || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(row.parameter || ''))) {
+        return '请配置选项联动的依赖字段和参数名，参数名使用字母、数字或下划线，且以字母或下划线开头'
+      }
+      if (fieldCodes && mappings.some(row => !fieldCodes.includes(row.fieldCode))) return '选项联动引用了不可用的依赖字段'
+      return new Set(mappings.map(row => row.parameter)).size === mappings.length ? '' : '选项联动的参数名不能重复'
+    }
     if (!model.dependsOn || !model.filters.length) return '请填写选项联动的依赖字段和过滤规则，或关闭选项联动'
     if (new Set(model.filters.map(row => String(row.dependValue))).size !== model.filters.length) return '选项联动的依赖值不能重复'
   }

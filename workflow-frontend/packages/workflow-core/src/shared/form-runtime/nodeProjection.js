@@ -53,6 +53,8 @@ export function resolveRuntimeNodeField(node, fields = [], nestedNodes = []) {
     isDisplayOnly: displayOnly,
     placeholder: nodeProps.placeholder ?? linked?.placeholder,
     defaultValue: nodeProps.defaultValue ?? linked?.defaultValue,
+    defaultValueMode: nodeProps.defaultValueMode,
+    defaultFormula: nodeProps.defaultFormula,
     isRequired: nodeProps.required === true ? 1 : (linked?.isRequired || 0),
     isReadonly: nodeProps.readonly === true ? 1 : (linked?.isReadonly || 0),
     isHidden: nodeProps.hidden === true ? 1 : (linked?.isHidden || 0),

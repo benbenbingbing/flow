@@ -7,6 +7,8 @@
           :key="definition.name"
           :title="definition.title"
           :description="definition.description"
+          inline-description
+          :show-group-tip="false"
           :enabled="states[definition.name].enabled"
           :disabled="disabled"
           :root="states[definition.name].root"
@@ -56,6 +58,16 @@ const { states, persist, setEnabled, resetCondition } = useFieldStateConditions(
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.node-state-conditions :deep(.rule-title),
+.node-state-conditions :deep(.flow-condition-group.depth-1 > .group-header > .group-title > span:first-child) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.node-state-conditions :deep(.flow-condition-group.depth-1) {
+  margin-top: 12px;
 }
 
 /* 抽屉宽度与浏览器视口不同，嵌套条件组必须按窄面板换行，不能依赖页面媒体查询。 */

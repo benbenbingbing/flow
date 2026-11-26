@@ -16,6 +16,11 @@ public final class PublishedFormRecordView {
      */
     private PublishedFormRecordView() {}
 
+    /** 判断字段是否由系统维护，供发布表单的参数初始化和记录合并保护这些字段。 */
+    public static boolean isSystemManagedField(String code) {
+        return SYSTEM_MANAGED_FIELDS.contains(code);
+    }
+
     /**
      * 把 DTO 形态的 data 与系统字段展平；系统字段以顶层可信记录为准。
      *
@@ -40,7 +45,7 @@ public final class PublishedFormRecordView {
     public static Map<String, Object> merge(Map<String, Object> existing, Map<String, Object> patch) {
         Map<String, Object> result = flatten(existing);
         flatten(patch).forEach((key, value) -> {
-            if (!SYSTEM_MANAGED_FIELDS.contains(key)) result.put(key, value);
+            if (!isSystemManagedField(key)) result.put(key, value);
         });
         return result;
     }

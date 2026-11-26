@@ -49,6 +49,34 @@ test('ALL fetches once, CHILDREN merges concurrent requests and restores readonl
   assert.equal(count, 1)
 })
 
+test('interface node fields map at every level and keep the selected codes and option flags', async () => {
+  const config = readCascaderConfig({ componentProps: JSON.stringify({
+    cascaderSource: 'INTERFACE',
+    cascaderNodeFields: { value: 'id', label: 'name', children: 'nodes', disabled: 'blocked' }
+  }) })
+  const response = [{ id: 1, name: '甲省', nodes: [{ id: '1', name: '甲市', blocked: true }] }]
+  const controller = runtime({ ...config, loadOptions: () => response })
+  const result = await controller.ensurePath([1, '1'])
+  assert.deepEqual(result.labels, ['甲省', '甲市'])
+  assert.deepEqual(result.nodes.map(node => node.value), [1, '1'])
+  assert.equal(result.nodes.at(-1).disabled, true)
+  assert.equal(result.nodes.at(-1).leaf, true)
+  assert.throws(() => normalizeCascaderOptions([{ id: 1, name: '甲省', nodes: null }], 'ALL', config.nodeFields), /数组/)
+})
+
+test('lazy interface node fields map the leaf flag and preserve standard names for unconfigured fields', async () => {
+  const calls = []
+  const nodeFields = { value: 'id', leaf: 'isLeaf' }
+  const controller = runtime({ source: 'INTERFACE', loadMode: 'CHILDREN', nodeFields, loadOptions: async input => {
+    calls.push(input.parentValue)
+    return input.level === 0 ? [{ id: 'a', label: '甲省', isLeaf: false }] : [{ id: 'b', label: '甲市', isLeaf: true }]
+  } })
+  const result = await controller.ensurePath(['a', 'b'], { requireLeaf: true })
+  assert.deepEqual(calls, [null, 'a'])
+  assert.deepEqual(result.labels, ['甲省', '甲市'])
+  assert.throws(() => normalizeCascaderOptions([{ id: 'a', label: '甲省', isLeaf: 'false' }], 'CHILDREN', nodeFields), /leaf/)
+})
+
 test('failure remains retryable and cannot turn a non-leaf into a selectable leaf', async () => {
   let attempts = 0
   const controller = runtime({ source: 'INTERFACE', loadMode: 'CHILDREN', loadOptions: async ({ level }) => {

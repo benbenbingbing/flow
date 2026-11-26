@@ -32,7 +32,6 @@ public final class EntityFormNodePropertyPolicy {
             UiDataSourceUsages.FIELD_PICKER_QUERY,
             UiDataSourceUsages.FIELD_PICKER_RESOLVE,
             UiDataSourceUsages.FIELD_DEFAULT,
-            UiDataSourceUsages.FIELD_COMPUTE,
             UiDataSourceUsages.AFTER_LOAD,
             UiDataSourceUsages.BEFORE_SUBMIT);
     private static final Set<String> SUB_FORM_DATA_SOURCE_USAGES = Set.of(
@@ -110,7 +109,7 @@ public final class EntityFormNodePropertyPolicy {
     private static final Set<String> FIELD_PROPS = Set.of(
             "fieldId", "fieldCode", "fieldName", "label", "fieldType",
             "componentType",
-            "placeholder", "defaultValue", "gridSpan",
+            "placeholder", "defaultValue", "defaultValueMode", "defaultFormula", "gridSpan",
             "required", "readonly", "hidden", "componentProps");
     private static final Set<String> SUB_FORM_PROPS = Set.of(
             "fieldId", "fieldCode", "fieldName", "label", "fieldType",
@@ -715,6 +714,7 @@ public final class EntityFormNodePropertyPolicy {
         requireBoolean(props, "required");
         requireBoolean(props, "readonly");
         requireBoolean(props, "hidden");
+        validateFieldDefault(props);
         String fieldType = normalize(text(props.get("fieldType")));
         String componentType = String.valueOf(
                 props.getOrDefault("componentType", ""))
@@ -737,6 +737,25 @@ public final class EntityFormNodePropertyPolicy {
         }
         if ("sub_list".equals(componentType)) {
             validateSubListConfig(props);
+        }
+    }
+
+    /** 区分历史默认值和显式来源，防止表单发布无值的固定配置或未完成的公式。 */
+    private static void validateFieldDefault(Map<String, Object> props) {
+        requireText(props, "defaultFormula", 4000);
+        Object mode = props.get("defaultValueMode");
+        if (mode == null) {
+            return;
+        }
+        if (!(mode instanceof String source)
+                || !Set.of("inherit", "none", "fixed", "formula", "dataSource").contains(source)) {
+            throw new IllegalArgumentException("默认值来源无效");
+        }
+        if ("formula".equals(source) && !StringUtils.hasText(text(props.get("defaultFormula")))) {
+            throw new IllegalArgumentException("请填写默认值公式");
+        }
+        if ("fixed".equals(source) && (props.get("defaultValue") == null || "".equals(props.get("defaultValue")))) {
+            throw new IllegalArgumentException("请填写固定默认值");
         }
     }
 

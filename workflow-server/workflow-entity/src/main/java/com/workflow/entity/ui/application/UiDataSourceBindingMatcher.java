@@ -660,6 +660,8 @@ public class UiDataSourceBindingMatcher {
             String sourceId,
             String operationCode) {
         if (configured instanceof Map<?, ?> map) {
+            // 停用的生命周期步骤仍保留在发布快照中供编辑，但不能为接口请求提供授权。
+            if (Boolean.FALSE.equals(map.get("enabled"))) return false;
             return matchesBinding(map, sourceId, operationCode)
                     || map.values().stream()
                             .anyMatch(item ->

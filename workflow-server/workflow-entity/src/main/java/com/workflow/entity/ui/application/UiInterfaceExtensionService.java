@@ -84,7 +84,6 @@ public class UiInterfaceExtensionService {
                         UiDataSourceUsages.FIELD_PICKER_QUERY,
                         UiDataSourceUsages.FIELD_PICKER_RESOLVE,
                         UiDataSourceUsages.FIELD_DEFAULT,
-                        UiDataSourceUsages.FIELD_COMPUTE,
                         UiDataSourceUsages.SUBFORM_ROWS,
                         UiDataSourceUsages.LIST_QUERY,
                         UiDataSourceUsages.LIST_COLUMN,
@@ -2510,10 +2509,14 @@ public class UiInterfaceExtensionService {
          * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
          */
         private void requireUsage(String usage) {
-                String normalized = normalize(usage);
-                if (!USAGES.contains(normalized)) {
+                if (!supportsUsage(normalize(usage))) {
                         throw new IllegalArgumentException("不支持的数据源使用位置: " + usage);
                 }
+        }
+
+        /** 候选接口目录与运行时共用此校验；调用方传入已归一化的位置编码。 */
+        static boolean supportsUsage(String normalizedUsage) {
+                return USAGES.contains(normalizedUsage);
         }
 
         /**

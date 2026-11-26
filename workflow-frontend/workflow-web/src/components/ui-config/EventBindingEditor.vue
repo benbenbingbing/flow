@@ -110,7 +110,8 @@
       </el-table-column>
       <el-table-column v-if="!entityOwnerContext" label="继承方式" :width="compact ? 112 : 130">
         <template #default="{ row }">
-          <el-tag :type="inheritanceType(row.inheritanceMode)" effect="plain">
+          <span v-if="formLifecycleEvents.includes(row.eventCode)">当前表单</span>
+          <el-tag v-else :type="inheritanceType(row.inheritanceMode)" effect="plain">
             {{ inheritanceLabel(row.inheritanceMode, row) }}
           </el-tag>
         </template>
@@ -193,7 +194,7 @@
       :close-on-click-modal="false"
     >
       <el-form :model="editor" label-width="96px">
-        <div class="base-grid" :class="{ 'is-entity': entityOwnerContext }">
+        <div class="base-grid" :class="{ 'is-entity': entityOwnerContext || lifecycleSelected }">
           <el-form-item label="触发事件" required>
             <el-select
               v-model="editor.eventCode"
@@ -224,7 +225,7 @@
             </el-select>
             <div class="event-scope-hint">{{ eventScopeHint }}</div>
           </el-form-item>
-          <el-form-item v-if="!entityOwnerContext" label="继承方式" label-width="112px" required>
+          <el-form-item v-if="!entityOwnerContext && !lifecycleSelected" label="继承方式" label-width="112px" required>
             <template #label>
               <ConfigHelpLabel
                 label="继承方式"
@@ -304,7 +305,7 @@
             <div>
               <div class="section-title">执行步骤</div>
               <div class="secondary-text">
-                {{ formButtonEventSelected
+                {{ lifecycleSelected ? '各步骤按列表顺序执行，失败时停止。' : formButtonEventSelected
                   ? '按前置处理、主处理、后置处理三个阶段执行；表单自定义按钮本身没有平台默认动作。'
                   : selectedEventDefault.replaceable
                     ? '前置接口先执行，平台默认处理居中，后置接口最后执行。'
@@ -395,7 +396,7 @@
             </div>
 
             <div class="step-grid">
-              <el-form-item :label="stepStrategyFieldLabel">
+              <el-form-item v-if="!lifecycleSelected" :label="stepStrategyFieldLabel">
                 <template #label>
                   <ConfigHelpLabel
                     :label="stepStrategyFieldLabel"
@@ -419,7 +420,7 @@
                 <template #label>
                   <ConfigHelpLabel
                     label="扩展接口"
-                    help-key="uiEvent.extensionInterface"
+                    :help-key="lifecycleSelected ? 'entityForm.interfaceExtension' : 'uiEvent.extensionInterface'"
                     :content="extensionInterfaceHelp(step)"
                   />
                 </template>
@@ -428,7 +429,7 @@
                   @change="step.legacyListQuery = false"
                   filterable
                   clearable
-                  placeholder="留空表示只做字段映射"
+                  :placeholder="lifecycleSelected ? '请选择扩展接口' : '留空表示只做字段映射'"
                 >
                   <el-option
                     v-for="item in interfaces"
@@ -450,7 +451,7 @@
                   </el-option>
                 </el-select>
               </el-form-item>
-              <el-form-item label="失败策略">
+              <el-form-item v-if="!lifecycleSelected" label="失败策略">
                 <template #label>
                   <ConfigHelpLabel
                     label="失败策略"
@@ -464,6 +465,11 @@
                 </el-select>
               </el-form-item>
             </div>
+
+            <el-form-item v-if="editor.eventCode === 'BEFORE_SUBMIT' && lifecycleSelected" label="预校验">
+              <el-checkbox v-model="step.sideEffectFree" @change="enabled => { if (!enabled) step.clientPrevalidate = false }">无副作用</el-checkbox>
+              <el-checkbox v-model="step.clientPrevalidate" :disabled="!step.sideEffectFree">浏览器预校验</el-checkbox>
+            </el-form-item>
 
             <EntityLookupStepEditor
               v-if="isEntityLookupStep(step)"
@@ -485,12 +491,13 @@
                 <template #title>
                   <ConfigHelpLabel
                     label="输入参数映射"
-                    help-key="uiEvent.inputMapping"
+                    :help-key="lifecycleSelected ? 'uiEvent.lifecycleInputMapping' : 'uiEvent.inputMapping'"
                   />
                 </template>
                 <EventMappingRows
                   v-model="step.inputRows"
                   mode="input"
+                  :path-mapping="lifecycleSelected"
                   :field-options="fieldOptions"
                 />
               </el-collapse-item>
@@ -498,12 +505,13 @@
                 <template #title>
                   <ConfigHelpLabel
                     label="结果回填"
-                    help-key="uiEvent.outputMapping"
+                    :help-key="lifecycleSelected ? 'uiEvent.lifecycleOutputMapping' : 'uiEvent.outputMapping'"
                   />
                 </template>
                 <EventMappingRows
                   v-model="step.outputRows"
                   mode="output"
+                  :path-mapping="lifecycleSelected"
                   :field-options="isEntityLookupStep(step) ? lookupTargetFields : fieldOptions"
                   :source-options="isEntityLookupStep(step) ? step.lookupFields || [] : null"
                 />
@@ -570,6 +578,8 @@
                   >
                     <el-option label="新增" value="create" />
                     <el-option label="编辑" value="edit" />
+                    <el-option v-if="editor.eventCode === 'AFTER_LOAD'" label="查看" value="view" />
+                    <el-option v-if="lifecycleSelected" label="审批" value="approve" />
                   </el-select>
                   <el-input
                     v-else-if="!['exists', 'truthy'].includes(step.conditionOperator)"
@@ -624,14 +634,15 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
 import EntityLookupStepEditor from './EntityLookupStepEditor.vue'
 import { eventConditionPathGroups } from './eventConditionPaths'
-import { getFormById } from '@/api/entityForm'
+import { getFormById, patchFormMetadata } from '@/api/entityForm'
+import { formLifecycleEvents, formLifecycleRows, updateFormLifecycleBindings } from './formLifecycleEventModel.js'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
 import EventDefaultProcessingHelp from './EventDefaultProcessingHelp.vue'
 import { getEventDefaultProcessing as platformDefaultHelp } from './uiEventDefaultProcessing'
 import { getFormFieldComponentDescriptor } from '@/extensions/core/registries/formFieldRegistry.js'
 import { fieldEventDisabledReason } from './uiFieldEventCapabilities'
-import { getConfigFieldHelp } from '@/shared/config-field-help'
+import { getConfigFieldHelp, getFormDataSourceInterfaceHelp } from '@/shared/config-field-help'
 import {
   eventGroupsForScope,
   eventsForScope
@@ -647,6 +658,7 @@ import { findEventBinding, isListButtonEvent, listEventTargets } from './listBut
 const props = defineProps({
   ownerType: { type: String, required: true },
   ownerId: { type: [String, Number], default: '' },
+  lifecycleForm: { type: Object, default: null },
   targetType: { type: String, default: 'OWNER' },
   targetKey: { type: [String, Number], default: '' },
   targetName: { type: String, default: '' },
@@ -659,7 +671,7 @@ const props = defineProps({
   buttonOptions: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['changed'])
+const emit = defineEmits(['changed', 'lifecycle-saved'])
 
 const eventLabels = {
   LIST_LOAD: '加载列表',
@@ -670,6 +682,8 @@ const eventLabels = {
   DATA_DELETE: '删除数据',
   DATA_BATCH_DELETE: '批量删除',
   FORM_OPEN: '打开表单',
+  AFTER_LOAD: '加载后处理',
+  BEFORE_SUBMIT: '提交前处理',
   FORM_SAVE: '保存表单',
   FORM_RESET: '重置表单',
   FIELD_CHANGE: '字段值变化',
@@ -742,10 +756,14 @@ watch([dialogVisible, () => props.ownerId, lookupOwner, hasEditableStep],
       // 加载不到参数选项时仍可输入已知路径，运行时按发布声明校验。
     }
   })
+const lifecycleSelected = computed(() =>
+  Boolean(props.lifecycleForm) && formLifecycleEvents.includes(editor.eventCode))
+const allBindings = computed(() => [...bindings.value, ...formLifecycleRows(props.lifecycleForm)])
+
 const selectedEventDefault = computed(() => platformDefaultHelp(editor.eventCode))
 
 function showFormModeChoices(step) {
-  return ['FORM_OPEN', 'FORM_RESET'].includes(editor.eventCode) && step.conditionPath === 'input.mode'
+  return (['FORM_OPEN', 'FORM_RESET'].includes(editor.eventCode) || lifecycleSelected.value) && step.conditionPath === 'input.mode'
     && ['equals', 'notEquals'].includes(step.conditionOperator)
 }
 
@@ -771,7 +789,7 @@ const listOwnerContext = computed(() =>
   && String(props.targetType).toUpperCase() === 'OWNER')
 
 const visibleBindings = computed(() =>
-  bindings.value.filter(row =>
+  allBindings.value.filter(row =>
     (String(row.targetType || 'OWNER').toUpperCase() === String(props.targetType).toUpperCase()
       && String(row.targetKey || '') === String(props.targetKey || ''))
     || (listOwnerContext.value && String(row.targetType).toUpperCase() === 'BUTTON'
@@ -798,7 +816,7 @@ const availableEventGroups = computed(() => {
     .map(group => ({
       ...group,
       events: group.events.filter(event =>
-        catalogEvents.has(event)
+        (formLifecycleEvents.includes(event) ? Boolean(props.lifecycleForm) : catalogEvents.has(event))
         && (!explicitEvents || explicitEvents.has(event)))
     }))
     .filter(group => group.events.length)
@@ -962,6 +980,7 @@ async function openCreate() {
   if (!canEdit.value || loading.value || !creatableEvents.value.length) return
   const sequence = loadSequence
   resetEditor({
+    expectedRevision: props.lifecycleForm?.revision ?? null,
     eventCode: creatableEvents.value.includes('ENTITY_SELECTED')
       ? 'ENTITY_SELECTED' : creatableEvents.value[0],
     steps: []
@@ -1091,6 +1110,7 @@ function operationContextLabel(contextType) {
 
 /** 按当前事件和本步骤已选接口即时生成说明，切换事件或接口后不沿用旧提示。 */
 function extensionInterfaceHelp(step) {
+  if (lifecycleSelected.value) return getFormDataSourceInterfaceHelp(editor.eventCode)
   const selected = interfaces.value.find(item =>
     String(item.extensionId) === String(step.extensionId))
   return eventInterfaceImplementationHelp(editor.eventCode, props.ownerType, selected)
@@ -1098,6 +1118,7 @@ function extensionInterfaceHelp(step) {
 
 async function handleEventChange(eventCode) {
   selectAvailableTarget(eventCode)
+  if (lifecycleSelected.value) editor.inheritanceMode = 'INHERIT'
   editor.steps.forEach(step => {
     step.extensionId = ''
     step.legacyListQuery = false
@@ -1134,6 +1155,27 @@ async function save() {
   if (!editor.id && !targetsForEvent(editor.eventCode).some(target =>
     target.targetType === editor.targetType && target.targetKey === editor.targetKey)) {
     ElMessage.warning('绑定对象已变更，请重新选择按钮')
+    return
+  }
+  if (lifecycleSelected.value) {
+    if (!editor.steps.length) {
+      ElMessage.warning('请至少配置一个执行步骤')
+      return
+    }
+    if (editor.steps.some(step => !interfaces.value.some(item => item.extensionId === step.extensionId))) {
+      ElMessage.warning('请选择当前事件可用的扩展接口')
+      return
+    }
+    saving.value = true
+    try {
+      await saveLifecycleBinding(editor.eventCode, editor.steps, editor.enabled, editor.expectedRevision)
+      dialogVisible.value = false
+      ElMessage.success('事件绑定已保存，发布表单后生效')
+    } catch (error) {
+      showRequestError(error, error.message || '保存表单事件失败')
+    } finally {
+      saving.value = false
+    }
     return
   }
   if (formButtonExactTarget.value && editor.inheritanceMode === 'DISABLE') {
@@ -1185,6 +1227,16 @@ async function save() {
   }
 }
 
+/** 沿用表单元数据的乐观锁，成功后交给设计器更新草稿版本和发布差异。 */
+async function saveLifecycleBinding(eventCode, steps, enabled, expectedRevision) {
+  const form = props.lifecycleForm
+  const updated = await patchFormMetadata(form.id, {
+    expectedRevision,
+    dataSourceBindings: updateFormLifecycleBindings(form, eventCode, steps, enabled)
+  })
+  emit('lifecycle-saved', updated)
+}
+
 async function remove(row) {
   if (!canEdit.value) return
   await ElMessageBox.confirm(
@@ -1192,6 +1244,15 @@ async function remove(row) {
     '删除事件绑定',
     { type: 'warning' }
   )
+  if (props.lifecycleForm && formLifecycleEvents.includes(row.eventCode)) {
+    try {
+      await saveLifecycleBinding(row.eventCode, [], false, row.revision)
+      ElMessage.success('已删除，发布表单后生效')
+    } catch (error) {
+      showRequestError(error, error.message || '删除表单事件失败')
+    }
+    return
+  }
   await uiEventBindingApi.remove(row.id, row.revision)
   ElMessage.success('已删除')
   await load()
@@ -1238,7 +1299,7 @@ function handleTargetChange(key) {
 }
 
 function existingBinding(code, target) {
-  return findEventBinding(bindings.value, code, target)
+  return findEventBinding(allBindings.value, code, target)
 }
 
 function eventOptionDisabledReason(code) {
@@ -1329,6 +1390,13 @@ function chainItems(row) {
       : [platformChainItem(row.eventCode)]
   }
   const steps = row.steps || parseJson(row.stepsDocument, [])
+  if (formLifecycleEvents.includes(row.eventCode)) {
+    return steps.map((step, index) => ({
+      kind: 'step',
+      label: step.name || interfaces.value.find(item => item.extensionId === step.extensionId)?.displayName || `接口步骤 ${index + 1}`,
+      type: 'info'
+    }))
+  }
   const before = steps.filter(step => step.strategy === 'BEFORE')
   const replace = steps.filter(step => step.strategy === 'REPLACE')
   const after = steps.filter(step => step.strategy === 'AFTER')
@@ -1337,7 +1405,7 @@ function chainItems(row) {
     if (isEntityLookupStep(step)) return step.name || '按 ID 查询实体'
     const item = interfaces.value.find(option =>
       option.extensionId === step.extensionId)
-    return step.name || item?.displayName || '字段映射'
+    return step.name || item?.displayName || (step.extensionId ? '扩展接口' : '字段映射')
   }
   const stagedLabel = (step, strategy) => formButton
     ? `${formButtonStageLabel(strategy)}：${label(step)}`

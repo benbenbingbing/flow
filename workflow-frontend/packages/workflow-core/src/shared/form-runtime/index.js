@@ -94,15 +94,27 @@ export function parseRuntimeDefaultValue(value) {
   }
 }
 
-export function applyRuntimeFieldDefaults(target = {}, form = {}, entityFields = []) {
+/** 合并实体与表单字段初值。表单的显式来源可以取消实体静态值，给公式或接口留出取值机会。 */
+export function applyRuntimeFieldDefaults(target = {}, form = {}, entityFields = [], { isNew = true } = {}) {
   const defaultsByField = new Map()
+  const entityDefaults = new Map()
   const addFieldDefault = (field = {}) => {
     const fieldKey = getFieldKey(field)
-    if (field.isDisplayOnly || !fieldKey || field.defaultValue == null || field.defaultValue === '') return
-    defaultsByField.set(fieldKey, field.defaultValue)
+    if (field.isDisplayOnly || !fieldKey) return
+    const mode = field.defaultValueMode
+    if (mode) {
+      defaultsByField.delete(fieldKey)
+      if (!isNew) return
+      if (mode === 'inherit' && entityDefaults.has(fieldKey)) defaultsByField.set(fieldKey, entityDefaults.get(fieldKey))
+      if (mode !== 'fixed') return
+    }
+    if (field.defaultValue != null && field.defaultValue !== '') {
+      defaultsByField.set(fieldKey, mode === 'fixed' ? field.defaultValue : parseRuntimeDefaultValue(field.defaultValue))
+    }
   }
 
   entityFields.forEach(addFieldDefault)
+  defaultsByField.forEach((value, fieldKey) => entityDefaults.set(fieldKey, value))
   ;(form?.fields || []).forEach(addFieldDefault)
   ;(form?.nodes || []).forEach(node => {
     const nodeType = String(node?.nodeType || '').toUpperCase()
@@ -116,7 +128,7 @@ export function applyRuntimeFieldDefaults(target = {}, form = {}, entityFields =
 
   defaultsByField.forEach((value, fieldKey) => {
     if (target[fieldKey] == null || target[fieldKey] === '') {
-      target[fieldKey] = parseRuntimeDefaultValue(value)
+      target[fieldKey] = value
     }
   })
   return target

@@ -11,7 +11,8 @@ export function readCascaderConfig(field = {}) {
   return {
     source: config.cascaderSource || 'STATIC',
     loadMode: config.cascaderLoadMode || 'ALL',
-    options: config.cascaderOptions ?? field.cascaderOptions ?? []
+    options: config.cascaderOptions ?? field.cascaderOptions ?? [],
+    ...(config.cascaderNodeFields && { nodeFields: config.cascaderNodeFields })
   }
 }
 
@@ -20,14 +21,26 @@ function validValue(value) {
     || (typeof value === 'number' && Number.isFinite(value))
 }
 
-/** 拒绝含糊的节点结构，避免将错误响应展示成“没有下级”并保存错误路径。 */
-export function normalizeCascaderOptions(value, loadMode = 'ALL', depth = 0, budget = { nodes: 0 }) {
+/** 接口可以为标准节点字段指定来源字段名，转换后沿用同一套结构和路径校验。 */
+export function normalizeCascaderOptions(value, loadMode = 'ALL', nodeFields = {}) {
+  const aliases = ['value', 'label', 'children', 'leaf', 'disabled'].map(key => {
+    const name = nodeFields?.[key]
+    return [key, typeof name === 'string' && name.trim() || key]
+  })
+  return normalizeCascaderNodes(value, loadMode, aliases, 0, { nodes: 0 })
+}
+
+function normalizeCascaderNodes(value, loadMode, aliases, depth, budget) {
   if (!Array.isArray(value)) throw new Error('级联接口必须返回节点数组')
   if (depth >= 32 && value.length) throw new Error('级联数据层级不能超过 32 层')
   const siblingValues = new Set()
-  return value.map((item) => {
+  return value.map((source) => {
     if (++budget.nodes > 10000) throw new Error('级联数据不能超过 10000 个节点')
-    if (!item || typeof item !== 'object' || !validValue(item.value)) {
+    // 各层节点使用相同字段名。保留“缺失”和“显式为 null”的区别，避免跳过标志或子集校验。
+    const item = Object.fromEntries(aliases.filter(([, name]) =>
+      source && typeof source === 'object' && Object.hasOwn(source, name)
+    ).map(([key, name]) => [key, source[name]]))
+    if (!validValue(item.value)) {
       throw new Error('级联节点 value 必须是非空字符串或有限数字')
     }
     if (typeof item.label !== 'string' || !item.label.trim()) throw new Error('级联节点 label 必须是非空文本')
@@ -42,7 +55,9 @@ export function normalizeCascaderOptions(value, loadMode = 'ALL', depth = 0, bud
       if (Object.hasOwn(item, 'children')) throw new Error('逐级加载只返回直接下级节点，请勿返回 children')
       node.leaf = item.leaf
     } else {
-      const children = Object.hasOwn(item, 'children') ? normalizeCascaderOptions(item.children, 'ALL', depth + 1, budget) : []
+      const children = Object.hasOwn(item, 'children')
+        ? normalizeCascaderNodes(item.children, 'ALL', aliases, depth + 1, budget)
+        : []
       node.leaf = children.length === 0
       if (item.leaf != null && item.leaf !== node.leaf) throw new Error('级联节点 leaf 与 children 不一致')
       if (children.length) node.children = children
@@ -130,7 +145,7 @@ export function createCascaderRuntime({ onChange = () => {} } = {}) {
         const response = await requestConfig.loadOptions({
           loadMode: mode, parentValue: path.length ? path.at(-1) : null, path: [...path], level: path.length
         })
-        result = normalizeCascaderOptions(response, mode)
+        result = normalizeCascaderOptions(response, mode, requestConfig.nodeFields)
         const oldNodes = parent ? parent.nodes.at(-1).children || [] : state.options
         if (mode === 'CHILDREN' && loadedNodes - countNodes(oldNodes) + result.length > 10000) throw new Error('级联数据不能超过 10000 个节点')
         if (path.length && !result.length) throw new Error('非末级节点没有返回下级数据，请检查接口的 leaf 标记')

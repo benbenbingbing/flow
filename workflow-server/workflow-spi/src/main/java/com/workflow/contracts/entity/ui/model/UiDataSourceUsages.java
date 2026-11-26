@@ -26,9 +26,6 @@ public final class UiDataSourceUsages {
     /** 新建表单计算字段初始值时执行，结果作为字段默认值。 */
     public static final String FIELD_DEFAULT = "FIELD_DEFAULT";
 
-    /** 字段依赖值变化后重新计算时执行，结果作为新的字段值。 */
-    public static final String FIELD_COMPUTE = "FIELD_COMPUTE";
-
     /** 子表单需要动态装载行数据时执行，结果应为行集合。 */
     public static final String SUBFORM_ROWS = "SUBFORM_ROWS";
 

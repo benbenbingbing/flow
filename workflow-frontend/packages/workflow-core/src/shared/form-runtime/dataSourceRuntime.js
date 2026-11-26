@@ -2,7 +2,7 @@ import { buildRuntimeContext } from './context.js'
 import { resolvePageParameters, initializePageFields, pageParameterFields } from '../page-parameters.js'
 import { safeParseConfig } from '../config-runtime/index.js'
 import { projectRuntimeFields } from './formModel.js'
-import { applyInitialFormulaDefaults } from '../../utils/linkageEngine.js'
+import { applyInitialFormulaDefaults, LinkageEngine } from '../../utils/linkageEngine.js'
 
 function parseBindings(value) {
   return safeParseConfig(value) || {}
@@ -30,8 +30,22 @@ function bindingsFor(owner, usage) {
   const configured = bindings?.[usage]
   if (!configured) return []
   return (Array.isArray(configured) ? configured : [configured])
+    .filter(binding => binding?.enabled !== false)
     .map(binding => normalizeBinding(binding, usage))
     .filter(binding => binding?.extensionId)
+}
+
+function resolveFieldOptionQueryParameters(field, record) {
+  const rule = LinkageEngine.getFieldLinkageRules(field).optionsLinkage
+  if (rule?.mode !== 'query' || !Array.isArray(rule.parameterMappings)) return null
+  return Object.fromEntries(rule.parameterMappings.filter(row => row?.parameter && row.fieldCode)
+    .map(({ parameter, fieldCode }) => [parameter, Object.hasOwn(record || {}, fieldCode) ? record[fieldCode] ?? null : null]))
+}
+
+/** 用实际发送的参数检测依赖变化，避免无关字段或候选结果变化引起重查。 */
+export function getFieldOptionQueryKey(field, record) {
+  const parameters = resolveFieldOptionQueryParameters(field, record)
+  return parameters ? JSON.stringify(parameters) : null
 }
 
 /** 仅声明无副作用且允许预校验的绑定可在浏览器执行；其他 BEFORE_SUBMIT 留给服务端事务处理。 */
@@ -59,6 +73,7 @@ function isMergeableObject(value) {
  */
 function mergeMappedOutput(target, patch) {
   Object.entries(patch).forEach(([key, value]) => {
+    if (['__proto__', 'prototype', 'constructor'].includes(key)) return
     if (isMergeableObject(value) && isMergeableObject(target[key])) {
       mergeMappedOutput(target[key], value)
       return
@@ -87,7 +102,7 @@ function resolvePath(source, path) {
 
 function setPath(target, path, value) {
   const parts = mappingPathParts(path)
-  if (!parts.length) return
+  if (!parts.length || parts.some(part => ['__proto__', 'prototype', 'constructor'].includes(part))) return
   let current = target
   parts.slice(0, -1).forEach(key => {
     if (!current[key] || typeof current[key] !== 'object') current[key] = {}
@@ -108,6 +123,20 @@ function applyMapping(mapping, source, fallback) {
     setPath(result, targetPath, value)
   })
   return result
+}
+
+/** 生命周期条件与后端提交链共用路径和值语义，空数组和纯空白文本按假值处理。 */
+function matchesLifecycleCondition(condition, source) {
+  if (!condition?.path) return true
+  const actual = resolvePath(source, condition.path)
+  if (Object.hasOwn(condition, 'equals')) return (actual ?? null) === condition.equals
+  if (Object.hasOwn(condition, 'notEquals')) return (actual ?? null) !== condition.notEquals
+  if (Object.hasOwn(condition, 'exists')) return (actual != null) === condition.exists
+  if (Object.hasOwn(condition, 'truthy')) {
+    const truthy = Array.isArray(actual) ? actual.length > 0 : Boolean(typeof actual === 'string' ? actual.trim() : actual)
+    return truthy === condition.truthy
+  }
+  return true
 }
 
 function mergeRuntimeContexts(base = {}, override = {}) {
@@ -276,6 +305,8 @@ export function createFormDataSourceRuntime(options) {
       row: runtimeContext.row || context.row || {},
       relation: runtimeContext.relation || context.relation || {}
     }
+    if (['AFTER_LOAD', 'BEFORE_SUBMIT'].includes(usage)
+      && (normalized.enabled === false || !matchesLifecycleCondition(normalized.condition, mappingSource))) return
     const input = applyMapping(
       normalized.inputMapping,
       mappingSource,
@@ -309,18 +340,20 @@ export function createFormDataSourceRuntime(options) {
     )
   }
 
-  async function executeOwnerUsage(owner, usage, runtimeContext = {}) {
+  async function executeOwnerUsage(owner, usage, runtimeContext = {}, applyResult) {
     const results = []
     const fieldCode = owner?.fieldCode || owner?.fieldKey || owner?.nodeKey || ''
     const targetType = fieldCode ? 'FIELD' : 'OWNER'
     for (const binding of bindingsFor(owner, usage)) {
-      results.push(await execute(binding, {
+      const result = await execute(binding, {
         ...runtimeContext,
         usage,
         fieldCode,
         targetType,
         targetKey: fieldCode
-      }))
+      })
+      results.push(result)
+      applyResult?.(result)
     }
     return results
   }
@@ -374,52 +407,48 @@ export function createFormDataSourceRuntime(options) {
           mergeObject(record, result)
         }
       }
-      for (const result of await executeOwnerUsage(
-        form,
-        'AFTER_LOAD',
-        runtimeContext
-      )) {
-        mergeObject(record, result)
-      }
+      // 先回填再评估下一步，下一步的条件和映射才能使用已加载的字段。
+      const mergeAfterLoad = result => mergeObject(record, result)
+      await executeOwnerUsage(form, 'AFTER_LOAD', runtimeContext, mergeAfterLoad)
       for (const owner of [...fields, ...nodes]) {
-        for (const result of await executeOwnerUsage(
-          owner,
-          'AFTER_LOAD',
-          runtimeContext
-        )) {
-          mergeObject(record, result)
-        }
+        await executeOwnerUsage(owner, 'AFTER_LOAD', runtimeContext, mergeAfterLoad)
       }
-      for (const field of fields) {
-        const fieldCode = field.fieldCode || field.fieldKey
+      const isNew = runtimeContext.row?.isNew ?? (runtimeMode === 'create')
+      const canApplyDefaults = isNew && ['create', 'edit'].includes(runtimeMode)
+        && !runtimeContext.readonly && ![true, 1, '1'].includes(form?.isReadonly)
+      if (!canApplyDefaults) return
+      // 节点绑定和来源配置属于当前表单或子表行。旧版扁平字段仍可提供历史绑定。
+      const defaultFields = nodes.length
+        ? projectRuntimeFields(
+          { fields, nodes }, [], { rootParentId: runtimeContext.rootParentId || '' }
+        ).fields
+        : fields
+      const fieldKey = field => field.fieldCode || field.fieldKey
+      const isEmpty = value => value == null || value === ''
+      const originalFields = new Map(fields.map(field => [fieldKey(field), field]))
+      const projectedFields = new Map(defaultFields.filter(field => !field.isDisplayOnly).map(field => [fieldKey(field), field]))
+      for (const fieldCode of new Set([...originalFields.keys(), ...projectedFields.keys()])) {
         if (!fieldCode) continue
-        if (record[fieldCode] === null || record[fieldCode] === undefined || record[fieldCode] === '') {
-          const [defaultResult] = await executeOwnerUsage(field, 'FIELD_DEFAULT', {
+        const field = originalFields.get(fieldCode)
+        const projected = projectedFields.get(fieldCode)
+        const source = (projected || field).defaultValueMode
+        // 接口默认值统一补齐新增记录；编辑主表时新增的子表行仍是新记录。
+        if ((!source || source === 'dataSource') && isEmpty(record[fieldCode])) {
+          const node = projected?.node
+          const defaultOwner = bindingsFor(node, 'FIELD_DEFAULT').length ? { ...node, fieldCode } : field
+          const [defaultResult] = await executeOwnerUsage(defaultOwner, 'FIELD_DEFAULT', {
             ...runtimeContext,
             input: { fieldCode, value: record[fieldCode] }
           })
           const defaultValue = defaultResult?.data ?? defaultResult
-          if (defaultValue !== null && defaultValue !== undefined) {
-            record[fieldCode] = defaultValue?.value ?? defaultValue
+          const value = defaultValue && Object.hasOwn(defaultValue, 'value') ? defaultValue.value : defaultValue
+          // 子表可能在请求返回前已可填写，迟到的默认值不得覆盖用户输入。
+          if (!isEmpty(value) && isEmpty(record[fieldCode])) {
+            record[fieldCode] = value
           }
         }
-        const [computedResult] = await executeOwnerUsage(field, 'FIELD_COMPUTE', {
-          ...runtimeContext,
-          input: { fieldCode, value: record[fieldCode] }
-        })
-        const computedValue = computedResult?.data ?? computedResult
-        if (computedValue !== null && computedValue !== undefined) {
-          record[fieldCode] = computedValue?.value ?? computedValue
-        }
       }
-      // 子表行拥有自己的新增状态，在编辑主表时添加的行也应获得自己的初值。
-      const isNew = runtimeContext.row?.isNew ?? (runtimeMode === 'create')
-      if (isNew && !runtimeContext.readonly && ![true, 1, '1'].includes(form?.isReadonly)) {
-        const formulaFields = nodes.length ? projectRuntimeFields(
-          { fields, nodes }, [], { rootParentId: runtimeContext.rootParentId || '' }
-        ).fields : fields
-        applyInitialFormulaDefaults(formulaFields, record)
-      }
+      applyInitialFormulaDefaults(defaultFields, record, runtimeContext)
     } catch (error) {
       initialized.delete(initializationKey)
       throw error
@@ -435,10 +464,13 @@ export function createFormDataSourceRuntime(options) {
       }
     }
     const record = runtimeContext.record || currentRecord()
+    const optionParams = resolveFieldOptionQueryParameters(field, record)
     const [result] = await executeOwnerUsage(field, 'FIELD_OPTIONS', {
       ...runtimeContext,
+      record,
       input: {
         ...(runtimeContext.input || {}),
+        ...(optionParams && { optionParams }),
         fieldCode: field?.fieldCode,
         value: record?.[field?.fieldCode]
       }

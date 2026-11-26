@@ -19,8 +19,8 @@ import Settings from '/src/components/form-designer/FormDesignerSettingsDrawer.v
 import RelatedContentPanel from '/src/components/related-content/RelatedContentPanel.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '/src/components/form-designer/context.js'
 import { resolveFormLabelPosition, resolveFormLabelWidth } from '/src/shared/form-layout.js'
-import { resolveFormNodeLayoutSpan } from '/src/shared/form-node-property-schema.js'
-import { emptyFormActionBar } from '/src/shared/form-actions.js'
+import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
+import { emptyFormActionBar } from '@flow/workflow-core/form-actions'
 import { uiEventBindingApi, uiExtensionApi } from '/src/api/uiConfig.js'
 import { uiCompositionApi } from '/src/api/uiComposition.js'
 import request from '/src/utils/request.js'
@@ -43,7 +43,7 @@ const designNodes=computed(()=>form.value.nodes.map(n=>({...n,...n.props,fieldLa
 const pos=computed(()=>resolveFormLabelPosition(form.value)),width=computed(()=>resolveFormLabelWidth(form.value))
 const noop=()=>{}
 const app=createApp({setup(){
- provide(FORM_DESIGNER_CONTEXT_KEY,{form,viewConfig,isEdit:ref(true),isCustomRendererMode:ref(false),isSystemEntity:ref(false),customFormButtonCount:ref(0),entityInfo:ref({}),entityFields:ref(fields),formFields:ref(fields),formDataSourceBindingCount:ref(0),eventFieldOptions:ref([]),formActionPersistenceRevision:ref(0),persistedFormButtonKeys:ref([]),createActionSlotForButton:noop,openFormDataSourceConfig:noop,onEventBindingsChanged:noop})
+ provide(FORM_DESIGNER_CONTEXT_KEY,{form,viewConfig,isEdit:ref(true),isCustomRendererMode:ref(false),isSystemEntity:ref(false),customFormButtonCount:ref(0),entityInfo:ref({}),entityFields:ref(fields),formFields:ref(fields),eventFieldOptions:ref([]),formActionPersistenceRevision:ref(0),persistedFormButtonKeys:ref([]),createActionSlotForButton:noop,onFormLifecycleSaved:noop,onEventBindingsChanged:noop})
  return()=>h('main',{style:'width:960px;margin:24px auto'},[
  h('h2','表单布局验收'),h('button',{id:'open',onClick:()=>state.drawer=true},'表单设置'),
  h('section',{id:'design'},[h('h3','设计画布'),h(ElForm,{labelPosition:pos.value,labelWidth:width.value},()=>h(DraggableList,{items:designNodes.value.filter(n=>!n.parentId),canDrop:()=>false,zoneClass:'root-design-drop-zone'},{item:({element:n,index:i})=>h(DesignItem,{node:n,siblingIndex:i,siblingCount:4,layoutType:form.value.layoutType,childrenFor:id=>designNodes.value.filter(n=>n.parentId===id),nodeSpanFor:(n,fallback)=>resolveFormNodeLayoutSpan(n,'grid',fallback),nodeStyleFor:n=>{const width=100*resolveFormNodeLayoutSpan(n,form.value.layoutType)/24+'%';return {width,flex:'0 0 '+width}},legacyNodeType:n=>n.nodeType,nodeLabel:id=>designNodes.value.find(n=>n.id===id)?.fieldLabel||'',canDropNode:()=>false})}))]),
@@ -69,7 +69,7 @@ async function send(method,params={}){
 }
 async function evaluate(expression){const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description||JSON.stringify(r.exceptionDetails));return r.result.value}
 try{
- server=await createServer({cacheDir:path.join(fixture,'cache'),optimizeDeps:{entries:[path.join(fixture,'index.html')]},server:{host:'127.0.0.1',port:3398,strictPort:true}});await server.listen()
+ server=await createServer({cacheDir:path.join(fixture,'cache'),optimizeDeps:{include:['axios','async-validator'],entries:[path.join(fixture,'index.html')]},server:{host:'127.0.0.1',port:3398,strictPort:true}});await server.listen()
  browser=spawn(process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=9398',`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'})
  let targets
  for(let i=0;i<100;i++){try{targets=await(await fetch('http://127.0.0.1:9398/json/list')).json();break}catch{await sleep(100)}}
@@ -86,6 +86,21 @@ try{
  async function set(expression){await evaluate(expression+';layoutTest.settle()')}
  async function open(){await set('layoutTest.state.drawer=true')}
  async function close(){await set('layoutTest.state.drawer=false')}
+ async function verifyTabs(){
+  const labels=await evaluate(`[...document.querySelectorAll('.form-settings-tabs > .el-tabs__header [role="tab"]')].map(e=>e.textContent.trim().replace(/\\s*\\d+$/,''))`)
+  assert.deepEqual(labels,['基本与布局','按钮与操作','表单事件','输入参数','关联内容'])
+  for(const name of ['events','input-parameters','related-content']){
+   await evaluate(`document.querySelector('.form-settings-tabs #tab-${name}').click();layoutTest.settle()`)
+   assert.equal(await evaluate('layoutTest.state.activeTab'),name)
+   assert.equal(await evaluate(`document.querySelector('.form-settings-tabs #pane-${name}').getClientRects().length>0`),true)
+  }
+ }
+ if(process.argv.includes('--settings-tabs')){
+  await open()
+  await verifyTabs()
+  assert.deepEqual(errors,[])
+  console.log('form settings tabs browser acceptance passed')
+ }else{
  async function select(label){await evaluate(`(()=>{const el=[...document.querySelectorAll('.el-segmented__item')].filter(${visible}).find(e=>e.textContent.trim()===${JSON.stringify(label)});if(!el)throw Error('Missing position '+${JSON.stringify(label)});el.click()})()`);await evaluate('layoutTest.settle()')}
  async function layout(){return evaluate(`['design','runtime','preview'].map(id=>{const root=document.getElementById(id),form=root.querySelector('.el-form'),label=root.querySelector('.el-form-item__label');return {id,classes:form.className,width:label.style.width,justify:getComputedStyle(label).justifyContent}})`)}
  async function columns(){return evaluate(`({runtime:[...document.querySelectorAll('#runtime .form-node-root-row > .el-col')].map(e=>Math.round(24*e.getBoundingClientRect().width/e.parentElement.getBoundingClientRect().width)),design:[...document.querySelectorAll('#design .el-form > div > .form-node-design-item')].map(e=>Math.round(24*e.getBoundingClientRect().width/e.parentElement.getBoundingClientRect().width)),nested:[...document.querySelectorAll('#runtime .node-grid > .el-col')].map(e=>Math.round(24*e.getBoundingClientRect().width/e.parentElement.getBoundingClientRect().width))})`)}
@@ -133,13 +148,7 @@ try{
  const screenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-grid-layout.png',Buffer.from(screenshot.data,'base64'))
  await open();const settingsImage=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-grid-settings.png',Buffer.from(settingsImage.data,'base64'))
  // 一级页签切换与关联面板首次挂载、关闭后重开，都必须保留原有编辑能力。
- const tabLabels=await evaluate(`[...document.querySelectorAll('.form-settings-tabs > .el-tabs__header [role="tab"]')].map(e=>e.textContent.trim().replace(/\\s*\\d+$/,''))`)
- assert.deepEqual(tabLabels,['基本与布局','按钮与操作','初始化数据','表单事件','输入参数','关联内容'])
- for(const name of ['data-source','events','input-parameters','related-content']){
-  await evaluate(`document.querySelector('.form-settings-tabs #tab-${name}').click();layoutTest.settle()`)
-  assert.equal(await evaluate('layoutTest.state.activeTab'),name)
-  assert.equal(await evaluate(`document.querySelector('.form-settings-tabs #pane-${name}').getClientRects().length>0`),true)
- }
+ await verifyTabs()
  assert.equal(await evaluate("document.querySelector('.related-content-panel.is-embedded').innerText.includes('关联需求')"),true)
  await close();await evaluate('layoutTest.openRelated()');await evaluate('layoutTest.settle()')
  assert.equal(await evaluate(`[...document.querySelectorAll('.el-drawer')].filter(${visible}).length`),1,'表单关联内容不应再打开第二层抽屉')
@@ -158,4 +167,5 @@ try{
  assert.equal(await evaluate(`document.querySelector('.el-drawer.related-content-panel').innerText.includes('去操作列按钮设置')`),true,'列表继续使用原有独立关联抽屉')
  assert.deepEqual(errors,[])
  console.log('form layout browser acceptance passed: grid and labels, settings tab order, embedded related content edit/delete/reopen, standalone list drawer, JSON reload, narrow viewport')
+ }
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}

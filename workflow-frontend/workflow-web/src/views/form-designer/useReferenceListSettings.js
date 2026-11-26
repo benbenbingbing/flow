@@ -1,5 +1,4 @@
 import { computed, ref, watch } from 'vue'
-import { entityApi } from '@/api/entity'
 import { getEntityFields } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { normalizeRows } from '@/components/related-content/relatedContentOptions.js'
@@ -8,27 +7,46 @@ import { listFilterParameterSchema, validateReferenceListParameterMappings } fro
 import { isEntityListPicker, pickerListSchema } from '@flow/workflow-core/data-picker'
 
 /** 配置自定义实体的选择列表和参数映射，列表契约始终取自当前发布版本。 */
-export function useReferenceListSettings({ selectedField, fields, entityFields, nodeById, nodeTypeOf, rememberEntityOption }) {
+export function useReferenceListSettings({ selectedField, fields, entityFields, nodeById, nodeTypeOf, rememberEntityOption, componentConfigDraft }) {
   const lists = ref([])
   const parameterSchema = ref({})
   const parameterError = ref('')
   const parameterLoading = ref(false)
   const childEntityFields = ref([])
-  let listLoadSequence = 0
 
   const isReference = computed(() => isReferenceComponent(selectedField.value))
-  const canMapParameters = computed(() => supportsParameterMappings(selectedField.value))
+  const referenceField = computed(() => isReferenceComponent(componentConfigDraft.value)
+    ? componentConfigDraft.value : null)
+  const canMapParameters = computed(() => supportsParameterMappings(referenceField.value))
   const sourceFields = computed(() => sourceFieldsFor(selectedField.value))
   const sourceScope = computed(() => dataScope(selectedField.value))
-  const childEntityId = computed(() => (canMapParameters.value && selectedField.value.refListKey || entityPickerConfig(selectedField.value)?.listKey)
+  // 弹窗尚未确认时也要根据所选列表加载子表实体属性，供参数映射选择。
+  const pickerField = computed(() => componentConfigDraft.value ?? selectedField.value)
+  const childEntityId = computed(() => (canMapParameters.value && referenceField.value.refListKey || entityPickerConfig(pickerField.value)?.listKey)
     ? entityIdForScope(sourceScope.value)
     : '')
   const sourceEntityFields = computed(() => sourceScope.value
     ? childEntityFields.value
     : usableEntityFields(entityFields.value))
   const selectedList = computed(() => canMapParameters.value
-    ? lists.value.find(list => list.listKey === selectedField.value.refListKey)
+    ? lists.value.find(list => list.listKey === referenceField.value.refListKey)
     : null)
+
+  // 列表只服务于当前弹窗草稿，关闭或切换目标后忽略上一次请求。
+  watch([referenceField, () => referenceField.value?.refEntityId, canMapParameters],
+    async ([, targetEntityId, enabled], _, onCleanup) => {
+      let current = true
+      onCleanup(() => { current = false })
+      lists.value = []
+      if (!enabled || !targetEntityId) return
+      try {
+        const response = await entityListConfigApi.getByEntityId(targetEntityId)
+        if (current) lists.value = normalizeRows(response)
+      } catch (error) {
+        if (current) console.error('加载实体引用列表失败:', error)
+      }
+    }
+  )
 
   watch(selectedList, async (list, _, onCleanup) => {
     let current = true
@@ -61,43 +79,33 @@ export function useReferenceListSettings({ selectedField, fields, entityFields, 
   })
 
   function changeList(listKey) {
-    const field = selectedField.value
-    if (!isReference.value || (field.refListKey || '') === (listKey || '')) return
+    const field = referenceField.value
+    if (!field || (field.refListKey || '') === (listKey || '')) return
     field.refListKey = listKey || ''
     // 参数编码属于具体列表，换列表时不能沿用旧映射。
     field.refListParameterMappings = []
   }
 
-  async function changeEntity(entity) {
+  function changeEntity(entity) {
+    const field = referenceField.value
+    if (!field) return
+    const entityId = String(entity?.id || '')
+    if (String(field.refEntityId || '') !== entityId) {
+      // 列表及其参数归属原目标实体，切换目标时一并清空。
+      field.refEntityId = entityId
+      field.refListKey = ''
+      field.refListParameterMappings = []
+    }
     rememberEntityOption(entity)
-    if (!isReference.value) return
-    const field = selectedField.value
     field.refEntityCode = entity?.entityCode || ''
-    changeList('')
-    await loadLists(field)
   }
 
-  /** 切换字段或目标实体后，旧请求不能填充当前字段的列表选项。 */
-  async function loadLists(field) {
-    const sequence = ++listLoadSequence
-    const targetEntityId = field.refEntityId
-    lists.value = []
-    if (!targetEntityId) return
-    try {
-      const [response, options] = await Promise.all([
-        entityListConfigApi.getByEntityId(targetEntityId),
-        field.refEntityCode ? [] : entityApi.resolveOptions({ ids: [String(targetEntityId)] }).catch(() => [])
-      ])
-      if (sequence !== listLoadSequence || selectedField.value !== field || field.refEntityId !== targetEntityId) return
-      const entity = options?.[0]
-      if (entity && !field.refEntityCode) {
-        rememberEntityOption(entity)
-        field.refEntityCode = entity.entityCode || ''
-      }
-      lists.value = normalizeRows(response)
-    } catch (error) {
-      console.error('加载实体引用列表失败:', error)
-    }
+  /** 历史节点可能缺少目标实体编码，只为当前弹窗草稿补齐解析结果。 */
+  function resolveEntity(entity) {
+    const field = referenceField.value
+    if (!field || !entity?.entityCode || String(entity.id) !== String(field.refEntityId)) return
+    rememberEntityOption(entity)
+    if (!field.refEntityCode) field.refEntityCode = entity.entityCode
   }
 
   /** 布局容器共享表单数据，子表单和重复器各自使用独立的数据作用域。 */
@@ -166,7 +174,7 @@ export function useReferenceListSettings({ selectedField, fields, entityFields, 
   }
 
   return { lists, isReference, canMapParameters, sourceFields, sourceEntityFields, parameterSchema, parameterError, parameterLoading,
-    changeList, changeEntity, loadLists, validateMappings }
+    changeList, changeEntity, resolveEntity, validateMappings }
 }
 
 const entityIdForScope = scope => scope?.childEntityId || scope?.refEntityId || ''

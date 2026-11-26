@@ -16,7 +16,7 @@ import java.util.Set;
  *
  * <p>推荐在接口扩展中配置 {@code scopeType=ENTITY}，scopeId 选择实体 ID。
  * 同一实体下的多个表单和列表都可以复用该接口。示例重点展示字段选项、字段
- * 默认值、字段计算，以及字段变化、实体选择和字段按钮事件。</p>
+ * 默认值，以及字段变化、实体选择和字段按钮事件。</p>
  */
 @Slf4j
 @Component
@@ -35,10 +35,6 @@ public class ProjectCustomEntityUiDataSourceProvider
     /** {@code FIELD_DEFAULT} 分支返回的字段初始值。 */
     private static final String DEFAULT_VALUE =
             "defaultValue";
-
-    /** {@code FIELD_COMPUTE} 拼接当前输入值时使用的结果前缀。 */
-    private static final String COMPUTED_PREFIX =
-            "computedPrefix";
 
     /** 加载后或字段事件需要产生字段映射时写入的目标字段编码。 */
     private static final String TARGET_FIELD =
@@ -89,10 +85,6 @@ public class ProjectCustomEntityUiDataSourceProvider
                                 "type", "string",
                                 "title", "字段默认值",
                                 "default", "ENTITY_DEFAULT"),
-                        COMPUTED_PREFIX, Map.of(
-                                "type", "string",
-                                "title", "字段计算前缀",
-                                "default", "实体计算"),
                         TARGET_FIELD, Map.of(
                                 "type", "string",
                                 "title", "事件回填字段（可选）",
@@ -171,16 +163,6 @@ public class ProjectCustomEntityUiDataSourceProvider
             return fieldValue(text(
                     configuration.get(DEFAULT_VALUE),
                     "ENTITY_DEFAULT"));
-        }
-        if (UiDataSourceUsages.FIELD_COMPUTE.equals(usage)) {
-            String prefix = text(
-                    configuration.get(COMPUTED_PREFIX),
-                    "实体计算");
-            return fieldValue(
-                    prefix + ":"
-                            + text(
-                            input.get("value"),
-                            context.entityCode()));
         }
         if (UiDataSourceUsages.AFTER_LOAD.equals(usage)) {
             return fieldPatch(

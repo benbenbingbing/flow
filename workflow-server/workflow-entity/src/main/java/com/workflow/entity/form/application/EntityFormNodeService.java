@@ -92,7 +92,6 @@ public class EntityFormNodeService {
                         UiDataSourceUsages.FIELD_PICKER_QUERY,
                         UiDataSourceUsages.FIELD_PICKER_RESOLVE,
                         UiDataSourceUsages.FIELD_DEFAULT,
-                        UiDataSourceUsages.FIELD_COMPUTE,
                         UiDataSourceUsages.SUBFORM_ROWS,
                         UiDataSourceUsages.LIST_QUERY,
                         UiDataSourceUsages.LIST_COLUMN,

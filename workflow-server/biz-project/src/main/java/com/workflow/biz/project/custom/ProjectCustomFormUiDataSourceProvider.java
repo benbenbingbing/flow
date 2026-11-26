@@ -28,7 +28,7 @@ public class ProjectCustomFormUiDataSourceProvider
     public static final String RECOMMENDED_SCOPE =
             "FORM";
 
-    /** 表单回填值、字段计算值和事件提示消息共用的文本前缀。 */
+    /** 表单回填值和事件提示消息共用的文本前缀。 */
     private static final String MESSAGE_PREFIX =
             "messagePrefix";
 
@@ -210,12 +210,6 @@ public class ProjectCustomFormUiDataSourceProvider
                             configuration.get(
                                     DEFAULT_VALUE),
                             "FORM_DEFAULT"));
-            case UiDataSourceUsages.FIELD_COMPUTE ->
-                    fieldValue(
-                            prefix + ":COMPUTED:"
-                                    + text(
-                                    input.get("value"),
-                                    "EMPTY"));
             case UiDataSourceUsages.SUBFORM_ROWS -> {
                 log.info(
                         "FORM 统一数据源子表分支无业务场景，返回空行集合: code={}, formId={}, fieldCode={}",

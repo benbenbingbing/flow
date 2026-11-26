@@ -67,7 +67,7 @@ Provider 接口只收到已经过平台授权的 `UiInvocationContext`、`DataSc
 | Provider | 推荐 scopeType | 主要 usage | 示例返回 |
 | --- | --- | --- | --- |
 | `PROJECT_CUSTOM_UI_DATA_SOURCE` | `ENTITY` | 列表、表单、字段、按钮通用联调 | 列值映射、字段补丁、选项或诊断对象 |
-| `PROJECT_CUSTOM_UI_ENTITY` | `ENTITY` | `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / FIELD_CHANGE / ENTITY_SELECTED / FIELD_BUTTON_CLICK` | 字段选项、`value` 对象、字段事件消息与映射 |
+| `PROJECT_CUSTOM_UI_ENTITY` | `ENTITY` | `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_CHANGE / ENTITY_SELECTED / FIELD_BUTTON_CLICK` | 字段选项、`value` 对象、字段事件消息与映射 |
 | `PROJECT_CUSTOM_UI_FORM` | `ENTITY`，业务上下文 `FORM` | `FORM_INIT / AFTER_LOAD / BEFORE_SUBMIT / FIELD_* / SUBFORM_ROWS / FORM_BUTTON_CLICK` | 表单字段补丁、空子表集合或事件消息 |
 | `PROJECT_CUSTOM_UI_LIST` | `ENTITY`，业务上下文 `LIST` | `LIST_QUERY / LIST_COLUMN / LIST_LOAD / LIST_EXPORT / TOOLBAR_BUTTON_CLICK / ROW_BUTTON_CLICK` | 一条不落库的验收记录、记录 ID 到列值映射或事件消息 |
 

@@ -221,7 +221,6 @@
       :custom-form-available="customFormAvailable"
       :inactive-node-count="formFields.length"
       :custom-form-button-count="customFormButtonCount"
-      :form-data-source-binding-count="formDataSourceBindingCount"
       :preview-form="previewForm"
       :preview-mode="previewMode"
       :preview-mode-options="previewModeOptions"
@@ -308,43 +307,37 @@
 
                 <SettingsCapability :disabled="!isEditableFieldNode" reason="当前节点不支持选择组件">
                   <el-form-item label="组件类型">
-                    <el-select v-model="selectedField.componentType" filterable style="width: 100%" @change="handleCompatibleComponentChange">
-                      <el-option-group v-for="group in formComponentOptionGroups" :key="group.label" :label="group.label">
-                        <el-option
-                          v-for="option in group.options"
-                          :key="option.value"
-                          :label="option.label"
-                          :value="option.value"
-                        />
-                      </el-option-group>
-                    </el-select>
+                    <div class="component-type-row">
+                      <el-select v-model="selectedField.componentType" aria-label="组件类型" filterable @change="handleCompatibleComponentChange">
+                        <el-option-group v-for="group in formComponentOptionGroups" :key="group.label" :label="group.label">
+                          <el-option
+                            v-for="option in group.options"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value"
+                          />
+                        </el-option-group>
+                      </el-select>
+                      <template v-if="canConfigureSelectedComponent">
+                        <el-button type="primary" link aria-haspopup="dialog" @click="openComponentConfig">组件配置</el-button>
+                        <el-tag v-if="selectedComponentConfigIssue" :title="selectedComponentConfigIssue" size="small" type="warning" effect="plain" disable-transitions>待配置</el-tag>
+                      </template>
+                    </div>
                   </el-form-item>
-                  <div v-if="isEditableFieldNode && selectedComponentSchema.length" class="component-configuration">
-                    <ConfigSchemaEditor
-                      v-model="selectedComponentConfig"
-                      :schema="selectedComponentSchema"
-                      :common-group-title="selectedComponentConfigTitle"
-                    />
-                  </div>
                 </SettingsCapability>
 
-                <SettingsCapability :disabled="!isFieldNode" reason="仅实体字段支持占位提示和默认值配置">
+                <SettingsCapability :disabled="!isFieldNode" reason="仅实体字段支持占位提示">
                   <el-form-item label="占位提示">
                     <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
                   </el-form-item>
-                  <el-form-item label="默认值">
-                    <template #label>
-                      <ConfigHelpLabel
-                        label="默认值"
-                        content="需要从接口、实体或 Provider 动态取得默认值时，请在“数据与扩展 → 数据源绑定”中配置“字段默认值”数据源。"
-                      />
-                    </template>
-                    <el-input
-                      v-model="selectedField.defaultValue"
-                      placeholder="留空表示不设置静态默认值"
-                    />
-                  </el-form-item>
                 </SettingsCapability>
+                <FormNodeDefaultValue
+                  v-if="isFieldNode"
+                  :field="selectedField"
+                  :fields="entityFields"
+                  :view-config="viewConfig"
+                  :interfaces="interfacesByUsage.FIELD_DEFAULT || []"
+                />
 
                 <SettingsFormItem
                   :disabled="!canConfigureSelectedWordLimit" disabled-reason="仅文本输入和多行文本组件支持显示字数"
@@ -369,9 +362,9 @@
                       :true-label="1"
                       :false-label="0"
                       :disabled="selectedEntityFieldRequired"
-                    >必填</el-checkbox>
-                    <el-checkbox v-model="selectedField.isReadonly" :true-label="1" :false-label="0">只读</el-checkbox>
-                    <el-checkbox v-model="selectedField.isHidden" :true-label="1" :false-label="0">隐藏</el-checkbox>
+                    >默认必填</el-checkbox>
+                    <el-checkbox v-model="selectedField.isReadonly" :true-label="1" :false-label="0">默认只读</el-checkbox>
+                    <el-checkbox v-model="selectedField.isHidden" :true-label="1" :false-label="0">默认隐藏</el-checkbox>
                   </div>
                 </SettingsFormItem>
 
@@ -412,12 +405,17 @@
                 </div>
               </SettingsSection>
 
-              <FormNodeStateConditions
-                :visibility-only="!isFieldNode"
+              <SettingsSection
                 v-show="activeNodeSettingsTab === 'basic'"
-                :field="selectedField"
-                :fields="entityFields"
-              />
+                title="条件模式权限"
+                :description="isFieldNode ? '配置字段的条件显示、条件必填和条件禁用' : '按条件控制整个节点及其内部内容是否显示'"
+              >
+                <FormNodeStateConditions
+                  :visibility-only="!isFieldNode"
+                  :field="selectedField"
+                  :fields="entityFields"
+                />
+              </SettingsSection>
 
               <SettingsSection
                 v-show="activeNodeSettingsTab === 'basic'"
@@ -867,13 +865,18 @@
               <SettingsSection
                 v-show="activeNodeSettingsTab === 'interaction'"
                 title="值与计算"
-                description="配置值联动和选项联动，随当前节点保存"
+                description="配置字段赋值、计算和选项联动"
                 :disabled="!isFieldNode"
                 disabled-reason="仅实体字段支持值与计算"
                 :default-expanded="true"
                 primary
               >
-                <FormNodeValueLinkage :field="selectedField" :fields="entityFields" :disabled="!isFieldNode" />
+                <FormNodeValueLinkage
+                  :field="selectedField"
+                  :fields="entityFields"
+                  :inherits-options-interface="nodeInheritsOptionsInterface(selectedField)"
+                  :disabled="!isFieldNode"
+                />
               </SettingsSection>
 
               <SettingsSection
@@ -941,6 +944,63 @@
           </div>
         </template>
       </el-drawer>
+
+    <el-dialog
+      v-model="componentConfigVisible"
+      :title="selectedComponentConfigTitle"
+      width="min(860px, calc(100vw - 32px))"
+      append-to-body
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <div v-if="componentConfigVisible && componentConfigDraft" class="component-configuration">
+        <ConfigSchemaEditor
+          v-if="selectedComponentSchema.length"
+          ref="componentSchemaEditor"
+          v-model="selectedComponentConfig"
+          :schema="selectedComponentSchema"
+          :common-group-title="isSelectedDataPicker ? '面板设置' : '组件参数'"
+        >
+          <template v-if="draftCascaderUsesInterface" #common-fields>
+            <FormNodeDataSourceBindingEditor
+              :extension-id="draftCascaderBinding.extensionId"
+              :input-mapping-text="draftCascaderBinding.inputMappingText"
+              :output-mapping-text="draftCascaderBinding.outputMappingText"
+              :interfaces="interfacesByUsage.FIELD_OPTIONS || []"
+              :help="cascaderInterfaceHelp"
+              label="级联数据接口"
+              cascader
+              :cascader-node-fields="selectedComponentConfig.cascaderNodeFields"
+              :cascader-load-mode="selectedComponentConfig.cascaderLoadMode"
+              @update:extension-id="updateCascaderBinding('extensionId', $event)"
+              @update:input-mapping-text="updateCascaderBinding('inputMappingText', $event)"
+              @update:output-mapping-text="updateCascaderBinding('outputMappingText', $event)"
+              @update:cascader-node-field="updateCascaderNodeField"
+            />
+          </template>
+        </ConfigSchemaEditor>
+        <el-form v-if="isSelectedDataPicker" label-width="110px" size="small" @submit.prevent>
+          <DataPickerSettings
+            :field="componentConfigDraft"
+            :form-id="form.id"
+            :fields="componentConfigSourceFields"
+            :interfaces="interfacesByUsage"
+            :source-fields="componentConfigSourceFields"
+            :source-entity-fields="componentConfigEntityFields"
+          />
+        </el-form>
+        <FormNodeReferenceSettings
+          v-if="isReferenceFieldNode"
+          :field="componentConfigDraft"
+          :settings="referenceListSettings"
+        />
+      </div>
+      <el-alert v-if="componentConfigError" class="component-config-error" :title="componentConfigError" type="error" :closable="false" show-icon />
+      <template #footer>
+        <el-button @click="componentConfigVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmComponentConfig">确定</el-button>
+      </template>
+    </el-dialog>
 
     <FormDesignerSettingsDrawer
       v-model="showFormSettings"
@@ -1017,14 +1077,6 @@
       </template>
     </el-dialog>
 
-    <FormDataSourceDialog
-      ref="formDataSourceDialogRef"
-      :form="form"
-      :interfaces-by-usage="interfacesByUsage"
-      @saved="handleFormDataSourceSaved"
-      @error="handleRevisionConflict"
-    />
-
     <UiConfigPublishDialog
       v-model="publishDialogVisible"
       config-type="FORM"
@@ -1049,7 +1101,7 @@
 <script setup>
 import { showRequestError } from '@/shared/request'
 
-import { compatibleFormComponentOptions, createFormNodeEditorModel } from './form-designer/formNodeEditorModel.js'
+import { compatibleFormComponentOptions, createFormNodeEditorModel, isGenericNodeDataSourceUsage } from './form-designer/formNodeEditorModel.js'
 
 import { resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '@/shared/form-layout'
 
@@ -1061,19 +1113,23 @@ import { Check, View, Search, Document, Edit, DocumentAdd, Plus, Rank, Setting, 
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
-import { createFormDataSourceRuntime } from '@flow/workflow-core/form-runtime'
+import { createFormDataSourceRuntime, getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 import FormActionBar from '@/components/FormActionBar.vue'
 import FormNodeValueLinkage from '@/components/form-designer/FormNodeValueLinkage.vue'
+import FormNodeDefaultValue from '@/components/form-designer/FormNodeDefaultValue.vue'
+import FormNodeDataSourceBindingEditor from '@/components/form-designer/FormNodeDataSourceBindingEditor.vue'
+import { getFormDataSourceInterfaceHelp } from '@/shared/config-field-help'
 import FormNodeAttachmentConditions from '@/components/form-designer/FormNodeAttachmentConditions.vue'
 import { getFieldLinkageDraftError } from '@/composables/useFieldValueLinkage'
 import { getAttachmentConditionError } from '@/shared/form-field-linkage'
+import { getFieldDefaultError } from '@/shared/form-field-default'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
 import { readFieldScripts, writeFieldScripts } from '@flow/workflow-core/browser/field-event-scripts'
 import { getFieldScriptEventCatalog, validateFieldScriptConfiguration } from '@/shared/field-script-configuration'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import FormNodeEventBindings from '@/components/form-designer/FormNodeEventBindings.vue'
-import FormDataSourceDialog from '@/components/ui-config/FormDataSourceDialog.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import { getMissingComponentConfig } from '@/shared/component-config'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SettingsCapability from '@/components/SettingsCapability.vue'
@@ -1083,6 +1139,8 @@ import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerSettingsDrawer.vue'
 import FormCustomRendererWorkspace from '@/components/form-designer/FormCustomRendererWorkspace.vue'
 import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
+import FormNodeReferenceSettings from '@/components/form-designer/FormNodeReferenceSettings.vue'
+import DataPickerSettings from '@/components/form-designer/DataPickerSettings.vue'
 import FormCrossFieldRuleEditor from '@/components/form-designer/FormCrossFieldRuleEditor.vue'
 import FormCustomValidatorEditor from '@/components/FormCustomValidatorEditor.vue'
 import { validateCustomValidationConfig } from '@flow/workflow-core/form-custom-validation'
@@ -1183,7 +1241,7 @@ import {
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
-import { DATA_PICKER_USAGES } from '@flow/workflow-core/data-picker'
+import { isEntityListPicker, normalizePickerSchema, pickerSchemaSource, pickerWriteMode } from '@flow/workflow-core/data-picker'
 import {
   getFormById,
   createForm,
@@ -1243,7 +1301,6 @@ const previewMode = ref('create')
 const propertyDrawerVisible = ref(false)
 const showEventConfig = ref(false)
 const showFormExtensionConfig = ref(false)
-const formDataSourceDialogRef = ref(null)
 const eventBindingDialogRef = ref(null)
 const releaseHistoryDialogRef = ref(null)
 const runtimeCodeDialogRef = ref(null)
@@ -1367,7 +1424,6 @@ const formDataSourceUsages = [
   { value: 'FIELD_PICKER_QUERY', label: '选择器分页查询' },
   { value: 'FIELD_PICKER_RESOLVE', label: '选择器按键解析' },
   { value: 'FIELD_DEFAULT', label: '字段默认值' },
-  { value: 'FIELD_COMPUTE', label: '字段计算' },
   { value: 'SUBFORM_ROWS', label: '子表行数据' },
   { value: 'AFTER_LOAD', label: '加载后处理' },
   { value: 'BEFORE_SUBMIT', label: '提交前处理' }
@@ -1485,11 +1541,6 @@ const customFormAvailable = computed(() =>
   && hasCustomFormComponent(form.value.customComponent)
 )
 
-const formDataSourceBindingCount = computed(() =>
-  Object.values(parseDocument(form.value.dataSourceBindingsDocument))
-    .reduce((total, value) =>
-      total + (Array.isArray(value) ? value.length : (value ? 1 : 0)), 0)
-)
 const customFormButtonCount = computed(() =>
   viewConfig.value.actionBar?.customButtons?.filter(button =>
     button.enabled !== false
@@ -1502,7 +1553,8 @@ function refreshExtensionCatalog() {
 
 function openFormSettings(tab = 'basic', behaviorTab = '') {
   // 兼容表单列表与自定义工作区的历史深链，直接定位到新的一级页签。
-  activeFormSettingsTab.value = tab === 'data-events' ? (behaviorTab || 'data-source') : tab
+  const settingsTab = tab === 'data-events' ? (behaviorTab || 'events') : tab
+  activeFormSettingsTab.value = settingsTab === 'data-source' ? 'events' : settingsTab
   showFormSettings.value = true
 }
 
@@ -1652,11 +1704,7 @@ async function handleRelatedContentChanged(event) {
  */
 function openLinkedFormSettings() {
   if (String(route.query.settings || '') !== 'data-events') return
-  const requestedSection = String(route.query.section || 'data-source')
-  const section = ['input-parameters', 'data-source', 'events']
-    .includes(requestedSection)
-    ? requestedSection
-    : 'data-source'
+  const section = route.query.section === 'input-parameters' ? 'input-parameters' : 'events'
   const targetType = String(route.query.targetType || 'OWNER').toUpperCase()
   const targetKey = String(route.query.targetKey || '')
   if (section === 'events' && targetType === 'FIELD' && targetKey) {
@@ -1763,24 +1811,52 @@ const selectedComponentConfigTitle = computed(() =>
   `${selectedComponentDescriptor.value?.label || selectedField.value?.componentType || '组件'}配置`
 )
 
+const componentConfigVisible = ref(false)
+const componentConfigDraft = ref(null)
+const componentConfigError = ref('')
+const componentSchemaEditor = ref(null)
+let componentConfigOwner = null
+const componentConfigDraftKeys = [
+  'componentProps', 'dataSourceBindings', 'dataSourceUsage',
+  'cascaderDataSourceDraft', 'pickerInputDrafts', 'pickerInputErrors',
+  'refEntityType', 'refEntityId', 'refEntityCode', 'refListKey', 'refListParameterMappings'
+]
 const selectedComponentConfig = computed({
   get() {
-    return safeParseConfig(selectedField.value?.componentProps)
+    return safeParseConfig(componentConfigDraft.value?.componentProps)
   },
   set(value) {
-    if (selectedField.value) {
-      selectedField.value.componentProps = stringifyConfig(value)
-    }
+    componentConfigDraft.value.componentProps = stringifyConfig(value)
   }
 })
+const draftCascaderUsesInterface = computed(() => cascaderUsesInterface(componentConfigDraft.value))
+const draftCascaderBinding = computed(() => readCascaderBinding(componentConfigDraft.value))
+const cascaderInterfaceHelp = getFormDataSourceInterfaceHelp('FIELD_OPTIONS', { cascader: true })
 const canConfigureSelectedWordLimit = computed(() =>
   ['input', 'textarea'].includes(
     String(selectedField.value?.componentType || '').toLowerCase()
   )
 )
 const selectedWordLimitVisible = computed(() =>
-  selectedComponentConfig.value.showWordLimit !== false
+  safeParseConfig(selectedField.value?.componentProps).showWordLimit !== false
 )
+const isSelectedDataPicker = computed(() => isDataPickerField(selectedField.value))
+const selectedComponentConfigIssue = computed(() => {
+  const field = selectedField.value
+  const componentIssue = getCascaderBindingError(field) || getDataPickerSetupIssue(field)
+  if (componentIssue) return componentIssue
+  const missing = getMissingComponentConfig(selectedComponentSchema.value, safeParseConfig(field?.componentProps))
+  return missing ? `请配置${missing.label || missing.key}` : ''
+})
+watch([selectedField, () => selectedField.value?.componentType, propertyDrawerVisible], () => {
+  componentConfigVisible.value = false
+})
+watch(componentConfigVisible, visible => {
+  if (!visible) {
+    componentConfigDraft.value = null
+    componentConfigOwner = null
+  }
+})
 
 const selectedNodeType = computed(() =>
   String(selectedField.value?.nodeType || legacyNodeType(selectedField.value) || 'FIELD').toUpperCase()
@@ -1833,7 +1909,8 @@ const availableNodeDataSourceUsages = computed(() => {
   return genericNodeDataSourceUsages.filter(usage => allowed.has(usage.value))
 })
 
-const genericNodeDataSourceUsages = formDataSourceUsages.filter(usage => !DATA_PICKER_USAGES.includes(usage.value))
+const genericNodeDataSourceUsages = formDataSourceUsages.filter(usage =>
+  isGenericNodeDataSourceUsage(usage.value))
 const nodeDataSourceUsageOptions = computed(() => genericNodeDataSourceUsages.map(usage => ({
   ...usage,
   disabled: !availableNodeDataSourceUsages.value.some(item => item.value === usage.value)
@@ -1975,9 +2052,12 @@ const canConfigureSelectedNodeModeAccess = computed(() =>
   selectedNodePropertySchema.value.editable.includes('modeAccess')
 )
 const referenceListSettings = useReferenceListSettings({
-  selectedField, fields: formFields, entityFields, nodeById, nodeTypeOf, rememberEntityOption
+  selectedField, fields: formFields, entityFields, nodeById, nodeTypeOf, rememberEntityOption, componentConfigDraft
 })
+const { sourceFields: componentConfigSourceFields, sourceEntityFields: componentConfigEntityFields } = referenceListSettings
 const isReferenceFieldNode = referenceListSettings.isReference
+const canConfigureSelectedComponent = computed(() => isEditableFieldNode.value
+  && (selectedComponentSchema.value.length > 0 || isSelectedDataPicker.value || isReferenceFieldNode.value))
 const canConfigureSelectedNodeRelations = computed(() =>
   selectedNodePropertySchema.value.childForm
     || isSubListField(selectedField.value)
@@ -2017,7 +2097,7 @@ const selectedNodeDataSourceBindingCount = computed(() => {
       delete bindings[usage]
     }
   }
-  return Object.entries(bindings).filter(([code, binding]) => binding && !DATA_PICKER_USAGES.includes(code)).length
+  return genericNodeDataSourceUsages.filter(usage => bindings[usage.value]).length
 })
 const selectedNodeDataSourceUsageLabel = computed(() =>
   availableNodeDataSourceUsages.value.find(
@@ -2041,7 +2121,7 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   form, isCustomRendererMode,
   viewConfig, isEdit, isSystemEntity,
   customFormButtonCount, entityInfo, entityFields, formFields, relatedContents,
-  formDataSourceBindingCount, eventFieldOptions,
+  eventFieldOptions,
   formActionPersistenceRevision,
   persistedFormButtonKeys,
   gridResize: {
@@ -2050,7 +2130,7 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   },
   selectedCustomFormSchema, customFormOptions,
   selectedCustomFormCatalogOption, showFormExtensionConfig,
-  openFormDataSourceConfig, onEventBindingsChanged: loadDiff,
+  onFormLifecycleSaved, onEventBindingsChanged: loadDiff,
   createActionSlotForButton,
   openExtensionManagement, refreshExtensionCatalog,
   selectedField, activeNodeSettingsTab, isFieldNode,
@@ -2063,8 +2143,7 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   isSubFormField, isSubListField, getEntityNameById, formListByEntity,
   handleChildFormChange, childFormReleases, childFormReleaseLoading,
   subListOptions, subListTargetFields, subListTargetFieldsLoading,
-  handleSubListChange,
-  referenceListSettings, rememberEntityOption, getEntityReferenceSelectionHint
+  handleSubListChange, getEntityReferenceSelectionHint
 })
 
 // 预览数据
@@ -2811,12 +2890,14 @@ function clearSelectedNodeDataSourceBinding() {
   field.dataSourceOutputMappingText = '{}'
 }
 
-function openFormDataSourceConfig() {
-  formDataSourceDialogRef.value?.open()
-}
-
-async function handleFormDataSourceSaved(updated) {
-  form.value = { ...form.value, ...updated }
+/** 生命周期事件修改表单元数据，只接收新修订号和绑定，保留设计器内尚未保存的其他编辑。 */
+async function onFormLifecycleSaved(updated) {
+  if (String(updated?.id) !== String(form.value.id)) return
+  form.value = {
+    ...form.value,
+    revision: updated.revision,
+    dataSourceBindingsDocument: updated.dataSourceBindingsDocument
+  }
   await loadDiff()
 }
 
@@ -3394,9 +3475,6 @@ function prepareFieldProperties(field) {
       })
     }
   }
-  if (field && ['REFERENCE', 'MULTI_REFERENCE'].includes((field.componentType || '').toUpperCase())) {
-    referenceListSettings.loadLists(field)
-  }
 }
 
 function designChildrenFor(parentId) {
@@ -3683,7 +3761,7 @@ function resetRegexTest() {
 
 /** 保存节点和整表草稿前检查配置；未完成的规则定位到对应页签并抛出可读错误。 */
 function validateNodeValidationRules(field) {
-  const stateError = getFieldStateConditionError(field)
+  const stateError = getFieldDefaultError(field) || getCascaderBindingError(field) || getFieldStateConditionError(field)
   if (stateError) {
     selectedField.value = field
     activeNodeSettingsTab.value = 'basic'
@@ -3691,7 +3769,10 @@ function validateNodeValidationRules(field) {
     const label = field.fieldLabel || field.fieldName || field.fieldCode || '当前字段'
     throw new Error(`“${label}”${stateError}`)
   }
-  const linkageError = getFieldLinkageDraftError(field)
+  const linkageError = getFieldLinkageDraftError(field, {
+    querySourceAvailable: nodeInheritsOptionsInterface(field),
+    fieldCodes: entityFields.value.map(item => item.fieldCode).filter(code => code !== field.fieldCode)
+  })
   const attachmentError = getAttachmentConditionError(field, attachmentItemsForField(field))
   if (linkageError || attachmentError) {
     selectedField.value = field
@@ -3751,6 +3832,13 @@ function handleCompatibleComponentChange() {
   field.snapshotVersion = custom ? (definition?.snapshotVersion || descriptor?.snapshotVersion || 1) : null
   // 这些配置由平台消费，独立于组件参数 Schema；仅清理前一控件的专属参数。
   const previousConfig = safeParseConfig(field.componentProps)
+  if (field.componentType !== 'cascader' && (field.cascaderDataSourceDraft || previousConfig.cascaderSource)) {
+    // 级联接口的请求包含路径协议，切换组件后不能作为普通选择字段的候选接口执行。
+    const bindings = { ...parseDocument(field.dataSourceBindings) }
+    delete bindings.FIELD_OPTIONS
+    field.dataSourceBindings = bindings
+    field.cascaderDataSourceDraft = undefined
+  }
   const platformKeys = [
     'events', 'modeAccess', 'linkageRules', 'subFormConfig', 'subListConfig',
     'refConfig', 'fileItems', 'attachmentItemRequiredRules', 'showPadding', 'showBorder'
@@ -3798,6 +3886,109 @@ function handleRefEntityChange(entityId) {
   loadFormListByEntity(entityId || entityInfo.value.id)
 }
 
+function nodeInheritsOptionsInterface(field) {
+  return field?.bindingType === 'ENTITY_FIELD' && entityFields.value.some(item => item.optionsInterfaceId
+    && ((field.fieldId && String(item.id) === String(field.fieldId)) || item.fieldCode === field.fieldCode))
+}
+
+function cascaderUsesInterface(field) {
+  return field?.componentType === 'cascader' && safeParseConfig(field.componentProps).cascaderSource === 'INTERFACE'
+}
+
+function isDataPickerField(field) {
+  return String(field?.componentType || '').toLowerCase() === 'data_picker'
+}
+
+/** 弹窗与节点草稿分别维护配置；取消时丢弃弹窗中改动的参数和接口映射。 */
+function openComponentConfig() {
+  if (!canConfigureSelectedComponent.value) return
+  const field = selectedField.value
+  const draft = { ...field }
+  for (const key of componentConfigDraftKeys) {
+    if (field[key] && typeof field[key] === 'object') draft[key] = safeParseConfig(field[key])
+  }
+  componentConfigOwner = field
+  componentConfigDraft.value = draft
+  componentConfigError.value = ''
+  componentConfigVisible.value = true
+}
+
+/** 确认只合并组件配置，保存动作和节点修订号仍由设计器管理。 */
+function confirmComponentConfig() {
+  const field = selectedField.value
+  const draft = componentConfigDraft.value
+  if (!field || !draft || field !== componentConfigOwner || field.componentType !== draft.componentType) return
+  componentConfigError.value = componentSchemaEditor.value?.validationError
+    || getCascaderBindingError(draft, { requireInterface: false })
+    || (isDataPickerField(draft) && Object.values(draft.pickerInputErrors || {})[0]) || ''
+  if (componentConfigError.value) return
+  for (const key of componentConfigDraftKeys) {
+    if (JSON.stringify(field[key]) !== JSON.stringify(draft[key])) field[key] = draft[key]
+  }
+  componentConfigVisible.value = false
+}
+
+/** 提示配置进度。字段描述接口需要先保存绑定再预览，因此缺少字段说明仍可确认并保存草稿。 */
+function getDataPickerSetupIssue(field) {
+  if (!isDataPickerField(field)) return ''
+  const config = safeParseConfig(field.componentProps)
+  if (isEntityListPicker(config)) {
+    if (!config.pickerList?.entityId || !config.pickerList?.listKey) return '请选择数据选择器的目标实体和已发布列表'
+  } else {
+    const hasBinding = usage => getFormDataSourceBindings(field, usage).some(binding => binding.enabled !== false)
+    if (!hasBinding('FIELD_PICKER_QUERY') || !hasBinding('FIELD_PICKER_RESOLVE')) return '请选择分页查询和按标识查询接口'
+    const hasDescription = hasBinding('FIELD_PICKER_SCHEMA')
+    const schemaMode = pickerSchemaSource(config, hasDescription)
+    if (schemaMode === 'INTERFACE' && !hasDescription) return '请选择字段描述接口'
+    if (schemaMode !== 'DEFAULT') {
+      if (!config.pickerSchema) return '请配置数据选择器的返回字段'
+      try { normalizePickerSchema(config.pickerSchema) } catch (error) { return error.message }
+    }
+  }
+  if (pickerWriteMode(config, field.fieldType) === 'FIELD' && !config.pickerWriteField) return '请选择写入当前字段的来源字段'
+  return ''
+}
+
+function readNodeDataSourceBinding(field, usage) {
+  const binding = parseDocument(field?.dataSourceBindings)[usage] || {}
+  return {
+    extensionId: resolveInterfaceExtensionId(binding, interfacesByUsage.value[usage] || []),
+    inputMappingText: stringifyConfig(binding.inputMapping || {}),
+    outputMappingText: stringifyConfig(binding.outputMapping || {})
+  }
+}
+
+function readCascaderBinding(field) {
+  return field?.cascaderDataSourceDraft || readNodeDataSourceBinding(field, 'FIELD_OPTIONS')
+}
+
+function updateCascaderBinding(key, value) {
+  componentConfigDraft.value.cascaderDataSourceDraft = { ...draftCascaderBinding.value, [key]: value }
+}
+
+function updateCascaderNodeField(key, name) {
+  const { cascaderNodeFields, ...config } = selectedComponentConfig.value
+  const nodeFields = { ...cascaderNodeFields }
+  if (name) nodeFields[key] = name
+  else delete nodeFields[key]
+  if (Object.keys(nodeFields).length) config.cascaderNodeFields = nodeFields
+  selectedComponentConfig.value = config
+}
+
+/** 级联参数与接口映射分别编辑，保存前拦截缺少接口和未写完的 JSON。 */
+function getCascaderBindingError(field, { requireInterface = true } = {}) {
+  if (!cascaderUsesInterface(field)) return ''
+  const { extensionId, inputMappingText, outputMappingText } = readCascaderBinding(field)
+  if (requireInterface && !extensionId) return '请在级联选择配置中选择数据接口'
+  try {
+    parseJsonConfig(inputMappingText, { fieldName: '级联接口输入映射' })
+    parseJsonConfig(outputMappingText, { fieldName: '级联接口输出映射' })
+    return ''
+  } catch (error) {
+    return error.message
+  }
+}
+
 async function loadDataSources({ strict = false } = {}) {
   if (!form.value.id) {
     interfaceExtensions.value = []
@@ -3805,10 +3996,7 @@ async function loadDataSources({ strict = false } = {}) {
     return
   }
   try {
-    const usages = [...new Set([
-      'FORM_INIT',
-      ...formDataSourceUsages.map(item => item.value)
-    ])]
+    const usages = formDataSourceUsages.map(item => item.value)
     const rows = await Promise.all(usages.map(async usage => [
       usage,
       await uiExtensionApi.availableInterfaces({
@@ -3835,6 +4023,14 @@ async function loadDataSources({ strict = false } = {}) {
     formFields.value.forEach(field => {
       if (field.dataSourceUsage) {
         loadNodeDataSourceUsage(field, field.dataSourceUsage)
+      }
+      // 独立配置区需要把已解析的接口标识归到原用途，切换通用绑定时不会丢失。
+      for (const usage of ['FIELD_DEFAULT', 'FIELD_OPTIONS']) {
+        const binding = field.dataSourceBindings?.[usage]
+        if (binding && !binding.extensionId) {
+          const extensionId = resolveInterfaceExtensionId(binding, interfacesByUsage.value[usage] || [])
+          if (extensionId) field.dataSourceBindings[usage] = { ...binding, extensionId }
+        }
       }
     })
   } catch (error) {
@@ -3973,24 +4169,29 @@ async function saveSelectedNode() {
   }
 }
 
+/** 只校验保存协议允许的绑定，退役用途随节点保存清理。 */
 function validateNodeDataSourceMappings(field) {
   if (!field) return
   syncNodeDataSourceBinding(field, { throwOnError: true })
+  const allowedUsages = getFormNodeDataSourceUsages(nodeTypeOf(field))
   const label = field.fieldLabel || field.fieldName || field.fieldCode || '当前节点'
   Object.entries(parseDocument(field.dataSourceBindings)).forEach(
     ([usage, binding]) => {
+      if (!allowedUsages.includes(usage.trim().toUpperCase())) return
+      if (usage === 'FIELD_DEFAULT' && field.defaultDataSourceDraft) return
+      if (usage === 'FIELD_OPTIONS' && field.componentType === 'cascader'
+          && (!cascaderUsesInterface(field) || field.cascaderDataSourceDraft)) return
       if (!binding || typeof binding !== 'object') {
         throw new Error(`${label}${usage}绑定格式无效`)
       }
       if (!binding.extensionId) {
         throw new Error(`${label}${usage}必须配置扩展接口`)
       }
-      parseJsonConfig(binding.inputMapping || {}, {
-        fieldName: `${label}${usage}输入映射`
-      })
-      parseJsonConfig(binding.outputMapping || {}, {
-        fieldName: `${label}${usage}输出映射`
-      })
+      for (const [mappingLabel, mapping] of [['输入映射', binding.inputMapping], ['输出映射', binding.outputMapping]]) {
+        // 草稿编辑器接收 JSON 文本，已保存的节点返回解析后的映射对象。
+        const mappingText = typeof mapping === 'string' ? mapping : JSON.stringify(mapping ?? {})
+        parseJsonConfig(mappingText, { fieldName: `${label}${usage}${mappingLabel}` })
+      }
     }
   )
 }
@@ -4674,6 +4875,31 @@ onMounted(async () => {
 
 .property-form {
   padding: 16px;
+}
+
+.component-type-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+}
+
+.component-type-row .el-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.component-configuration {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  max-height: 65dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.component-config-error {
+  margin-top: 12px;
 }
 
 /* 抽屉挂载在 body 下；标题下方的外边距和内容顶部内边距分别减半。 */

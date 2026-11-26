@@ -346,11 +346,32 @@ public class UiConfigReleaseService {
      */
     public Map<String, Object> runtimeFormRelease(String formId, Map<String, Object> runtimeContext) {
         authorizeRuntimeContext(formId, runtimeContext);
-        ResolvedEntityFormRelease resolved = resolveRuntimeFormRelease(formId);
+        UiConfigRelease current = requireCurrentFormRelease(formId);
+        Map<String, Object> published = verifiedSnapshot(current);
+        ResolvedEntityFormRelease resolved = resolvedRuntimeForm(current, false, published);
         Map<String, Object> result = runtimeReleaseResult(resolved, runtimeSnapshot(resolved.form()));
         result.put("configHash", formConfigHash(formId));
         result.put("runtimeContext", runtimeContext == null ? Map.of() : runtimeContext);
+        result.put("hasFormOpenBinding", hasFormOpenBinding(published));
         return result;
+    }
+
+    /** 内嵌新增用此标志跳过空打开链；接口定义和步骤只留在服务端快照中。 */
+    private boolean hasFormOpenBinding(Map<String, Object> snapshot) {
+        List<Map<String, Object>> bindings = mapList(snapshot.get("eventBindings")).stream()
+                .filter(binding -> UiDataSourceUsages.FORM_OPEN.equals(normalize(text(binding.get("eventCode"))))
+                        && "OWNER".equals(normalize(text(binding.get("targetType")))))
+                .toList();
+        boolean inherited = bindings.stream().anyMatch(binding -> "ENTITY".equals(normalize(text(binding.get("ownerType"))))
+                && !"DISABLE".equals(normalize(text(binding.get("inheritanceMode"))))
+                && !mapList(binding.get("steps")).isEmpty());
+        return bindings.stream().filter(binding -> FORM.equals(normalize(text(binding.get("ownerType"))))).findFirst()
+                .map(binding -> switch (Objects.toString(normalize(text(binding.get("inheritanceMode"))), "INHERIT")) {
+                    case "DISABLE" -> false;
+                    case "REPLACE" -> !mapList(binding.get("steps")).isEmpty();
+                    default -> inherited || !mapList(binding.get("steps")).isEmpty();
+                })
+                .orElse(inherited);
     }
 
     /** 配置摘要覆盖子表单，供页面在提交前检测未见过的配置变更。 */
@@ -2860,11 +2881,16 @@ public class UiConfigReleaseService {
      */
     public ResolvedEntityFormRelease resolveRuntimeFormRelease(
             String formId) {
+        return resolvedRuntimeForm(requireCurrentFormRelease(formId), false);
+    }
+
+    /** 统一解析当前发布记录，渲染投影和事件标志来自同一个已验签快照。 */
+    private UiConfigRelease requireCurrentFormRelease(String formId) {
         UiConfigRelease current = currentForms == null ? active(FORM, formId) : currentForms.current(formId);
         if (current == null) {
             throw new BusinessConflictException("FORM_NOT_PUBLISHED", "表单尚未发布，请先发布表单");
         }
-        return resolvedRuntimeForm(current, false);
+        return current;
     }
 
     /**
@@ -2979,8 +3005,13 @@ public class UiConfigReleaseService {
     private ResolvedEntityFormRelease resolvedRuntimeForm(
             UiConfigRelease release,
             boolean pinned) {
+        return resolvedRuntimeForm(release, pinned, verifiedSnapshot(release));
+    }
+
+    private ResolvedEntityFormRelease resolvedRuntimeForm(
+            UiConfigRelease release, boolean pinned, Map<String, Object> snapshot) {
         return new ResolvedEntityFormRelease(
-                runtimeForm(verifiedSnapshot(release)),
+                runtimeForm(snapshot),
                 release.getId(),
                 release.getVersion(),
                 pinned,

@@ -2,6 +2,27 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createEventStepEditor, serializeEventStep, parseEventDocument } from '../eventStepModel.js'
 import { eventConditionPathGroups } from '../eventConditionPaths.js'
+import { formLifecycleRows, updateFormLifecycleBindings } from '../formLifecycleEventModel.js'
+
+test('表单事件编辑保留加载和提交绑定的执行条件、映射与预校验标记', () => {
+  const otherBinding = { extensionId: 'load-api' }
+  const form = { revision: 3, dataSourceBindingsDocument: JSON.stringify({ AFTER_LOAD: otherBinding }) }
+  const { normalizeStep } = createEventStepEditor()
+  const step = normalizeStep({ name: '提交校验', extensionId: 'check-api',
+    condition: { path: 'input.mode', equals: 'approve' }, inputMapping: { amount: 'data.amount' },
+    outputMapping: { checked: { literal: false } }, sideEffectFree: true, clientPrevalidate: true }, 0)
+
+  const bindings = updateFormLifecycleBindings(form, 'BEFORE_SUBMIT', [step], false)
+  assert.deepEqual(bindings.AFTER_LOAD, otherBinding)
+  assert.deepEqual(bindings.BEFORE_SUBMIT, { name: '提交校验', extensionId: 'check-api', enabled: false,
+    condition: { path: 'input.mode', equals: 'approve' }, inputMapping: { amount: 'data.amount' },
+    outputMapping: { checked: { literal: false } }, sideEffectFree: true, clientPrevalidate: true })
+  const updated = { revision: 4, dataSourceBindingsDocument: bindings }
+  const row = formLifecycleRows(updated).find(row => row.eventCode === 'BEFORE_SUBMIT')
+  assert.equal(row.enabled, false)
+  assert.equal(row.revision, 4)
+  assert.deepEqual(updateFormLifecycleBindings(updated, 'BEFORE_SUBMIT', [], false), { AFTER_LOAD: otherBinding })
+})
 
 test('步骤编辑往返保持条件、接口兼容标记与输出映射策略', () => {
   const { normalizeStep } = createEventStepEditor()

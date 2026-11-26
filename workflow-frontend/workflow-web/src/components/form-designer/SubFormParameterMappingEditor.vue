@@ -78,6 +78,7 @@
 <script setup>
 import { computed, defineComponent, h, resolveComponent } from 'vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import { pageParameterInitializationFields } from '@flow/workflow-core/page-parameters'
 import {
   normalizeSubFormParameterContract,
   SUBFORM_PARAMETER_CONTRACT_VERSION
@@ -102,10 +103,8 @@ const parameterTargets = computed(() =>
   )
 )
 const fieldTargets = computed(() => {
-  const blocked = new Set(['id', props.childRefFieldCode].filter(Boolean))
-  const valid = props.childFieldOptions
-    .filter(item => item.fieldCode && !blocked.has(item.fieldCode)
-      && item.readonly !== true)
+  const valid = pageParameterInitializationFields(props.childFieldOptions)
+    .filter(item => item.fieldCode !== props.childRefFieldCode)
     .map(item => ({
       value: item.fieldCode,
       label: `${item.fieldName || item.fieldCode} (${item.fieldCode})`

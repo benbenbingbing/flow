@@ -6,6 +6,7 @@ import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
 import * as appearance from '../../../../packages/workflow-core/src/shared/builtin-button-appearance.js'
 import * as relatedRuntime from '../../../../packages/workflow-core/src/shared/related-content-runtime.js'
 import { buildRuntimeContext } from '../../../../packages/workflow-core/src/shared/form-runtime/context.js'
+import { applyRuntimeEventEffects } from '../../../../packages/workflow-core/src/shared/form-runtime/eventEffects.js'
 import { filterRuntimeFormSubmissionData } from '../../../../packages/workflow-core/src/shared/form-runtime/index.js'
 
 /** 执行实际 setup/render，只隔离网络/注册表/生命周期，验证 PAGE 回退、保存和独立扩展 bridge。 */
@@ -29,7 +30,7 @@ async function setupRuntime(relationType, targetContentType = 'FORM') {
     ownerType: 'FORM', ownerId: 'source-form', sourceRecordId: 'source-record', sourceData: {},
     sourceParameters: {}, runtimeContext: {}, configHash: 'source-published-hash', mode: 'edit'
   })
-  const calls = [], messages = [], registryCalls = [], saves = [], events = [], refreshes = []
+  const calls = [], messages = [], registryCalls = [], saves = [], events = [], refreshes = [], openCalls = []
   const component = vue.markRaw({ name: 'ScopeTestComponent' })
   const result = { actionCapabilities: { AUDIT: { available: false }, EDIT: { available: true } }, receipt: 'saved' }
   const script = descriptor.scriptSetup.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*;?\n/gm, '')
@@ -37,6 +38,8 @@ async function setupRuntime(relationType, targetContentType = 'FORM') {
     ...vue, ...appearance, ...relatedRuntime, buildRuntimeContext, filterRuntimeFormSubmissionData,
     defineProps: () => props, defineEmits: () => (...event) => events.push(event), defineOptions() {}, defineExpose() {},
     watch() {}, inject: () => null, onBeforeUnmount() {}, useUnsavedChangesGuard() {},
+    useRouter: () => ({ push() {} }),
+    applyFormEffects: applyRuntimeEventEffects,
     getEffectiveEntityStatusOptions: () => [], buildEntityStatusMap: () => ({}), relatedFormDraftGuardKey: Symbol('draft'),
     hasCustomFormComponent: (...args) => { registryCalls.push(args); return true },
     hasCustomListComponent: (...args) => { registryCalls.push(args); return true },
@@ -48,12 +51,19 @@ async function setupRuntime(relationType, targetContentType = 'FORM') {
       save: async (...args) => { saves.push(['save', ...args]); return { id: 'created-child' } }
     },
     uiCompositionRuntimeApi: { executeAction: async payload => { calls.push(payload); return result } },
+    uiEventBindingApi: { execute: async (...args) => {
+      openCalls.push(args)
+      return { effects: [{
+        type: 'FIELD_MAPPING', data: { form: { name: '打开事件设置的值' } },
+        mappings: [{ targetPath: 'form.name' }]
+      }] }
+    } },
     ElMessage: { error: message => messages.push(message), success() {}, warning() {} }
   }
   const state = new Function(...Object.keys(values), `${script}\nreturn {
     resolved, targetForm, targetRecord, targetEntity, targetRendererRef, targetDataSourceRuntime, targetSaveLoading,
     canSaveTarget, saveTarget, actionCapabilities, actionLoading, allowsActionExtensions, actionServices, actions,
-    executeBoundAction, failurePolicy, errorMessage, shouldRender, RuntimeBody, AsyncFormPreviewLinkage, AsyncEntityDataList,
+    executeBoundAction, executeTargetFormOpen, failurePolicy, errorMessage, shouldRender, RuntimeBody, AsyncFormPreviewLinkage, AsyncEntityDataList,
     setRefresh: handler => { resolveComposition = handler }
   }`)(...Object.values(values))
   state.setRefresh(async options => { refreshes.push(options); return true })
@@ -67,8 +77,23 @@ async function setupRuntime(relationType, targetContentType = 'FORM') {
   state.actionCapabilities.value = {
     VIEW: { available: true }, EDIT: { available: true }, AUDIT: { available: true }, UNDECLARED: { available: true }
   }
-  return { props, state, calls, messages, registryCalls, saves, events, refreshes, result, render: () => state.RuntimeBody.setup()() }
+  return { props, state, calls, messages, registryCalls, saves, events, refreshes, openCalls, result, render: () => state.RuntimeBody.setup()() }
 }
+
+test('关联目标新增使用目标发布版本执行打开事件并回填独立草稿', async () => {
+  const { state, openCalls, props } = await setupRuntime('ENTITY_RELATION')
+  const target = { form: state.targetForm.value, entity: { fields: [] }, record: state.targetRecord.value }
+  await state.executeTargetFormOpen(state.resolved.value, target, () => false)
+  assert.equal(target.record.name, '子记录')
+  await state.executeTargetFormOpen(state.resolved.value, target, () => true)
+  const [event, request] = openCalls.at(-1)
+  assert.equal(event, 'FORM_OPEN')
+  assert.equal(request.input.mode, 'create')
+  assert.equal(request.configHash, 'target-published-hash')
+  assert.equal(request.runtimeContext.compositionContext, 'server-issued-published-composition-context')
+  assert.equal(target.record.name, '打开事件设置的值')
+  assert.deepEqual(props.sourceData, {})
+})
 
 for (const targetContentType of ['FORM', 'LIST']) {
   test(`普通 ENTITY_RELATION ${targetContentType} 忽略旧动作接口，即使能力可用也不提供或执行 dispatch`, async () => {

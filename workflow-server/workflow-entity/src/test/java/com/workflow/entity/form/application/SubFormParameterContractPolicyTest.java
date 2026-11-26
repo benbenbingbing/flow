@@ -101,7 +101,7 @@ class SubFormParameterContractPolicyTest {
         EntityFormField departmentField = childField(
                 "source_dept_id",
                 "STRING",
-                0);
+                1);
         Map<String, Object> schema = Map.of(
                 "type",
                 "object",
@@ -133,6 +133,9 @@ class SubFormParameterContractPolicyTest {
                         List.of(projectField),
                         List.of(departmentField),
                         "parent_id"));
+        assertDoesNotThrow(() ->
+                SubFormParameterContractPolicy.validateRuntimeTargets(
+                        valid, schema, List.of(departmentField), "parent_id"));
 
         IllegalArgumentException missingParameter =
                 assertThrows(

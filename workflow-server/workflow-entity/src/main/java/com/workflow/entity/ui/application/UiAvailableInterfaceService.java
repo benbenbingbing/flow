@@ -38,7 +38,6 @@ public class UiAvailableInterfaceService {
             UiDataSourceUsages.FIELD_PICKER_QUERY,
             UiDataSourceUsages.FIELD_PICKER_RESOLVE,
             UiDataSourceUsages.FIELD_DEFAULT,
-            UiDataSourceUsages.FIELD_COMPUTE,
             UiDataSourceUsages.SUBFORM_ROWS,
             UiDataSourceUsages.AFTER_LOAD,
             UiDataSourceUsages.LIST_QUERY,
@@ -86,6 +85,11 @@ public class UiAvailableInterfaceService {
             String bindingCode) {
         Owner owner = resolveOwner(ownerType, ownerId);
         String normalizedBinding = normalize(bindingCode);
+        // 只为可执行的绑定位置提供候选接口，避免退役用途落入普通目录查询。
+        if (!normalizedBinding.isEmpty()
+                && !UiInterfaceExtensionService.supportsUsage(normalizedBinding)) {
+            return List.of();
+        }
         List<UiExtensionDefinition> definitions = sourceMapper.selectList(
                 new LambdaQueryWrapper<UiExtensionDefinition>()
                         .eq(UiExtensionDefinition::getExtensionType,

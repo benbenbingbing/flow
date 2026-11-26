@@ -38,7 +38,7 @@ const ownerEventGroups = {
   FORM: [
     {
       label: '表单生命周期',
-      events: ['FORM_OPEN', 'FORM_SAVE', 'FORM_RESET']
+      events: ['FORM_OPEN', 'AFTER_LOAD', 'BEFORE_SUBMIT', 'FORM_SAVE', 'FORM_RESET']
     },
     {
       label: '表单数据',

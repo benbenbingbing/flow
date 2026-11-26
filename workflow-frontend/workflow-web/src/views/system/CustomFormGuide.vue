@@ -75,7 +75,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
           </el-table>
           <ul class="check-list">
             <li>FIELD 可绑定实体字段、实体关系、计算字段或运行上下文字段；TEXT 和布局节点可以不绑定数据。</li>
-            <li>SUB_FORM 必须引用子实体、关系和指定已发布表单版本；关系编码、子实体、关系类型和外键由实体关系定义只读推导，引用 release 必须属于该子实体。发布时检查跨表单循环引用。运行时每条子表行使用自己的 recordId 与数据对象；仅新增模式执行子表 `FORM_INIT`，所有模式执行 `AFTER_LOAD`、默认值和计算，不会污染父记录。</li>
+            <li>SUB_FORM 必须引用子实体、关系和指定已发布表单版本；关系编码、子实体、关系类型和外键由实体关系定义只读推导，引用 release 必须属于该子实体。发布时检查跨表单循环引用。运行时每条子表行使用自己的 recordId 与数据对象。各模式可执行 `AFTER_LOAD`，新增行按默认值配置填充空字段。</li>
             <li>树深度超过 8、TAB 不属于 TAB_SET、孤儿节点或父子类型不合法时禁止发布。</li>
             <li>所有节点都可在属性抽屉选择合法父容器；TAB 只能选择 TAB_SET，普通字段不能直接放入 TAB_SET，但可以放入具体 TAB 页。候选项必须排除自身、后代、循环和移动整棵子树后超过 8 层的目标。</li>
             <li>历史 `componentProps` 中可识别的子表、引用、事件和选项迁移为显式属性，未知内容保存在 `legacyProps`。</li>
@@ -326,8 +326,8 @@ defineExpose({ validate })
           <h3>11. 表单扩展接口</h3>
           <ul class="check-list">
             <li>类型包括 `DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
-            <li>表单级使用 `FORM_INIT`；FIELD 仅使用 `FIELD_OPTIONS`、`FIELD_DEFAULT`、`FIELD_COMPUTE`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
-            <li>SUB_FORM 与 REPEATER 仅使用 `SUBFORM_ROWS`、`AFTER_LOAD`、`BEFORE_SUBMIT`，不能复用 FIELD 的选项、默认值或字段计算 Usage。</li>
+            <li>新增回填使用 `FORM_OPEN` 并设置打开方式为新增；FIELD 仅使用 `FIELD_OPTIONS`、`FIELD_DEFAULT`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
+            <li>SUB_FORM 与 REPEATER 支持 `SUBFORM_ROWS`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
             <li>每条扩展记录就是一个完整可调用接口；配置只保存 `extensionId`，不在页面中继续选择或组合后端操作。</li>
             <li>配置统一输入/输出映射、分页、超时、缓存和失败策略；组件只通过 `dataSourceRuntime.execute(binding, context)` 调用。</li>
             <li>Provider 查询必须执行平台传入的 `DataScopePlan`；客户端上下文、隐藏字段和组件本地状态不能扩大数据权限。</li>
@@ -479,7 +479,7 @@ const propertyRows = [
   { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', boundary: '不能位于根节点，父级只能选择有效 TAB_SET；无字段规则或数据源。' },
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', boundary: '不显示字段组件、默认值、校验或字段数据源。' },
   { types: 'TEXT', editable: '合法父容器、受限文本 text；普通说明或节标题由 textStyle 区分。', boundary: 'SECTION_TITLE 只改变展示样式；禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
-  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
+  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
   { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、组件参数和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
   { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、组件参数和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
   { types: 'ACTION_SLOT', editable: '仅合法父容器；用于在表单树中放置稳定动作插槽。', boundary: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
@@ -490,7 +490,7 @@ const contractRows = [
   { name: 'form / nodes', meaning: '当前激活发布快照和按当前模式过滤后的递归节点树' },
   { name: 'readonly / mode', meaning: '整表单只读状态和 create/edit/approve/view 模式' },
   { name: 'linkageState', meaning: '显隐、禁用、必填、选项和值联动结果' },
-  { name: 'dataSourceRuntime', meaning: '受控执行 FORM_INIT、FIELD_OPTIONS、SUBFORM_ROWS 等绑定' },
+  { name: 'dataSourceRuntime', meaning: '受控执行 AFTER_LOAD、FIELD_OPTIONS、SUBFORM_ROWS 等绑定' },
   { name: 'formActionSlots / form-action', meaning: '按 slotKey 读取只读动作，并用 trigger(actionKey) 或 form-action 事件交回宿主统一鉴权执行' },
   { name: 'config', meaning: '管理员按 configSchema 保存的组件参数' },
   { name: 'context', meaning: '实体、整条记录、当前模式，以及 formUniqueness 唯一预检契约' }

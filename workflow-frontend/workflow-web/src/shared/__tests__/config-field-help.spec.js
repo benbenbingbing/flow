@@ -25,7 +25,6 @@ const files = [
   'src/views/system/embed-management/EmbedBindingPanel.vue',
   'src/views/system/embed-management/EmbedOperationsWorkspace.vue',
   'src/components/form-designer/FormNodeDataSettings.vue',
-  'src/components/ui-config/FormDataSourceDialog.vue',
   'src/components/ui-config/ListColumnTemplateEditorDialog.vue',
   'src/components/NextApproverConfigEditor.vue',
   'src/components/ui-config/EntitySelectionMappingEditor.vue',

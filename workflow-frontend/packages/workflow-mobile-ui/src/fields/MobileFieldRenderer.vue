@@ -53,6 +53,7 @@ import { normalizeFieldDefaultValue, useFormField } from '@flow/workflow-core/vu
 import { usePickerNumericInput } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
 import { pickerNativeComponent } from '@flow/workflow-core/data-picker'
 import { getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
+import { getFieldOptionQueryKey } from '@flow/workflow-core/form-runtime/dataSourceRuntime'
 import { referenceListParameterState } from '@flow/workflow-core/page-parameters'
 import MobileReadonlyField from './MobileReadonlyField.vue'
 import MobileCascaderField from './MobileCascaderField.vue'
@@ -117,6 +118,10 @@ const dateType = computed(() => ['date', 'datetime', 'time'].includes(type.value
 const selectionType = computed(() => entityType.value || ['select', 'select_multiple'].includes(type.value))
 const multiple = computed(() => type.value === 'select_multiple' || parsedComponentProps.value.multiple === true || ['MULTI_REFERENCE', 'MULTI_SELECT'].includes(String(props.field.fieldType).toUpperCase()))
 const remoteOptions = ref(null), optionError = ref(''), pickerOpen = ref(false), selectionDraft = ref([]), selectedRecords = ref([])
+const optionRecord = () => props.context.getFormData?.() ?? props.formData
+const optionQueryKey = computed(() => getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length
+  ? getFieldOptionQueryKey(props.field, optionRecord()) : null)
+const hostOptions = computed(() => optionQueryKey.value === null ? props.options : undefined)
 const referenceConfig = computed(() => parsedComponentProps.value.refConfig || {})
 const pickerParameters = computed(() => type.value === 'entity'
   && String(props.field.refEntityType || referenceConfig.value.refEntityType || 'CUSTOM').toUpperCase() === 'CUSTOM'
@@ -131,7 +136,7 @@ watch(pickerParameterKey, () => { pickerOpen.value = false })
 const customRef = ref(), cascaderRef = ref(), dataPickerRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
 const inputValue = computed(() => exactNumber.value ? numberText.value : (type.value === 'number' ? numberDraft.value ?? fieldValue.value : fieldValue.value))
 function normalizeOptions(options) { return (Array.isArray(options) ? options : []).map(option => typeof option === 'object' ? { ...option, text: option.text ?? option.label ?? option.name ?? String(option.value ?? option.id), value: option.value ?? option.id, ...(option.children ? { children: normalizeOptions(option.children) } : {}) } : { text: String(option), value: option }) }
-const choices = computed(() => normalizeOptions(props.options ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : [])))
+const choices = computed(() => normalizeOptions(hostOptions.value ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : [])))
 const selectionLabel = computed(() => {
   if (dateType.value) return props.modelValue == null ? '' : String(props.modelValue).replace('T', ' ')
   const values = Array.isArray(fieldValue.value) ? fieldValue.value : fieldValue.value == null || fieldValue.value === '' ? [] : [fieldValue.value]
@@ -142,13 +147,13 @@ let optionGeneration = 0, committed = JSON.stringify(props.modelValue)
 async function loadOptions() {
   const generation = ++optionGeneration; optionError.value = ''; remoteOptions.value = null
   // 宿主已解析系统状态或动态候选时直接消费，包括明确的空结果，不重复请求或提示缺少来源。
-  if (props.options != null) return
+  if (hostOptions.value != null) return
   // 级联与数据选择器有独立的查询、回显与重试流程，不能被旧选项绑定重复加载或影响校验。
   if (type.value === 'cascader' || isDataPicker.value) return
   try {
     let result
     if (props.dataSourceRuntime && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length) {
-      result = await props.dataSourceRuntime.loadOptions(props.field, { form: props.context.form, record: props.context.getFormData?.(), context: props.context })
+      result = await props.dataSourceRuntime.loadOptions(props.field, { form: props.context.form, record: optionRecord(), context: props.context })
     } else if (['select', 'select_multiple', 'radio', 'checkbox'].includes(type.value) && props.field.dictType) {
       if (!props.services.loadDictionaryOptions) throw new Error('当前表单未提供代码表查询能力')
       result = await props.services.loadDictionaryOptions(props.field.dictType)
@@ -161,8 +166,9 @@ async function loadOptions() {
   }
   catch (cause) { if (generation === optionGeneration) optionError.value = cause.message }
 }
-// 仅在选项来源身份变化时重载；输入其它字段造成 context 重建时不重复请求代码表。
-watch([type, isDataPicker, () => props.field.id, () => props.field.dictType, () => props.options, () => props.context.form?.configHash], loadOptions, { immediate: true })
+// 映射参数变化让已打开的选择器退出旧候选，代码表仍只随来源变化重载。
+watch(optionQueryKey, () => { pickerOpen.value = false })
+watch([type, isDataPicker, () => props.field.id, () => props.field.dictType, hostOptions, optionQueryKey, () => props.context.form?.configHash], loadOptions, { immediate: true })
 onBeforeUnmount(() => { optionGeneration++ })
 function input(value) {
   if (exactNumber.value) { editNumber(value); return }

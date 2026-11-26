@@ -112,50 +112,13 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane name="data-source">
-        <template #label>
-          <span>初始化数据</span>
-          <el-tag
-            v-if="formDataSourceBindingCount"
-            size="small"
-            type="success"
-            effect="plain"
-            class="settings-tab-tag"
-          >
-            {{ formDataSourceBindingCount }}
-          </el-tag>
-        </template>
-        <div class="form-settings-pane">
-          <div class="behavior-entry">
-            <div>
-              <h3>初始化与数据处理</h3>
-              <p>
-                统一配置新增时的初始化数据、全模式加载后处理和提交前处理，并保留请求参数与返回字段映射。
-              </p>
-            </div>
-            <el-button
-              type="primary"
-              :disabled="!form.id"
-              @click="openFormDataSourceConfig"
-            >
-              配置初始化与处理
-            </el-button>
-          </div>
-          <el-alert
-            v-if="!form.id"
-            type="info"
-            :closable="false"
-            show-icon
-            title="先保存表单草稿，再配置初始化与数据处理。"
-          />
-        </div>
-      </el-tab-pane>
-
       <el-tab-pane label="表单事件" name="events">
         <div class="form-settings-pane">
           <EventBindingEditor
             owner-type="FORM"
             :owner-id="form.id || ''"
+            :lifecycle-form="form"
+            @lifecycle-saved="onFormLifecycleSaved"
             owner-label="表单"
             :field-options="eventFieldOptions"
             @changed="handleEventBindingsChanged"
@@ -238,12 +201,11 @@ const {
   relatedContents,
   entityFields,
   formFields,
-  formDataSourceBindingCount,
   eventFieldOptions,
   formActionPersistenceRevision,
   persistedFormButtonKeys,
   createActionSlotForButton,
-  openFormDataSourceConfig,
+  onFormLifecycleSaved,
   onEventBindingsChanged
 } = context
 

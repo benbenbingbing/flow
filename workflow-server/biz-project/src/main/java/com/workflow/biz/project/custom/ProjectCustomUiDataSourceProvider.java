@@ -15,7 +15,7 @@ import java.util.Set;
  *
  * <p>接口扩展中选择“注册 Provider”，Provider 选择 {@value #CODE}，
  * 作用范围选择具体实体后，可绑定到该实体的已发布表单或列表。该实现覆盖列表列、
- * 表单初始化、字段选项/默认值/计算和按钮事件等常见绑定位置，适合验证同一
+ * 表单初始化、字段选项、默认值和按钮事件等常见绑定位置，适合验证同一
  * Provider 通过多条扩展接口记录复用到不同 FORM/LIST 业务调用的全链路。
  * </p>
  */
@@ -29,7 +29,7 @@ public class ProjectCustomUiDataSourceProvider
     public static final String RECOMMENDED_SCOPE =
             "ENTITY";
 
-    /** 列表虚拟列、表单 patch 和字段计算结果共用的文本前缀。 */
+    /** 列表虚拟列和表单回填值共用的文本前缀。 */
     private static final String VALUE_PREFIX = "valuePrefix";
 
     /** 表单生命周期分支需要回填的字段编码；空值表示返回空 patch。 */
@@ -158,12 +158,6 @@ public class ProjectCustomUiDataSourceProvider
                             configuration.get(
                                     DEFAULT_VALUE),
                             "GLOBAL_DEFAULT"));
-            case UiDataSourceUsages.FIELD_COMPUTE ->
-                    fieldValue(
-                            valuePrefix + ":"
-                                    + text(
-                                    input.get("value"),
-                                    "EMPTY"));
             case UiDataSourceUsages.SUBFORM_ROWS ->
                     List.of();
             default -> BUTTON_USAGES.contains(usage)
@@ -199,8 +193,6 @@ public class ProjectCustomUiDataSourceProvider
                     UiDataSourceUsages.FIELD_OPTIONS;
             case UiDataSourceUsages.FIELD_DEFAULT ->
                     UiDataSourceUsages.FIELD_DEFAULT;
-            case UiDataSourceUsages.FIELD_COMPUTE ->
-                    UiDataSourceUsages.FIELD_COMPUTE;
             case UiDataSourceUsages.SUBFORM_ROWS ->
                     "EMPTY_SUBFORM_ROWS";
             default -> BUTTON_USAGES.contains(usage)

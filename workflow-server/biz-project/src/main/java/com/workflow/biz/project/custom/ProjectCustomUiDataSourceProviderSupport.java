@@ -272,7 +272,7 @@ abstract class ProjectCustomUiDataSourceProviderSupport
     }
 
     /**
-     * 构造字段默认值或字段计算结果。
+     * 将默认值包装为运行时可回填的字段结果。
      *
      * <p>前端同时兼容直接标量和 {@code {"value": ...}}；示例统一返回对象，
      * 便于在接口扩展中定义稳定的输出 Schema。</p>

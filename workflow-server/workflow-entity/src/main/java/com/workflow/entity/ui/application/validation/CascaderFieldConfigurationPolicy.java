@@ -11,6 +11,8 @@ import java.util.Set;
  */
 final class CascaderFieldConfigurationPolicy {
 
+    private static final Set<String> NODE_FIELDS = Set.of("value", "label", "children", "leaf", "disabled");
+
     private CascaderFieldConfigurationPolicy() {
     }
 
@@ -34,6 +36,7 @@ final class CascaderFieldConfigurationPolicy {
             }
             return Map.of();
         }
+        validateNodeFields(props.get("cascaderNodeFields"), path);
         Object configured = bindings.get("FIELD_OPTIONS");
         List<?> candidates = configured == null ? List.of()
                 : configured instanceof List<?> list ? list : List.of(configured);
@@ -46,6 +49,19 @@ final class CascaderFieldConfigurationPolicy {
             throw invalid(path, "接口模式必须配置且仅配置一条启用的 FIELD_OPTIONS 接口");
         }
         return binding;
+    }
+
+    /** 接口映射只指定各节点的来源字段名，转换后的值及层级由客户端校验。 */
+    private static void validateNodeFields(Object value, String path) {
+        if (value == null) return;
+        if (!(value instanceof Map<?, ?> fields)) {
+            throw invalid(path, "输出映射必须为 JSON 对象");
+        }
+        for (Map.Entry<?, ?> entry : fields.entrySet()) {
+            if (!NODE_FIELDS.contains(entry.getKey()) || !(entry.getValue() instanceof String)) {
+                throw invalid(path, "输出映射必须给受支持的节点字段填写接口字段名");
+            }
+        }
     }
 
     /**

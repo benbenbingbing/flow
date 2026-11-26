@@ -377,7 +377,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '单选与多选',
-              text: 'REFERENCE 只保存一个目标，MULTI_REFERENCE 保存多个目标。CUSTOM 引用可选择目标 listKey：配置后使用统一列表运行时，列、查询、排序、数据范围和选择能力均来自该列表；留空时使用默认实体选择器。需要定制查询范围时，请配置并发布选择列表。'
+              text: 'REFERENCE 保存一个目标，MULTI_REFERENCE 保存多个目标。在表单设计器打开字段属性，进入「基础与布局」，点击组件类型旁的「组件配置」。自定义实体引用可指定选择列表，并映射其中已发布的筛选参数。选择器会使用该列表的列、查询、排序和数据范围。选择列表留空时使用默认实体选择器。'
             }
           ]
         }
@@ -685,7 +685,7 @@ export default {
                 { field: '递归画布', meaning: '容器和内容节点按 parentId 组成树；画布用“Tab 集合 / Tab 页”“栅格容器”等轻量结构标题区分层级，不展示技术标签。', defaultLimit: '最大嵌套深度 8 层；不显示序号、nodeType、revision 或父级 ID 等技术元信息。', effect: '区块、栅格、Tab、折叠面板、子表和明细表可以递归组合；选中任一节点后可在属性抽屉移动到合法父容器。', publish: '保存和发布都会拒绝非法父子类型、循环引用、孤儿节点和移动整棵子树后超过 8 层的结构。' },
                 { field: '流程详情页签', meaning: '发布表单的根级 TAB_SET 在实体查看、编辑和审批弹窗中提升为外层页签。', defaultLimit: '只提升根级 TAB_SET；区块、栅格或 Tab 页内部的嵌套 TAB_SET 继续在原位置递归显示。', effect: '自定义表单页签与流程图、审批历史、动作执行记录处于同一页签栏，不再套在“基本信息”里面。', publish: '页签使用稳定 nodeId 定位；调整标题或顺序发布后生效，不改变字段绑定和流程历史快照。' },
                 { field: '节点拖拽', meaning: '悬停或选中节点后，拖拽右上角手柄调整同级顺序，或移动到区块、栅格、Tab 页、折叠面板、子表和明细表等兼容容器。Tab 页使用 Tab 集合内的页签拖拽手柄。', defaultLimit: 'TAB 只能进入 TAB_SET；普通节点不能直接进入 TAB_SET；禁止放入自身、后代或形成超过 8 层的结构。排序保存期间暂时禁用再次拖拽。', effect: '已保存节点立即通过独立排序接口携带 expectedRevision 写入草稿；未保存节点先更新本地树，点击“保存草稿”后落库。失败或 409 时重新加载服务器节点和 revision。', publish: '拖拽只修改草稿位置，不影响当前激活发布版本；发布前应在草稿预览中核对嵌套布局。' },
-                { field: '表单设置三页签', meaning: '“表单设置”统一收纳基本与布局、按钮与操作、初始化与数据处理。', defaultLimit: '关闭抽屉不清除编辑值；标签位置和宽度统一保存在 viewConfig 中。', effect: '表单身份、默认状态、按钮、生命周期数据源和事件不再散落在画布顶部；渲染方式及扩展配置保留在表单设计工作区。', publish: '只调整编辑入口，继续保存原 viewConfig、数据源绑定、事件绑定和扩展字段。' },
+                { field: '表单设置', meaning: '在“表单事件”配置打开、加载后和提交前处理。', defaultLimit: '关闭抽屉不清除编辑值；标签位置和宽度统一保存在 viewConfig 中。', effect: '表单身份、默认状态、按钮、生命周期数据源和事件不再散落在画布顶部；渲染方式及扩展配置保留在表单设计工作区。', publish: '只调整编辑入口，继续保存原 viewConfig、数据源绑定、事件绑定和扩展字段。' },
                 { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；顶部只读展示名称、类型、绑定、编码、父级和保存状态。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '抽屉底部只保存当前节点；页面顶部只保存全部草稿，两个入口职责分离。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
                 { field: '节点属性页签', meaning: '属性按“基础与布局、数据校验、联动与事件、子页面、数据与扩展”组织。', defaultLimit: '所有配置项保持显示，不适用的配置置灰；已有兼容配置继续保留。', effect: '基础页维护默认值和条件状态；联动页直接维护值、选项和事件；子页面维护子表单、参数传递和子列表；数据与扩展维护引用选择、数据源和组件扩展。', publish: '分组和编辑方式不改变草稿、发布快照或运行时优先级。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
@@ -737,7 +737,7 @@ export default {
                 { option: 'TAB', meaning: '可编辑页签标题和所属 TAB_SET，用于承载该页签下的递归内容。', notes: '父级选择器只列出有效 TAB_SET；TAB 不能位于根节点，也不配置字段规则或数据源。' },
                 { option: 'COLLAPSE', meaning: '可编辑标题、父容器、默认展开 defaultExpanded 和手风琴 accordion，用于折叠一组内容。', notes: '展开和手风琴设置在设计器预览与发布运行时使用同一语义。' },
                 { option: 'TEXT', meaning: '可编辑父容器和受限文本 text；普通说明与竖线节标题由 textStyle 区分。', notes: 'SECTION_TITLE 只改变展示样式；不支持事件、实体绑定、字段规则、任意脚本或任意 HTML 执行。' },
-                { option: 'FIELD', meaning: '可编辑显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、字段事件、节点扩展和受控数据源。', notes: '仅允许 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度、格式和正则只对 STRING、TEXT 显示，数值范围只对 INTEGER、LONG、DECIMAL、DOUBLE 显示；组件切换会清理不兼容参数、规则和绑定。' },
+                { option: 'FIELD', meaning: '可编辑显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、字段事件、节点扩展和受控数据源。', notes: '仅允许 FIELD_OPTIONS、FIELD_DEFAULT、AFTER_LOAD、BEFORE_SUBMIT；长度、格式和正则只对 STRING、TEXT 显示，数值范围只对 INTEGER、LONG、DECIMAL、DOUBLE 显示；组件切换会清理不兼容参数、规则和绑定。' },
                 { option: 'SUB_FORM', meaning: '可编辑显示标签、父容器、子表布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源，用于引用一个子实体表单。', notes: '展示位置由父容器决定；仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
                 { option: 'REPEATER', meaning: '可编辑显示标签、父容器、明细布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源，用于一对多重复明细。', notes: '展示位置由父容器决定；仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 的默认值、普通组件、字段校验、模式权限或字段事件。' },
                 { option: 'ACTION_SLOT', meaning: '可编辑父容器与栅格宽度，用于在递归树中放置稳定的运行时动作插槽。', notes: '栅格表单或 GRID 容器内支持 1–24 栅格；插槽标识只读，动作与权限仍在按钮配置中管理。' }
@@ -765,7 +765,7 @@ export default {
                 { field: '容器内边距 / 边框线', meaning: '分别控制父容器是否保留内容留白、是否绘制业务边框和分隔线。', defaultLimit: '历史配置缺少开关时按节点类型恢复原视觉；GRID 默认无运行态边框和内边距，区块、Tab 集合、折叠面板和多行子表默认保留。', effect: '多层嵌套时可逐层关闭重复留白和线框；设计器的选中、悬停和拖拽提示始终保留，不会因关闭业务边框而失去操作入口。', publish: '作为节点 props 或子表 componentProps 随草稿和发布快照保存，预览与运行态使用同一解析规则。' },
                 { field: '组件类型', meaning: '选择与字段类型兼容的渲染组件。', defaultLimit: '按字段类型过滤可用组件。', effect: '改变输入交互，不改变实体字段数据库类型。', publish: '组件必须在目标环境注册。' },
                 { field: '必填', meaning: '当前表单场景要求填写。', defaultLimit: '从实体字段继承，可单独调整。', effect: '运行时表单校验。', publish: '不要与模式权限的不可编辑配置冲突。' },
-                { field: '只读', meaning: '字段显示但不可编辑。', defaultLimit: '默认关闭。', effect: '运行时禁用输入。', publish: '只读不等于隐藏，敏感数据仍可见。' },
+                { field: '只读', meaning: '字段显示，页面输入控件禁用。', defaultLimit: '默认关闭。', effect: '默认值、值联动、选择器映射和字段脚本仍可为业务字段赋值。', publish: '数据保存遵循当前场景的提交权限。' },
                 { field: '隐藏', meaning: '字段不显示。', defaultLimit: '默认关闭。', effect: '运行时不渲染或不占布局。', publish: '隐藏字段仍可能携带默认值或初始化值。' },
                 { field: '默认值', meaning: '该表单中的初始值。', defaultLimit: '默认空。', effect: '覆盖或补充实体默认值。', publish: '选项字段填写 value。' },
                 { field: '占位提示', meaning: '输入为空时的提示。', defaultLimit: '默认空。', effect: '指导用户输入格式。', publish: '不要把关键校验只写在占位提示。' },
@@ -785,7 +785,7 @@ export default {
                 { option: '下拉、单选、复选', meaning: 'select、select_multiple、radio、checkbox 使用实体选项。', notes: '值联动和选项联动依赖稳定 value。' },
                 { option: '开关 switch', meaning: 'BOOLEAN；activeText、inactiveText 可选。', notes: '显示文本不改变实际布尔值。' },
                 { option: '文件 / 图片', meaning: 'FILE/IMAGE 使用上传组件。', notes: '限制来自实体附件项配置。' },
-                { option: '级联 cascader', meaning: 'STRING/MULTI_SELECT；支持静态树、接口全量与逐级加载，PC/移动端统一。', notes: '组件参数设置数据来源与加载方式；接口使用 FIELD_OPTIONS 绑定，选择结果为完整路径数组。' },
+                { option: '级联 cascader', meaning: 'STRING/MULTI_SELECT；支持静态树、接口全量与逐级加载，PC/移动端统一。', notes: '从「组件配置」设置数据来源与加载方式；接口使用 FIELD_OPTIONS 绑定，选择结果为完整路径数组。' },
                 { option: '实体引用 / 子表单 / 分组标题', meaning: 'reference、multi_reference、sub_form、section。', notes: '详细参数见对应主题。' }
               ]
             }
@@ -820,7 +820,7 @@ export default {
                 { field: '子实体 / 关系 / 外键', meaning: '从实体关系定义只读推导 relationCode、childEntityId、relationType 和 childRefFieldCode。', defaultLimit: '请求值只能与实体关系一致，不能在表单层补写或覆盖。', effect: '防止表单层破坏数据模型或伪造子实体。', publish: '引用的已发布子表单必须属于该关系的子实体；需要改关系时返回实体设计。' },
                 { field: '布局', meaning: 'form 分行或 table 表格。', defaultLimit: '默认 form。', effect: '一对多明细可使用表格。', publish: '字段较多或含附件时优先分行。' },
                 { field: '子表表单', meaning: '指定子实体表单。', defaultLimit: '留空使用默认表单；不能选择当前正在编辑表单。', effect: '决定子记录字段与布局。', publish: '被选表单必须启用且在目标环境存在。' },
-                { field: '子表单输入参数', meaning: '子表单在“表单设置 → 初始化与数据处理 → 输入参数”声明可接收的参数编码、中文名称、类型、必填、默认值和说明。', defaultLimit: '参数默认只存在于运行时，不写入子实体；子表单通过 params.参数编码 读取。', effect: '为子表单的数据源、联动和事件提供稳定输入契约。', publish: '必填参数必须有父表单映射或默认值；参数类型和默认值必须通过 Schema 校验。' },
+                { field: '子表单输入参数', meaning: '子表单在“表单设置 → 输入参数”声明可接收的参数编码、中文名称、类型、必填、默认值和说明。', defaultLimit: '参数默认只存在于运行时，不写入子实体；子表单通过 params.参数编码 读取。', effect: '为子表单的数据源、联动和事件提供稳定输入契约。', publish: '必填参数必须有父表单映射或默认值；参数类型和默认值必须通过 Schema 校验。' },
                 { field: '运行参数', meaning: '父表单的子表单节点把父记录ID、父字段、受控运行上下文或固定值映射到子表单参数。', defaultLimit: '目标只能选择当前钉定子表单发布版本已声明的参数；关系外键不可配置。', effect: '新增行、已有行和父字段变化后，子表单均读取最新 params。', publish: '切换子表单发布版本后失效映射会标红，修复前不能发布。' },
                 { field: '初始化子字段', meaning: '把父字段、父记录ID、运行上下文或固定值初始化到可写子实体字段。', defaultLimit: '固定采用仅空值写入；ID、关系外键和系统维护字段不可选择。', effect: '新增子行自动带入业务字段；已有非空值不会被覆盖。', publish: '只有该映射会进入子记录持久化，普通运行参数不会落库。' },
                 { field: '递归提交', meaning: '服务端按父表单钉定的子表单发布版本重新计算可信参数，并逐行执行子表单提交前处理。', defaultLimit: '支持一对一、一对多和最多 8 层嵌套；不信任浏览器提交的 params。', effect: '每条子行使用独立幂等上下文，完成校验、空值初始化和 BEFORE_SUBMIT。', publish: '只有 parameterContract.version=1 启用新契约，旧表单行为保持不变。' },
@@ -839,8 +839,17 @@ export default {
       topics: [
         {
           id: 'entity-form-init',
-          title: '初始化数据',
+          title: '表单事件',
           blocks: [
+            {
+              type: 'table',
+              columns: optionColumns,
+              rows: [
+                { option: '打开表单 FORM_OPEN', meaning: '打开新增或编辑表单时执行。', notes: '新增接口回填步骤设置“打开方式等于新增”。' },
+                { option: '加载后处理 AFTER_LOAD', meaning: '数据加载后执行读接口并回填。', notes: '步骤按列表顺序执行，后一步可读取已回填字段。' },
+                { option: '提交前处理 BEFORE_SUBMIT', meaning: '服务端正式提交时执行，回填结果进入本次提交。', notes: '失败会阻止提交。浏览器预校验要求同时声明无副作用。' }
+              ]
+            },
             {
               type: 'table',
               columns: optionColumns,
@@ -868,10 +877,11 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '配置入口', meaning: '选中字段，在“基础与布局”把组件类型设为级联选择；在同页“级联选择配置”设置数据来源。', notes: 'PC 和移动端使用相同配置，保存单条完整路径编码数组。' },
+                { option: '配置入口', meaning: '在“基础与布局”把组件类型设为级联选择，点击旁边的“组件配置”，在弹窗里设置数据来源和映射。', notes: '确定后写入当前字段草稿，再保存属性或保存全部。PC 和移动端使用相同配置。' },
                 { option: '静态选项', meaning: '级联选项填写 value、label、children 组成的 JSON 树。', notes: 'value 为非空字符串或数字，同一级唯一；disabled=true 禁用节点。未配置时为空，不自动填充地区示例。' },
-                { option: '一次加载全部数据', meaning: '数据来源选“数据接口”，接口加载方式选“一次加载全部数据”。', notes: '在同页“数据源绑定 → 字段选项”选择只读接口；返回完整树。' },
+                { option: '一次加载全部数据', meaning: '数据来源选“数据接口”，接口加载方式选“一次加载全部数据”。', notes: '在“级联选择配置”选择级联数据接口；接口返回完整树。' },
                 { option: '逐级加载下一级', meaning: '只加载根节点和用户展开节点的直接下级；请求 input.cascader 携带 loadMode、parentValue、path、level。', notes: '每项须有 leaf 布尔值且不携带 children。根请求 parentValue=null、path=[]、level=0；下级请求带完整父路径。' },
+                { option: '输出映射', meaning: '接口字段名不同时，在“输入与输出映射”中填写节点值、显示名称、下级节点或末级标记对应的接口字段名。', notes: '例如全量树返回 id、name、nodes，就填在前三项。各层使用同一组字段名；空白项使用标准字段名。' },
                 { option: '回显与失败重试', meaning: '编辑与只读页面按已保存路径加载名称；加载失败提供重试并保留原值。', notes: '取消弹窗不修改值，明确选择末级后才更新；接口变化导致原路径不存在时提示重新核对。' }
               ]
             }
@@ -885,10 +895,9 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: 'FORM_INIT', meaning: '仅在新增模式初始化业务对象。', notes: '编辑、查看和审批模式不执行；只填充映射目标，不得覆盖无权访问或只读字段。' },
-                { option: 'FIELD_OPTIONS', meaning: '加载下拉、单选、复选、级联候选项。', notes: '输出统一映射为 label/value/disabled/children。' },
-                { option: 'FIELD_DEFAULT', meaning: '字段尚无值时计算默认值。', notes: '编辑和审批场景不得无条件覆盖已有值。' },
-                { option: 'FIELD_COMPUTE', meaning: '根据表单值和上下文计算字段。', notes: '提交时后端应按同一规则复核关键结果。' },
+                { option: 'FORM_OPEN', meaning: '新增时通过打开表单事件回填业务字段。', notes: '为步骤设置打开方式等于新增。' },
+                { option: 'FIELD_OPTIONS', meaning: '加载下拉、单选、复选和级联候选项。', notes: '普通选择字段继承实体选项接口，接口型级联在组件配置内选择接口。' },
+                { option: 'FIELD_DEFAULT', meaning: '新增记录初始化时填充空字段。', notes: '在“基础与布局 → 默认值 → 数据源”维护扩展接口和映射。' },
                 { option: 'SUBFORM_ROWS', meaning: '加载 SUB_FORM 或 REPEATER 行。', notes: '配置分页、最大行数和失败降级。' },
                 { option: 'LIST_QUERY / LIST_COLUMN', meaning: '提供整表查询或单列扩展值。', notes: '兼容 EntityListDataProvider 与 ListFieldDataProvider 适配器。' },
                 { option: 'AFTER_LOAD', meaning: '数据加载完成后的受控补充与转换。', notes: '不能把未授权字段重新拼回响应。' },
@@ -900,10 +909,10 @@ export default {
               title: '节点类型可用 Usage',
               columns: optionColumns,
               rows: [
-                { option: 'FIELD', meaning: 'FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT。', notes: '分别用于候选项、默认值、结构化计算、加载后补充和提交前校验/映射。' },
-                { option: 'SUB_FORM', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向子记录集合加载和子表生命周期；不能选择 FIELD_OPTIONS、FIELD_DEFAULT 或 FIELD_COMPUTE。' },
+                { option: 'FIELD', meaning: 'FIELD_OPTIONS、FIELD_DEFAULT、AFTER_LOAD、BEFORE_SUBMIT。', notes: '分别用于候选项、默认值、加载后补充和提交前校验/映射。' },
+                { option: 'SUB_FORM', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向子记录集合加载和子表生命周期；不能选择 FIELD_OPTIONS 或 FIELD_DEFAULT。' },
                 { option: 'REPEATER', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向一对多明细行；分页、最大行数和失败策略必须受平台限制。' },
-                { option: '表单级', meaning: 'FORM_INIT。', notes: '属于整个表单草稿/发布配置，不是 FIELD、SUB_FORM 或 REPEATER 的节点级 Usage。' }
+                { option: '表单级', meaning: '在表单事件中配置打开表单、加载后和提交前处理。', notes: '各步骤随表单发布生效。' }
               ]
             },
             {
@@ -936,8 +945,8 @@ export default {
               rows: [
                 { field: '显示条件', meaning: '条件组满足时显示当前字段。', defaultLimit: '默认关闭；可添加条件和嵌套条件组，每组可选全部满足 AND 或任一满足 OR；支持 ==、!=、>、<、>=、<=、contains、empty、notEmpty。', effect: '表单值变化时动态显示或隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
-                { field: '接口取值', meaning: '通过受控数据源获取默认值或计算结果。', defaultLimit: '在“数据与扩展 → 数据源绑定”中选择接口；实体引用的筛选范围在“引用选择配置”中选择已发布列表。', effect: '在扩展管理中注册接口，设计器保存 extensionId，并按绑定用途应用返回值。', publish: 'Provider 统一处理数据权限、超时和审计；选择列表发布后生效。' },
-                { field: '值联动：公式', meaning: '用字段引用、算术、比较和日期函数计算值。', defaultLimit: '可插入字段或函数。例如 ADD_DAYS(TODAY(), 3) 取浏览器本地日期的三天后。', effect: '实时联动随表单变化重算。仅新增时填一次会在打开新增表单时填充空字段，之后可修改或清空。', publish: '保存字段属性并发布表单。可在表单预览的新增模式检查初值。' }
+                { field: '字段默认值', meaning: '在“基础与布局 → 默认值”选择继承实体、无默认值、固定值、公式或数据源。', defaultLimit: '可引用字段和页面参数，并试算公式。例如 ADD_DAYS(TODAY(), 3) 取本地日期的三天后。', effect: '新增记录时填充空字段，填入后可修改或清空。新增子表行也会计算初值。', publish: '绑定接口时在同一处配置输入与输出映射，保存字段属性并发布。' },
+                { field: '值联动：公式', meaning: '用字段引用、算术、比较和日期函数计算值。', defaultLimit: '可插入字段或函数。', effect: '随表单字段变化实时计算。', publish: '保存字段属性并发布表单。' }
               ]
             }
           ]
@@ -950,8 +959,8 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '选项联动', meaning: '依赖字段不同值时，只显示指定选项。', defaultLimit: '默认关闭；配置依赖字段和多条 dependValue → allowedOptions。', effect: '动态过滤下拉、单选或复选选项。', publish: 'allowedOptions 使用选项 value；删除 value 前维护规则。' },
-                { field: '计算公式', meaning: '在值联动中按公式计算当前字段，不再单独配置计算字段。', defaultLimit: '位于“联动与事件 → 值与计算 → 值联动”，选择计算公式；已有计算规则兼容读取。', effect: '根据字段值自动计算并填充。', publish: '公式字段应与实体类型和后端计算保持一致。' },
+                { field: '选项联动', meaning: '按依赖字段过滤已有选项，或重新查询继承的实体只读选项接口。', defaultLimit: '默认关闭；查询模式配置依赖字段和接口参数名，可添加多条映射。', effect: '依赖值变化时刷新候选；接口从 input.optionParams 读取映射值。', publish: '保存字段属性并发布。字典过滤规则使用选项 value。' },
+                { field: '计算', meaning: '在「联动与事件 → 值与计算」选择「计算」，配置实时公式。', defaultLimit: '启用公式计算后可输入表达式。', effect: '公式随依赖字段变化更新。打开表单时调用接口回填，可在表单事件中配置。', publish: '保存字段属性并发布表单。' },
                 { field: '禁用条件', meaning: '条件组满足时禁用当前字段。', defaultLimit: '默认关闭；可独立添加条件和嵌套条件组，每组可选 AND 或 OR。', effect: '字段可见但不可编辑。', publish: '不能把安全控制只放前端，后端仍需校验。' },
                 { field: '必填条件', meaning: '条件组满足时动态必填。', defaultLimit: '默认关闭；可独立添加条件和嵌套条件组，每组可选 AND 或 OR。', effect: '提交时要求填写。', publish: '条件字段隐藏或为空时要验证逻辑。' },
                 { field: '保存 / 重置', meaning: '保存只 PATCH 当前节点的结构化规则；重置只清空当前节点草稿。', defaultLimit: '请求携带 expectedRevision。', effect: '表单预览即时读取该节点新草稿，其他节点不变。', publish: '409 时先合并服务器当前节点；保存后仍需发布才影响线上。' }

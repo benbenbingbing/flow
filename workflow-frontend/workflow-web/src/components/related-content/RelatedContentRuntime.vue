@@ -71,7 +71,9 @@
 import BuiltInActionButton from '@/components/BuiltInActionButton.vue'
 import { builtInActionBarHasPosition, builtInActionBarStyle, resolveBuiltInButton } from '@flow/workflow-core/builtin-button-appearance'
 import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
-import { uiExtensionRuntimeApi } from '@/api/uiConfig'
+import { uiEventBindingApi, uiExtensionRuntimeApi } from '@/api/uiConfig'
+import { applyFormEffects } from '@/shared/form-event-effects'
+import { useRouter } from 'vue-router'
 import {
   computed,
   defineAsyncComponent,
@@ -135,6 +137,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['target-saved'])
+const router = useRouter()
 const resolved = ref(null)
 const loading = ref(false)
 const actionLoading = ref(false)
@@ -404,6 +407,18 @@ async function resolveComposition({ force = false } = {}) {
       targetRuntimeState = targetState
       targetEntityStatusOptions.value = targetState.statuses
       const runtimeMode = targetMode.value
+      // 内嵌新增与独立新增一样，在加载后处理和草稿基线之前完成打开事件；已切换来源的响应不能回填。
+      if (runtimeMode === 'create' && targetState.record && targetState.hasFormOpenBinding) {
+        const isCurrent = () => requestGate.isCurrent(requestRevision)
+          && parameterFingerprint() === inputFingerprint
+        const closed = await executeTargetFormOpen(value, targetState, isCurrent)
+        if (!isCurrent()) return null
+        if (closed) {
+          clearResolvedState()
+          presentationVisible.value = false
+          return false
+        }
+      }
       const runtime = createFormDataSourceRuntime({
         executeDataSource: uiExtensionRuntimeApi.execute,
         entityCode: value.targetEntityCode, getForm: () => targetState.form,
@@ -428,6 +443,30 @@ async function resolveComposition({ force = false } = {}) {
       loading.value = false
     }
   }
+}
+
+/** 用关联目标的发布上下文执行新增打开事件；效果只写入独立的目标草稿。 */
+async function executeTargetFormOpen(value, target, isCurrent) {
+  const params = targetParameters.value
+  const result = await uiEventBindingApi.execute('FORM_OPEN', {
+    configType: 'FORM', configId: String(target.form.id), targetType: 'OWNER',
+    entityCode: value.targetEntityCode, configHash: target.form.configHash,
+    runtimeContext: buildRuntimeContext({ compositionContext: value.compositionContext }, target.form),
+    input: { mode: 'create', form: target.record, params },
+    context: { mode: 'create', formId: String(target.form.id), params }
+  })
+  let closed = false
+  await applyFormEffects(result, {
+    getRecord: () => target.record,
+    setField: (key, fieldValue) => { targetRecord.value[key] = fieldValue },
+    getFields: () => target.entity.fields || [],
+    isCurrent,
+    navigate: effect => router.push(effect.route),
+    close: () => { closed = true },
+    refresh: () => emit('target-saved')
+  })
+  if (isCurrent() && result?.message) ElMessage.success(result.message)
+  return closed
 }
 
 async function loadActionCapabilities(value) {
@@ -473,10 +512,12 @@ async function loadTargetForm(value) {
     viewCompositions: []
   }
   if (!value.targetRecordId) {
+    // 无打开步骤时沿用独立新增的权限和路径，避免为一个空事件增加列表权限要求。
     return {
       entity,
       form,
       record: null,
+      hasFormOpenBinding: release.hasFormOpenBinding === true,
       statuses: getEffectiveEntityStatusOptions(statuses)
     }
   }
@@ -569,7 +610,7 @@ function handleActionFailure(action, error) {
 
 async function openPresentation() {
   const value = await resolveComposition()
-  if (!value && failurePolicy.value === 'HIDE') return
+  if (value === false || !value && failurePolicy.value === 'HIDE') return
   presentationVisible.value = true
 }
 

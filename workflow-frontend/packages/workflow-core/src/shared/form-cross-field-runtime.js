@@ -56,14 +56,15 @@ export function collectCrossFieldRuntimeFields(form = {}, entityFields = [], { r
   })
 }
 
-/** 使用现有字段联动和权限语义计算适用状态；Tab 未激活或面板收起不会改变业务可见性。 */
+/** 计算字段的可见性、手动编辑和程序回填状态；折叠面板和未激活页签不改变这些状态。 */
 export function resolveCrossFieldRuntimeState(field, {
   form = {}, record = {}, mode = 'view', readonly = false, context = {}, rootParentId = '', excludedNodeIds = []
 } = {}) {
   const access = getFieldModeAccess(field, mode)
   let visible = access.visible && LinkageEngine.shouldShowField(field, record)
-  let editable = !isFieldReadonlyForMode(field, mode, readonly || flag(form.isReadonly))
+  let canBackfill = mode !== 'view' && !readonly && !flag(form.isReadonly)
     && !LinkageEngine.shouldDisableField(field, record)
+  let fieldReadonly = isFieldReadonlyForMode(field, mode)
   const byId = new Map((form.nodes || []).map(node => [String(node.id), node]))
   let node = byId.get(String(field.id))
   let inScope = !rootParentId
@@ -71,13 +72,15 @@ export function resolveCrossFieldRuntimeState(field, {
   const seen = new Set()
   while (node) {
     const key = String(node.id)
-    if (seen.has(key) || excluded.has(key)) return { visible: false, editable: false }
+    if (seen.has(key) || excluded.has(key)) return { visible: false, editable: false, canBackfill: false }
     seen.add(key)
     if (key === String(rootParentId)) { inScope = true; break }
     if (!isFormNodeVisible(node, { data: record, mode, context })) visible = false
     const props = nodeProps(node)
     if (flag(props.hidden) || String(props.modeAccess?.[mode] || '').toUpperCase() === 'HIDDEN') visible = false
-    if (flag(props.readonly) || flag(props.disabled) || String(props.modeAccess?.[mode] || '').toUpperCase() === 'READONLY') editable = false
+    // 节点只读限制输入。整表只读及禁用规则也会阻止组件回填。
+    if (flag(props.readonly) || String(props.modeAccess?.[mode] || '').toUpperCase() === 'READONLY') fieldReadonly = true
+    if (flag(props.disabled)) canBackfill = false
     const permission = String(props.permissionCode || '')
     if (permission) {
       const allowed = typeof context.hasPermission === 'function'
@@ -87,7 +90,7 @@ export function resolveCrossFieldRuntimeState(field, {
     }
     node = byId.get(String(node.parentId))
   }
-  return { visible: visible && inScope, editable }
+  return { visible: visible && inScope, editable: canBackfill && !fieldReadonly, canBackfill }
 }
 
 /**

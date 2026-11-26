@@ -85,6 +85,7 @@ export function createEventStepEditor() {
       rowKey: `mapping_${++rowSequence}`,
       targetPath,
       sourcePath: typeof sourcePath === 'string' ? sourcePath : '',
+      ...(sourcePath && Object.hasOwn(sourcePath, 'literal') ? { literal: sourcePath.literal } : {}),
       overwrite: 'ALWAYS',
       clearOnEmpty: true,
       transform: 'IDENTITY',

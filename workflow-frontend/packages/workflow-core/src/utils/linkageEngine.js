@@ -389,7 +389,7 @@ export const LinkageEngine = {
       }
 
       // 处理选项联动
-      if (rules.optionsLinkage) {
+      if (rules.optionsLinkage && rules.optionsLinkage.mode !== 'query') {
         const opts = Array.isArray(field.options) ? field.options : null
         if (opts) {
           result.options[fieldKey] = this.getLinkedOptions(
@@ -460,13 +460,16 @@ export const LinkageEngine = {
  * 为新增记录补齐空字段的公式初值。由宿主在初始化时调用，常规联动与编辑不会运行。
  * 支持引用同表单的其他初值，按可求值的顺序填充；缺值和无法求值的公式保留原值。
  */
-export function applyInitialFormulaDefaults(fields, record) {
+export function applyInitialFormulaDefaults(fields, record, context = {}) {
   const pending = fields.flatMap(field => {
     const key = field.fieldCode || field.fieldKey
     if (field.isDisplayOnly || !key || ['__proto__', 'constructor', 'prototype'].includes(key)) return []
     const rules = LinkageEngine.getFieldLinkageRules(field)
-    const formula = rules.calculationFormula || rules.valueFormula
-    return rules.valueFormulaMode === 'initial' && formula ? [{ key, formula }] : []
+    // 历史版本把初值存在联动规则中；新版本允许初值公式和实时公式各自配置。
+    if (field.defaultValueMode && field.defaultValueMode !== 'formula') return []
+    const formula = field.defaultFormula
+      || (rules.valueFormulaMode === 'initial' ? rules.calculationFormula || rules.valueFormula : '')
+    return formula ? [{ key, formula }] : []
   })
   if (!pending.length) return
   const now = new Date()
@@ -480,7 +483,7 @@ export function applyInitialFormulaDefaults(fields, record) {
         pending.splice(index, 1)
         continue
       }
-      const value = evaluateLinkageExpression(formula, record, now)
+      const value = evaluateLinkageExpression(formula, record, now, context)
       if (value == null || value === '') continue
       record[key] = value
       pending.splice(index, 1)

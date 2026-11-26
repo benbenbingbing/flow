@@ -53,6 +53,7 @@ public class EntityExcelAtomicImportPolicy {
                 if ("BEFORE_SUBMIT".equals(entry.getKey())) {
                     List<?> configured = entry.getValue() instanceof List<?> list ? list : List.of(entry.getValue());
                     for (Object item : configured) {
+                        if (item instanceof Map<?, ?> binding && Boolean.FALSE.equals(binding.get("enabled"))) continue;
                         if (!(item instanceof Map<?, ?> binding) || !Boolean.TRUE.equals(binding.get("sideEffectFree")))
                             throw new IllegalArgumentException("写入表单含未声明无副作用的提交前处理，暂不支持原子Excel导入");
                         String id = interfaceId(binding);

@@ -8,6 +8,7 @@ import com.workflow.entity.form.application.validation.PublishedFormCrossFieldVa
 import com.workflow.entity.form.application.validation.PublishedFormRequiredValidator;
 
 import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiEventValueMapper;
 import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 
@@ -54,6 +55,7 @@ public class PublishedFormSubmissionService {
     private final UiExtensionDefinitionValidator schemaValidator;
     private final PublishedFormRequiredValidator requiredValidator;
     private final PublishedFormCrossFieldValidator crossFieldValidator;
+    private final UiEventValueMapper lifecycleConditions = new UiEventValueMapper();
     private EntityPublishedRelationService publishedRelationService;
 
     /**
@@ -965,8 +967,13 @@ public class PublishedFormSubmissionService {
         }
         List<?> values = configured instanceof List<?> list
                 ? list : List.of(configured);
-        int bindingIndex = 0;
+        int bindingIndex = -1;
         for (Object value : values) {
+            // 跳过的步骤仍占发布序号，保证后续接口的幂等范围与原始配置一致。
+            bindingIndex++;
+            if (value instanceof Map<?, ?> binding && Boolean.FALSE.equals(binding.get("enabled"))) {
+                continue;
+            }
             String extensionId = interfaceExtensionId(value);
             String operationCode = operationCode(value);
             if (!StringUtils.hasText(extensionId)) {
@@ -979,15 +986,6 @@ public class PublishedFormSubmissionService {
                 // 必须搭配 operationCode 才能解析迁移后的单接口记录。
                 throw new IllegalArgumentException(
                         "BEFORE_SUBMIT 历史接口绑定缺少 operationCode");
-            }
-            if (executionMode
-                    == BindingExecutionMode.SIDE_EFFECT_FREE_PREVIEW
-                    && !sideEffectFree(value)) {
-                throw new FormSubmissionPreviewDeferredException(
-                        "表单提交前处理包含未声明无副作用的绑定，"
-                                + "需在正式提交后确定下一审批节点: "
-                                + effectiveOwnerKey(
-                                nestedContext, ownerKey));
             }
             FormSubmissionExecutionContext safeExecutionContext =
                     safeExecutionContext(
@@ -1085,6 +1083,16 @@ public class PublishedFormSubmissionService {
             mappingSource.put(
                     "relation",
                     nestedContext.relation());
+            // 条件使用当前提交记录和可信上下文。只有真正命中的步骤才需要延期预览或调用接口。
+            if (value instanceof Map<?, ?> binding
+                    && !lifecycleConditions.matches(binding.get("condition"), mappingSource)) {
+                continue;
+            }
+            if (executionMode == BindingExecutionMode.SIDE_EFFECT_FREE_PREVIEW && !sideEffectFree(value)) {
+                throw new FormSubmissionPreviewDeferredException(
+                        "表单提交前处理包含未声明无副作用的绑定，需在正式提交后确定下一审批节点: "
+                                + effectiveOwnerKey);
+            }
             Object mappedInput = applyMapping(
                     mapping(value, "inputMapping"),
                     mappingSource,
@@ -1117,7 +1125,6 @@ public class PublishedFormSubmissionService {
             if (response instanceof Map<?, ?> map) {
                 mergeMappedOutput(record, map);
             }
-            bindingIndex++;
         }
     }
 

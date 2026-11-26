@@ -51,9 +51,9 @@ function evaluateSafeExpression(expression) {
  * 按值联动公式读取字段原值。字段值以数据传入解析器，避免引号、反斜线或函数名改变公式语义。
  * now 可由表单初始化统一传入，确保同一批初值使用同一个本地日期。
  */
-export function evaluateLinkageExpression(expression, fields, now = new Date()) {
+export function evaluateLinkageExpression(expression, fields, now = new Date(), { params = {} } = {}) {
   try {
-    const value = new ExpressionParser(tokenizeExpression(expression), fields, now).parse()
+    const value = new ExpressionParser(tokenizeExpression(expression), fields, now, params).parse()
     return typeof value === 'number' && !Number.isFinite(value) ? null : value
   } catch {
     return null
@@ -94,9 +94,9 @@ function tokenizeExpression(expression) {
     }
 
     if ((char === '$' || char === '#') && expression[index + 1] === '{') {
-      const reference = /^[$#]\{(?:field\.)?(\w+)\}/.exec(expression.slice(index))
+      const reference = /^[$#]\{(?:(field|param)\.)?(\w+)\}/.exec(expression.slice(index))
       if (!reference) throw new Error('字段引用格式错误')
-      tokens.push({ type: 'field', value: reference[1] })
+      tokens.push({ type: 'field', scope: reference[1], value: reference[2] })
       index += reference[0].length
       continue
     }
@@ -159,11 +159,12 @@ function tokenizeExpression(expression) {
 }
 
 class ExpressionParser {
-  constructor(tokens, fields, now = new Date()) {
+  constructor(tokens, fields, now = new Date(), params = {}) {
     this.tokens = tokens
     this.position = 0
     this.fields = fields
     this.now = now
+    this.params = params
   }
 
   parse() {
@@ -219,7 +220,10 @@ class ExpressionParser {
       return this.previous().value
     }
 
-    if (this.match('field')) return this.fieldValue(this.previous().value)
+    if (this.match('field')) {
+      const { value, scope } = this.previous()
+      return this.fieldValue(value, scope === 'param' ? this.params : this.fields)
+    }
 
     if (this.match('identifier')) {
       const functionName = this.previous().value
@@ -253,8 +257,8 @@ class ExpressionParser {
     throw new Error('表达式格式错误')
   }
 
-  fieldValue(key) {
-    const value = this.fields && Object.hasOwn(this.fields, key) ? this.fields[key] : null
+  fieldValue(key, values = this.fields) {
+    const value = values && Object.hasOwn(values, key) ? values[key] : null
     if (value instanceof Date) return value
     return ['string', 'number', 'boolean'].includes(typeof value) ? value : null
   }

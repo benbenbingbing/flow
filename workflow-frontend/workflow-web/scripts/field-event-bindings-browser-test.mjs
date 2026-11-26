@@ -22,18 +22,29 @@ const copy = value => JSON.parse(JSON.stringify(value))
 const events = ['FIELD_CHANGE','ENTITY_SELECTED','FIELD_BUTTON_CLICK','SUBFORM_LOAD','SUBFORM_SAVE','FORM_OPEN']
 const field = {id:'customer-id',revision:1,nodeType:'FIELD',fieldId:'customer-id',fieldCode:'customer',fieldName:'单选用户',fieldType:'REFERENCE',componentType:'reference',refEntityType:'USER'}
 const fields = [field,{id:'name-id',fieldId:'name-id',fieldCode:'name',fieldName:'数据名称',fieldType:'STRING'}]
-const state = reactive({field, formId:'form1', changes:0, rows:[], writes:[], reads:0})
-request.defaults.adapter=async config=>({config,status:200,data:{code:200,data:{viewConfig:{inputParameterSchema:{properties:{customerId:{type:'string',title:'客户 ID'}}}}}}})
+const state = reactive({field, formId:'form1', changes:0, rows:[], writes:[], reads:0,
+ lifecycleForm:{id:'open-form',revision:10,dataSourceBindingsDocument:{}}})
+request.defaults.adapter=async config=>{
+ let data={viewConfig:{inputParameterSchema:{properties:{customerId:{type:'string',title:'客户 ID'}}}}}
+ if(config.url==='/entity-form/open-form/patch'){
+   const body=JSON.parse(config.data)
+   if(body.expectedRevision!==state.lifecycleForm.revision)throw Error('revision conflict')
+   data={...copy(state.lifecycleForm),revision:body.expectedRevision+1,dataSourceBindingsDocument:body.dataSourceBindings}
+ }
+ return {config,status:200,data:{code:200,data}}
+}
 uiEventBindingApi.catalog=async()=>({events})
 uiEventBindingApi.list=async(owner,id)=>{state.reads++;const rows=copy(state.rows.filter(r=>r.ownerId===id));await new Promise(r=>setTimeout(r,id==='slow'?350:10));return rows}
 uiEventBindingApi.create=async payload=>{if(state.rows.some(r=>r.ownerId===payload.ownerId&&r.targetKey===payload.targetKey&&r.eventCode===payload.eventCode))throw Error('duplicate binding');const row={...copy(payload),id:'binding'+state.writes.length,revision:1};state.rows.push(row);state.writes.push(copy(row));return copy(row)}
 uiEventBindingApi.update=async(id,payload)=>{const index=state.rows.findIndex(r=>r.id===id);if(state.rows[index].revision!==payload.expectedRevision)throw Error('revision conflict');const row={...copy(payload),id,revision:payload.expectedRevision+1};state.rows[index]=row;state.writes.push(copy(row));return copy(row)}
 uiEventBindingApi.remove=async(id,revision)=>{const row=state.rows.find(r=>r.id===id);if(row.revision!==revision)throw Error('revision conflict');state.rows=state.rows.filter(r=>r.id!==id)}
-uiExtensionApi.availableInterfaces=async()=>[{id:'extra-interface',extensionId:'extra-interface',extensionType:'INTERFACE',displayName:'扩展接口',interfaceContextType:'FORM',interfaceKind:'READ',enabled:true}]
+uiExtensionApi.availableInterfaces=async({bindingCode})=>[{id:'extra-interface',extensionId:'extra-interface',extensionType:'INTERFACE',displayName:'扩展接口',interfaceContextType:'FORM',interfaceKind:bindingCode==='BEFORE_SUBMIT'?'WRITE':'READ',enabled:true}]
 registerFormFieldComponent('test_score',{render:()=>h('div')},{capabilities:{supportedEvents:['FIELD_BUTTON_CLICK']}})
 const app=createApp({setup(){return()=>h('main',{id:'panel',style:'width:900px;margin:30px auto'},[
  state.showFormOpen
-   ? h(EventBindingEditor,{ownerType:'FORM',ownerId:'open-form',allowedEvents:['FORM_OPEN'],fieldOptions:fields.map(f=>({label:f.fieldName,value:f.fieldCode}))})
+   ? h(EventBindingEditor,{ownerType:'FORM',ownerId:'open-form',allowedEvents:['FORM_OPEN','AFTER_LOAD','BEFORE_SUBMIT'],
+       lifecycleForm:state.lifecycleForm,onLifecycleSaved:value=>{state.lifecycleForm=value},
+       fieldOptions:fields.map(f=>({label:f.fieldName,value:f.fieldCode}))})
    : h(SettingsSection,{title:'事件与回填',defaultExpanded:true},{default:()=>h(Panel,{formId:state.formId,field:state.field,formFields:fields,fieldOptions:fields.map(f=>({label:f.fieldName,value:f.fieldCode})),onChanged:()=>state.changes++})})
 ])}})
 app.config.warnHandler=message=>console.warn(message)
@@ -147,6 +158,21 @@ try{
  await clickText('存在','.el-select-dropdown__item')
  await clickText('保存绑定')
  assert.deepEqual(await savedCondition(), {path:'input.params.customerId',exists:true})
+ // 生命周期事件与打开事件同表编辑，保存使用表单版本并保留同表单的另一条绑定。
+ for(const [label,kind] of [['加载后处理 (AFTER_LOAD)','读接口'],['提交前处理 (BEFORE_SUBMIT)','写接口']]){
+   await clickText('新增绑定');await openEventOptions();await clickText(label,'.el-select-dropdown__item')
+   await clickText('增加步骤')
+   await evaluate(`([...document.querySelectorAll('.el-dialog')].filter(${visible})).at(-1).querySelector('.step-grid .el-select__wrapper').click();eventTest.settle()`)
+   const selected=(await options()).find(item=>item.text.includes(kind))
+   assert.ok(selected, '当前事件显示对应类型的扩展接口')
+   await clickText(selected.text,'.el-select-dropdown__item')
+   await clickText('保存绑定')
+ }
+ const lifecycleDocument = await evaluate('JSON.parse(JSON.stringify(eventTest.state.lifecycleForm))')
+ assert.equal(lifecycleDocument.revision,12)
+ assert.equal(lifecycleDocument.dataSourceBindingsDocument.AFTER_LOAD.extensionId,'extra-interface')
+ assert.equal(lifecycleDocument.dataSourceBindingsDocument.BEFORE_SUBMIT.extensionId,'extra-interface')
+ assert.match(await evaluate("document.querySelector('#panel .el-table').textContent"),/加载后处理.*提交前处理/s)
  assert.deepEqual(errors,[])
  console.log('field event browser acceptance passed: inline list, disabled event reasons, quick-fill/create/edit/delete, duplicate prevention, ordering, field switching, stale responses, unsaved guard, form condition paths and mode options')
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}

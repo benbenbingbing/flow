@@ -101,19 +101,20 @@
           />
           <div v-if="item.description && !showFieldHelp" class="config-help">{{ item.description }}</div>
         </el-form-item>
+        <slot v-if="group.key === 'common'" name="common-fields" />
       </component>
     </el-form>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import { applySchemaDefaults } from '@flow/workflow-core/config-runtime'
-import { sanitizeComponentConfig } from '@/shared/component-config'
+import { isSchemaItemVisible, sanitizeComponentConfig } from '@/shared/component-config'
 import {
   buildSchemaJsonHelp,
   getJsonConfigHelp
@@ -132,6 +133,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
+const configErrors = reactive(Object.create(null))
 
 const currentValue = computed(() => applySchemaDefaults(props.schema, props.modelValue))
 const schemaGroups = computed(() => {
@@ -163,6 +165,15 @@ const schemaGroups = computed(() => {
       items: group.items.sort(compareSchemaItems)
     }))
     .sort(compareSchemaGroups)
+})
+const visibleItems = computed(() => schemaGroups.value.flatMap(group => group.items))
+const validationError = computed(() => visibleItems.value.map(item => configErrors[item.key]).find(Boolean) || '')
+defineExpose({ validationError })
+watch(visibleItems, items => {
+  const keys = new Set(items.map(item => item.key))
+  for (const key of Object.keys(configErrors)) {
+    if (!keys.has(key)) delete configErrors[key]
+  }
 })
 
 function normalizeSchemaItem(item, index) {
@@ -243,126 +254,23 @@ function toFiniteNumber(value) {
   return Number.isFinite(number) ? number : null
 }
 
-function isSchemaItemVisible(rule, values) {
-  if (rule === undefined || rule === null) return true
-  if (typeof rule === 'boolean') return rule
-  if (typeof rule === 'string') return Boolean(getValueByPath(values, rule))
-  if (typeof rule === 'function') {
-    try {
-      return rule(values) !== false
-    } catch {
-      return false
-    }
-  }
-  if (Array.isArray(rule)) {
-    return rule.every(item => isSchemaItemVisible(item, values))
-  }
-  if (typeof rule !== 'object') return Boolean(rule)
-
-  const allRules = rule.all || rule.and
-  if (Array.isArray(allRules) && !allRules.every(item => isSchemaItemVisible(item, values))) {
-    return false
-  }
-  const anyRules = rule.any || rule.or
-  if (Array.isArray(anyRules) && !anyRules.some(item => isSchemaItemVisible(item, values))) {
-    return false
-  }
-  if (rule.not !== undefined && isSchemaItemVisible(rule.not, values)) {
-    return false
-  }
-
-  const path = rule.key || rule.field || rule.path
-  if (path) {
-    return matchVisibleValue(getValueByPath(values, path), rule)
-  }
-
-  const reservedKeys = new Set(['all', 'and', 'any', 'or', 'not'])
-  return Object.entries(rule)
-    .filter(([key]) => !reservedKeys.has(key))
-    .every(([key, expected]) => valuesEqual(getValueByPath(values, key), expected))
-}
-
-function matchVisibleValue(actual, rule) {
-  if (Object.prototype.hasOwnProperty.call(rule, 'equals')) {
-    return valuesEqual(actual, rule.equals)
-  }
-  if (Object.prototype.hasOwnProperty.call(rule, 'notEquals')) {
-    return !valuesEqual(actual, rule.notEquals)
-  }
-  if (Array.isArray(rule.in)) return rule.in.some(item => valuesEqual(actual, item))
-  if (Array.isArray(rule.notIn)) return !rule.notIn.some(item => valuesEqual(actual, item))
-  if (Object.prototype.hasOwnProperty.call(rule, 'includes')) {
-    return Array.isArray(actual) || typeof actual === 'string'
-      ? actual.includes(rule.includes)
-      : false
-  }
-  if (Object.prototype.hasOwnProperty.call(rule, 'exists')) {
-    const exists = actual !== undefined && actual !== null
-    return rule.exists ? exists : !exists
-  }
-  if (rule.truthy === true) return Boolean(actual)
-  if (rule.falsy === true) return !actual
-
-  const expected = Object.prototype.hasOwnProperty.call(rule, 'value')
-    ? rule.value
-    : rule.is
-  switch (String(rule.operator || '').toLowerCase()) {
-    case 'ne':
-    case '!=':
-    case 'notequals':
-      return !valuesEqual(actual, expected)
-    case 'in':
-      return Array.isArray(expected) && expected.some(item => valuesEqual(actual, item))
-    case 'notin':
-      return Array.isArray(expected) && !expected.some(item => valuesEqual(actual, item))
-    case 'includes':
-      return Array.isArray(actual) || typeof actual === 'string'
-        ? actual.includes(expected)
-        : false
-    case 'truthy':
-      return Boolean(actual)
-    case 'falsy':
-      return !actual
-    case 'exists':
-      return actual !== undefined && actual !== null
-    default:
-      return expected === undefined ? Boolean(actual) : valuesEqual(actual, expected)
-  }
-}
-
-function getValueByPath(source, path) {
-  return String(path)
-    .split('.')
-    .filter(Boolean)
-    .reduce((value, key) => value?.[key], source)
-}
-
-function valuesEqual(left, right) {
-  if (Object.is(left, right)) return true
-  if (
-    left && right
-    && typeof left === 'object'
-    && typeof right === 'object'
-  ) {
-    try {
-      return JSON.stringify(left) === JSON.stringify(right)
-    } catch {
-      return false
-    }
-  }
-  return false
-}
-
 function updateValue(item, value) {
   try {
-    emit('update:modelValue', sanitizeComponentConfig(props.schema, {
+    const config = sanitizeComponentConfig(props.schema, {
       ...currentValue.value,
       [item.key]: value
-    }))
+    })
+    delete configErrors[item.key]
+    emit('update:modelValue', config)
   } catch (error) {
     // 超限或格式错误应保留用户原配置并提示，不能静默裁剪后保存。
-    ElMessage.warning(error.message)
+    showConfigError(item.key, error.message)
   }
+}
+
+function showConfigError(key, message) {
+  configErrors[key] = message
+  ElMessage.warning(message)
 }
 
 function formatJsonValue(value) {
@@ -391,7 +299,7 @@ function updateJsonValue(item, value) {
       expectedType: item.jsonShape || 'object-or-array'
     }))
   } catch (error) {
-    ElMessage.warning(error.message)
+    showConfigError(item.key, error.message)
   }
 }
 </script>

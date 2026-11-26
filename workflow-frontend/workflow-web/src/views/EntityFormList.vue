@@ -69,20 +69,15 @@
                 默认
               </el-button>
               <el-button type="primary" link size="small" @click="handleCopy(row)">复制</el-button>
-              <el-tooltip
+              <el-button
                 v-if="entityInfo.storageMode !== 'SYSTEM'"
-                :content="formDataConfigSummary(row)"
-                placement="top"
+                type="primary"
+                link
+                size="small"
+                @click="handleDataConfig(row)"
               >
-                <el-button
-                  type="primary"
-                  link
-                  size="small"
-                  @click="handleDataConfig(row)"
-                >
-                  数据配置<span v-if="formDataConfigCount(row)">({{ formDataConfigCount(row) }})</span>
-                </el-button>
-              </el-tooltip>
+                表单事件
+              </el-button>
               <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
             </div>
           </template>
@@ -228,10 +223,6 @@ import {
   FORM_RENDERER_MODE_OPTIONS,
   resolveFormRendererMode
 } from '@/shared/form-renderer-mode'
-import {
-  formatFormDataSourceBindingSummary,
-  totalFormDataSourceBindings
-} from '@flow/workflow-core/form-runtime'
 import { formatDateValue } from '@/shared/list-runtime'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { resolveFormDefaultColumnCount } from '@/shared/form-layout'
@@ -422,21 +413,9 @@ function handleDataConfig(row) {
     query: {
       entityId,
       settings: 'data-events',
-      section: 'data-source'
+      section: 'events'
     }
   })
-}
-
-function formDataConfigSummary(row) {
-  return formatFormDataSourceBindingSummary(
-    row.dataSourceBindingsDocument || row.dataSourceBindings
-  )
-}
-
-function formDataConfigCount(row) {
-  return totalFormDataSourceBindings(
-    row.dataSourceBindingsDocument || row.dataSourceBindings
-  )
 }
 
 async function handlePreview(row) {

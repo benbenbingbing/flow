@@ -138,6 +138,7 @@ class UiAvailableInterfaceServiceTest {
                 result.stream()
                         .map(UiAvailableInterface::extensionId)
                         .toList());
+        assertEquals(List.of(), service.available("FORM", "form-a", "FIELD_COMPUTE"));
     }
 
     @Test

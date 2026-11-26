@@ -86,9 +86,6 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^selectedParameterContract$',
     '^selectedSubListParameterContract$'
   ]),
-  source('src/components/ui-config/FormDataSourceDialog.vue', '实体配置', '初始化与数据处理', [
-    '^binding\\.'
-  ]),
   source('src/components/FormButtonConfigPanel.vue', '实体配置', '表单按钮', [
     '^advancedButton\\.',
     '^row\\.(enabled|key|label|modes|perm|placement|slotKey|sort)$'
@@ -157,7 +154,10 @@ export const CONFIGURATION_SOURCES = Object.freeze([
   ]),
   source('src/components/ui-config/EventBindingEditor.vue', '流程配置', '事件绑定', [
     '^editor\\.',
-    '^step\\.'
+    '^step\\.(?!(clientPrevalidate|sideEffectFree)$)'
+  ]),
+  source('src/components/ui-config/EventBindingEditor.vue', '实体配置', '表单生命周期事件', [
+    '^step\\.(clientPrevalidate|sideEffectFree)$'
   ]),
   source('src/views/process/TaskSlaPolicyManagement.vue', '流程配置', '任务 SLA', [
     '^form\\.',
@@ -203,9 +203,6 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
   ],
   'src/components/form-designer/FormDesignerSettingsDrawer.vue': [
     '^drawerVisible$', '^currentTab$', '^activeBehaviorTab$'
-  ],
-  'src/components/ui-config/FormDataSourceDialog.vue': [
-    '^visible$'
   ],
   'src/components/FormButtonConfigPanel.vue': [
     "^advancedRule$",
@@ -692,7 +689,7 @@ const DEFAULT_LOCATION_BY_AREA = Object.freeze({
   '表单设置': '实体配置-表单-编辑-表单设置',
   '表单节点结构化属性': '实体配置-表单-编辑-节点属性',
   '表单节点数据绑定': '实体配置-表单-编辑-节点属性-数据设置',
-  '初始化与数据处理': '实体配置-表单-编辑-表单设置-初始化与数据处理-初始化数据',
+  '表单生命周期事件': '实体配置-表单-编辑-表单设置-表单事件-提交前处理',
   '表单按钮': '实体配置-表单-编辑-表单设置-按钮与操作',
   '表单操作栏结构': '实体配置-表单-编辑-表单设置-按钮与操作',
   '表单字段联动': '实体配置-表单-编辑-字段属性-联动与事件-值与计算',
@@ -764,10 +761,10 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityFormDesignByEntity.vue', '^(selectedComponentConfig|viewConfig\\.customComponentProps)$', '实体配置-表单-编辑-基础与布局-组件参数'),
 
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.actionBar$', '实体配置-表单-编辑-表单设置-按钮与操作'),
-  locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.inputParameterSchema$', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
+  locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.inputParameterSchema$', '实体配置-表单-编辑-表单设置-输入参数'),
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^form\\.customComponent$', '实体配置-表单-编辑-表单设置-渲染与扩展'),
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^(form\\.|viewConfig\\.labelWidth$|formLabelPosition$)', '实体配置-表单-编辑-表单设置-基本与布局'),
-  locationRule('src/components/form-designer/FormInputParameterEditor.vue', '^row\\.', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
+  locationRule('src/components/form-designer/FormInputParameterEditor.vue', '^row\\.', '实体配置-表单-编辑-表单设置-输入参数'),
   locationRule('src/components/form-designer/FormNodeDataSettings.vue', '^selectedParameterContract$', '实体配置-表单-编辑-字段属性-数据与关系-参数传递'),
   locationRule('src/components/form-designer/FormNodeDataSettings.vue', '^selectedSubFormActionBar$', '实体配置-表单-编辑-字段属性-子页面-内置按钮外观'),
 
@@ -797,6 +794,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/NodeConfigPanel.vue', '^basicForm\\.', '流程配置-流程-设计-节点属性-常用-标识与备注'),
 
   locationRule('src/components/FlowActionConfigPanel.vue', '.*', '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作'),
+  locationRule('src/components/ui-config/EventBindingEditor.vue', '^step\\.(clientPrevalidate|sideEffectFree)$', '实体配置-表单-编辑-表单设置-表单事件-提交前处理'),
   locationRule('src/components/ui-config/EventBindingEditor.vue', '.*', '流程配置-流程-设计-事件绑定-新增/编辑'),
   locationRule('src/views/process/TaskSlaPolicyManagement.vue', '^form\\.', '系统管理-SLA管理-SLA策略-新建/编辑策略'),
   locationRule('src/views/process/TaskSlaPolicyManagement.vue', '^row\\.', '系统管理-SLA管理-SLA策略-升级动作'),
@@ -2346,13 +2344,13 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: 'trimText@1',
     expectedEffect: '事件触发时调用 trimText 的版本 1，去除文本首尾空格并回填；函数缺失或不适用时拒绝保存。'
   },
-  'src/components/ui-config/FormDataSourceDialog.vue:binding.clientPrevalidate': {
+  'src/components/ui-config/EventBindingEditor.vue:step.clientPrevalidate': {
     label: '浏览器预校验',
     meaning: '允许 BEFORE_SUBMIT 数据源在浏览器中提前校验，服务端仍执行最终校验。',
     example: true,
     expectedEffect: '同时声明无副作用后，提交前先在浏览器调用数据源并尽早提示错误。'
   },
-  'src/components/ui-config/FormDataSourceDialog.vue:binding.sideEffectFree': {
+  'src/components/ui-config/EventBindingEditor.vue:step.sideEffectFree': {
     label: '无副作用',
     meaning: '声明该提交前数据源不会写库、发消息或产生外部副作用。',
     example: true,
@@ -2375,7 +2373,7 @@ const EVIDENCE_BY_AREA = Object.freeze({
   '表单设计': 'src/shared/__tests__/form-node-property-schema.spec.js；src/shared/__tests__/form-node-drag.spec.js；workflow-entity EntityFormNodePropertyPolicyTest / EntityFormNodeServicePropertyPolicyTest',
   '表单设置': 'src/shared/__tests__/form-actions.spec.js；workflow-app EntityFormConfigurationValidatorTest / EntityFormRuntimeServiceTest',
   '表单节点数据绑定': 'src/shared/__tests__/form-node-property-schema.spec.js；workflow-entity EntityFormNodeServicePropertyPolicyTest',
-  '初始化与数据处理': 'src/__tests__/runtime-integration.spec.js；workflow-entity UiDataSourceProviderPolicyTest / UiInterfaceExtensionServiceRevisionTest',
+  '表单生命周期事件': 'src/components/ui-config/__tests__/eventStepModel.spec.js；workflow-app PublishedFormSubmissionServiceTest',
   '表单按钮': 'src/shared/__tests__/form-actions.spec.js；workflow-entity EntityFormActionConfigPolicyTest',
   '表单字段联动': 'src/shared/__tests__/form-field-linkage.spec.js、src/shared/__tests__/form-field-state-conditions.spec.js',
   '字段前端脚本事件': 'src/shared/__tests__/field-event-scripts.spec.js',
@@ -2431,9 +2429,9 @@ const USAGE_CONTEXT_BY_AREA = Object.freeze({
     '容器、子表单、重复器或动作插槽需要绑定特定实体、表单身份或数据路径时',
     '节点只展示静态内容，或使用当前表单的直接字段绑定时'
   ],
-  '初始化与数据处理': [
-    '初始化数据、加载后处理或提交校验需要调用受管理动态数据源时',
-    '表单数据完全来自当前记录和系统代码表时'
+  '表单生命周期事件': [
+    '提交前处理需要提前校验或在服务端计算预览时',
+    '提交步骤仅在正式保存时执行时'
   ],
   '表单按钮': [
     '平台默认表单按钮不足以完成当前表单的业务操作或摆放要求时',

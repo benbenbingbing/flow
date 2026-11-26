@@ -1128,7 +1128,6 @@ async function configureForms(entity) {
     implementationConfig: {
       optionLabelPrefix: '验收级别',
       defaultValue: 'A',
-      computedPrefix: '节点计算',
       targetField: 'event_trace'
     },
     interfaces: [
@@ -1142,12 +1141,6 @@ async function configureForms(entity) {
       interfaceCapability(
         'FIELD_DEFAULT',
         '字段默认值',
-        'READ',
-        'FORM'
-      ),
-      interfaceCapability(
-        'FIELD_COMPUTE',
-        '字段计算',
         'READ',
         'FORM'
       ),
@@ -1271,7 +1264,7 @@ async function configureForms(entity) {
       props: {
         label: '验收说明',
         text:
-          '评分使用 src/project 自定义字段；底部摘要使用自定义节点；选项、默认值、计算和事件分别调用受控统一数据源。',
+          '评分使用项目自定义字段，底部使用自定义摘要组件，选项、默认值和事件分别调用受控统一数据源。',
         textStyle: 'SECTION_TITLE'
       },
       orderKey: 1_000_000
@@ -1391,13 +1384,7 @@ async function configureForms(entity) {
         componentType: 'ProjectAcceptanceSummaryNode',
         componentVersion: 1,
         snapshotVersion: 1,
-        title: '扩展执行摘要',
-        dataSourceBindings: {
-          FIELD_COMPUTE: {
-            extensionId:
-              entityInterfaces.FIELD_COMPUTE.id
-          }
-        }
+        title: '扩展执行摘要'
       }
     ),
     fieldNode(
@@ -2980,8 +2967,7 @@ async function ensureFixture(
         '等待 FORM/LIST/ENTITY 统一数据源执行',
       event_trace:
         '等待字段、表单或列表事件执行',
-      extension_summary:
-        '等待自定义节点执行',
+      extension_summary: `${scene} · ${score} 分`,
       extension_result:
         '等待流程动作写回',
       backend_trace:
@@ -3133,10 +3119,6 @@ async function verifyRuntime(lists, forms, process, fixtures) {
     levelNode?.dataSourceBindingsDocument,
     '复核级别字段数据源绑定'
   )
-  const summaryBindings = parseDocument(
-    summaryNode?.dataSourceBindingsDocument,
-    '摘要节点数据源绑定'
-  )
   const findEventBinding = (
     bindings,
     targetType,
@@ -3262,10 +3244,6 @@ async function verifyRuntime(lists, forms, process, fixtures) {
     ).title,
     '扩展执行摘要',
     '摘要节点 configSchema 配置没有按 componentProps 契约落库'
-  )
-  assert.ok(
-    summaryBindings.FIELD_COMPUTE?.extensionId,
-    '摘要节点缺少 FIELD_COMPUTE 接口扩展绑定'
   )
   assert.ok(
     findEventBinding(

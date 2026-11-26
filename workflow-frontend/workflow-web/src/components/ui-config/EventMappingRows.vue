@@ -4,6 +4,7 @@
       v-for="(row, index) in modelValue"
       :key="row.rowKey || index"
       class="mapping-row"
+      :class="{ 'is-path-mapping': pathMapping }"
     >
       <el-select
         v-if="sourceOptions"
@@ -32,7 +33,7 @@
           v-for="option in fieldOptions"
           :key="option.value"
           :label="`${option.label} (${option.value})`"
-          :value="`form.${option.value}`"
+          :value="pathMapping ? option.value : `form.${option.value}`"
         />
       </el-select>
       <el-input
@@ -42,6 +43,7 @@
         @update:model-value="update(index, 'targetPath', $event)"
       />
       <el-select
+        v-if="!pathMapping"
         :model-value="row.transform || 'IDENTITY'"
         title="值转换"
         @update:model-value="update(index, 'transform', $event)"
@@ -52,7 +54,7 @@
         <el-option label="文本拼接" value="JOIN" />
       </el-select>
       <el-select
-        v-if="mode === 'output'"
+        v-if="mode === 'output' && !pathMapping"
         :model-value="row.overwrite || 'ALWAYS'"
         title="覆盖策略"
         @update:model-value="update(index, 'overwrite', $event)"
@@ -83,6 +85,7 @@ import { Delete } from '@element-plus/icons-vue'
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   mode: { type: String, default: 'output' },
+  pathMapping: { type: Boolean, default: false },
   fieldOptions: { type: Array, default: () => [] },
   sourceOptions: { type: Array, default: null }
 })
@@ -92,14 +95,16 @@ const emit = defineEmits(['update:modelValue'])
 let rowSequence = 0
 
 const sourcePlaceholder = computed(() =>
-  props.mode === 'input'
+  props.pathMapping
+    ? (props.mode === 'input' ? '来源路径，如 data.customerId' : '来源路径，如 data.contactPhone')
+    : props.mode === 'input'
     ? '来源路径，如 input.customerId'
     : '来源路径，如 selection.data.phone')
 
 const targetPlaceholder = computed(() =>
   props.mode === 'input'
     ? '接口参数，如 customerId'
-    : '目标路径，如 form.contactPhone')
+    : props.pathMapping ? '字段编码，如 contactPhone' : '目标路径，如 form.contactPhone')
 
 function add() {
   emit('update:modelValue', [
@@ -144,8 +149,13 @@ function update(index, key, value) {
   margin-top: 4px;
 }
 
+.mapping-row.is-path-mapping {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+}
+
 @media (max-width: 900px) {
-  .mapping-row {
+  .mapping-row,
+  .mapping-row.is-path-mapping {
     grid-template-columns: 1fr;
   }
 }

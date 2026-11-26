@@ -56,10 +56,9 @@
           <button
             type="button"
             class="config-entry"
-            @click="$emit('open-form-settings', 'data-events', 'data-source')"
+            @click="$emit('open-form-settings', 'events')"
           >
-            <span>初始化与数据处理</span>
-            <span class="config-entry-meta">{{ formDataSourceBindingCount }} 个处理步骤</span>
+            <span>表单事件</span>
             <el-icon><ArrowRight /></el-icon>
           </button>
         </div>
@@ -137,7 +136,6 @@ defineProps({
   customFormAvailable: { type: Boolean, default: false },
   inactiveNodeCount: { type: Number, default: 0 },
   customFormButtonCount: { type: Number, default: 0 },
-  formDataSourceBindingCount: { type: Number, default: 0 },
   previewForm: { type: Object, required: true },
   previewMode: { type: String, required: true },
   previewModeOptions: { type: Array, default: () => [] },

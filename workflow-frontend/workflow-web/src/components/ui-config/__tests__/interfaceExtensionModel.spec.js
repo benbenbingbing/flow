@@ -195,7 +195,7 @@ const eventBindingEditorSource = readFileSync(
   'utf8'
 )
 assert.match(eventBindingEditorSource, /v-model="step\.extensionId"/)
-assert.match(eventBindingEditorSource, /help-key="uiEvent\.extensionInterface"/)
+assert.match(eventBindingEditorSource, /:help-key="lifecycleSelected \? 'entityForm\.interfaceExtension' : 'uiEvent\.extensionInterface'"/)
 assert.doesNotMatch(eventBindingEditorSource, /v-model="step\.(serviceId|operationCode)"/)
 assert.match(eventBindingEditorSource, /最终链必须且只能包含一个主处理/)
 assert.doesNotMatch(

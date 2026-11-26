@@ -1,3 +1,16 @@
+// 这些前缀由表单数据源执行器组装。页面取值说明和问号共用同一份清单。
+export const FORM_DATA_SOURCE_INPUT_SOURCES = Object.freeze([
+  { prefix: 'data', description: '当前表单字段值，子表里取当前行', examples: ['data.country_code'] },
+  { prefix: 'params', description: '当前表单声明并接收的输入参数', examples: ['params.regionType'] },
+  { prefix: 'context', description: '当前页面的运行信息', examples: ['context.mode', 'context.formId', 'context.entityId'] },
+  { prefix: 'input', description: '执行映射前平台组装的接口请求参数', examples: ['input.fieldCode', 'input.recordId', 'input.formData'] },
+  { prefix: 'parent', description: '父表单记录，子表、明细等提供父记录的场景可用', examples: ['parent.recordId', 'parent.data.country_code'] },
+  { prefix: 'row', description: '当前子表行及其状态', examples: ['row.index', 'row.isNew', 'row.data.country_code'] },
+  { prefix: 'relation', description: '当前子表或关联的关系配置', examples: ['relation.relationType', 'relation.childRefFieldCode'] }
+])
+
+export const CASCADER_INPUT_MAPPING_NOTE = '级联请求会自动携带 input.cascader，其中 parentValue 是父节点值，path 是父节点路径，level 是层级（从 0 开始），loadMode 是加载方式。接口通过这些参数加载节点时，无需另填映射。'
+
 const HELP_ENTRIES = {
   'entityList.selectionReturnMappings': {
     title: '返回映射怎么用',
@@ -56,7 +69,7 @@ const HELP_ENTRIES = {
     ],
     result: '级联选择器先显示“中国”，展开后显示“北京”，选中后保存 ["china", "beijing"]。',
     notes: [
-      '静态模式使用此数组；接口模式在“数据源绑定 → 字段选项”选择接口。',
+      '静态模式使用此数组；接口模式在“级联选择配置”选择级联数据接口。',
       '全量接口返回完整树；逐级接口只返回直接下级，每项必须有 leaf 布尔值。',
       'value 使用非空字符串或有限数字，编码类型与已保存路径保持一致；disabled=true 表示不可选择。',
       'PC 和移动端均保存单条完整路径；未配置时不填充示例地区。'
@@ -66,14 +79,17 @@ const HELP_ENTRIES = {
     title: '数据源输入映射怎么用',
     shape: 'object',
     summary:
-      '键是发给数据源的目标路径，值是 data、context 或 input 中的来源路径；常量使用 {"literal": 值}。',
+      '左边填写接口接收的参数名，右边填写取值路径。参数名可以用点号表示嵌套位置。',
     example: {
       'filters.ownerId': 'data.owner_id',
       'context.scene': { literal: 'FORM' }
     },
     result:
       '数据源收到 input.filters.ownerId 和 input.context.scene。',
-    notes: ['留空或 {} 时使用平台组装的原始输入对象。']
+    notes: [
+      ...FORM_DATA_SOURCE_INPUT_SOURCES.map(({ description, examples }) => `${description}。示例 ${examples.join('、')}`),
+      '固定值用 {"literal": 值}。留空或填 {} 时发送平台组装的默认入参。'
+    ]
   },
   'entityForm.dataSourceOutputMapping': {
     title: '数据源输出映射怎么用',

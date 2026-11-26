@@ -28,7 +28,7 @@
  *
  * 示例（放在组件方法中，先检查 dataSourceRuntime 是否存在）：
  * const results = await props.dataSourceRuntime.executeOwnerUsage(
- *   props.node, 'FIELD_COMPUTE', { record: props.modelValue, input: { value: 10 } }
+ *   props.node, 'FIELD_DEFAULT', { record: props.formData, input: { fieldCode: props.field.fieldCode } }
  * )
  * 按接口实际 outputSchema/outputMapping 解读 results，不能假定总是 results[0].data.value。
  */
@@ -41,6 +41,5 @@ export const FORM_DATA_SOURCE_USAGES = Object.freeze({
   FIELD_PICKER_QUERY: 'FIELD_PICKER_QUERY',
   FIELD_PICKER_RESOLVE: 'FIELD_PICKER_RESOLVE',
   FIELD_DEFAULT: 'FIELD_DEFAULT',
-  FIELD_COMPUTE: 'FIELD_COMPUTE',
   SUBFORM_ROWS: 'SUBFORM_ROWS'
 })

@@ -61,10 +61,8 @@ assert.equal(genericArrayHelp.shape, 'array')
 assert.deepEqual(genericArrayHelp.example, [{ value: 'a', label: 'A' }])
 
 const usages = [
-  ['src/components/form-designer/FormNodeDataSettings.vue', 'selectedField.dataSourceInputMappingText', 'entityForm.dataSourceInputMapping'],
-  ['src/components/form-designer/FormNodeDataSettings.vue', 'selectedField.dataSourceOutputMappingText', 'entityForm.dataSourceOutputMapping'],
-  ['src/components/ui-config/FormDataSourceDialog.vue', 'binding.inputMappingText', 'entityForm.dataSourceInputMapping'],
-  ['src/components/ui-config/FormDataSourceDialog.vue', 'binding.outputMappingText', 'entityForm.dataSourceOutputMapping'],
+  ['src/components/form-designer/FormNodeDataSourceBindingEditor.vue', 'inputMappingText', 'entityForm.dataSourceInputMapping'],
+  ['src/components/form-designer/FormNodeDataSourceBindingEditor.vue', 'outputMappingText', 'entityForm.dataSourceOutputMapping'],
   ['src/components/NodeConfigPanel.vue', 'assigneeForm.extraParamsText', 'process.assigneeExtraParams'],
   ['src/components/NodeConfigPanel.vue', 'restForm.headers', 'process.restHeaders'],
   ['src/components/NodeConfigPanel.vue', 'restForm.body', 'process.restBody'],

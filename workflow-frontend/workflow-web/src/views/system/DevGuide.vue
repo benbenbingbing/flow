@@ -243,8 +243,8 @@ return Map.of(
           </el-table>
           <ul class="check-list">
             <li>禁止任意 SQL、JavaScript、Groovy、SpEL、动态类名和外网 URL；外部调用只能封装在已注册 Provider 中，凭据由服务端安全管理。</li>
-            <li>`FORM_INIT` 是表单级绑定；FIELD 仅允许 `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / AFTER_LOAD / BEFORE_SUBMIT`。</li>
-            <li>SUB_FORM 与 REPEATER 仅允许 `SUBFORM_ROWS / AFTER_LOAD / BEFORE_SUBMIT`，不能借用 FIELD Usage 配置选项、默认值或字段计算。</li>
+            <li>表单级加载和提交处理在「表单事件」中配置；FIELD 仅允许 `FIELD_OPTIONS / FIELD_DEFAULT / AFTER_LOAD / BEFORE_SUBMIT`。</li>
+            <li>SUB_FORM 与 REPEATER 支持 `SUBFORM_ROWS / AFTER_LOAD / BEFORE_SUBMIT`。</li>
             <li>一个 `INTERFACE` 扩展记录对应一个完整可调用接口；页面只保存 `extensionId`，不再选择“服务 + 操作”。</li>
             <li>作用范围只按实体配置：“全部实体（GLOBAL）”或“选择实体（ENTITY）”，后者支持多选。业务上下文为 LIST 时覆盖所选实体的全部列表，为 FORM 时覆盖全部表单；页面仍需显式绑定接口并发布，不会自动执行。</li>
             <li>配置 Schema、输入映射、输出映射、分页、超时、缓存和失败策略在预览与发布时统一校验。</li>
@@ -462,7 +462,7 @@ const nodePropertyRows = [
   { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', locked: '不能位于根节点，父级只能是有效 TAB_SET；无字段规则和数据源。' },
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', locked: '不显示字段组件、默认值、校验或字段数据源。' },
   { types: 'TEXT', editable: '合法父容器、受限说明内容 text；用于提示和静态文本。', locked: '禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
-  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、节点扩展和受控数据源。', locked: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份不可改。' },
+  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、节点扩展和受控数据源。', locked: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份不可改。' },
   { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系与外键绑定不可改。' },
   { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不支持 FIELD 默认值、普通组件、校验、模式权限或事件。' },
   { types: 'ACTION_SLOT', editable: '仅合法父容器；用于放置稳定的运行时动作插槽。', locked: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
@@ -477,9 +477,8 @@ const dataSourceTypes = [
 ]
 
 const dataSourceBindings = [
-  { binding: 'FORM_INIT', meaning: '表单级初始化业务对象，不属于节点级 Usage' },
+  { binding: 'FORM_OPEN', meaning: '通过打开表单事件在新增时回填业务字段' },
   { binding: 'FIELD_OPTIONS / FIELD_DEFAULT', meaning: '仅 FIELD：字段选项与默认值' },
-  { binding: 'FIELD_COMPUTE', meaning: '仅 FIELD：结构化字段计算' },
   { binding: 'SUBFORM_ROWS', meaning: '仅 SUB_FORM / REPEATER：子表或明细行加载' },
   { binding: 'LIST_QUERY / LIST_COLUMN', meaning: '整表查询与单列扩展' },
   { binding: 'AFTER_LOAD / BEFORE_SUBMIT', meaning: 'FIELD、SUB_FORM、REPEATER：加载后转换与提交前校验/映射' }

@@ -30,7 +30,7 @@
               :config="actionBar" :defaults="{ ...addDefaults, label: '添加数据', icon: '' }" @click="addRow" />
           </el-empty>
         </div>
-        <div v-else class="relation-row one-to-one-form">
+        <div v-else :key="rowKey(rowData[0])" class="relation-row one-to-one-form">
           <div v-if="canRemoveRow" class="form-row-header">
             <span class="row-title">{{ config.label || '子数据' }}</span>
             <BuiltInActionButton action-key="remove" :config="actionBar"
@@ -49,7 +49,7 @@
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain" class="required-tag">必填</el-tag>
               </label>
               <div class="field-control">
-                <template v-if="readonly || disabled || !field.isEditable">
+                <template v-if="!canEdit || isColumnReadonly(field)">
                   <span>{{ formatCellValue(rowData[0]?.[field.fieldKey], field) }}</span>
                 </template>
                 <template v-else>
@@ -57,6 +57,7 @@
                     v-model="rowData[0][field.fieldKey]"
                     :field="field"
                     :form-data="rowData[0]"
+                    :context="rowScriptContext(rowData[0])"
                     mode="edit"
                     @patch-form="applyRowPatch(rowData[0], 0, $event)"
                     @change="handleFieldChange(rowData[0], field, 0, $event)"
@@ -84,7 +85,7 @@
           </template>
         </template>
 
-        <div v-for="(row, index) in rowData" :key="index" class="relation-row">
+        <div v-for="(row, index) in rowData" :key="rowKey(row)" class="relation-row">
           <div v-if="showRowHeader" class="form-row-header">
             <span class="row-title">{{ isRepeatable ? `第 ${index + 1} 行` : (config.label || '明细') }}</span>
             <BuiltInActionButton v-if="canRemoveRow" action-key="remove" :config="actionBar"
@@ -104,7 +105,7 @@
               </label>
               <div class="field-control">
                 <!-- 只读模式 -->
-                <template v-if="readonly || disabled || !field.isEditable">
+                <template v-if="!canEdit || isColumnReadonly(field)">
                   <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
                 </template>
                 <!-- 编辑模式 -->
@@ -113,6 +114,7 @@
                     v-model="row[field.fieldKey]"
                     :field="field"
                     :form-data="row"
+                    :context="rowScriptContext(row)"
                     mode="edit"
                     @patch-form="applyRowPatch(row, index, $event)"
                     @change="handleFieldChange(row, field, index, $event)"
@@ -130,6 +132,7 @@
     <template v-else>
       <el-table 
         :data="rowData" 
+        :row-key="rowKey"
         :border="containerAppearance.showBorder"
         stripe
         size="small"
@@ -150,10 +153,10 @@
           :prop="field.fieldKey"
           :label="field.fieldName"
           :min-width="field.width || 120"
-          :show-overflow-tooltip="!field.isEditable"
+          :show-overflow-tooltip="isColumnReadonly(field)"
         >
           <template #default="{ row, $index }">
-            <template v-if="readonly || disabled || !field.isEditable">
+            <template v-if="!canEdit || isColumnReadonly(field)">
               <span>{{ formatCellValue(row[field.fieldKey], field) }}</span>
             </template>
 
@@ -162,6 +165,7 @@
                 v-model="row[field.fieldKey]"
                 :field="field"
                 :form-data="row"
+                :context="rowScriptContext(row)"
                 mode="edit"
                 @patch-form="applyRowPatch(row, $index, $event)"
                 @change="handleFieldChange(row, field, $index, $event)"
@@ -263,6 +267,24 @@ const dictionaryOptions = useFieldDictionaryOptions(() => props.config.fields ||
 const fieldErrors = ref({})
 
 const canEdit = computed(() => !props.disabled && !props.readonly)
+
+const rowKeys = new WeakMap()
+let nextRowKey = 0
+
+/** 删除或替换某行时销毁其字段组件，避免延迟完成的脚本回填到复用组件的另一行。 */
+function rowKey(row) {
+  if (!rowKeys.has(row)) rowKeys.set(row, ++nextRowKey)
+  return rowKeys.get(row)
+}
+
+function isColumnReadonly(field) {
+  return !field.isEditable || [true, 1, '1'].includes(field.isReadonly)
+}
+
+/** 旧版明细没有独立的表单宿主，字段脚本直接读写本行模型，由行监听器向父表同步。 */
+function rowScriptContext(row) {
+  return { getFormData: () => row, scriptFields: props.config.fields }
+}
 
 const isOneToOne = computed(() => props.config.relationType === 'ONE_TO_ONE')
 
@@ -497,7 +519,9 @@ function addRow() {
 function appendBlankRow() {
   const newRow = {}
   props.config.fields.forEach(field => {
-    if (field.defaultValue != null) {
+    // 支持显式关闭默认值，为公式和接口来源保留空字段，交给行初始化处理。
+    const usesFixedValue = !field.defaultValueMode || ['fixed', 'inherit'].includes(field.defaultValueMode)
+    if (usesFixedValue && field.defaultValue != null) {
       newRow[field.fieldKey] = field.defaultValue
     } else {
       newRow[field.fieldKey] = ''
@@ -554,22 +578,19 @@ function validateField(row, field, index) {
   return !error
 }
 
-/**
- * 将 legacy fields-only 字段交互上报给宿主子表。唯一预检依赖子表
- * 发布身份，不能在这个纯渲染组件中误用父表上下文。
- */
-/** 子表补丁仅更新当前行可编辑列，随后逐列通知宿主，不能把明细补丁写入父表。 */
+/** 组件补丁可回填本行只读列，先合并数据，再逐列通知宿主。 */
 function applyRowPatch(row, index, patch) {
-  if (props.readonly || props.disabled || !patch || typeof patch !== 'object' || Array.isArray(patch)) return
+  if (!canEdit.value || !patch || typeof patch !== 'object' || Array.isArray(patch)) return
   const changes = Object.entries(patch).flatMap(([key, value]) => {
     if (['__proto__', 'constructor', 'prototype'].includes(key)) return []
     const field = props.config.fields.find(item => (item.fieldKey || item.fieldCode) === key)
-    return field?.isEditable && !field.isReadonly ? [{ field, key, value }] : []
+    return field && !field.isDisplayOnly ? [{ field, key, value }] : []
   })
   for (const { key, value } of changes) row[key] = value
   for (const { field, value } of changes) handleFieldChange(row, field, index, value)
 }
 
+/** 唯一预检需要子表发布身份，由宿主子表处理字段变化。 */
 function handleFieldChange(row, field, index, event) {
   emit('field-change', { row, field, index, event })
 }

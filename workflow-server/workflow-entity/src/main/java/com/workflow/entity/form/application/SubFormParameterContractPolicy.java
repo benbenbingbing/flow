@@ -2,6 +2,7 @@ package com.workflow.entity.form.application;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.form.application.model.PublishedFormRecordView;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -14,7 +15,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -30,9 +30,6 @@ final class SubFormParameterContractPolicy {
 
     private static final Pattern CODE =
             Pattern.compile("[A-Za-z][A-Za-z0-9_]{0,99}");
-    private static final Set<String> SYSTEM_MANAGED_FIELDS = Set.of(
-            "id", "create_time", "update_time", "create_by",
-            "update_by", "deleted");
 
     /**
      * 初始化子级表单参数契约策略，保存构造参数供后续方法使用。
@@ -246,11 +243,6 @@ final class SubFormParameterContractPolicy {
             }
         }
 
-        Set<String> blockedFields =
-                new LinkedHashSet<>(SYSTEM_MANAGED_FIELDS);
-        if (StringUtils.hasText(childRefFieldCode)) {
-            blockedFields.add(childRefFieldCode);
-        }
         for (Map.Entry<String, Object> entry
                 : contract.fieldInitializationMapping().entrySet()) {
             String target = requireCode(entry.getKey(), "子实体字段编码");
@@ -259,8 +251,8 @@ final class SubFormParameterContractPolicy {
                 throw new IllegalArgumentException(
                         "子字段初始化目标不存在或已失效: " + target);
             }
-            if (blockedFields.contains(target)
-                    || Objects.equals(childField.getIsReadonly(), 1)) {
+            // 字段只读只限制手动录入，初始化仍可提供业务值。系统字段和关系外键由宿主维护。
+            if (PublishedFormRecordView.isSystemManagedField(target) || target.equals(childRefFieldCode)) {
                 throw new IllegalArgumentException(
                         "子字段由系统维护或不可写，不能配置初始化: " + target);
             }
@@ -324,11 +316,6 @@ final class SubFormParameterContractPolicy {
                 childByCode.put(field.getFieldCode(), field);
             }
         }
-        Set<String> blockedFields =
-                new LinkedHashSet<>(SYSTEM_MANAGED_FIELDS);
-        if (StringUtils.hasText(childRefFieldCode)) {
-            blockedFields.add(childRefFieldCode);
-        }
         for (String target
                 : contract.fieldInitializationMapping().keySet()) {
             EntityFormField childField = childByCode.get(target);
@@ -337,8 +324,7 @@ final class SubFormParameterContractPolicy {
                         "子字段初始化目标不存在或已失效: "
                                 + target);
             }
-            if (blockedFields.contains(target)
-                    || Objects.equals(childField.getIsReadonly(), 1)) {
+            if (PublishedFormRecordView.isSystemManagedField(target) || target.equals(childRefFieldCode)) {
                 throw new IllegalArgumentException(
                         "子字段由系统维护或不可写，不能配置初始化: "
                                 + target);
@@ -412,18 +398,14 @@ final class SubFormParameterContractPolicy {
         if (row == null || contract == null || !contract.enabled()) {
             return false;
         }
-        Set<String> blocked =
-                new LinkedHashSet<>(SYSTEM_MANAGED_FIELDS);
-        if (blockedFields != null) {
-            blocked.addAll(blockedFields);
-        }
         boolean changed = false;
         Map<String, Object> values = resolveMapping(
                 contract.fieldInitializationMapping(),
                 source);
         for (Map.Entry<String, Object> entry : values.entrySet()) {
             String fieldCode = entry.getKey();
-            if (blocked.contains(fieldCode)
+            if (PublishedFormRecordView.isSystemManagedField(fieldCode)
+                    || (blockedFields != null && blockedFields.contains(fieldCode))
                     || !isEmpty(row.get(fieldCode))
                     || entry.getValue() == null) {
                 continue;

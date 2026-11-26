@@ -20,6 +20,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EntityFormNodePropertyPolicyTest {
 
     @Test
+    void defaultSourcesPreserveTypedFixedValuesAndRequireFormula() {
+        Map<String, Object> fixed = Map.of("defaultValueMode", "fixed", "defaultValue", false);
+        Map<String, Object> formula = Map.of("defaultValueMode", "formula", "defaultFormula", "ADD_DAYS(TODAY(), 3)");
+        assertEquals(fixed, EntityFormNodePropertyPolicy.normalizeProps("FIELD", fixed, false).active());
+        assertEquals(formula, EntityFormNodePropertyPolicy.normalizeProps("FIELD", formula, false).active());
+        assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeProps(
+                "FIELD", Map.of("defaultValueMode", "formula"), false));
+        assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeProps(
+                "FIELD", Map.of("defaultValueMode", "unknown"), false));
+    }
+
+    @Test
     void childFormBuiltInAppearancePersistsAtSubFormConfigPathWithoutBehaviorChanges() {
         Map<String, Object> actionBar = Map.of("position", "BOTH", "align", "RIGHT", "gap", 12,
                 "buttons", Map.of("add", Map.of("label", "添加明细", "icon", "Plus", "sort", 0),
@@ -529,7 +541,7 @@ class EntityFormNodePropertyPolicyTest {
     void dataSourceUsageMatrixMatchesRuntimeConsumers() {
         assertEquals(
                 Set.of(
-                        "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
+                        "FIELD_OPTIONS", "FIELD_DEFAULT",
                         "FIELD_PICKER_SCHEMA", "FIELD_PICKER_QUERY", "FIELD_PICKER_RESOLVE",
                         "AFTER_LOAD", "BEFORE_SUBMIT"),
                 EntityFormNodePropertyPolicy.dataSourceUsages("FIELD"));

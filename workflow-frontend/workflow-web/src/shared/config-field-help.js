@@ -57,7 +57,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'formNode.subFormParameterContract':
     '运行参数用于子表单数据源、联动和事件，不直接保存；初始化子字段只在目标字段为空时写入。父子关系外键始终由系统维护，不能在这里手工映射。',
   'formDataSource.usage':
-    'FORM_INIT 在新增时初始化整表；AFTER_LOAD 在记录加载后加工数据；BEFORE_SUBMIT 在提交前校验或转换，后端始终执行最终逻辑。',
+    '新增时初始化整表可配置打开表单事件，并限定打开方式为新增。AFTER_LOAD 在表单数据加载后加工数据；BEFORE_SUBMIT 在提交前校验或转换，由后端执行最终逻辑。',
   'entitySelection.overwrite':
     '始终覆盖会替换目标现值；仅空值覆盖会保护用户已填写内容；覆盖前确认会在存在旧值时询问用户。',
   'entitySelection.clearOnEmpty':
@@ -112,6 +112,10 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '把当前事件数据组装成接口入参：左侧填写来源路径，右侧填写接口参数路径，例如 input.form.customerId → customerId。不配置时会直接使用事件原始输入。用户、任务、流程等可信身份信息由服务端上下文提供，不要通过页面参数传入。',
   'uiEvent.outputMapping':
     '把接口结果或当前事件数据写入目标字段：左侧填写来源路径，右侧选择或填写回填路径，并可设置值转换和覆盖策略。未选择扩展接口时，本步骤至少需要配置一条字段回填。',
+  'uiEvent.lifecycleInputMapping':
+    '将表单字段和运行信息映射到接口参数。表单字段从 data.字段编码 读取，打开方式从 input.mode 读取，加载后处理还可读取 params.参数编码。留空时传入完整的当前数据和运行信息。',
+  'uiEvent.lifecycleOutputMapping':
+    '将接口返回值回填到表单字段。左侧填写返回值中的路径，右侧选择字段编码。留空时将返回对象按字段名合并到表单数据，后续步骤可以读取已回填的值。',
   'uiEvent.failurePolicy':
     '停止执行会返回错误；记录后继续会跳过失败步骤；按空结果继续会把失败步骤当作空结果再执行后续映射。',
   'uiEvent.extensionInterface':
@@ -274,8 +278,7 @@ export function getConfigFieldHelp(helpKey) {
 const FORM_DATA_SOURCE_USAGE_HELP = Object.freeze({
   FORM_INIT: '初始化数据（FORM_INIT）：选择 READ 接口，仅在新增记录时返回整表初始数据。',
   FIELD_OPTIONS: '字段选项（FIELD_OPTIONS）：选择 READ 接口，为下拉、单选、多选等提供候选项；输出 Schema 的根类型须为 array。',
-  FIELD_DEFAULT: '字段默认值（FIELD_DEFAULT）：选择 READ 接口，表单初始化时仅在当前字段为空时填入返回值，不覆盖已有值。',
-  FIELD_COMPUTE: '字段计算（FIELD_COMPUTE）：选择 READ 接口，表单初始化时根据当前数据计算并回填字段值，可覆盖已有值。',
+  FIELD_DEFAULT: '字段默认值（FIELD_DEFAULT）：选择 READ 接口，新增记录初始化时仅在当前字段为空时填入返回值。',
   SUBFORM_ROWS: '子表行数据（SUBFORM_ROWS）：选择 READ 接口，为子表单或明细表加载行数据；输出 Schema 的根类型须为 array。',
   AFTER_LOAD: '加载后处理（AFTER_LOAD）：选择 READ 接口，在表单数据加载后加工或补充数据，返回字段对象供表单回填。',
   BEFORE_SUBMIT: '提交前处理（BEFORE_SUBMIT）：选择 WRITE 接口，在保存前校验或转换待提交数据，最终逻辑由后端在保存事务中执行。'
@@ -290,7 +293,7 @@ export function getFormDataSourceInterfaceHelp(usage, { cascader = false } = {})
       FIELD_PICKER_RESOLVE: '只读按键解析接口，从 input.picker.values 读取业务键数组，返回记录数组；用于回显和确认前补查，不能依赖当前页。' })[usageKey]
     || '按所选用途提供字段选项、默认值、计算值、子表行数据，或参与表单初始化、加载后及提交前处理。'
   const cascaderHelp = cascader && usageKey === 'FIELD_OPTIONS'
-    ? '级联选择通过 input.cascader 传入加载方式、父节点编码、完整父路径和层级；接口返回含 value、label、children 或 leaf 的节点数组，逐级加载须提供 leaf。'
+    ? '级联选择通过 input.cascader 传入加载方式、父节点编码、完整父路径和层级。接口返回节点数组；字段名可以在输出映射中配置，逐级加载须提供布尔类型的末级标记。'
     : ''
   return [usageHelp, getConfigFieldHelp('entityForm.interfaceExtension'), cascaderHelp].filter(Boolean).join(' ')
 }

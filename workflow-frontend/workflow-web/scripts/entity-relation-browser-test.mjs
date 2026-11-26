@@ -117,7 +117,7 @@ request.defaults.adapter=async config=>{
  else if(url==='/entity-list-config/entity/req')data=[list]
  else if(url==='/entity-form/req-form/fields')data=formFields
  else if(url==='/entity-forms/req-form/runtime')data=state.inlineSaveTest
-   ?{...formRelease,snapshotDocument:JSON.stringify({form:{...form,isReadonly:!!state.inlineFormReadonly,viewConfig:{...form.viewConfig,inputParameterBindings:[{usage:'INITIALIZE',parameter:'sourceName',targetField:'reqName'}]}},legacyFields:formFields.map(f=>({...f,isRequired:1})),nodes:nodes.map(n=>({...n,props:{...n.props,isRequired:1}}))})}
+   ?{...formRelease,hasFormOpenBinding:true,snapshotDocument:JSON.stringify({form:{...form,isReadonly:!!state.inlineFormReadonly,viewConfig:{...form.viewConfig,inputParameterBindings:[{usage:'INITIALIZE',parameter:'sourceName',targetField:'reqName'}]}},legacyFields:formFields.map(f=>({...f,isRequired:1})),nodes:nodes.map(n=>({...n,props:{...n.props,isRequired:1}}))})}
    :state.nestedTargetTest
    ?{...formRelease,snapshotDocument:JSON.stringify({form,legacyFields:formFields,nodes:nestedTargetNodes,viewCompositions:nestedTargetRelations})}
    :state.parameterTest?{...formRelease,snapshotDocument:JSON.stringify({form:{...form,dataSourceBindingsDocument:{AFTER_LOAD:[{extensionId:'parameter-reader',bindingCode:'parameter-reader'}]}},legacyFields:formFields,nodes})}:formRelease
@@ -143,6 +143,10 @@ request.defaults.adapter=async config=>{
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/load')data={id:'all-3',data:{name:'主表名称',childId:'child-all-3'}}
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/update'){state.mainSavedData=body.data;data={id:'all-3',data:body.data}}
  else if(state.nativeHostTest&&url==='/ui-runtime/form-actions/resolve')data=state.formButtonsTest&&body.formId==='owner'?[{...state.testButton,ownerFormId:'owner',runtimeKey:'owner:quick',type:'custom',key:'quick',label:'运行测试按钮',visible:true,enabled:true,placement:'FOOTER'}]:body.formId==='owner'?resolveLocalFormActions(hostForm(),body):[]
+ else if(state.inlineSaveTest&&url==='/ui-runtime/events/FORM_OPEN/execute'&&body.configId==='req-form'){
+   if(body.input?.mode!=='create'||!body.runtimeContext?.compositionContext||body.configHash!=='req-graph')throw Error('新增打开事件未携带目标表单运行上下文')
+   data={effects:state.inlineOpenResult?[{type:'FIELD_MAPPING',data:{form:{reqName:state.inlineOpenResult}},mappings:[{targetPath:'form.reqName'}]}]:[]}
+ }
  else if(state.nativeHostTest&&url.startsWith('/ui-runtime/events/'))data={success:true,results:[],patch:{}}
  else if(state.inlineSaveTest&&(url==='/entity-data'||url.endsWith('/update'))){
    if(!body.compositionContext||body.formConfigHash!=='req-graph'||body.formId!=='req-form')throw Error('独立保存未携带可信发布上下文')
@@ -293,7 +297,23 @@ try {
   await evaluate('relationTest.settle()')
 
 
-  if (process.argv.includes('--entity-lookup')) {
+  if (process.argv.includes('--inline-form-open')) {
+    await evaluate(`(()=>{
+      const state=relationTest.state;
+      state.inlineSaveTest=true;state.inlineOpenResult='打开事件回填';
+      state.compositions=[{id:'c1',compositionKey:'child',anchorType:'OWNER',config:{
+        enabled:true,name:'关联子表单',target:{contentType:'FORM',contentId:'req-form',entityId:'req'},
+        relation:{type:'ENTITY_RELATION',relationCode:'reqRelation'},presentation:{position:'INLINE',loadMode:'IMMEDIATE'}}}];
+      state.sourceRecordId='missing';state.published=true;return relationTest.settle();
+    })()`)
+    await until("document.querySelector('#runtime .related-content-runtime input')?.value==='打开事件回填'")
+    const opened = await evaluate("JSON.parse(JSON.stringify(relationTest.state.calls.filter(c=>c.url==='/ui-runtime/events/FORM_OPEN/execute')))")
+    assert.equal(opened.length,1)
+    assert.equal(opened[0].body.runtimeContext.compositionContext.recordId,'missing')
+    assert.equal(await evaluate('relationTest.state.sourceData.name'),'未保存的验收名称')
+    assert.deepEqual(errors,[])
+    console.log('related form open browser acceptance passed')
+  } else if (process.argv.includes('--entity-lookup')) {
     await evaluate('relationTest.state.lookupTest=true;relationTest.settle()')
     await until("document.querySelector('#entity-lookup-runtime .el-table__row')?.innerText.includes('客户订单')")
     await click('查询客户', "document.querySelector('#entity-lookup-runtime')")
@@ -321,7 +341,8 @@ try {
     await evaluate("relationTest.state.visibilityData.status='DRAFT';relationTest.settle()")
     assert.equal(await evaluate("document.querySelectorAll('#node-visibility-runtime .form-node-root-row > .el-col').length"),0,'条件变化时隐藏整个节点')
     await evaluate(`relationTest.state.visibilityTest=false;relationTest.state.designerNodes=${JSON.stringify([
-      {id:'visible-section',nodeKey:'visible-section',nodeType:'SECTION',propsDocument:JSON.stringify({label:'整体显示区域',linkageRules:{visibilityRule:"reqName == '原条件'"}})}
+      {id:'visible-section',nodeKey:'visible-section',nodeType:'SECTION',propsDocument:JSON.stringify({label:'整体显示区域',linkageRules:{visibilityRule:"reqName == '原条件'"}})},
+      {id:'conditional-field',nodeKey:'name',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'name',propsDocument:JSON.stringify({fieldId:'source-name',fieldCode:'name',fieldType:'STRING',label:'验收名称',componentType:'input'})}
     ])};relationTest.state.designerTest=true;relationTest.settle()`)
     const section = "document.querySelector('#real-designer .form-node-design-item[data-node-type=\"SECTION\"]')"
     await until(`${section} && !document.querySelector('#real-designer .el-loading-mask')`)
@@ -333,8 +354,12 @@ try {
     await evaluate(`${modes}.querySelector('.settings-section__header').click();relationTest.settle()`)
     assert.equal(await evaluate(`${modes}.querySelectorAll('.el-checkbox').length`),4,'布局节点仅配置显示，不附带字段编辑权限')
     await evaluate(`[...${modes}.querySelectorAll('.mode-access-row')].find(e=>e.textContent.includes('编辑')).querySelector('.el-checkbox').click();relationTest.settle()`)
-    assert.equal(await evaluate(`${drawer}.querySelector('[aria-label="启用条件显示"]').getAttribute('aria-checked')`),'true')
-    const conditionInput = `${drawer}.querySelector('.condition-value input')`
+    const conditions = `[...${drawer}.querySelectorAll('.settings-section')].find(e=>e.querySelector('.settings-section__heading strong')?.textContent==='条件模式权限')`
+    const toggleConditions = () => evaluate(`${conditions}.querySelector('.settings-section__header').click();relationTest.settle()`)
+    assert.equal(await evaluate(`${conditions}.querySelector('.settings-section__heading small').textContent`), '按条件控制整个节点及其内部内容是否显示')
+    await toggleConditions()
+    assert.equal(await evaluate(`${conditions}.querySelector('[aria-label="启用条件显示"]').getAttribute('aria-checked')`),'true')
+    const conditionInput = `${conditions}.querySelector('.condition-value input')`
     await until(conditionInput)
     await evaluate(`${conditionInput}.value='新条件';${conditionInput}.dispatchEvent(new Event('input',{bubbles:true}));${conditionInput}.dispatchEvent(new Event('change',{bubbles:true}));relationTest.settle()`)
     await evaluate(`${drawer}.querySelector('.el-drawer__close-btn').click();relationTest.settle()`)
@@ -348,7 +373,34 @@ try {
     await doubleClick(section)
     await until(`${drawer}?.innerText.includes('运行模式显示')`)
     assert.equal(await evaluate(`[...${modes}.querySelectorAll('.mode-access-row')].find(e=>e.textContent.includes('编辑')).querySelector('input').checked`),false)
+    await toggleConditions()
     assert.equal(await evaluate(`${conditionInput}.value`),'新条件')
+    await evaluate(`${drawer}.querySelector('.el-drawer__close-btn').click();relationTest.settle()`)
+    await doubleClick("document.querySelector('#real-designer [data-node-id=conditional-field] .el-form-item__label')")
+    await until(`${drawer}?.innerText.includes('运行模式权限')`)
+    assert.equal(await evaluate(`${conditions}.querySelector('.settings-section__heading small').textContent`), '配置字段的条件显示、条件必填和条件禁用')
+    // 字段的三类条件通过同一个分组开关展开和折叠。
+    const visibleRules = `[...${conditions}.querySelectorAll('.rule-title')].filter(rule=>rule.getClientRects().length).map(rule=>rule.textContent)`
+    if (await evaluate(`${conditions}.classList.contains('is-expanded')`)) await toggleConditions()
+    assert.deepEqual(await evaluate(visibleRules), [])
+    await toggleConditions()
+    assert.deepEqual(await evaluate(visibleRules), ['条件显示','条件禁用','条件必填'])
+    assert.ok(await evaluate(`[...${conditions}.querySelectorAll('.rule-heading')].every(heading => {
+      const title = heading.querySelector('.rule-title').getBoundingClientRect()
+      const description = heading.querySelector('.rule-description').getBoundingClientRect()
+      return description.left - title.right >= 20 && description.top < title.bottom && title.top < description.bottom
+    })`), '条件说明应与标题同行并留出间距')
+    await evaluate(`[...${conditions}.querySelectorAll('[role="switch"][aria-checked="false"]')].forEach(toggle => toggle.click());relationTest.settle()`)
+    assert.ok(await evaluate(`(() => {
+      const panel = ${conditions}
+      const headingStyle = getComputedStyle(panel.querySelector('.settings-section__heading strong'))
+      const titles = panel.querySelectorAll('.rule-title, .depth-1 > .group-header > .group-title > span:first-child')
+      return titles.length === 6 && [...titles].every(title => {
+        const style = getComputedStyle(title)
+        return style.fontSize === headingStyle.fontSize && style.lineHeight === headingStyle.lineHeight
+      })
+    })()`), '三项条件和根条件组的标题应与上方分组字号、行高一致')
+    assert.equal(await evaluate(`${conditions}.querySelectorAll('.group-tip').length`), 0, '三项条件均不显示条件组通用提示')
     assert.deepEqual(errors, [])
     console.log('node visibility browser acceptance passed: all container kinds, mode/condition changes, preserved values, hidden validation and designer save/reload')
   } else if (process.argv.includes('--subform-spacing-placement')) {
@@ -667,6 +719,7 @@ try {
   // 新页面通过统一参数初始化；用户修改后保存创建，再保存更新同一条记录。
   await evaluate("relationTest.state.compositions[0].config.parameterMappings=[{parameter:'sourceName',sourceType:'FIELD',sourceField:'name'}];relationTest.state.sourceRecordId='missing';relationTest.settle()")
   await until(`${inlineInput}?.value===relationTest.state.sourceData.name && !${inlineInput}.disabled`)
+  assert.equal(await evaluate("relationTest.state.calls.some(c=>c.url==='/ui-runtime/events/FORM_OPEN/execute'&&c.body.runtimeContext?.compositionContext?.recordId==='missing')"),true)
   await fillInline('第一次保存创建的需求')
   await click('保存子表单',inlineForm)
   await until(`${inlineInput}?.value==='第一次保存创建的需求' && !${inlineForm}.querySelector('.el-loading-mask')`)

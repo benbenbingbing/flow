@@ -15,9 +15,11 @@ import 'element-plus/dist/index.css'
 import Renderer from '/src/components/FormFieldRendererLinkage.vue'
 import Editor from '/src/components/EventConfigPanel.vue'
 import FormPreview from '/src/components/FormPreviewLinkage.vue'
+import SubFormRenderer from '/src/components/SubFormRenderer.vue'
 import { uiEventBindingApi } from '/src/api/uiConfig.js'
 import request from '/src/utils/request.js'
 import { registerApplicationExtensions } from '/src/extensions/register.js'
+import { installExtensionHost } from '/src/adapters/extensionHost.js'
 registerApplicationExtensions()
 const state = reactive({record:{text:'', user:null, target:'',score:20}, trace:[], visible:false, codes:{onChange:'if ('}, saved:null, useAccessor:false})
 window.scriptTrace=state.trace
@@ -34,7 +36,12 @@ state.score={fieldCode:'score',fieldName:'自定义评分',fieldType:'INTEGER',c
 }}}
 state.nodeRecord={nodeText:''}
 const nodeField={id:'nf1',fieldCode:'nodeText',fieldName:'节点文本',fieldType:'STRING',componentType:'input',componentProps:{events:{onChange:"await Promise.resolve();setValue(value.toUpperCase());setFieldValue('nodeTarget','节点回填')"}}}
-const nodeForm={id:'nodeForm',fields:[nodeField,{id:'nf2',fieldCode:'nodeTarget',fieldType:'STRING'}],nodes:[{id:'node1',nodeType:'FIELD',nodeKey:'nodeText',bindingType:'FIELD',bindingRef:'nf1',props:{fieldCode:'nodeText',componentType:'input'}},{id:'node2',nodeType:'FIELD',nodeKey:'nodeTarget',bindingType:'FIELD',bindingRef:'nf2',props:{fieldCode:'nodeTarget',fieldType:'STRING',componentType:'input'}}]}
+const nodeForm={id:'nodeForm',fields:[nodeField,{id:'nf2',fieldCode:'nodeTarget',fieldType:'STRING'}],nodes:[{id:'node1',nodeType:'FIELD',nodeKey:'nodeText',bindingType:'FIELD',bindingRef:'nf1',props:{fieldCode:'nodeText',componentType:'input'}},{id:'node2',nodeType:'FIELD',nodeKey:'nodeTarget',bindingType:'FIELD',bindingRef:'nf2',props:{fieldCode:'nodeTarget',fieldType:'STRING',componentType:'input',readonly:true}}]}
+state.legacyRows=[{nodeText:'',nodeTarget:'首行原值'},{nodeText:'',nodeTarget:'次行原值'}]
+const legacyConfig={layout:'form',repeatable:true,fields:[
+ {...nodeField,fieldKey:'nodeText',isEditable:true},
+ {fieldKey:'nodeTarget',fieldName:'明细回填',fieldType:'STRING',isEditable:false}
+]}
 const row={id:'u1',name:'测试用户',code:'user1',entityType:'USER'}
 request.get=async url=>{if(!url.startsWith('/entity-selector/'))throw Error('unexpected API: '+url);return url.includes('/batch')?[row]:{records:[row],total:1}}
 uiEventBindingApi.execute=async(code,payload)=>{state.trace.push(['chain',code,JSON.parse(JSON.stringify(payload))]);return {effects:[]}}
@@ -42,10 +49,12 @@ const app=createApp({setup(){return()=>h('main',{style:'width:880px;margin:30px 
  h('h2','前端脚本事件验收'),
  ...['text','user','score'].map(key=>h('div',{id:key,style:'margin:20px 0'},[h(Renderer,{field:state[key],formData:state.record,modelValue:state.record[key],'onUpdate:modelValue':v=>state.record[key]=v,context:{form:{id:'f1'},...(state.useAccessor?{getFormData:()=>state.record}:{record:state.record})}})])),
  h('div',{id:'node-preview'},[h(FormPreview,{form:nodeForm,modelValue:state.nodeRecord,'onUpdate:modelValue':v=>state.nodeRecord=v,mode:'create'})]),
+ h('div',{id:'legacy-subform'},[h(SubFormRenderer,{config:legacyConfig,modelValue:state.legacyRows,'onUpdate:modelValue':v=>state.legacyRows=v})]),
  h('p',{id:'target'},state.record.target),h('button',{id:'outside'},'其他区域'),
  h(Editor,{visible:state.visible,'onUpdate:visible':v=>state.visible=v,modelValue:state.codes,field:state.text,onSave:codes=>state.saved=codes})
 ])}})
 app.config.warnHandler=message=>console.warn(message)
+installExtensionHost(app)
 app.use(createPinia()).use(ElementPlus,{locale:zhCn}).mount('#app')
 window.scriptTest={state,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,130));await nextTick()}}
 `
@@ -111,12 +120,17 @@ try{
  await inputText('error');await commitText()
  assert.match(await evaluate(`document.body.textContent`),/测试文本.*onChange.*故意失败/)
  assert.equal(await evaluate(`scriptTest.state.trace.filter(t=>t[0]==='chain').length`),1)
- // 真实节点树表单：赋值通过表单模型同步，尚未初始化的目标字段也能按元数据回填。
+ // 真实节点树表单：尚未初始化的只读字段可通过脚本回填，输入控件继续禁用。
  await evaluate(`(()=>{const e=document.querySelector('#node-preview input');e.value='node';e.dispatchEvent(new Event('input',{bubbles:true}))})()`);await evaluate('scriptTest.settle()')
  await evaluate(`document.querySelector('#node-preview input').dispatchEvent(new Event('change',{bubbles:true}))`);await evaluate('scriptTest.settle()')
  assert.equal(await evaluate('scriptTest.state.nodeRecord.nodeText'),'NODE')
  assert.equal(await evaluate('scriptTest.state.nodeRecord.nodeTarget'),'节点回填')
+ assert.equal(await evaluate('[...document.querySelectorAll("#node-preview input")].some(input=>input.value==="节点回填" && (input.disabled || input.readOnly))'),true)
  assert.equal(await evaluate(`scriptTest.state.trace.find(t=>t[0]==='chain'&&t[2].configId==='nodeForm')[2].input.form.nodeTarget`),'节点回填')
+ // 旧版明细只读取和回填当前行，父表接收本行模型变化。
+ await evaluate(`(()=>{const e=document.querySelectorAll('#legacy-subform input')[1];e.value='legacy';e.dispatchEvent(new Event('input',{bubbles:true}))})();scriptTest.settle()`)
+ await evaluate(`document.querySelectorAll('#legacy-subform input')[1].dispatchEvent(new Event('change',{bubbles:true}));scriptTest.settle()`)
+ assert.deepEqual(await evaluate('scriptTest.state.legacyRows.map(row=>row.nodeTarget)'),['首行原值','节点回填'])
  // 编辑器拦截语法错误，修正后保存。
  await evaluate('scriptTest.state.visible=true;scriptTest.settle()');await clickText('保存')
  assert.equal(await evaluate('scriptTest.state.saved'),null)

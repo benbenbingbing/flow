@@ -1041,10 +1041,6 @@ const runtimeCodeGenerator = readFileSync(
     `表单/列表最终代码审查能力缺少内容: ${marker}`
   )
 })
-const formDataSourceDialog = readFileSync(
-  path.join(root, 'src/components/ui-config/FormDataSourceDialog.vue'),
-  'utf8'
-)
 const eventBindingEditor = readFileSync(
   path.join(root, 'src/components/ui-config/EventBindingEditor.vue'),
   'utf8'
@@ -1090,7 +1086,7 @@ assert.ok(
   '表单设置',
   '基本与布局',
   '按钮与操作',
-  '初始化与数据处理',
+  '表单事件',
   '自定义组件',
   '数据源绑定',
   '校验规则',
@@ -1100,9 +1096,9 @@ assert.ok(
 })
 assert.ok(
   formCustomRendererWorkspace.includes(
-    "$emit('open-form-settings', 'data-events', 'data-source')"
+    "$emit('open-form-settings', 'events')"
   ),
-  '自定义表单工作区的数据处理入口必须定位到唯一的数据源编辑页'
+  '自定义表单工作区的数据处理入口必须定位到统一的表单事件页'
 )
 ;[
   '先确定按钮在哪些模式和位置出现',
@@ -1117,17 +1113,12 @@ assert.ok(
     `自定义按钮配置缺少引导或字段说明: ${marker}`
   )
 })
-;[
-  "parseJsonConfig(row.inputMappingText",
-  "parseJsonConfig(row.outputMappingText",
-  'getFormDataSourceBindingStepLabel(rows, index)',
-  'assertUniqueFormDataSourceOutputTargets'
-].forEach((marker) => {
-  assert.ok(
-    formDataSourceDialog.includes(marker),
-    `表单数据源映射保存前必须执行严格 JSON 校验: ${marker}`
-  )
-})
+assert.ok(
+  !formSettingsDrawer.includes('<el-tab-pane name="data-source">')
+    && formSettingsDrawer.includes(':lifecycle-form="form"')
+    && formSettingsDrawer.includes('@lifecycle-saved="onFormLifecycleSaved"'),
+  '加载后和提交前处理必须从表单事件编辑器保存'
+)
 ;[
   'EventDefaultProcessingHelp',
   'getEventDefaultProcessing as platformDefaultHelp',
@@ -1207,6 +1198,7 @@ const wordLimitSectionEnd = formDesigner.indexOf('</SettingsSection>', wordLimit
 const validationSectionStart = formDesigner.indexOf('title="校验规则"')
 const regexIndex = formDesigner.indexOf('label="正则"')
 const componentTypeIndex = formDesigner.indexOf('label="组件类型"')
+const componentConfigButtonIndex = formDesigner.indexOf('@click="openComponentConfig"')
 const componentParametersIndex = formDesigner.indexOf('class="component-configuration"')
 assert.ok(
   wordLimitSectionStart >= 0
@@ -1216,9 +1208,10 @@ assert.ok(
     && validationMaxLengthIndex > validationSectionStart
     && regexIndex > validationMaxLengthIndex
     && componentTypeIndex > wordLimitSectionStart
-    && componentParametersIndex > componentTypeIndex
-    && componentParametersIndex < wordLimitSectionEnd,
-  '组件类型及参数、显示字数应位于基础属性内，长度与正则保留在数据校验中'
+    && componentConfigButtonIndex > componentTypeIndex
+    && componentConfigButtonIndex < wordLimitSectionEnd
+    && componentParametersIndex > wordLimitSectionEnd,
+  '基础属性保留组件类型、配置入口及显示字数，组件参数移入弹窗，长度与正则保留在数据校验中'
 )
 ;[
   'getRuntimeRegexPatternError',
@@ -1285,10 +1278,11 @@ assert.ok(
   'title="数据源绑定"',
   'title="校验规则"',
   ":title=\"isFieldNode ? '运行模式权限' : '运行模式显示'\"",
+  'title="条件模式权限"',
   'title="子表单配置"',
   'title="参数传递"',
   'title="子列表配置"',
-  'title="引用选择配置"',
+  '<FormNodeReferenceSettings',
   'title="值与计算"',
   'title="事件与回填"'
 ].forEach((marker) => {
@@ -2212,7 +2206,10 @@ const inlineValueLinkage = readFileSync(path.join(root, 'src/components/form-des
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `字段联动缺少独立卡片或内联配置: ${marker}`)
 })
-assert.ok(inlineValueLinkage.includes('启用值联动') && inlineValueLinkage.includes('启用选项联动'), '值与计算应内联值联动和选项联动')
+assert.ok(
+  ['启用字段映射', '启用公式计算', '启用选项联动'].every(marker => inlineValueLinkage.includes(marker)),
+  '值与计算应内联字段映射、实时公式和选项联动'
+)
 assert.equal(formDesigner.includes('showLinkageConfig'), false, '字段联动不再通过弹窗编辑')
 const linkageConditionRuleEditor = readFileSync(
   path.join(root, 'src/components/LinkageConditionRuleEditor.vue'),
@@ -2389,7 +2386,8 @@ const configurationArchitectureExpectations = {
     '/publish',
     '/runtime',
     '发布立即全局生效',
-    'FORM_INIT',
+    'FORM_OPEN',
+    'AFTER_LOAD',
     'BEFORE_SUBMIT',
     'DataScopePlan',
     'legacyProps',
@@ -2420,7 +2418,8 @@ const configurationArchitectureExpectations = {
     '最大嵌套深度为 `8`',
     'UiDataSourceProvider',
     'DataScopePlan',
-    'FORM_INIT',
+    'FORM_OPEN',
+    'AFTER_LOAD',
     'BEFORE_SUBMIT',
     '/draft',
     '/diff',
@@ -2462,7 +2461,8 @@ const configurationArchitectureExpectations = {
     '最大深度 8 层',
     '"type": "FIELD"',
     'FIELD 表单组件',
-    'FORM_INIT',
+    'FORM_OPEN',
+    'AFTER_LOAD',
     'BEFORE_SUBMIT',
     'DataScopePlan',
     '/draft',
@@ -2690,7 +2690,7 @@ assert.ok(
   ],
   [
     entityFormListSource,
-    ['handleDesign(row)', '设计', 'handlePreview(row)', '预览', 'handleEdit(row)', '编辑', 'handleSetDefault(row)', '默认', 'handleCopy(row)', '复制', 'handleDataConfig(row)', '数据配置', 'handleDelete(row)', '删除']
+    ['handleDesign(row)', '设计', 'handlePreview(row)', '预览', 'handleEdit(row)', '编辑', 'handleSetDefault(row)', '默认', 'handleCopy(row)', '复制', 'handleDataConfig(row)', '表单事件', 'handleDelete(row)', '删除']
   ]
 ].forEach(([source, markers]) => {
   // 次要操作可以折叠，但设计、发布等主要入口仍必须直接可用。
@@ -2702,9 +2702,7 @@ assert.ok(
 
 ;[
   "settings: 'data-events'",
-  "section: 'data-source'",
-  'formatFormDataSourceBindingSummary',
-  'totalFormDataSourceBindings'
+  "section: 'events'"
 ].forEach((marker) => {
   assert.ok(
     entityFormListSource.includes(marker),
@@ -2733,8 +2731,8 @@ assert.equal(
 })
 assert.ok(
   formSettingsDrawer.includes("'update:activeTab'")
-    && formDesigner.includes("tab === 'data-events' ? (behaviorTab || 'data-source') : tab"),
-  '表单设置抽屉必须兼容历史深链并定位初始化数据一级页签'
+    && formDesigner.includes("settingsTab === 'data-source' ? 'events' : settingsTab"),
+  '表单设置抽屉必须将旧数据处理深链定位到表单事件页签'
 )
 assert.ok(
   formSettingsDrawer.includes('@changed="handleEventBindingsChanged"')

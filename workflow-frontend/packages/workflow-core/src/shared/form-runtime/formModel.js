@@ -66,6 +66,7 @@ export function runtimeFieldState(field, options, linkage = {}) {
     ...state,
     visible: state.visible && linkage.visibility?.[key] !== false,
     editable: state.editable && linkage.disabled?.[key] !== true,
+    canBackfill: state.canBackfill && linkage.disabled?.[key] !== true,
     required: linkage.required?.[key] ?? flag(field.isRequired),
     attachmentItemRequiredState: linkage.attachmentItemRequired?.[key] || {}
   }
@@ -87,7 +88,7 @@ export async function validateRuntimeFields(fields, record, options, linkage = {
 }
 
 /**
- * 组件跨字段补丁只落到当前表单/子表行的可编辑字段；不接受原型键、未知字段或展示节点。
+ * 组件跨字段补丁可回填当前表单或子表行的只读字段。目标须可见、未禁用且绑定到当前记录。
  * 返回实际变化的字段及值，宿主先一次合并，再逐字段触发与普通输入相同的事件和校验。
  */
 export function resolveComponentFormPatch(patch, fields, record = {}, options = {}, linkage = {}) {
@@ -97,7 +98,7 @@ export function resolveComponentFormPatch(patch, fields, record = {}, options = 
     const field = fields.find(item => getFieldKey(item) === code)
     if (!field || field.isDisplayOnly) return []
     const state = runtimeFieldState(field, { ...options, record }, linkage)
-    if (!state.visible || !state.editable || JSON.stringify(record[code]) === JSON.stringify(value)) return []
+    if (!state.visible || !state.canBackfill || JSON.stringify(record[code]) === JSON.stringify(value)) return []
     return [{ field, code, value }]
   })
 }

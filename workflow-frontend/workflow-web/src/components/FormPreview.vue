@@ -76,7 +76,7 @@ const emit = defineEmits(['update:modelValue'])
 
 const formRef = ref(null)
 const formData = ref({ ...props.modelValue })
-/** 预览同样限制补丁到本表可编辑字段，保持与运行态相同的数据边界。 */
+/** 预览沿用运行态的回填规则，单独检查字段输入的可编辑状态。 */
 function applyComponentPatch(patch) {
   const changes = resolveComponentFormPatch(patch, props.form.fields || [], formData.value, {
     form: props.form, mode: props.readonly ? 'view' : 'edit', readonly: props.readonly

@@ -661,6 +661,40 @@ class PublishedFormSubmissionServiceTest {
         assertEquals("beforeSubmit", captor.getValue().getOperationCode());
     }
 
+    /** 正式提交应按前一步输出判断下一步，并跳过停用或不匹配的步骤。 */
+    @Test
+    void executesOnlyMatchingLifecycleStepsOnSubmittedData() {
+        var releases = mock(UiConfigReleaseService.class);
+        var extensions = mock(UiInterfaceExtensionService.class);
+        var service = service(releases, extensions);
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        form.setDataSourceBindingsDocument("""
+                {"BEFORE_SUBMIT":[
+                  {"extensionId":"disabled","enabled":false},
+                  {"extensionId":"other-mode","condition":{"path":"input.mode","equals":"create"}},
+                  {"extensionId":"normalize","condition":{"path":"input.mode","equals":"edit"}},
+                  {"extensionId":"validate","condition":{"path":"data.category","equals":"HIGH"},
+                   "inputMapping":{"category":"data.category"}}
+                ]}
+                """);
+        form.setNodes(List.of());
+        form.setFields(List.of());
+        when(releases.resolveRuntimeFormRelease("form-1", null, null)).thenReturn(resolution(form, "release-1", 1));
+        when(extensions.execute(eq("normalize"), org.mockito.ArgumentMatchers.any())).thenReturn(Map.of("category", "HIGH"));
+        when(extensions.execute(eq("validate"), org.mockito.ArgumentMatchers.any())).thenReturn(Map.of("checked", true));
+
+        Map<String, Object> result = service.applyForm("form-1", "expense", "record-1", "edit", Map.of("amount", 88));
+
+        assertEquals(Map.of("amount", 88, "category", "HIGH", "checked", true), result);
+        var requests = ArgumentCaptor.forClass(UiExtensionExecuteRequest.class);
+        verify(extensions).execute(eq("normalize"), org.mockito.ArgumentMatchers.any());
+        verify(extensions).execute(eq("validate"), requests.capture());
+        assertEquals("HIGH", requests.getValue().getInput().get("category"));
+        org.mockito.Mockito.verifyNoMoreInteractions(extensions);
+    }
+
     /** 测试执行表单级 beforeSubmit 绑定：验证表单级数据源被触发且绑定目标为表单所有者 */
     @Test
     void executesFormLevelBeforeSubmitBinding() {

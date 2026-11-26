@@ -1930,7 +1930,9 @@ class UiConfigReleaseServiceTest {
                         "serviceId", "service-1",
                         "operationCode", "generate",
                         "operationSnapshotVersion", 1,
-                        "executableSnapshot", "{\"configDocument\":\"secret\"}")))));
+                        "executableSnapshot", "{\"configDocument\":\"secret\"}"))),
+                Map.of("ownerType", "FORM", "ownerId", "form-1", "targetType", "OWNER",
+                        "eventCode", "FORM_OPEN", "steps", List.of(Map.of("name", "新增回填")))));
         snapshot.put("viewCompositions", List.of(Map.of(
                 "compositionKey", "legacy-related-content",
                 "nested", Map.of(
@@ -1949,6 +1951,7 @@ class UiConfigReleaseServiceTest {
 
         Map<?, ?> runtimeSnapshot = (Map<?, ?>)
                 result.get("snapshotDocument");
+        assertEquals(true, result.get("hasFormOpenBinding"));
         assertFalse(runtimeSnapshot.containsKey("eventBindings"));
         String serialized = String.valueOf(runtimeSnapshot);
         assertFalse(serialized.contains("executableSnapshot"));

@@ -14,6 +14,7 @@ import 'vant/lib/index.css'
 import PcField from '/src/extensions/builtin/fields/components/DataPickerField.vue'
 import DataPickerSettings from '/src/components/form-designer/DataPickerSettings.vue'
 import MobileField from '/@fs/${path.resolve('../packages/workflow-mobile-ui/src/fields/MobileFieldRenderer.vue')}'
+import MobileForm from '/@fs/${path.resolve('../packages/workflow-mobile-ui/src/form/MobileFormRenderer.vue')}'
 import {pickerListSchema} from '@flow/workflow-core/data-picker'
 import {entityListRuntimeApi} from '@/api/entityListRuntime'
 const schema={schemaVersion:'1',valueField:'code',labelField:'name',fields:[{code:'code',type:'STRING',label:'客户编码'},{code:'name',type:'STRING',label:'客户名称'},{code:'contact',type:'STRING',label:'联系人'}],columns:[{field:'code'},{field:'name'}]}
@@ -38,12 +39,15 @@ function runtime(side){return {executeOwnerUsage:async(_field,usage,context)=>{
  return [result]
 }}}
 const runtimes={pc:runtime('pc'),mobile:runtime('mobile')}
+const mobileForm={id:'f',fields:[fields.mobile,{fieldCode:'contact',fieldType:'STRING',fieldLabel:'联系人',isReadonly:1}]}
+const mobileFormRuntime={...runtimes.mobile,initialize:async()=>{}}
 const app=createApp({setup(){return()=>h('main',{style:'max-width:900px;margin:20px auto'},['pc','mobile'].map(side=>h('section',{id:side,style:'margin:20px;border:1px solid #ddd;padding:16px'},[
  h('h2',side==='pc'?'电脑端':'移动端'),h(side==='pc'?PcField:MobileField,{ref:value=>{fieldRefs[side]=value},field:fields[side],modelValue:state[side].customer,formData:state[side],mode:'edit',disabled:state.disabled,
  context:{form:{id:'f',configHash:'hash'},mode:'edit',params:{scope:state.scope},getFormData:()=>state[side]},dataSourceRuntime:runtimes[side],services:{entityListRuntime:entityListRuntimeApi},
  'onUpdate:modelValue':value=>{state[side].customer=value},
  'onPatch-form':patch=>{state.patches.push({side,patch});Object.assign(state[side],patch)}}),h('p',state[side].contact)
- ])))}})
+ ])).concat(state.mobileForm ? [h('section',{id:'mobile-form'},[h(MobileForm,{form:mobileForm,modelValue:state.mobileForm,
+ mode:'edit',dataSourceRuntime:mobileFormRuntime,'onUpdate:modelValue':value=>{state.mobileForm=value}})])] : []))}})
 app.use(ElementPlus).mount('#app')
 const listFields=[{fieldCode:'name',fieldName:'成员姓名',showInList:true,isQuery:true,queryType:'LIKE'},{fieldCode:'contact',fieldName:'工号',showInList:true},
  {fieldCode:'externalNo',fieldName:'外部编号',showInList:true},{fieldCode:'amount',fieldName:'金额',showInList:true},
@@ -141,6 +145,14 @@ try {
   assert.equal(await page.locator('.van-popup:visible .picker-record').count(), 1)
   await page.locator('.van-popup:visible .van-nav-bar__left').click(); await settle()
   assert.equal((await state('mobile')).customer, '002')
+
+  // 经完整移动表单写入配置映射，目标以只读文本回显。
+  await page.evaluate(() => { pickerTest.state.mobileForm = { customer: '', contact: '' } }); await settle()
+  await page.locator('#mobile-form .van-field').first().click(); await settle()
+  await page.locator('.van-popup:visible .picker-record').click(); await settle()
+  assert.deepEqual(await state('mobileForm'), { customer: '001', contact: '联系人甲最新' })
+  assert.equal(await page.locator('#mobile-form .readonly-value').textContent(), '联系人甲最新')
+  await page.evaluate(() => { pickerTest.state.mobileForm = null }); await settle()
 
   // 只读也能回显；点击不能打开面板。
   await page.evaluate(() => { pickerTest.state.disabled = true }); await settle()

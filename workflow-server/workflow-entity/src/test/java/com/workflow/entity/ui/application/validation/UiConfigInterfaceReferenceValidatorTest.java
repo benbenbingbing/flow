@@ -138,6 +138,15 @@ class UiConfigInterfaceReferenceValidatorTest {
     }
 
     @Test
+    void validatesCascaderOutputFieldNamesInPersistedNode() {
+        TestContext context = cascaderContext();
+        assertDoesNotThrow(() -> context.validator().validate(cascaderSnapshot(true,
+                Map.of("value", "id", "label", "name", "leaf", "isLeaf"))));
+        assertThrows(IllegalArgumentException.class, () -> context.validator().validate(cascaderSnapshot(true,
+                Map.of("value", List.of("id")))));
+    }
+
+    @Test
     void rejectsCascaderWriteInterface() {
         TestContext context = cascaderContext();
         context.definition().setInterfaceKind("WRITE");
@@ -171,8 +180,12 @@ class UiConfigInterfaceReferenceValidatorTest {
     }
 
     private Map<String, Object> cascaderSnapshot(boolean documents) {
+        return cascaderSnapshot(documents, Map.of());
+    }
+
+    private Map<String, Object> cascaderSnapshot(boolean documents, Map<String, Object> nodeFields) {
         Map<String, Object> props = Map.of("componentType", "cascader", "componentProps",
-                Map.of("cascaderSource", "INTERFACE", "cascaderLoadMode", "CHILDREN"));
+                Map.of("cascaderSource", "INTERFACE", "cascaderLoadMode", "CHILDREN", "cascaderNodeFields", nodeFields));
         Map<String, Object> bindings = Map.of("FIELD_OPTIONS", Map.of("extensionId", "service-a"));
         JsonDocumentCodec codec = new JsonDocumentCodec(new ObjectMapper());
         return Map.of("configType", "FORM", "form", Map.of("id", "form-a", "entityId", "entity-a"),

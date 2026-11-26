@@ -28,6 +28,7 @@ import { formFieldProps, formFieldEmits } from '@flow/workflow-core/extensions/c
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
 import { getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
+import { getFieldOptionQueryKey } from '@flow/workflow-core/form-runtime/dataSourceRuntime'
 
 const props = defineProps(formFieldProps)
 const emit = defineEmits(formFieldEmits)
@@ -35,14 +36,18 @@ const emit = defineEmits(formFieldEmits)
 const hasDynamicOptions = computed(() =>
   ['SELECT', 'MULTI_SELECT', 'SELECT_MULTIPLE', 'RADIO', 'CHECKBOX'].includes(String(props.field.componentType || props.field.fieldType).toUpperCase())
     && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length > 0)
-const dictionaryOptions = useFieldDictionaryOptions(() => props.options == null && !hasDynamicOptions.value ? [props.field] : [])
+const optionQueryKey = computed(() => hasDynamicOptions.value
+  ? getFieldOptionQueryKey(props.field, props.formData) : null)
+const hostOptions = computed(() => optionQueryKey.value === null ? props.options : undefined)
+const dictionaryOptions = useFieldDictionaryOptions(() => hostOptions.value == null && !hasDynamicOptions.value ? [props.field] : [])
 const dynamicOptions = ref([]), optionError = ref('')
-// 宿主未预加载时由统一入口执行发布的动态绑定；明确空结果同样有效，不回退其他来源。
-watch(() => [props.options, props.field, props.formData, props.dataSourceRuntime], async (_, __, onCleanup) => {
+// 已声明依赖的接口只随映射参数刷新；无联动的动态绑定沿用原来的表单数据监听。
+watch([hostOptions, () => props.field, optionQueryKey, () => optionQueryKey.value === null ? props.formData : null,
+  () => props.dataSourceRuntime], async (_, __, onCleanup) => {
   let current = true
   onCleanup(() => { current = false })
   dynamicOptions.value = []; optionError.value = ''
-  if (props.options != null || !hasDynamicOptions.value) return
+  if (hostOptions.value != null || !hasDynamicOptions.value) return
   try {
     if (!props.dataSourceRuntime?.loadOptions) throw new Error('当前表单未提供动态选项查询能力')
     const options = await props.dataSourceRuntime.loadOptions(props.field, {
@@ -58,7 +63,7 @@ const resolvedComponent = computed(() => resolvedDescriptor.value?.component)
 provide(FIELD_SCRIPT_EVENTS, computed(() => resolvedDescriptor.value?.capabilities.scriptEvents))
 const componentProps = computed(() => ({
   ...props,
-  options: props.options ?? (hasDynamicOptions.value ? dynamicOptions.value : dictionaryOptions.value[props.field.dictType]) ?? [],
+  options: hostOptions.value ?? (hasDynamicOptions.value ? dynamicOptions.value : dictionaryOptions.value[props.field.dictType]) ?? [],
   node: props.node || props.field.node || null,
   config: safeParseConfig(props.field.componentProps),
   disabled: props.disabled || props.readonly

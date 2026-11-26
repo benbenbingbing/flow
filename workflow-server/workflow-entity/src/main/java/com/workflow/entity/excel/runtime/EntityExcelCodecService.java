@@ -404,6 +404,7 @@ public class EntityExcelCodecService {
     private Map<String, Object> defaults(EntityExcelRuntimeResolver.Plan plan) {
         Map<String, Object> configured = new LinkedHashMap<>();
         for (var field : plan.entity().snapshot().getFields()) addDefault(configured, field.getFieldCode(), field.getDefaultValue());
+        Set<String> fixedFields = new HashSet<>();
         if (plan.writeForm() != null && plan.writeForm().form() != null) {
             var form = plan.writeForm().form();
             for (var field : ExcelImportFormColumnPolicy.formFieldsForDefaults(form)) addDefault(configured, field.getFieldCode(), field.getDefaultValue());
@@ -412,6 +413,8 @@ public class EntityExcelCodecService {
                 try {
                     Map<String, Object> properties = DEFAULT_VALUES.readValue(node.getPropsDocument(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
                     String fieldCode = ExcelImportFormColumnPolicy.fieldCode(node);
+                    // 新固定值已按字段类型保存，文本中的 JSON 字符也应按原样导入。
+                    if ("fixed".equals(properties.get("defaultValueMode"))) fixedFields.add(fieldCode);
                     addDefault(configured, fieldCode, properties.get("defaultValue"));
                 } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
                     throw new IllegalArgumentException("写入表单默认值配置无效", invalid);
@@ -425,7 +428,7 @@ public class EntityExcelCodecService {
                     EntityField.FieldType.DECIMAL, EntityField.FieldType.BOOLEAN, EntityField.FieldType.DATE, EntityField.FieldType.DATETIME,
                     EntityField.FieldType.SELECT, EntityField.FieldType.RADIO).contains(field.getFieldType())) continue;
             Object value = configured.get(field.getFieldCode());
-            if (value instanceof String text) {
+            if (value instanceof String text && !fixedFields.contains(field.getFieldCode())) {
                 try { value = DEFAULT_VALUES.readValue(text, Object.class); }
                 catch (com.fasterxml.jackson.core.JsonProcessingException literal) { value = text; }
             }

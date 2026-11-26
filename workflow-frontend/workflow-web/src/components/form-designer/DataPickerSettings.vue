@@ -159,7 +159,7 @@
   </div>
 </template>
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { DATA_PICKER_USAGES, DEFAULT_PICKER_SCHEMA, isEntityListPicker, normalizePickerSchema,
@@ -186,6 +186,8 @@ const props = defineProps({
 const loading = ref(false), sampleText = ref('{}'), listLoading = ref(false), listError = ref('')
 const lists = ref([]), publishedList = ref(null), listEntityFields = ref([])
 const inputDrafts = ref({}), inputErrors = ref({})
+let settingsActive = true
+onBeforeUnmount(() => { settingsActive = false })
 const config = computed(() => safeParseConfig(props.field.componentProps))
 const sourceMode = computed(() => isEntityListPicker(config.value) ? 'ENTITY_LIST' : 'INTERFACE')
 const listConfig = computed(() => config.value.pickerList || {})
@@ -236,7 +238,7 @@ const descriptionHelp = [
 ].join('\n')
 const testDataHelp = [
   '这里填预览时模拟的表单字段值，例如 {"project_id": "P001"}。字段描述接口的「输入映射」填 {"projectId": "data.project_id"}，接口即可从 input.projectId 读取。无需表单参数时保留 {}。',
-  '绑定后先点「保存当前属性」，再点「获取字段描述」。获取后配置写入和回填，保存属性并发布表单。'
+  '绑定接口后点「确定」，再点「保存当前属性」。重新打开「组件配置」后点「获取字段描述」。获取后可配置写入和回填，并保存、发布表单。'
 ].join('\n')
 const queryFields = computed(() => {
   const id = binding('FIELD_PICKER_QUERY')?.extensionId
@@ -378,7 +380,7 @@ async function loadSchema() {
   const requestBinding = binding('FIELD_PICKER_SCHEMA')
   const fingerprint = JSON.stringify(requestBinding)
   if (inputErrors.value.FIELD_PICKER_SCHEMA) { ElMessage.warning(inputErrors.value.FIELD_PICKER_SCHEMA); return }
-  if (!requestBinding?.extensionId) { ElMessage.warning('请先绑定字段描述接口并保存当前属性'); return }
+  if (!requestBinding?.extensionId) { ElMessage.warning('请选择字段描述接口，确定后保存当前属性'); return }
   loading.value = true
   try {
     const data = parseJsonConfig(sampleText.value, { fieldName: '测试表单数据' })
@@ -389,11 +391,11 @@ async function loadSchema() {
       }) })
     const [description] = await runtime.executeOwnerUsage(field, 'FIELD_PICKER_SCHEMA', { record: data, input: { picker: {} } })
     const result = normalizePickerSchema(description)
-    if (props.field !== field || sourceMode.value !== 'INTERFACE' || schemaMode.value !== 'INTERFACE'
+    if (!settingsActive || props.field !== field || sourceMode.value !== 'INTERFACE' || schemaMode.value !== 'INTERFACE'
         || JSON.stringify(binding('FIELD_PICKER_SCHEMA')) !== fingerprint) return
     update({ pickerSchema: result })
-    ElMessage.success('字段描述已获取，请检查回填映射后保存当前属性并发布')
-  } catch (error) { ElMessage.error(error.message || '获取字段描述失败') }
+    ElMessage.success('字段描述已获取，请检查回填映射后点确定，再保存当前属性')
+  } catch (error) { if (settingsActive) ElMessage.error(error.message || '获取字段描述失败') }
   finally { loading.value = false }
 }
 </script>

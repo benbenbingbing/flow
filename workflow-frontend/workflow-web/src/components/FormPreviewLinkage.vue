@@ -195,7 +195,7 @@ import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomVa
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
 import { CROSS_FIELD_ERROR_CODE } from '@flow/workflow-core/form-cross-field-validation'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
-import { buildRuntimeFieldRules, getFieldKey, getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
+import { applyRuntimeFieldDefaults, buildRuntimeFieldRules, getFieldKey, getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 import {
   createCustomFormActionSlotContract,
   formActionsForOwner,
@@ -739,7 +739,13 @@ function handleFieldChange(fieldKey, value) {
 onMounted(() => {
   // 设计预览不参加新增弹窗生命周期，使用当前草稿单独演示公式初值。
   if (props.designPreview && props.mode === 'create' && !props.readonly) {
-    applyInitialFormulaDefaults(runtimeContext.value.scriptFields, formData.value)
+    applyRuntimeFieldDefaults(formData.value, props.form, props.entityFields)
+    const parameterSchema = safeParseConfig(props.form.viewConfig).inputParameterSchema
+    const defaultParams = Object.fromEntries(
+      Object.entries(parameterSchema?.properties || {}).map(([key, definition]) => [key, definition.default])
+    )
+    const params = { ...defaultParams, ...(props.context.params || props.context.parameters) }
+    applyInitialFormulaDefaults(runtimeContext.value.scriptFields, formData.value, { params })
   }
   updateLinkageState()
   applyLinkageValues()

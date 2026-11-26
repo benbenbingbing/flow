@@ -1,101 +1,11 @@
 <template>
   <div class="node-data-settings">
-    <SettingsSection v-if="isDataPicker" v-show="activeNodeSettingsTab === 'extension'" title="数据选择器配置" :default-expanded="true">
-      <DataPickerSettings :field="selectedField" :form-id="form.id" :fields="referenceParameterSourceFields"
-        :interfaces="interfacesByUsage" :source-fields="referenceParameterSourceFields" :source-entity-fields="referenceParameterEntityFields" />
-    </SettingsSection>
-    <SettingsSection
-      v-if="!isDataPicker"
-      :disabled="!isReferenceFieldNode"
-      disabled-reason="仅实体引用字段支持此配置"
-      v-show="activeNodeSettingsTab === 'extension'"
-      title="引用选择配置"
-      :description="canMapReferenceListParameters ? '配置选择列表和列表参数映射' : '配置引用数据的选择列表，查看引用类型和目标实体'"
-      :default-expanded="canMapReferenceListParameters"
-    >
-      <template #summary>
-        <el-tag size="small" type="info">实体引用</el-tag>
-      </template>
-
-      <SettingsFormItem
-        :disabled="!((selectedField.refEntityType || '').toUpperCase() === 'CUSTOM')" disabled-reason="仅用户自定义实体引用支持此配置"
-        label="选择列表"
-      >
-        <el-select
-          :model-value="selectedField.refListKey" @update:model-value="handleReferenceListChange"
-          clearable
-          placeholder="留空使用默认选择器"
-          style="width: 100%"
-        >
-          <el-option
-            v-for="list in referenceListOptions"
-            :key="list.listKey"
-            :label="`${list.listName || list.listKey} (${list.listKey})`"
-            :value="list.listKey"
-          />
-        </el-select>
-        <div class="form-tip">
-          配置后使用统一列表运行时，字段、范围、排序和选择模式均继承该 listKey。
-        </div>
-      </SettingsFormItem>
-      <el-form-item
-        v-if="canMapReferenceListParameters && selectedField.refListKey"
-        label="列表参数映射"
-        class="reference-list-parameter-item"
-      >
-        <el-alert v-if="referenceParameterError" :title="referenceParameterError" type="warning" :closable="false" />
-        <div v-if="referenceParameterLoading" class="form-tip">正在读取选择列表的已发布参数…</div>
-        <PageParameterMappingEditor
-          v-else
-          :model-value="selectedField.refListParameterMappings || []"
-          :schema="referenceParameterSchema"
-          :source-fields="referenceParameterSourceFields"
-          :entity-fields="referenceParameterEntityFields"
-          reference-list
-          @update:model-value="selectedField.refListParameterMappings = $event"
-        />
-      </el-form-item>
-      <el-form-item label="引用类型">
-        <el-select
-          :model-value="selectedField.refEntityType" @update:model-value="isReferenceFieldNode && (selectedField.refEntityType = $event)"
-          :disabled="!isReferenceFieldNode || !!selectedField.fieldId"
-          placeholder="选择引用类型"
-          style="width: 100%"
-        >
-          <el-option label="用户自定义实体" value="CUSTOM" />
-          <el-option label="系统用户" value="USER" />
-          <el-option label="系统部门" value="DEPT" />
-          <el-option label="系统角色" value="ROLE" />
-          <el-option label="系统用户组" value="GROUP" />
-          <el-option label="系统菜单" value="MENU" />
-          <el-option label="系统字典" value="DICT" />
-          <el-option label="系统字典项" value="DICT_ITEM" />
-        </el-select>
-      </el-form-item>
-      <SettingsFormItem
-        :disabled="!((selectedField.refEntityType || '').toUpperCase() === 'CUSTOM')" disabled-reason="仅用户自定义实体引用支持此配置"
-        label="目标实体"
-      >
-        <EntityDefinitionPicker
-          class="reference-entity-picker"
-          :model-value="isReferenceFieldNode ? selectedField.refEntityId : undefined" @update:model-value="isReferenceFieldNode && (selectedField.refEntityId = $event)"
-          :disabled="!isReferenceFieldNode || !!selectedField.fieldId"
-          placeholder="选择目标实体"
-          value-key="id"
-          title="选择目标实体"
-          :query="{ status: 'PUBLISHED' }"
-          @selected="handleReferenceEntitySelected"
-          @resolved="rememberEntityOption"
-        />
-      </SettingsFormItem>
-    </SettingsSection>
-
     <SettingsSection
       :disabled="!canConfigureSelectedNodeDataSource"
       disabled-reason="当前节点不支持数据源绑定"
       v-show="activeNodeSettingsTab === 'extension'"
       title="数据源绑定"
-      description="按用途分别配置选项、默认值、计算、加载和提交处理"
+      description="按用途配置子表行数据、加载和提交处理"
     >
       <template #summary>
         <el-tag
@@ -107,17 +17,6 @@
             : '未配置' }}
         </el-tag>
       </template>
-
-      <div v-if="inheritsFieldOptions" class="form-tip" role="note">
-        此字段从实体继承只读选项接口；如已有表单字段选项绑定，请清除后发布。
-      </div>
-      <div v-if="isCascader" class="form-tip" role="note">
-        {{ cascaderUsesInterface
-          ? '级联选择通过“字段选项”绑定数据接口。加载方式在“基础与布局 → 级联选择配置”设置。'
-          : '当前级联选择使用静态选项。如需接口数据，请先在“基础与布局 → 级联选择配置”将数据来源改为“数据接口”。' }}
-        <el-button v-if="cascaderUsesInterface && selectedField.dataSourceUsage !== 'FIELD_OPTIONS'"
-          link type="primary" @click="selectNodeDataSourceUsage('FIELD_OPTIONS')">配置级联数据接口</el-button>
-      </div>
 
       <div class="data-source-usage-list">
         <button
@@ -153,73 +52,13 @@
           清除当前绑定
         </el-button>
       </div>
-      <el-form-item :label="isCascaderOptions ? '级联数据接口' : '扩展接口'">
-        <template #label>
-          <ConfigHelpLabel
-            :label="isCascaderOptions ? '级联数据接口' : '扩展接口'"
-            help-key="entityForm.interfaceExtension"
-            :content="selectedDataSourceInterfaceHelp"
-          />
-        </template>
-        <el-select
-          v-model="selectedField.interfaceExtensionId"
-          :disabled="inheritsFieldOptions && selectedField.dataSourceUsage === 'FIELD_OPTIONS'"
-          clearable
-          filterable
-          placeholder="不绑定"
-          style="width: 100%"
-        >
-          <el-option
-            v-for="item in selectedNodeInterfaces"
-            :key="item.extensionId"
-            :label="`${item.displayName} (${item.extensionKey})`"
-            :value="item.extensionId"
-          />
-        </el-select>
-        <div class="form-tip">仅显示当前用途和表单范围可用的完整接口。</div>
-        <div v-if="isCascaderOptions" class="form-tip">
-          接口返回节点数组；逐级模式须提供 leaf。保持完整路径数组存值，选项加载不会自动修改已填写数据。
-        </div>
-      </el-form-item>
-      <details class="property-advanced">
-        <summary>输入与输出映射</summary>
-        <div class="property-advanced-body">
-          <el-form-item label="输入映射">
-            <template #label>
-              <JsonConfigLabel
-                label="输入映射"
-                help-key="entityForm.dataSourceInputMapping"
-              />
-            </template>
-            <el-input
-              v-model="selectedField.dataSourceInputMappingText"
-              type="textarea"
-              :rows="3"
-              placeholder='{"filters.ownerId":"data.ownerId"}'
-            />
-            <div class="form-tip">
-              目标路径映射到 data/context/input 路径；也可使用 {"literal": 值}。
-            </div>
-          </el-form-item>
-          <el-form-item label="输出映射">
-            <template #label>
-              <JsonConfigLabel
-                label="输出映射"
-                help-key="entityForm.dataSourceOutputMapping"
-              />
-            </template>
-            <el-input
-              v-model="selectedField.dataSourceOutputMappingText"
-              type="textarea"
-              :rows="3"
-              placeholder='{"assigneeName":"data.user.name"}'
-            />
-            <div class="form-tip">
-              目标字段映射到数据源返回路径；留空时使用原始返回值。
-            </div>
-          </el-form-item>
-        </div>
-      </details>
+      <FormNodeDataSourceBindingEditor
+        v-model:extension-id="selectedField.interfaceExtensionId"
+        v-model:input-mapping-text="selectedField.dataSourceInputMappingText"
+        v-model:output-mapping-text="selectedField.dataSourceOutputMappingText"
+        :interfaces="selectedNodeInterfaces"
+        :help="selectedDataSourceInterfaceHelp"
+      />
       </SettingsCapability>
     </SettingsSection>
 
@@ -424,16 +263,12 @@
 <script setup>
 import { computed, inject } from 'vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
-import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
-import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
+import FormNodeDataSourceBindingEditor from './FormNodeDataSourceBindingEditor.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SettingsCapability from '@/components/SettingsCapability.vue'
-import SettingsFormItem from '@/components/SettingsFormItem.vue'
 import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
 import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
 import FormContentDisplaySettings from './FormContentDisplaySettings.vue'
-import DataPickerSettings from './DataPickerSettings.vue'
-import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
 import BuiltInButtonAppearanceEditor from '@/components/BuiltInButtonAppearanceEditor.vue'
 import { normalizeBuiltInActionBar } from '@flow/workflow-core/builtin-button-appearance'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
@@ -467,7 +302,6 @@ const {
   selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel,
   selectedNodeInterfaces,
-  interfacesByUsage,
   clearSelectedNodeDataSourceBinding,
   isSubFormField,
   isSubListField,
@@ -479,39 +313,15 @@ const {
   subListOptions,
   subListTargetFields,
   subListTargetFieldsLoading,
-  handleSubListChange,
-  rememberEntityOption,
-  referenceListSettings
+  handleSubListChange
 } = context
-const {
-  lists: referenceListOptions,
-  isReference: isReferenceFieldNode,
-  canMapParameters: canMapReferenceListParameters,
-  sourceFields: referenceParameterSourceFields,
-  sourceEntityFields: referenceParameterEntityFields,
-  parameterSchema: referenceParameterSchema,
-  parameterLoading: referenceParameterLoading,
-  parameterError: referenceParameterError,
-  changeEntity: handleReferenceEntitySelected,
-  changeList: handleReferenceListChange
-} = referenceListSettings
 
 const canEditSelectedDataSourceUsage = computed(() =>
   availableNodeDataSourceUsages.value.some(usage => usage.value === selectedField.value?.dataSourceUsage)
 )
 
-const inheritsFieldOptions = computed(() => {
-  const field = selectedField.value
-  return field && entityFields.value.some(item => item.optionsInterfaceId
-    && ((field.fieldId && String(item.id) === String(field.fieldId)) || item.fieldCode === field.fieldCode))
-})
-
-const isCascader = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'cascader')
-const isDataPicker = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'data_picker')
-const cascaderUsesInterface = computed(() => safeParseConfig(selectedField.value?.componentProps).cascaderSource === 'INTERFACE')
-const isCascaderOptions = computed(() => isCascader.value && selectedField.value?.dataSourceUsage === 'FIELD_OPTIONS')
 const selectedDataSourceInterfaceHelp = computed(() =>
-  getFormDataSourceInterfaceHelp(selectedField.value?.dataSourceUsage, { cascader: isCascaderOptions.value })
+  getFormDataSourceInterfaceHelp(selectedField.value?.dataSourceUsage)
 )
 
 const selectedChildRelease = computed(() => childFormReleases.value[0] || null)
@@ -624,18 +434,6 @@ const selectedSubListParameterContract = computed({
 </script>
 
 <style scoped>
-/* 引用配置中的实体名称和编码同排显示，仅收紧当前入口，不影响其他实体选择器。 */
-.reference-entity-picker :deep(.picker-trigger) {
-  min-height: 24px;
-  padding: 0 7px;
-}
-
-.reference-entity-picker :deep(.trigger-content) {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
 .form-tip {
   width: 100%;
   margin-top: 4px;
@@ -650,34 +448,8 @@ const selectedSubListParameterContract = computed({
   font-size: 12px;
 }
 
-.reference-list-parameter-item :deep(.el-form-item__content),
 .sub-list-parameter-item :deep(.el-form-item__content) {
   min-width: 0;
-}
-
-.reference-list-parameter-item :deep(.el-form-item__content) {
-  gap: 8px;
-}
-
-.property-advanced {
-  margin: 4px 0 12px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.property-advanced > summary {
-  padding: 10px 12px;
-  color: var(--el-text-color-regular);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.property-advanced-body {
-  padding: 12px 12px 0;
-  border-top: 1px solid var(--el-border-color-lighter);
-  background: #fff;
 }
 
 .data-source-usage-list {

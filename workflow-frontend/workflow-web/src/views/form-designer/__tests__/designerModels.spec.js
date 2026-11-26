@@ -5,10 +5,59 @@ import { registerFormFieldComponent, getFormFieldComponentDescriptor } from '@/e
 import { mergeFieldConfig, normalizeFieldForSave } from '../../list-designer/listColumnModel.js'
 import { contentScopedFieldOptions, isPublishedAsset } from '../../../components/related-content/relatedContentOptions.js'
 import { updateBpmnExtensionProperty } from '../../../components/node-config/bpmnExtensionProperties.js'
+import { changeFieldDefaultMode, getFieldDefaultError, readFieldDefaultDataSourceDraft, readFieldDefaultMode } from '../../../shared/form-field-default.js'
 
 function editor(entityFields = []) {
   return createFormNodeEditorModel({ entityFields: { value: entityFields }, activeExtensionMap: { value: new Map() } })
 }
+test('级联接口使用独立草稿，保存及回读不占用通用绑定，切换为静态树时清除接口', () => {
+  const model = editor()
+  const node = { nodeType: 'FIELD', nodeKey: 'address', bindingType: 'ENTITY_FIELD', bindingRef: 'address',
+    propsDocument: JSON.stringify({ fieldCode: 'address', fieldType: 'STRING', componentType: 'cascader',
+      componentProps: { cascaderSource: 'INTERFACE', cascaderLoadMode: 'CHILDREN' } }),
+    dataSourceBindingsDocument: JSON.stringify({ FIELD_DEFAULT: { extensionId: 'default-api' } }) }
+  const field = model.nodeToField(node)
+  field.cascaderDataSourceDraft = { extensionId: 'cascader', inputMappingText: '{"country":"data.country"}', outputMappingText: '' }
+  const { props, dataSourceBindings } = model.fieldToNodePayload(field)
+  assert.deepEqual(dataSourceBindings.FIELD_OPTIONS, { extensionId: 'cascader', inputMapping: { country: 'data.country' }, outputMapping: {} })
+  assert.equal(dataSourceBindings.FIELD_DEFAULT.extensionId, 'default-api')
+  const restored = model.nodeToField({ ...node, propsDocument: JSON.stringify(props), dataSourceBindingsDocument: JSON.stringify(dataSourceBindings) })
+  assert.equal(restored.dataSourceUsage, 'AFTER_LOAD')
+  assert.equal(restored.dataSourceBindings.FIELD_OPTIONS.extensionId, 'cascader')
+  restored.componentProps = JSON.stringify({ cascaderSource: 'STATIC', cascaderOptions: [] })
+  assert.deepEqual(model.fieldToNodePayload(restored).dataSourceBindings, { FIELD_DEFAULT: { extensionId: 'default-api' } })
+})
+test('字段默认值和扩展数据源分别编辑，保存时清除退役的计算接口', () => {
+  const model = editor()
+  const legacy = { extensionId: 'default-api', inputMapping: { id: 'data.id' }, outputMapping: { value: 'data.name' } }
+  const compute = { extensionId: 'compute-api', modes: ['edit'] }
+  const node = {
+    id: 'name', nodeType: 'FIELD', nodeKey: 'name', bindingType: 'ENTITY_FIELD',
+    propsDocument: JSON.stringify({ fieldCode: 'name', fieldType: 'STRING', componentType: 'input' }),
+    dataSourceBindingsDocument: JSON.stringify({ FIELD_DEFAULT: legacy, FIELD_COMPUTE: compute })
+  }
+  const field = model.nodeToField(node)
+  assert.equal(field.dataSourceUsage, 'AFTER_LOAD')
+  assert.equal(readFieldDefaultMode(field), 'dataSource')
+  assert.deepEqual(model.fieldToNodePayload(field).dataSourceBindings.FIELD_DEFAULT, legacy)
+  field.defaultDataSourceDraft = { ...readFieldDefaultDataSourceDraft(field), outputMappingText: '{' }
+  assert.match(getFieldDefaultError(field), /不是有效的 JSON/)
+  field.defaultDataSourceDraft.outputMappingText = '{"value":"data.label"}'
+  assert.equal(getFieldDefaultError(field), '')
+  field.interfaceExtensionId = 'load-api'
+  const payload = model.fieldToNodePayload(field, { forPatch: true })
+  assert.equal(payload.dataSourceBindings.FIELD_COMPUTE, undefined)
+  assert.equal(payload.dataSourceBindings.AFTER_LOAD.extensionId, 'load-api')
+  assert.deepEqual(payload.dataSourceBindings.FIELD_DEFAULT, { ...legacy, outputMapping: { value: 'data.label' } })
+  const restored = model.nodeToField({ ...node, dataSourceBindingsDocument: JSON.stringify(payload.dataSourceBindings) })
+  assert.equal(readFieldDefaultDataSourceDraft(restored).extensionId, 'default-api')
+  changeFieldDefaultMode(restored, 'none')
+  const cleared = model.fieldToNodePayload(restored)
+  assert.equal(cleared.props.defaultValueMode, 'none')
+  assert.equal(cleared.props.defaultValue, null)
+  assert.equal(cleared.dataSourceBindings.FIELD_DEFAULT, undefined)
+  assert.deepEqual(cleared.dataSourceBindings, { AFTER_LOAD: { extensionId: 'load-api', inputMapping: {}, outputMapping: {} } })
+})
 test('单选和多选实体的列表参数映射可保存、回读和清空', () => {
   const model = editor()
   const parameterMappings = [

@@ -8,6 +8,10 @@ import { readFieldScripts } from '@flow/workflow-core/browser/field-event-script
 import { assertNoEmbeddedSelectionOptions } from '@/shared/selection-option-policy'
 import { DATA_PICKER_USAGES } from '@flow/workflow-core/data-picker'
 
+// 各自拥有配置入口的绑定独立保存，通用面板切换用途时不覆盖这些草稿。
+export const isGenericNodeDataSourceUsage = usage =>
+  !['FIELD_OPTIONS', 'FIELD_DEFAULT', ...DATA_PICKER_USAGES].includes(usage)
+
 /**
  * 统一组件目录按宿主节点、绑定与实体类型筛选；平台预置和项目组件遵守相同约束。
  * 未声明 nodeTypes 的字段控件只适用于 FIELD，避免误用于子表单的整行数据。
@@ -71,8 +75,7 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
       props,
       node.nodeKey
     )
-    // 选择器绑定由组件配置区编辑，通用面板只投影自己的用途。
-    const allowedDataSourceUsages = getFormNodeDataSourceUsages(nodeType).filter(usage => !DATA_PICKER_USAGES.includes(usage))
+    const allowedDataSourceUsages = getFormNodeDataSourceUsages(nodeType).filter(isGenericNodeDataSourceUsage)
     const firstBinding = Object.entries(bindings)
       .find(([usage]) =>
         allowedDataSourceUsages.includes(String(usage).toUpperCase())
@@ -108,6 +111,10 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
         || node.nodeType.toLowerCase(),
       placeholder: props.placeholder ?? sourceField.placeholder,
       defaultValue: props.defaultValue ?? sourceField.defaultValue,
+      defaultValueMode: props.defaultValueMode,
+      defaultFormula: props.defaultFormula,
+      defaultDataSourceDraft: undefined,
+      cascaderDataSourceDraft: undefined,
       // 旧发布曾使用 props.span；读取后统一投影成 gridSpan，下一次保存自动规范化。
       gridSpan: props.gridSpan ?? props.span ?? sourceField.gridSpan ?? 24,
       childFormId:

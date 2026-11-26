@@ -14,7 +14,6 @@ const FIELD_DATA_SOURCE_USAGES = Object.freeze([
   'FIELD_PICKER_QUERY',
   'FIELD_PICKER_RESOLVE',
   'FIELD_DEFAULT',
-  'FIELD_COMPUTE',
   'AFTER_LOAD',
   'BEFORE_SUBMIT'
 ])
@@ -208,6 +207,8 @@ const FIELD_PROP_KEYS = Object.freeze([
   'componentType',
   'placeholder',
   'defaultValue',
+  'defaultValueMode',
+  'defaultFormula',
   'gridSpan',
   'required',
   'readonly',
@@ -449,7 +450,10 @@ function buildFieldProps(field, componentProps) {
     ),
     componentType: field.componentType,
     placeholder: field.placeholder,
-    defaultValue: field.defaultValue,
+    // 显式来源清除旧静态值，防止兼容用的平铺字段继续继承上次发布的旧值。
+    defaultValue: !field.defaultValueMode || field.defaultValueMode === 'fixed' ? field.defaultValue : null,
+    defaultValueMode: field.defaultValueMode,
+    defaultFormula: field.defaultFormula,
     gridSpan: field.gridSpan,
     required: field.isRequired === 1,
     readonly: field.isReadonly === 1,
@@ -541,7 +545,7 @@ export function buildFormNodeProps(field, componentPropsValue = {}) {
   return cleanObject(props)
 }
 
-function buildDataSourceBindings(field, allowedUsages) {
+function buildDataSourceBindings(field, allowedUsages, componentProps) {
   const allowed = new Set(allowedUsages)
   const existingBindings = Object.entries(
     parseObject(field.dataSourceBindings)
@@ -559,20 +563,31 @@ function buildDataSourceBindings(field, allowedUsages) {
   }, {})
   const requestedUsage = String(field.dataSourceUsage || '').toUpperCase()
   const usage = allowed.has(requestedUsage) ? requestedUsage : ''
-  if (usage && field.interfaceExtensionId) {
-    const existingBinding = existingBindings[usage]
-    existingBindings[usage] = {
-      ...(existingBinding
-        && typeof existingBinding === 'object'
-        && !Array.isArray(existingBinding)
-        ? existingBinding
-        : {}),
-      extensionId: field.interfaceExtensionId,
-      inputMapping: parseObject(field.dataSourceInputMappingText),
-      outputMapping: parseObject(field.dataSourceOutputMappingText)
+  function applyDraft(key, extensionId, inputMappingText, outputMappingText) {
+    if (extensionId) {
+      existingBindings[key] = {
+        ...existingBindings[key],
+        extensionId,
+        inputMapping: parseObject(inputMappingText),
+        outputMapping: parseObject(outputMappingText)
+      }
+    } else {
+      delete existingBindings[key]
     }
-  } else if (usage) {
-    delete existingBindings[usage]
+  }
+  if (usage) {
+    applyDraft(usage, field.interfaceExtensionId, field.dataSourceInputMappingText, field.dataSourceOutputMappingText)
+  }
+  // 默认值弹窗独立编辑，但发布时仍需保留原绑定的模式和扩展元数据。
+  if (allowed.has('FIELD_DEFAULT') && field.defaultDataSourceDraft) {
+    const { extensionId, inputMappingText, outputMappingText } = field.defaultDataSourceDraft
+    applyDraft('FIELD_DEFAULT', extensionId, inputMappingText, outputMappingText)
+  }
+  if (allowed.has('FIELD_OPTIONS') && field.componentType === 'cascader') {
+    // 级联专用编辑器仍写入发布契约中的 FIELD_OPTIONS；静态树不会附带接口。
+    const draft = field.cascaderDataSourceDraft
+    if (parseObject(componentProps).cascaderSource !== 'INTERFACE') delete existingBindings.FIELD_OPTIONS
+    else if (draft) applyDraft('FIELD_OPTIONS', draft.extensionId, draft.inputMappingText, draft.outputMappingText)
   }
   return existingBindings
 }
@@ -674,7 +689,8 @@ export function buildFormNodePayload(
     : ''
   const dataSourceBindings = buildDataSourceBindings(
     field,
-    nodeSchema.dataSourceUsages
+    nodeSchema.dataSourceUsages,
+    componentProps
   )
   const hasParentId = Object.prototype.hasOwnProperty.call(field, 'parentId')
   const payload = {
