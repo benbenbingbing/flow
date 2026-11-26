@@ -85,6 +85,7 @@ public class UiEventBindingService {
             UiDataSourceUsages.FORM_OPEN,
             UiDataSourceUsages.FORM_SAVE,
             UiDataSourceUsages.FORM_RESET,
+            UiDataSourceUsages.FORM_CLOSE,
             UiDataSourceUsages.FIELD_CHANGE,
             UiDataSourceUsages.ENTITY_SELECTED,
             UiDataSourceUsages.FIELD_BUTTON_CLICK,
@@ -139,6 +140,7 @@ public class UiEventBindingService {
                     UiDataSourceUsages.LIST_LOAD,
                     UiDataSourceUsages.DETAIL_LOAD,
                     UiDataSourceUsages.FORM_OPEN,
+                    UiDataSourceUsages.FORM_CLOSE,
                     UiDataSourceUsages.FIELD_CHANGE,
                     UiDataSourceUsages.ENTITY_SELECTED,
                     UiDataSourceUsages.SUBFORM_LOAD);
@@ -447,7 +449,7 @@ public class UiEventBindingService {
                     throw new com.workflow.core.error.BusinessForbiddenException(
                             "FORM_FIELD_RECORD_CONTEXT_MISMATCH", "字段事件与已授权流程记录不一致");
                 }
-                // 字段初始化和页面加载复用真实流程权限；浏览器不能提交这些 server-only 字段。
+                // 字段初始化、页面加载和关闭通知复用真实流程权限；浏览器不能提交这些 server-only 字段。
                 request.setServerRecordId(scopedRecordId);
                 request.setServerTaskId(authorizedContext.taskId());
                 request.setServerProcessInstanceId(authorizedContext.processInstanceId());

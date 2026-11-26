@@ -17,7 +17,8 @@ import Field from '/src/components/FormFieldRenderer.vue'
 import SubForm from '/src/components/SubFormRenderer.vue'
 import Select from '/src/extensions/builtin/fields/components/SelectField.vue'
 import {registerFormFieldComponent} from '/src/extensions/core/registries/formFieldRegistry.js'
-import {withEntityStatusRuntimeForm} from '@flow/workflow-core/entity-status-runtime'
+import {ENTITY_STATUS_OPTIONS_EXTENSION_ID,withEntityStatusRuntimeForm} from '@flow/workflow-core/entity-status-runtime'
+import {createFormDataSourceRuntime} from '@flow/workflow-core/form-runtime/dataSourceRuntime'
 import request from '/src/utils/request.js'
 registerFormFieldComponent('select',Select,{origin:'PLATFORM',label:'选择'})
 const calls=[]
@@ -36,12 +37,25 @@ const forms=Object.fromEntries(Object.entries(configs).map(([key,config])=>{
  const form={id:'form-'+key,fields:[field],nodes:[{id:'node-'+key,nodeKey:key,nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:key,dataSourceBindings:config.dataSourceBindings,props:{fieldCode:key,fieldType:'SELECT',componentType:'select',options:legacy}}]}
  return [key,key==='status'?withEntityStatusRuntimeForm(form,[],[{statusCode:'REVIEW',statusName:'业务复核中'}]):form]
 }))
+// 新发布的状态选项必须实际经过通用绑定，宿主的旧状态名称不能覆盖接口结果。
+const publishedStatus=withEntityStatusRuntimeForm({id:'released-form',fields:[{id:'status-field',fieldCode:'status',isSystem:true}],nodes:[{
+ id:'status-node',nodeKey:'status',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'status-field',
+ dataSourceBindings:{FIELD_OPTIONS:{extensionId:ENTITY_STATUS_OPTIONS_EXTENSION_ID}},
+ props:{fieldCode:'status',fieldName:'状态',fieldType:'STRING',componentType:'select',readonly:true}
+}]},[],[{value:'REVIEW',label:'旧状态选项'}])
+const statusRequests=[]
+const statusModel=reactive({status:'REVIEW'})
+const statusRuntime=createFormDataSourceRuntime({getForm:()=>publishedStatus,executeDataSource:async request=>{
+ statusRequests.push([request.extensionId,request.bindingCode,request.targetKey])
+ return [{value:'REVIEW',label:'数据源复核中'}]
+}})
 createApp({setup:()=>()=>h('main',[
  ...Object.keys(configs).map(key=>h('section',{id:key},[h(Runtime,{form:forms[key],modelValue:models[key],'onUpdate:modelValue':value=>models[key]=value,mode:'edit',showHeader:false,height:'120px',dataSourceRuntime:{loadOptions:async field=>field.fieldCode==='empty'?[]:[{value:'DYNAMIC',label:'动态候选'}]}})])),
+ h('section',{id:'published-status'},[h(Runtime,{form:publishedStatus,modelValue:statusModel,mode:'edit',showHeader:false,dataSourceRuntime:statusRuntime})]),
  h('section',{id:'standalone'},[h(Field,{field:{fieldCode:'choice',componentType:'select',dictType:'choices',options:legacy},modelValue:'YES'})]),
  ...['YES','OLD'].map(code=>h('section',{id:'sub-'+code},[h(SubForm,{readonly:true,config:{layout:'table',fields:[{fieldKey:'choice',fieldName:'子表选择',fieldType:'SELECT',dictType:code==='YES'?'choices':null,options:legacy}]},modelValue:[{choice:code}]})]))
 ])}).use(createPinia()).use(ElementPlus).mount('#app')
-window.selectionTest={models,calls}
+window.selectionTest={models,calls,statusModel,statusRequests}
 `)
 let server, browser
 try {
@@ -72,6 +86,13 @@ try {
   const status = await open('status')
   await status.getByRole('option', { name: '业务复核中', exact: true }).waitFor()
   await page.keyboard.press('Escape')
+  const published = page.locator('#published-status .el-select')
+  await published.getByText('数据源复核中', { exact: true }).waitFor()
+  assert.equal(await published.getByRole('combobox').isDisabled(), true)
+  assert.deepEqual(await page.evaluate(() => selectionTest.statusRequests), [
+    ['platform_entity_status_options', 'FIELD_OPTIONS', 'status']
+  ])
+  assert.equal(await page.evaluate(() => selectionTest.statusModel.status), 'REVIEW')
   const dynamic = await open('dynamic')
   await dynamic.getByRole('option', { name: '动态候选', exact: true }).click()
   assert.equal(await page.evaluate(() => selectionTest.models.dynamic.dynamic), 'DYNAMIC')
@@ -84,7 +105,7 @@ try {
   await page.locator('#sub-OLD').getByText('OLD', { exact: true }).waitFor()
   assert.equal(await page.getByRole('option', { name: '历史内嵌项', exact: true }).count(), 0)
   assert.deepEqual(errors, [])
-  console.log('PC 选择字段浏览器测试通过：代码表、独立字段、系统状态、三种旧来源停用及历史值保留。')
+  console.log('PC 选择字段浏览器测试通过，覆盖代码表、独立字段、新旧系统状态及历史值保留。')
 } finally {
   await browser?.close()
   await server?.close()

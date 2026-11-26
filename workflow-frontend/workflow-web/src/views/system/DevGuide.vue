@@ -243,7 +243,7 @@ return Map.of(
           </el-table>
           <ul class="check-list">
             <li>禁止任意 SQL、JavaScript、Groovy、SpEL、动态类名和外网 URL；外部调用只能封装在已注册 Provider 中，凭据由服务端安全管理。</li>
-            <li>表单级加载和提交处理在「表单事件」中配置；FIELD 仅允许 `FIELD_OPTIONS / FIELD_DEFAULT / AFTER_LOAD / BEFORE_SUBMIT`。</li>
+            <li>表单级加载和提交处理在「表单事件 → 字段默认事件」中配置。已有 FIELD 节点的 `AFTER_LOAD / BEFORE_SUBMIT` 可在原字段维护，以保留原有字段上下文。</li>
             <li>SUB_FORM 与 REPEATER 支持 `SUBFORM_ROWS / AFTER_LOAD / BEFORE_SUBMIT`。</li>
             <li>一个 `INTERFACE` 扩展记录对应一个完整可调用接口；页面只保存 `extensionId`，不再选择“服务 + 操作”。</li>
             <li>作用范围只按实体配置：“全部实体（GLOBAL）”或“选择实体（ENTITY）”，后者支持多选。业务上下文为 LIST 时覆盖所选实体的全部列表，为 FORM 时覆盖全部表单；页面仍需显式绑定接口并发布，不会自动执行。</li>

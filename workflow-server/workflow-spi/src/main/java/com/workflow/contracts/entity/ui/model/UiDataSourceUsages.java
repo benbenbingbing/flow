@@ -72,6 +72,9 @@ public final class UiDataSourceUsages {
     /** 用户重置表单时触发的界面标准事件。 */
     public static final String FORM_RESET = "FORM_RESET";
 
+    /** 表单会话确认结束后触发，供已发布步骤按关闭原因处理。 */
+    public static final String FORM_CLOSE = "FORM_CLOSE";
+
     /** 字段值发生变化时触发，可用于联动校验或字段回填。 */
     public static final String FIELD_CHANGE = "FIELD_CHANGE";
 

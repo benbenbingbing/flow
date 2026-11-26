@@ -1,6 +1,6 @@
 import { formLifecycleEvents } from './formLifecycleEventModel.js'
 
-const formModeEvents = ['FORM_OPEN', 'FORM_RESET', 'FORM_BUTTON_CLICK', ...formLifecycleEvents]
+const formModeEvents = ['FORM_OPEN', 'FORM_RESET', 'FORM_CLOSE', 'FORM_BUTTON_CLICK', ...formLifecycleEvents]
 const fieldEvents = ['FIELD_CHANGE', 'FIELD_BUTTON_CLICK', 'ENTITY_SELECTED']
 const listButtonEvents = ['ROW_BUTTON_CLICK', 'TOOLBAR_BUTTON_CLICK']
 
@@ -26,10 +26,15 @@ export function eventConditionPathGroups(event, fields, parameters) {
   if (formMode || fieldEvent) {
     current.push(option('当前记录 ID', lifecycle ? 'input.recordId' : 'recordId'))
     if (formMode) current.push(option(event === 'FORM_OPEN' ? '打开方式' : '表单模式', 'input.mode'))
+    if (event === 'FORM_CLOSE') {
+      current.push(option('关闭原因', 'input.reason'), option('保存后的记录 ID', 'input.savedRecordId'))
+    }
     if (fieldEvent) current.push(option('触发字段的值', 'input.value'))
     if (event === 'ENTITY_SELECTED') current.push(option('所选实体记录 ID', 'selection.id'))
     const prefix = lifecycle ? 'data' : 'input.form'
-    fieldsGroup = { label: '表单字段', options: fields.map(field => option(field.label, `${prefix}.${field.value}`)) }
+    if (event !== 'FORM_CLOSE') {
+      fieldsGroup = { label: '表单字段', options: fields.map(field => option(field.label, `${prefix}.${field.value}`)) }
+    }
   } else if (listButton) {
     const row = event === 'ROW_BUTTON_CLICK'
     const prefix = row ? 'input.row' : 'input.selectedRows.0'

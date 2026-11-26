@@ -4142,6 +4142,8 @@ owner_type + owner_id 与 target_type + target_key 分别定位归属和目标�
 接口扩展的输入输出、执行策略和后端路由均属于同一条记录；
 表单、列表、实体事件与列表字段只引用该记录 ID。
 
+V147 登记「实体状态」平台只读表单接口，固定 ID 为 `platform_entity_status_options`，Provider 为 `entity_status_options`。动态实体的系统字段 `status` 在发布时通过 `FIELD_OPTIONS` 引用该接口。接口按服务端表单上下文的实体编码查询 `entity_status`，返回按配置排序的状态编码和名称。此绑定随新表单快照发布，运行时读取当前状态配置。 [V147 迁移](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V147__entity_status_options_provider.sql)
+
 #### 8.4.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V021__ui_extension_entity_scope.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V021__ui_extension_entity_scope.sql)、[V088__flatten_interface_services_into_extensions.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V088__flatten_interface_services_into_extensions.sql)。

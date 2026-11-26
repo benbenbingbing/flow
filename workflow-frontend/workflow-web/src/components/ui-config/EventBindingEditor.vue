@@ -571,15 +571,26 @@
                     v-if="showFormModeChoices(step)"
                     v-model="step.conditionValue"
                     aria-label="比较值"
-                    placeholder="选择新增或编辑"
+                    placeholder="选择表单模式"
                     filterable
                     allow-create
                     default-first-option
                   >
                     <el-option label="新增" value="create" />
                     <el-option label="编辑" value="edit" />
-                    <el-option v-if="editor.eventCode === 'AFTER_LOAD'" label="查看" value="view" />
-                    <el-option v-if="lifecycleSelected" label="审批" value="approve" />
+                    <el-option v-if="['AFTER_LOAD', 'FORM_CLOSE'].includes(editor.eventCode)" label="查看" value="view" />
+                    <el-option v-if="lifecycleSelected || editor.eventCode === 'FORM_CLOSE'" label="审批" value="approve" />
+                  </el-select>
+                  <el-select
+                    v-else-if="showCloseReasonChoices(step)"
+                    v-model="step.conditionValue"
+                    aria-label="比较值"
+                    placeholder="选择关闭原因"
+                  >
+                    <el-option label="保存成功" value="saved" />
+                    <el-option label="取消" value="cancel" />
+                    <el-option label="关闭按钮或按 Esc" value="dismiss" />
+                    <el-option label="其他事件关闭" value="event" />
                   </el-select>
                   <el-input
                     v-else-if="!['exists', 'truthy'].includes(step.conditionOperator)"
@@ -686,6 +697,7 @@ const eventLabels = {
   BEFORE_SUBMIT: '提交前处理',
   FORM_SAVE: '保存表单',
   FORM_RESET: '重置表单',
+  FORM_CLOSE: '关闭表单',
   FIELD_CHANGE: '字段值变化',
   ENTITY_SELECTED: '选择实体后',
   FIELD_BUTTON_CLICK: '字段按钮点击',
@@ -763,7 +775,12 @@ const allBindings = computed(() => [...bindings.value, ...formLifecycleRows(prop
 const selectedEventDefault = computed(() => platformDefaultHelp(editor.eventCode))
 
 function showFormModeChoices(step) {
-  return (['FORM_OPEN', 'FORM_RESET'].includes(editor.eventCode) || lifecycleSelected.value) && step.conditionPath === 'input.mode'
+  return (['FORM_OPEN', 'FORM_RESET', 'FORM_CLOSE'].includes(editor.eventCode) || lifecycleSelected.value) && step.conditionPath === 'input.mode'
+    && ['equals', 'notEquals'].includes(step.conditionOperator)
+}
+
+function showCloseReasonChoices(step) {
+  return editor.eventCode === 'FORM_CLOSE' && step.conditionPath === 'input.reason'
     && ['equals', 'notEquals'].includes(step.conditionOperator)
 }
 

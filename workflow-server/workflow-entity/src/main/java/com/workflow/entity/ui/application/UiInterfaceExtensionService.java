@@ -6,6 +6,7 @@ import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValida
 
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -99,6 +100,7 @@ public class UiInterfaceExtensionService {
                         UiDataSourceUsages.FORM_OPEN,
                         UiDataSourceUsages.FORM_SAVE,
                         UiDataSourceUsages.FORM_RESET,
+                        UiDataSourceUsages.FORM_CLOSE,
                         UiDataSourceUsages.FIELD_CHANGE,
                         UiDataSourceUsages.ENTITY_SELECTED,
                         UiDataSourceUsages.FIELD_BUTTON_CLICK,
@@ -553,6 +555,9 @@ public class UiInterfaceExtensionService {
                         throw new BusinessForbiddenException(
                                         "UI_EVENT_RUNTIME_REQUIRED",
                                         "FORM_BUTTON_CLICK 必须通过 UI 事件运行接口执行");
+                }
+                if (UiDataSourceUsages.FORM_CLOSE.equals(normalize(request.getBindingCode()))) {
+                        throw new BusinessForbiddenException("UI_EVENT_RUNTIME_REQUIRED", "FORM_CLOSE 必须通过 UI 事件运行接口执行");
                 }
                 String targetType = normalize(request.getTargetType());
                 if (!"OWNER".equals(targetType)
@@ -1990,6 +1995,16 @@ public class UiInterfaceExtensionService {
                 // 只读流程上下文不能通过字段事件或通用绑定接口变为写能力。
                 if (request != null && request.isServerReadOnly() && "WRITE".equals(normalize(definition.getInterfaceKind()))) {
                         throw new BusinessForbiddenException("PROCESS_FORM_READ_ONLY", "流程查看页面不能执行写接口");
+                }
+                if (request != null && UiDataSourceUsages.FORM_CLOSE.equals(request.getUsage())
+                                && "WRITE".equals(normalize(definition.getInterfaceKind()))
+                                && !"approve".equals(request.getServerFormMode())) {
+                        // 关闭查看窗口只需要读取权限，实际执行写接口时还要校验相应的实体写权限。
+                        EntityPermissionAction action = StringUtils.hasText(request.getServerRecordId())
+                                        ? EntityPermissionAction.UPDATE : EntityPermissionAction.CREATE;
+                        if (!com.workflow.admin.authorization.application.PermissionUtil.hasPermission(action.permissionCode(authorization.entityCode()))) {
+                                throw new BusinessForbiddenException("FORM_CLOSE_WRITE_FORBIDDEN", "关闭表单事件缺少实体写入权限");
+                        }
                 }
                 // 字段选项可能在挂载、逐级展开和只读回显时自动请求；接口定义发布后变更
                 // 也不能把这些读取转换成写操作，必须在实际调用当前 Provider 前重新检查。

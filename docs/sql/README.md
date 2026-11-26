@@ -6,6 +6,14 @@
 
 `sys_user` 的认证模式和密码列注释反映当前应用行为。外部账号初始使用 `EXTERNAL_ONLY`，有权限的重置将认证模式切换为 `EXTERNAL_AND_LOCAL_PASSWORD`。现有列可保存新增模式值，本次只更新空库列用途注释。
 
+## 2026-11-26 同步 V147 实体状态选项接口
+
+核对 SQL 和 Java 迁移后确认原最高版本为 V146。新增 [V147__entity_status_options_provider.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V147__entity_status_options_provider.sql)，在 `ui_extension_definition` 登记「实体状态」平台只读表单接口。动态实体的系统状态下拉在新表单发布时引用该接口，由接口按表单所属实体实时读取候选。
+
+七份空库脚本各新增一条等价的扩展目录种子。逐方言核对种子列和值，并与原脚本对比确认表名、字段、索引、约束及用途注释一致。七份脚本均为 **202 张表、2,816 个字段**。
+
+H2 的 MySQL、PostgreSQL、Oracle 兼容模式均通过 V147 迁移、Flyway 校验与再次执行检查。尚未在七种目标数据库实机运行或全量导入。
+
 ## 2026-11-25 同步 V146 提交人用户关系
 
 同时核对 SQL 和 Java 迁移，工作区原最高版本为 V145。新增 [V146__submitter_system_user_reference.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V146__submitter_system_user_reference.sql)，将有效动态实体的系统字段 `submitterId` 升级为 `REFERENCE`，引用系统用户实体。已发布历史文档及其指纹保持原值，流程关系解析兼容旧快照。

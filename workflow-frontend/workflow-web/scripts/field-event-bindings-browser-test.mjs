@@ -158,9 +158,12 @@ try{
  await clickText('存在','.el-select-dropdown__item')
  await clickText('保存绑定')
  assert.deepEqual(await savedCondition(), {path:'input.params.customerId',exists:true})
- // 生命周期事件与打开事件同表编辑，保存使用表单版本并保留同表单的另一条绑定。
+ // 两项从字段默认事件分组配置，保存仍使用表单版本并保留同表单的另一条绑定。
  for(const [label,kind] of [['加载后处理 (AFTER_LOAD)','读接口'],['提交前处理 (BEFORE_SUBMIT)','写接口']]){
-   await clickText('新增绑定');await openEventOptions();await clickText(label,'.el-select-dropdown__item')
+   await clickText('新增绑定');await openEventOptions()
+   const group=await evaluate(`([...document.querySelectorAll('.el-select-dropdown__item')].filter(${visible}).find(item=>item.textContent.trim()===${JSON.stringify(label)})).closest('.el-select-group__wrap').querySelector('.el-select-group__title').textContent.trim()`)
+   assert.equal(group,'字段默认事件')
+   await clickText(label,'.el-select-dropdown__item')
    await clickText('增加步骤')
    await evaluate(`([...document.querySelectorAll('.el-dialog')].filter(${visible})).at(-1).querySelector('.step-grid .el-select__wrapper').click();eventTest.settle()`)
    const selected=(await options()).find(item=>item.text.includes(kind))

@@ -161,6 +161,11 @@ public class EntityForm {
     @TableField(exist = false)
     private String configHash;
 
+    /** 已发布的关闭事件有可执行步骤时，页面在结束会话前发送通知。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private Boolean hasFormCloseBinding;
+
     @TableField(exist = false)
     private java.util.Map<String, Object> runtimeContext = java.util.Map.of();
 }

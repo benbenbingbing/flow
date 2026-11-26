@@ -106,8 +106,8 @@
               <div class="field-info">
                 <span class="field-name">{{ field.fieldName || '未命名' }}</span>
                 <span class="field-code">{{ field.fieldCode || '-' }}</span>
-                <el-tag size="small" :type="getFieldTypeTag(field.fieldType)">
-                  {{ getFieldTypeLabel(field.fieldType) }}
+                <el-tag size="small" :type="getFieldTypeTag(field)">
+                  {{ getFieldTypeLabel(field) }}
                 </el-tag>
                 <el-tag v-if="field.isRequired" type="danger" size="small" effect="plain">必填</el-tag>
                 <el-tag v-if="field.isSystem" type="info" size="small" effect="plain">系统</el-tag>
@@ -142,8 +142,8 @@
         <div class="panel-title">
           <span class="property-panel__title" :title="selectedFieldTitle">{{ selectedFieldTitle }}</span>
           <div v-if="selectedField" class="property-panel__tags">
-            <el-tag size="small" :type="getFieldTypeTag(selectedField.fieldType)" effect="plain">
-              {{ getFieldTypeLabel(selectedField.fieldType) }}
+            <el-tag size="small" :type="getFieldTypeTag(selectedField)" effect="plain">
+              {{ getFieldTypeLabel(selectedField) }}
             </el-tag>
             <el-tag
               v-if="isSelectedFieldDirty"
@@ -239,10 +239,11 @@
             :key="`data-${selectedField.id ?? selectedField.sortOrder ?? 'new'}-${selectedField.fieldType}`"
             title="数据与约束"
             description="数据库映射、容量、选项来源和验证规则"
-            :default-expanded="showOptions"
+            :default-expanded="selectedSystemStatus || showOptions"
           >
             <template #summary>
-              <span v-if="showOptions">需配置选项</span>
+              <span v-if="selectedSystemStatus">实体状态</span>
+              <span v-else-if="showOptions">需配置选项</span>
               <span v-else-if="selectedField.fieldType === 'DECIMAL'">精度约束</span>
               <span v-else>按需配置</span>
             </template>
@@ -296,7 +297,10 @@
               </el-form-item>
             </template>
 
-            <template v-if="showOptions">
+            <el-form-item v-if="selectedSystemStatus" label="选项来源">
+              <span>实体状态（系统提供）</span>
+            </el-form-item>
+            <template v-else-if="showOptions">
               <el-form-item label="选项来源" required>
                 <template #label>
                   <ConfigHelpLabel
@@ -1030,6 +1034,7 @@ import { useEntityFieldDraftSave } from '@/composables/useEntityFieldDraftSave'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useEntityValidationRules } from '@/composables/useEntityValidationRules'
 import { normalizeAttachmentFileTypes } from '@flow/workflow-core/file-attachment'
+import { isSystemEntityStatusField } from '@flow/workflow-core/entity-status-runtime'
 import { ENTITY_DESIGN_FIELD_TYPES, filterEntityFieldsByLifecycle, resolveEntityFieldColumnName, getEntityFieldTypeLabel, getEntityFieldTypeTag, getEntityReferenceSelectionHint } from '@/shared/entity-design'
 
 const route = useRoute()
@@ -1139,6 +1144,7 @@ const isSelectedFieldStructureLocked = computed(() => Boolean(
   selectedField.value
   && (isSystemEntity.value || selectedField.value.isPublished || selectedField.value.isSystem)
 ))
+const selectedSystemStatus = computed(() => isSystemStatus(selectedField.value))
 const draggedType = ref(null)
 const refEntityFields = ref([])
 const dictOptions = ref([])
@@ -1387,13 +1393,17 @@ const moveField = (field, direction) => {
   fields.value.forEach((f, i) => f.sortOrder = i)
 }
 
-// 获取字段类型标签
-const getFieldTypeTag = (type) => {
-  return getEntityFieldTypeTag(type)
+function isSystemStatus(field) {
+  return !isSystemEntity.value && isSystemEntityStatusField(field)
 }
 
-const getFieldTypeLabel = (type) => {
-  return getEntityFieldTypeLabel(type)
+// 系统状态的标签按实际表单控件展示，保存时继续使用实体定义的字符串编码类型。
+function getFieldTypeTag(field) {
+  return getEntityFieldTypeTag(isSystemStatus(field) ? 'SELECT' : field.fieldType)
+}
+
+function getFieldTypeLabel(field) {
+  return isSystemStatus(field) ? '下拉单选' : getEntityFieldTypeLabel(field.fieldType)
 }
 
 // 转换为表单字段格式

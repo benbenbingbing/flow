@@ -7,8 +7,8 @@ const recipients = [
   { id: 'u1', code: 'reviewer', name: '复核人', entityType: 'USER' },
   { id: 'u2', code: 'observer', name: '观察人', entityType: 'USER' }
 ]
-async function fixture(page, { result, done, todo = [], started = [], formActions = [action], taskOps = {}, instanceOps = {} } = {}) {
-  const errors = [], unexpected = [], writes = [], reads = []
+async function fixture(page, { result, done, todo = [], started = [], formActions = [action], taskOps = {}, instanceOps = {}, hasFormCloseBinding = false } = {}) {
+  const errors = [], unexpected = [], writes = [], reads = [], closes = []
   page.on('pageerror', error => errors.push(error.message))
   await page.route('**/api/**', async route => {
     if (!new URL(route.request().url()).pathname.startsWith('/api/')) return route.continue()
@@ -24,9 +24,10 @@ async function fixture(page, { result, done, todo = [], started = [], formAction
     else if (endpoint === '/entity-selector/USER') data = { records: recipients, total: recipients.length }
     else if (endpoint === '/entity-selector/USER/batch') data = recipients
     else if (endpoint.includes('/FORM_BUTTON_CLICK/')) { writes.push(body); data = result || { effects: [{ type: 'FIELD_MAPPING', data: { form: { amount: 100 } }, mappings: [{ targetPath: 'form.amount', overwrite: 'ALWAYS' }] }] } }
+    else if (endpoint.includes('/FORM_CLOSE/')) { closes.push(body); data = { effects: [] } }
     else if (endpoint.startsWith('/ui-runtime/events/')) data = { effects: [] }
     else if (endpoint === '/entity-data/entity/test/detail/record-test/load') data = { id: 'record-test', name: '测试记录', data: { amount: 7 } }
-    else if (endpoint === '/process-instance/instance-test/form-runtime') data = { processInstanceId: 'instance-test', processName: '回退重审流程', status: 'RUNNING', formConfig: form, entityData: { id: 'record-test', amount: 7 }, tasks: [] }
+    else if (endpoint === '/process-instance/instance-test/form-runtime') data = { processInstanceId: 'instance-test', processName: '回退重审流程', status: 'RUNNING', formConfig: { ...form, hasFormCloseBinding }, entityData: { id: 'record-test', amount: 7 }, tasks: [] }
     else if (endpoint === '/process-instance/instance-test/progress') data = { processInstanceId: 'instance-test', processName: '回退重审流程', status: 'RUNNING', bpmnXml: xml, activeNodes: ['review'], completedNodes: ['review'], tasks: [], nodeHistory: [{ nodeId: 'review', nodeName: '再次审批', startTime: '2026-09-24 10:00:00', duration: 60000, status: 'ACTIVE' }] }
     else if (endpoint.endsWith('/next-approval-preview')) data = { status: 'READY', nextNodes: [], scopeKey: 'scope-test' }
     else if (endpoint.endsWith('/history/instance-test')) data = []
@@ -38,7 +39,7 @@ async function fixture(page, { result, done, todo = [], started = [], formAction
     else { unexpected.push(endpoint); return route.fulfill({ status: 500, json: { code: 500, message: `未声明测试接口 ${endpoint}` } }) }
     await route.fulfill({ json: { code: 200, data } })
   })
-  return { errors, unexpected, writes, reads }
+  return { errors, unexpected, writes, reads, closes }
 }
 for (const mode of ['编辑', '审批']) test(`PC ${mode}真实弹窗：取消确认不执行，确认后按 form.amount 正确回填`, async ({ page }) => {
   const state = await fixture(page)
@@ -85,6 +86,7 @@ test('PC 进度页面复用查看器：回退节点显示进行中且保留历�
 })
 test('PC 左下角只显示有权限的操作，退回使用历史活动且关闭当前详情', async ({ page }) => {
   const state = await fixture(page, {
+    hasFormCloseBinding: true,
     formActions: [{ key: 'submitApproval', label: '提交审批', type: 'built-in', placement: 'FOOTER', visible: true, enabled: true }],
     taskOps: { approve: true, return: true, transfer: true, addSign: true, addSignTypes: [] },
     instanceOps: { terminate: true }
@@ -103,6 +105,12 @@ test('PC 左下角只显示有权限的操作，退回使用历史活动且关�
     targetActivityInstanceId: 'prior-check', comment: '请补金额',
     formId: 'form-test', formConfigHash: 'graph-test', requestId: expect.any(String)
   }])
+  await expect.poll(() => state.closes.length).toBe(1)
+  expect(state.closes[0]).toMatchObject({
+    configId: 'form-test', configHash: 'graph-test', recordId: 'record-test',
+    input: { mode: 'approve', reason: 'event' }, runtimeContext: { processInstanceId: 'instance-test' }
+  })
+  expect(state.closes[0].runtimeContext.taskId).toBeUndefined()
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
 })
 

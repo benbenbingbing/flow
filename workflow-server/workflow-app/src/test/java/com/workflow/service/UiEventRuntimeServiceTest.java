@@ -1322,7 +1322,7 @@ class UiEventRuntimeServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"FIELD_CHANGE", "FORM_OPEN", "DETAIL_LOAD", "SUBFORM_LOAD"})
+    @ValueSource(strings = {"FIELD_CHANGE", "FORM_OPEN", "DETAIL_LOAD", "SUBFORM_LOAD", "FORM_CLOSE"})
     void taskAuthorizedFieldInitializationDoesNotRequireOrdinaryEntityPermission(String eventCode) {
         UiEventExecuteRequest request = request(eventCode, "assignee");
         request.setConfigType("FORM"); request.setConfigId("form-1");
@@ -1334,6 +1334,38 @@ class UiEventRuntimeServiceTest {
         stubPublishedChain(request);
         service.execute(request);
         verify(actionCapabilityService, never()).requireStandardPermission(any(), any());
+    }
+
+    @Test
+    void closingStepsKeepOriginalReasonAndAuthorizedRecord() {
+        var recordReader = org.mockito.Mockito.mock(com.workflow.entity.ui.application.EntityLookupEventReader.class);
+        service = new UiEventRuntimeService(
+                bindingService, dataSourceService, new UiEventValueMapper(),
+                selectionRuntimeService, auditPort, actionCapabilityService,
+                formActionService, executionReceiptService, entityDataService, objectMapper,
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class), recordReader);
+        UiEventExecuteRequest request = request("FORM_CLOSE", null);
+        request.setConfigType("FORM");
+        request.setConfigId("form-1");
+        request.setTargetType("OWNER");
+        request.setRecordId("record-1");
+        request.setInput(Map.of("mode", "edit", "reason", "saved", "savedRecordId", "record-1"));
+        when(bindingService.resolvePublished(request)).thenReturn(new UiEventBindingService.ResolvedEventChain(
+                List.of(map("strategy", "BEFORE", "extensionId", "first"),
+                        map("strategy", "BEFORE", "extensionId", "saved-notification",
+                                "condition", Map.of("path", "input.reason", "equals", "saved"))),
+                "release-1", 1, "entity-1", "expense", null, formSnapshot()));
+        when(dataSourceService.executeOperation(org.mockito.ArgumentMatchers.eq("first"), any(), any()))
+                .thenReturn(Map.of("reason", "cancel", "savedRecordId", "other-record", "notification", "ready"));
+
+        service.execute(request);
+
+        verify(recordReader).requireAccessibleRecord("expense", "record-1", null);
+        var provider = ArgumentCaptor.forClass(com.workflow.entity.ui.api.request.UiExtensionExecuteRequest.class);
+        verify(dataSourceService).executeOperation(org.mockito.ArgumentMatchers.eq("saved-notification"), any(), provider.capture());
+        assertEquals("record-1", provider.getValue().getServerRecordId());
+        assertEquals(Map.of("mode", "edit", "reason", "saved", "savedRecordId", "record-1", "notification", "ready"),
+                provider.getValue().getInput());
     }
 
     @Test

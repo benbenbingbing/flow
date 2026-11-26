@@ -846,8 +846,9 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: '打开表单 FORM_OPEN', meaning: '打开新增或编辑表单时执行。', notes: '新增接口回填步骤设置“打开方式等于新增”。' },
-                { option: '加载后处理 AFTER_LOAD', meaning: '数据加载后执行读接口并回填。', notes: '步骤按列表顺序执行，后一步可读取已回填字段。' },
-                { option: '提交前处理 BEFORE_SUBMIT', meaning: '服务端正式提交时执行，回填结果进入本次提交。', notes: '失败会阻止提交。浏览器预校验要求同时声明无副作用。' }
+                { option: '关闭表单 FORM_CLOSE', meaning: '确认关闭表单时执行，可按打开方式和关闭原因配置步骤。', notes: '可区分保存成功、取消、关闭按钮和事件关闭。步骤失败不阻止关闭。' },
+                { option: '加载后处理 AFTER_LOAD', meaning: '数据加载后执行读接口并回填。', notes: '在“字段默认事件”分组添加。步骤按列表顺序执行，后一步可读取已回填字段。' },
+                { option: '提交前处理 BEFORE_SUBMIT', meaning: '服务端正式提交时执行，回填结果进入本次提交。', notes: '在“字段默认事件”分组添加。失败会阻止提交，浏览器预校验要求同时声明无副作用。' }
               ]
             },
             {
@@ -909,7 +910,7 @@ export default {
               title: '节点类型可用 Usage',
               columns: optionColumns,
               rows: [
-                { option: 'FIELD', meaning: 'FIELD_OPTIONS、FIELD_DEFAULT、AFTER_LOAD、BEFORE_SUBMIT。', notes: '分别用于候选项、默认值、加载后补充和提交前校验/映射。' },
+                { option: 'FIELD', meaning: 'FIELD_OPTIONS、FIELD_DEFAULT，以及已有的 AFTER_LOAD、BEFORE_SUBMIT。', notes: '新建加载后和提交前处理请使用表单事件的“字段默认事件”分组。已有绑定可在原字段维护。' },
                 { option: 'SUB_FORM', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向子记录集合加载和子表生命周期；不能选择 FIELD_OPTIONS 或 FIELD_DEFAULT。' },
                 { option: 'REPEATER', meaning: 'SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT。', notes: '面向一对多明细行；分页、最大行数和失败策略必须受平台限制。' },
                 { option: '表单级', meaning: '在表单事件中配置打开表单、加载后和提交前处理。', notes: '各步骤随表单发布生效。' }

@@ -16,7 +16,7 @@ const ownerEventGroups = {
     },
     {
       label: '表单生命周期',
-      events: ['FORM_OPEN', 'FORM_SAVE', 'FORM_RESET']
+      events: ['FORM_OPEN', 'FORM_SAVE', 'FORM_RESET', 'FORM_CLOSE']
     },
     {
       label: '字段默认事件',
@@ -38,7 +38,7 @@ const ownerEventGroups = {
   FORM: [
     {
       label: '表单生命周期',
-      events: ['FORM_OPEN', 'AFTER_LOAD', 'BEFORE_SUBMIT', 'FORM_SAVE', 'FORM_RESET']
+      events: ['FORM_OPEN', 'FORM_SAVE', 'FORM_RESET', 'FORM_CLOSE']
     },
     {
       label: '表单数据',
@@ -46,7 +46,7 @@ const ownerEventGroups = {
     },
     {
       label: '字段默认事件',
-      events: ['FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK']
+      events: ['AFTER_LOAD', 'BEFORE_SUBMIT', 'FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK']
     },
     {
       label: '子表单默认事件',

@@ -326,7 +326,7 @@ defineExpose({ validate })
           <h3>11. 表单扩展接口</h3>
           <ul class="check-list">
             <li>类型包括 `DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
-            <li>新增回填使用 `FORM_OPEN` 并设置打开方式为新增；FIELD 仅使用 `FIELD_OPTIONS`、`FIELD_DEFAULT`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
+            <li>新增回填使用 `FORM_OPEN` 并设置打开方式为新增。加载后和提交前处理统一在「表单设置 → 表单事件 → 字段默认事件」中新增，已有 FIELD 节点绑定仍可在原字段维护。</li>
             <li>SUB_FORM 与 REPEATER 支持 `SUBFORM_ROWS`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
             <li>每条扩展记录就是一个完整可调用接口；配置只保存 `extensionId`，不在页面中继续选择或组合后端操作。</li>
             <li>配置统一输入/输出映射、分页、超时、缓存和失败策略；组件只通过 `dataSourceRuntime.execute(binding, context)` 调用。</li>

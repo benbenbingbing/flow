@@ -82,6 +82,12 @@ const platformDefaultDescriptions = {
     eventEndpoint: true,
     note: '没有独立的业务重置接口。恢复快照先于事件链执行，“替代平台处理”不会阻止或撤销这次恢复。'
   },
+  FORM_CLOSE: {
+    name: '关闭表单',
+    description: '确认关闭后按关闭原因执行扩展步骤。保存后关闭、取消、关闭按钮和其他事件请求的关闭可分别配置。',
+    eventEndpoint: true,
+    note: '每次打开最多通知一次。扩展失败会记录，表单照常关闭。步骤结果不再回填当前表单或执行页面动作。'
+  },
   FIELD_CHANGE: {
     name: '字段值变化',
     description: '页面先更新字段值并通知表单联动，再执行字段事件的扩展步骤，将返回的字段映射应用到当前表单。',

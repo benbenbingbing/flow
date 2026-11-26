@@ -53,6 +53,8 @@ const referenceNodes=referenceFields.map((field,index)=>({
  }})
 }))
 designerNode.dataSourceBindingsDocument=JSON.stringify({FIELD_COMPUTE:{serviceId:'retired-compute',inputMapping:'{'}})
+const oldFieldBinding={extensionId:'existing-load',inputMapping:{id:'data.single'},outputMapping:{single:'data.value'}}
+referenceNodes[0].dataSourceBindingsDocument=JSON.stringify({AFTER_LOAD:oldFieldBinding})
 const designerForm={id:'component-design',entityId:'component-entity',formName:'统一组件配置验收',formKey:'component_design',revision:1,status:1,layoutType:'vertical',viewConfig:'{}'}
 const state=reactive({data:{name:'初始值',target:'待回填',locked:'只读原值',hidden:'隐藏原值'},row:{name:'子表原值',target:'子表目标',locked:'子表只读'},readonly:false,seen:[],patches:[],events:[],api:[],saves:[],designerNodes:[designerNode,...referenceNodes]})
 Object.assign(state,{passwordForm:null,passwordData:{name:''},passwordReadonly:false,mobilePassword:''})
@@ -282,6 +284,8 @@ try{
   await openNode(id)
   await clickText('数据与扩展','[role="tab"]')
   assert.doesNotMatch(await evaluate('document.querySelector(".node-data-settings").innerText'),/引用选择配置|列表参数映射/)
+  const usageLabels=await evaluate('[...document.querySelectorAll(".data-source-usage-row > span:first-child")].map(e=>e.textContent.trim())')
+  assert.deepEqual(usageLabels,id==='design-single'?['加载后处理']:[])
   await clickText('基础与布局','[role="tab"]')
   await openConfig()
   assert.match(await evaluate(`document.querySelector('${componentConfig}').closest('[role="dialog"]').innerText`),new RegExp(title+'配置'))
@@ -297,6 +301,10 @@ try{
   await enterValue(`${componentConfig} input[aria-label="固定值"]`,'将取消的分类')
   await clickText('取消',configFooter)
   await clickText('保存当前属性','.node-property-actions button')
+  if(id==='design-single'){
+   const binding=await evaluate('JSON.parse(componentTest.state.designerNodes.find(node=>node.id==="design-single").dataSourceBindingsDocument).AFTER_LOAD')
+   assert.deepEqual(binding,{extensionId:'existing-load',inputMapping:{id:'data.single'},outputMapping:{single:'data.value'}})
+  }
   const refConfig=await evaluate(`JSON.parse(componentTest.state.designerNodes.find(node=>node.id===${JSON.stringify(id)}).propsDocument).componentProps.refConfig`)
   assert.equal(refConfig.listKey,'catalog_selection')
   assert.deepEqual(refConfig.parameterMappings,[{parameter:'category',sourceType:'LITERAL',sourceField:'',value:'内部'}])
@@ -310,7 +318,8 @@ try{
  // 计算区保留实时公式，切换配置视图不会清空公式。
  await openNode()
  await clickText('数据与扩展','[role="tab"]')
- assert.equal(await evaluate('[...document.querySelectorAll(".data-source-usage-row span")].some(e=>e.textContent.trim()==="字段计算")'),false)
+ assert.equal(await evaluate('document.querySelectorAll(".data-source-usage-row").length'),0)
+ assert.match(await evaluate('document.querySelector(".node-data-settings").innerText'),/表单事件 → 字段默认事件/)
  await clickText('联动与事件','[role="tab"]')
  await clickText('计算','.node-value-linkage .el-radio')
  assert.doesNotMatch(await evaluate('document.querySelector(".node-value-linkage").innerText'),/计算接口/)

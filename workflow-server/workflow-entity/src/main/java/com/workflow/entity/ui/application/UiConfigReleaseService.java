@@ -352,14 +352,14 @@ public class UiConfigReleaseService {
         Map<String, Object> result = runtimeReleaseResult(resolved, runtimeSnapshot(resolved.form()));
         result.put("configHash", formConfigHash(formId));
         result.put("runtimeContext", runtimeContext == null ? Map.of() : runtimeContext);
-        result.put("hasFormOpenBinding", hasFormOpenBinding(published));
+        result.put("hasFormOpenBinding", hasFormOwnerEventSteps(published, UiDataSourceUsages.FORM_OPEN));
         return result;
     }
 
-    /** 内嵌新增用此标志跳过空打开链；接口定义和步骤只留在服务端快照中。 */
-    private boolean hasFormOpenBinding(Map<String, Object> snapshot) {
+    /** 按表单覆盖规则判断是否需要派发事件，接口定义和步骤只留在服务端快照中。 */
+    private boolean hasFormOwnerEventSteps(Map<String, Object> snapshot, String eventCode) {
         List<Map<String, Object>> bindings = mapList(snapshot.get("eventBindings")).stream()
-                .filter(binding -> UiDataSourceUsages.FORM_OPEN.equals(normalize(text(binding.get("eventCode"))))
+                .filter(binding -> eventCode.equals(normalize(text(binding.get("eventCode"))))
                         && "OWNER".equals(normalize(text(binding.get("targetType")))))
                 .toList();
         boolean inherited = bindings.stream().anyMatch(binding -> "ENTITY".equals(normalize(text(binding.get("ownerType"))))
@@ -2464,8 +2464,12 @@ public class UiConfigReleaseService {
                 activeSnapshot);
         if (FORM.equals(configType)) {
             EntityForm form = restorableForm(activeSnapshot);
-            List<EntityFormNode> nodes = pinSubListReleases(
-                    form.getNodes());
+            List<EntityFormNode> nodes = form.getNodes();
+            // 撤销后仍使用当前的实体选项来源。旧发布缺少新继承绑定时，差异应算作依赖变化。
+            if (fieldOptionInterfaces != null) {
+                nodes = fieldOptionInterfaces.inherit(form.getEntityId(), nodes);
+            }
+            nodes = pinSubListReleases(nodes);
             projected.put(
                     "nodes",
                     snapshotSupport.stableValue(nodes));
@@ -3151,6 +3155,7 @@ public class UiConfigReleaseService {
     private EntityForm runtimeForm(Map<String, Object> snapshot) {
         EntityForm form = objectMapper.convertValue(
                 snapshot.get("form"), EntityForm.class);
+        form.setHasFormCloseBinding(hasFormOwnerEventSteps(snapshot, UiDataSourceUsages.FORM_CLOSE));
         form.setFields(objectMapper.convertValue(
                 snapshot.getOrDefault("legacyFields", List.of()),
                 new TypeReference<List<EntityFormField>>() {}));

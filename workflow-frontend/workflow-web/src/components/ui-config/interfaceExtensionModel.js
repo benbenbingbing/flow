@@ -27,6 +27,7 @@ export const interfaceUsageOptions = [
   { label: '表单打开（FORM_OPEN）', value: 'FORM_OPEN' },
   { label: '表单保存（FORM_SAVE）', value: 'FORM_SAVE' },
   { label: '表单重置（FORM_RESET）', value: 'FORM_RESET' },
+  { label: '表单关闭（FORM_CLOSE）', value: 'FORM_CLOSE' },
   { label: '字段变化（FIELD_CHANGE）', value: 'FIELD_CHANGE' },
   { label: '实体选择（ENTITY_SELECTED）', value: 'ENTITY_SELECTED' },
   { label: '字段按钮（FIELD_BUTTON_CLICK）', value: 'FIELD_BUTTON_CLICK' },
@@ -57,7 +58,7 @@ const formDataUsages = new Set([
 const listDataUsages = new Set(['LIST_QUERY', 'LIST_COLUMN'])
 const formEventUsages = new Set([
   'DETAIL_LOAD', 'DATA_CREATE', 'DATA_UPDATE', 'FORM_OPEN', 'FORM_SAVE',
-  'FORM_RESET', 'FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK',
+  'FORM_RESET', 'FORM_CLOSE', 'FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK',
   'SUBFORM_LOAD', 'SUBFORM_SAVE', 'FORM_BUTTON_CLICK'
 ])
 const listEventUsages = new Set([

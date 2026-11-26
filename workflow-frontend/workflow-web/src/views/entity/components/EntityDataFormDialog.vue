@@ -160,6 +160,7 @@ import { relatedFormDraftGuardKey } from '@/shared/related-form-draft-guard'
 import { useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
 import { applyFormEffects, confirmFormAction } from '@/shared/form-event-effects'
+import { notifyFormClose } from '@/shared/form-close-event'
 import ExcelActionDialog from '@/components/excel/ExcelActionDialog.vue'
 const excelActionDialog = ref(null)
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -316,13 +317,31 @@ async function confirmDiscardChanges() {
 
 async function beforeDialogClose(done: () => void) {
   const opening = currentOpening
-  if (await confirmDiscardChanges()) {
-    if (opening !== currentOpening) return
-    // Element Plus 的 model 更新可能晚于关闭动画；确认关闭时就废弃续体，阻止动画中的迟到事件。
-    opening?.cancel?.()
-    currentOpening = null
-    done()
+  if (await confirmDiscardChanges() && isCurrentOpening(opening)) {
+    closeForm('dismiss', undefined, done)
   }
+}
+
+/** 在关闭动画及上下文清理前取出通知坐标，并立即废弃旧会话，避免重复关闭或迟到回填。 */
+function closeForm(reason: string, savedRecordId?: string, done?: () => void) {
+  const opening = currentOpening
+  if (!isCurrentOpening(opening)) return
+  const context = launchRuntimeContext.value
+  const form = runtimeForm.value
+  opening.cancel()
+  currentOpening = null
+  if (opening.readyToNotifyClose) {
+    void notifyFormClose({
+      form, configHash: form?.configHash || context.configHash,
+      entityCode: props.entityCode, listKey: props.listKey,
+      runtimeContext: formReleaseContext.value.runtimeContext,
+      mode: opening.mode, reason, recordId: formData.id || undefined, savedRecordId,
+      params: context.params || context.parameters || {}
+    })
+  }
+  // 原生关闭由组件完成动画及 model 更新，按钮和保存直接更新打开状态。
+  if (done) done()
+  else dialogVisible.value = false
 }
 
 onMounted(() => globalThis.addEventListener?.('beforeunload', discardGuard.beforeUnload))
@@ -657,7 +676,7 @@ async function applyFormEventResult(result: any, isCurrent = () => true) {
     // 事件自身关闭后仍须顺序执行 REFRESH_PARENT 等后续效果；用户关闭或切换记录则丢弃结果。
     isCurrent: () => isCurrent() || (closedByEffect && launchRuntimeContext.value === context),
     navigate: (effect: any) => router.push(effect.route),
-    close: () => { closedByEffect = true; dialogVisible.value = false },
+    close: () => { closedByEffect = true; closeForm('event') },
     refresh: () => emit('success')
   })
 }
@@ -683,7 +702,7 @@ async function handleFormAction(action: any) {
       },
       async execute() {
         if (action.key === 'close') {
-          if (await confirmDiscardChanges()) dialogVisible.value = false
+          if (await confirmDiscardChanges() && isCurrent()) closeForm('cancel')
           return
         }
         actionLoadingKey.value = String(action.runtimeKey || action.key || '')
@@ -797,6 +816,7 @@ async function initializeOpenForm(opening: any, row: any, options: any) {
       currentProcessStatus.value = detail.processStatus || ''
     }
     initializeParameterFields()
+    opening.readyToNotifyClose = true
     stage = '表单打开事件'
     await executeFormEvent('FORM_OPEN')
     if (!isCurrentOpening(opening)) return false
@@ -1002,7 +1022,8 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
       captureResetSnapshot()
       ElMessage.info('主表已保存，子表单仍有未保存的修改')
     } else {
-      dialogVisible.value = false
+      const savedRecordId = result?.id ?? result?.recordId ?? result?.record?.id ?? (formData.id || undefined)
+      closeForm('saved', savedRecordId)
     }
     emit('success', result)
   } catch (error: any) {

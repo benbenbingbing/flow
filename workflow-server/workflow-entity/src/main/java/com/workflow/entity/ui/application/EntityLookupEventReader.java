@@ -30,6 +30,16 @@ public class EntityLookupEventReader {
     private final EntityPublishedSnapshotService publishedEntities;
     private final ObjectMapper objectMapper;
 
+    /** 核实关闭事件的记录坐标，沿用实体详情权限，只返回授权结果。 */
+    public void requireAccessibleRecord(String entityCode, String id, String listKey) {
+        if (systemRecords.isSystemEntity(entityCode)) {
+            systemRecords.findById(entityCode, id);
+        } else {
+            permissions.requireStandardPermission(entityCode, EntityPermissionAction.VIEW);
+            dynamicRecords.requireAccessibleById(entityCode, id, listKey);
+        }
+    }
+
     /**
      * 使用当前用户读取目标实体的主记录。返回 null 同时表示记录不存在和不可见，
      * 输出仅包含请求投影且已发布可读的属性，供事件进行回填或继续映射。

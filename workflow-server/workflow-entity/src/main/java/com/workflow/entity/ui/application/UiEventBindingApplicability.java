@@ -20,6 +20,7 @@ final class UiEventBindingApplicability {
             UiDataSourceUsages.FORM_OPEN,
             UiDataSourceUsages.FORM_SAVE,
             UiDataSourceUsages.FORM_RESET,
+            UiDataSourceUsages.FORM_CLOSE,
             UiDataSourceUsages.FIELD_CHANGE,
             UiDataSourceUsages.ENTITY_SELECTED,
             UiDataSourceUsages.FIELD_BUTTON_CLICK,

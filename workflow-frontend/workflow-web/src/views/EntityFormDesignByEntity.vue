@@ -308,7 +308,7 @@
                 <SettingsCapability :disabled="!isEditableFieldNode" reason="当前节点不支持选择组件">
                   <el-form-item label="组件类型">
                     <div class="component-type-row">
-                      <el-select v-model="selectedField.componentType" aria-label="组件类型" filterable @change="handleCompatibleComponentChange">
+                      <el-select v-model="selectedField.componentType" aria-label="组件类型" filterable :disabled="selectedSystemStatus" @change="handleCompatibleComponentChange">
                         <el-option-group v-for="group in formComponentOptionGroups" :key="group.label" :label="group.label">
                           <el-option
                             v-for="option in group.options"
@@ -325,6 +325,8 @@
                     </div>
                   </el-form-item>
                 </SettingsCapability>
+
+                <el-form-item v-if="selectedSystemStatus" label="选项来源">实体状态</el-form-item>
 
                 <SettingsCapability :disabled="!isFieldNode" reason="仅实体字段支持占位提示">
                   <el-form-item label="占位提示">
@@ -1101,7 +1103,7 @@
 <script setup>
 import { showRequestError } from '@/shared/request'
 
-import { compatibleFormComponentOptions, createFormNodeEditorModel, isGenericNodeDataSourceUsage } from './form-designer/formNodeEditorModel.js'
+import { compatibleFormComponentOptions, createFormNodeEditorModel, getEditableNodeDataSourceUsages } from './form-designer/formNodeEditorModel.js'
 
 import { resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '@/shared/form-layout'
 
@@ -1113,6 +1115,8 @@ import { Check, View, Search, Document, Edit, DocumentAdd, Plus, Rank, Setting, 
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import { getEntityStatusList } from '@/api/entityStatus'
+import { ENTITY_STATUS_OPTIONS_EXTENSION_ID, getEffectiveEntityStatusOptions, isSystemEntityStatusField } from '@flow/workflow-core/entity-status-runtime'
 import { createFormDataSourceRuntime, getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 import FormActionBar from '@/components/FormActionBar.vue'
 import FormNodeValueLinkage from '@/components/form-designer/FormNodeValueLinkage.vue'
@@ -1905,16 +1909,9 @@ const selectedNodeTitle = computed(() => {
   return code ? `${label}（${code}）` : label
 })
 const availableNodeDataSourceUsages = computed(() => {
-  const allowed = new Set(getFormNodeDataSourceUsages(selectedNodeType.value))
-  return genericNodeDataSourceUsages.filter(usage => allowed.has(usage.value))
+  const editable = getEditableNodeDataSourceUsages(selectedNodeType.value, selectedField.value?.dataSourceBindings)
+  return formDataSourceUsages.filter(usage => editable.includes(usage.value))
 })
-
-const genericNodeDataSourceUsages = formDataSourceUsages.filter(usage =>
-  isGenericNodeDataSourceUsage(usage.value))
-const nodeDataSourceUsageOptions = computed(() => genericNodeDataSourceUsages.map(usage => ({
-  ...usage,
-  disabled: !availableNodeDataSourceUsages.value.some(item => item.value === usage.value)
-})))
 
 const availableParentNodes = computed(() =>
   formFields.value
@@ -2021,7 +2018,7 @@ const regexTestResult = computed(() => {
   }
 })
 const canConfigureSelectedNodeDataSource = computed(() =>
-  selectedNodePropertySchema.value.dataSourceUsages.length > 0
+  availableNodeDataSourceUsages.value.length > 0
 )
 const canConfigureSelectedNodeValidation = computed(() =>
   selectedNodePropertySchema.value.rules
@@ -2097,7 +2094,7 @@ const selectedNodeDataSourceBindingCount = computed(() => {
       delete bindings[usage]
     }
   }
-  return genericNodeDataSourceUsages.filter(usage => bindings[usage.value]).length
+  return availableNodeDataSourceUsages.value.filter(usage => bindings[usage.value]).length
 })
 const selectedNodeDataSourceUsageLabel = computed(() =>
   availableNodeDataSourceUsages.value.find(
@@ -2135,7 +2132,7 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   openExtensionManagement, refreshExtensionCatalog,
   selectedField, activeNodeSettingsTab, isFieldNode,
   canConfigureSelectedNodeDataSource,
-  selectedNodeDataSourceBindingCount, availableNodeDataSourceUsages, nodeDataSourceUsageOptions,
+  selectedNodeDataSourceBindingCount, availableNodeDataSourceUsages,
   isNodeDataSourceUsageConfigured, selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel, selectedNodeInterfaces,
   interfacesByUsage,
@@ -2144,6 +2141,36 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   handleChildFormChange, childFormReleases, childFormReleaseLoading,
   subListOptions, subListTargetFields, subListTargetFieldsLoading,
   handleSubListChange, getEntityReferenceSelectionHint
+})
+
+function boundEntityField(node) {
+  if (node?.bindingType !== 'ENTITY_FIELD' || !node.bindingRef) return undefined
+  return entityFields.value.find(item =>
+    String(item.id) === String(node.bindingRef) || item.fieldCode === node.bindingRef)
+}
+
+const selectedSystemStatus = computed(() =>
+  !isSystemEntity.value && isSystemEntityStatusField(boundEntityField(selectedField.value)))
+const previewStatusOptions = ref([])
+const statusOptionsExtension = computed(() => interfacesByUsage.value.FIELD_OPTIONS?.find(item =>
+  item.extensionId === ENTITY_STATUS_OPTIONS_EXTENSION_ID))
+const previewNeedsStatusMetadata = computed(() => !isSystemEntity.value
+  && formFields.value.some(field => (!field.revision || !statusOptionsExtension.value)
+    && isSystemEntityStatusField(boundEntityField(field))))
+
+// 未保存的状态节点尚无可信草稿绑定，预览通过已有的实体元数据接口取选项。
+watch([showPreview, () => entityInfo.value.entityCode, previewNeedsStatusMetadata],
+async ([visible, code, needsMetadata], _, onCleanup) => {
+  previewStatusOptions.value = []
+  if (!visible || !code || !needsMetadata) return
+  let current = true
+  onCleanup(() => { current = false })
+  try {
+    const statuses = await getEntityStatusList(code)
+    if (current) previewStatusOptions.value = getEffectiveEntityStatusOptions(statuses)
+  } catch (error) {
+    if (current) showRequestError(error, '加载实体状态失败')
+  }
 })
 
 // 预览数据
@@ -2156,13 +2183,17 @@ const previewForm = computed(() => {
       legacyProps: { ...(field.legacyProps || {}) },
     }, index)
     // 只补预览投影，不把继承绑定写回表单草稿；实际预览仍须由后端校验已保存节点。
-    const source = node.bindingType === 'ENTITY_FIELD' && entityFields.value.find(item =>
-      String(item.id) === String(node.bindingRef) || item.fieldCode === node.bindingRef)
-    if (source?.optionsInterfaceId) {
+    const source = boundEntityField(node)
+    const systemStatus = !isSystemEntity.value && isSystemEntityStatusField(source)
+    const extensionId = systemStatus
+      ? (field.revision ? statusOptionsExtension.value?.extensionId : undefined)
+      : source?.optionsInterfaceId
+    if (extensionId || systemStatus) {
       const bindings = parseDocument(node.dataSourceBindingsDocument)
-      node.dataSourceBindingsDocument = stringifyConfig({
-        ...bindings, FIELD_OPTIONS: { extensionId: source.optionsInterfaceId }
-      })
+      if (extensionId) bindings.FIELD_OPTIONS = { extensionId }
+      else delete bindings.FIELD_OPTIONS
+      node.dataSourceBindingsDocument = stringifyConfig(bindings)
+      if (systemStatus && !extensionId) node.runtimeOptions = previewStatusOptions.value
     }
     return node
   })
@@ -2885,9 +2916,9 @@ function clearSelectedNodeDataSourceBinding() {
   const bindings = { ...parseDocument(field.dataSourceBindings) }
   delete bindings[field.dataSourceUsage]
   field.dataSourceBindings = bindings
-  field.interfaceExtensionId = ''
-  field.dataSourceInputMappingText = '{}'
-  field.dataSourceOutputMappingText = '{}'
+  // 清除普通字段的旧绑定后，自动定位剩余的旧绑定；子表仍可重新配置当前用途。
+  const usages = getEditableNodeDataSourceUsages(nodeTypeOf(field), bindings)
+  loadNodeDataSourceUsage(field, usages.includes(field.dataSourceUsage) ? field.dataSourceUsage : (usages[0] || ''))
 }
 
 /** 生命周期事件修改表单元数据，只接收新修订号和绑定，保留设计器内尚未保存的其他编辑。 */
@@ -3137,9 +3168,16 @@ async function loadFormFields({ strict = false } = {}) {
     formNodes.value = Array.isArray(nodes) ? nodes : []
     // 字段接口补充实体关系元数据，设计内容始终以节点树为准。
     const fieldsById = new Map((fields || []).map(field => [String(field.id), field]))
-    formFields.value = formNodes.value.map(node =>
-      nodeToField(node, fieldsById.get(String(node.id)))
-    )
+    formFields.value = formNodes.value.map(node => {
+      const field = nodeToField(node, fieldsById.get(String(node.id)))
+      const source = boundEntityField(node)
+      // 旧草稿在打开时显示新的控件，系统字段仍沿用实体目录的写保护。
+      if (!isSystemEntity.value && isSystemEntityStatusField(source)) {
+        field.componentType = 'select'
+        if (source.editable === false) field.isReadonly = 1
+      }
+      return field
+    })
     // 统一将 refEntityId 转为字符串，避免 el-select 类型不匹配显示原始值
     formFields.value.forEach(field => {
       if (field.refEntityId != null) {
@@ -3199,7 +3237,8 @@ function addField(entityField) {
     fieldName: entityField.fieldName,
     fieldLabel: entityField.fieldName,
     fieldType: entityField.fieldType,
-    componentType: getDefaultComponentType(entityField.fieldType),
+    componentType: !isSystemEntity.value && isSystemEntityStatusField(entityField)
+      ? 'select' : getDefaultComponentType(entityField.fieldType),
     isRequired: entityField.isRequired ? 1 : 0,
     isReadonly: isSystemEntity.value || entityField.editable === false ? 1 : 0,
     isHidden: 0,

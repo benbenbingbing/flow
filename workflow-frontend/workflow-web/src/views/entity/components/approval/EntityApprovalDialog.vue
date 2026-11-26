@@ -13,6 +13,7 @@
     :modal="!seamlessPresentation"
     :lock-scroll="!seamlessPresentation"
     :close-on-click-modal="false"
+    :before-close="beforeDialogClose"
     @closed="handleDialogClosed"
   >
     <template #header="{ titleId, titleClass }">
@@ -172,6 +173,7 @@ import { useRouter } from 'vue-router'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'
 import { showRequestError } from '@/shared/request'
 import { applyFormEffects, confirmFormAction } from '@/shared/form-event-effects'
+import { notifyFormClose } from '@/shared/form-close-event'
 import ExcelActionDialog from '@/components/excel/ExcelActionDialog.vue'
 const excelActionDialog = ref(null)
 import { ElMessage } from 'element-plus'
@@ -274,6 +276,7 @@ const archiveRounds = ref<any[]>([])
 const archiveLoadError = ref('')
 const hasProcessHistory = computed(() => Boolean(currentTask.value?.processInstanceId) || archiveRounds.value.length > 0)
 let archiveSession = 0
+let closeNotifiedSession = 0
 
 /** 关闭或切换记录时撤销旧查询，避免上一条业务记录的档案出现在新详情中。 */
 function resetArchiveRounds() {
@@ -501,6 +504,32 @@ function handleDialogClosed() {
   processRuntimeMetadata.value = {}
   emit('closed')
 }
+
+/** 在清理流程上下文前通知本次关闭；审批完成后的任务已失效，改用同一实例的历史坐标。 */
+function closeForm(reason: string, taskCompleted = false, done?: () => void) {
+  if (!processDialogVisible.value) return
+  const form = effectiveFormConfig.value
+  if (closeNotifiedSession !== archiveSession && !initialLoading.value && !initialLoadError.value && form?.hasFormCloseBinding) {
+    closeNotifiedSession = archiveSession
+    const context = launchRuntimeContext.value
+    const recordId = entityData.value?.id || undefined
+    const runtimeContext = buildRuntimeContext({ ...context, ...formProcessContext.value, recordId }, form)
+    if (taskCompleted && runtimeContext.processInstanceId) delete runtimeContext.taskId
+    void notifyFormClose({
+      form, entityCode: effectiveEntityCode.value, listKey: props.listKey,
+      runtimeContext, mode: approvalRuntimeMode.value, reason, recordId,
+      savedRecordId: reason === 'saved' ? recordId : undefined,
+      params: context.params || context.parameters || {}
+    })
+  }
+  if (done) done()
+  else processDialogVisible.value = false
+}
+
+function beforeDialogClose(done: () => void) {
+  if (approveSubmitLoading.value) return
+  closeForm('dismiss', false, done)
+}
 const approvalTabLayout = computed(() =>
   resolveRuntimeFormTabLayout(approvalNormalForm.value, { data: entityData.value || {}, mode: approvalRuntimeMode.value, context: approvalRuntimeContext.value })
 )
@@ -585,7 +614,7 @@ function applyHistoryResubmit(enabled: boolean) {
 }
 
 function handleWorkflowOperationCompleted(key: string) {
-  if (['return', 'withdraw', 'terminate', 'transfer'].includes(key)) processDialogVisible.value = false
+  if (['return', 'withdraw', 'terminate', 'transfer'].includes(key)) closeForm('event', true)
   emit('success')
 }
 const runtimeForms = computed(() => {
@@ -928,7 +957,7 @@ async function handleFormAction(action: any) {
         return false
       },
       async execute() {
-        if (action.key === 'close') { processDialogVisible.value = false; return }
+        if (action.key === 'close') { closeForm('cancel'); return }
         actionLoadingKey.value = String(action.runtimeKey || action.key || '')
         if (action.key === 'submitApproval') return submitApprove()
         if (action.type !== 'custom') return
@@ -974,7 +1003,7 @@ async function applyFormEventResult(result: any, isCurrent = () => true) {
     getFields: () => props.entityFields,
     isCurrent,
     navigate: (effect: any) => router.push(effect.route),
-    close: () => { processDialogVisible.value = false },
+    close: () => closeForm('event'),
     refresh: () => emit('success')
   })
 }
@@ -1006,6 +1035,7 @@ function isDeferredDefaultRequired(error: any) {
 // 提交审批
 const submitApprove = async () => {
   if (!currentTask.value?.taskId || approveSubmitLoading.value) return
+  const session = archiveSession
   // 兼容历史已保存配置：保留码既不能进入预览，也不能作为普通审批结果提交。
   if (isReservedApprovalActionCode(approveForm.action)) {
     ElMessage.warning('当前审批选项占用了系统操作保留编码，请联系流程管理员修正配置')
@@ -1059,8 +1089,9 @@ const submitApprove = async () => {
         ? { headers: { [BUSINESS_TRACE_HEADER]: previewTraceKey } }
         : {})
     })
+    if (session !== archiveSession) return
     ElMessage.success(historyResubmit.value ? '重新提交成功' : '审批成功')
-    processDialogVisible.value = false
+    closeForm('saved', true)
     emit('success')
   } catch (e: any) {
     console.error('审批失败:', e)

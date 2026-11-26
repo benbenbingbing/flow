@@ -18,6 +18,7 @@ async function setup(page, options = {}) {
     else if (endpoint.includes('/detail/') && endpoint.endsWith('/load')) data = options.detail ? await options.detail(endpoint) : { id: endpoint.match(/detail\/([^/]+)\//)[1], data: { amount: 7 } }
     else if (endpoint === '/ui-runtime/form-actions/resolve') data = options.actions ? await options.actions(body) : actions
     else if (endpoint === '/ui-runtime/events/FORM_OPEN/execute') data = options.event ? await options.event(body) : { effects: [] }
+    else if (endpoint === '/ui-runtime/events/FORM_CLOSE/execute') data = options.closeEvent ? await options.closeEvent(body) : { effects: [] }
     else if (['/ui-runtime/events/FORM_RESET/execute', '/ui-runtime/events/FIELD_CHANGE/execute'].includes(endpoint)) data = { effects: [] }
     else if (endpoint === '/ui-runtime/extensions/execute') data = options.extension ? await options.extension(body) : {}
     else if (endpoint.includes('/dict/')) data = []
@@ -39,6 +40,7 @@ const dialog = page => page.locator('.entity-data-form-dialog:visible')
 const amount = page => dialog(page).getByRole('spinbutton').first()
 const start = (page, mode = 'create', id = 'a', options = {}) => page.evaluate(([mode, id, options]) => { void openingTest.open(mode, id, options) }, [mode, id, options])
 const close = async page => { await dialog(page).getByRole('button', { name: 'Close this dialog', exact: true }).click(); await expect(dialog(page)).toHaveCount(0) }
+const closeEvents = state => state.reads.filter(item => item.endpoint.includes('/FORM_CLOSE/')).map(item => item.body)
 const clean = state => { expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([]) }
 for (const mode of ['create', 'edit']) test(`${mode}：配置未返回即显示骨架，关闭后不继续读取详情或执行事件`, async ({ page }) => {
   const gate = deferred(), entered = deferred(), state = await setup(page, { config: async () => { entered.resolve(); await gate.promise; return form() } })
@@ -148,13 +150,47 @@ for (const mode of ['create', 'edit']) test(`${mode} 保存并发起仍使用原
   expect(state.writes[0].body.formConfigHash).toBe('hash-1'); clean(state)
 })
 test('工作区隐藏再显示保留会话，初始化完成作为未保存基线', async ({ page }) => {
-  const state = await setup(page, { workspace: true, config: () => form({ dataSourceBindings: { FORM_INIT: { extensionId: 'init' } } }), extension: () => ({ amount: 33 }) })
+  const state = await setup(page, {
+    workspace: true,
+    config: () => form({ hasFormCloseBinding: true, dataSourceBindings: { FORM_INIT: { extensionId: 'init' } } }),
+    extension: () => ({ amount: 33 })
+  })
   await start(page); await expect(amount(page)).toHaveValue('33.00'); expect(await page.evaluate(() => openingTest.confirmDiscard())).toBe(true)
   await amount(page).fill('44'); await page.evaluate(() => { openingTest.workspace.active.value = false }); await expect(dialog(page)).toHaveCount(0)
   await page.evaluate(() => { openingTest.workspace.active.value = true }); await expect(amount(page)).toHaveValue('44.00')
   await dialog(page).getByRole('button', { name: 'Close this dialog', exact: true }).click(); await expect(page.getByText('确认放弃修改？', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '继续填写', exact: true }).click(); await expect(amount(page)).toHaveValue('44.00')
+  expect(closeEvents(state)).toHaveLength(0)
+  await dialog(page).getByRole('button', { name: 'Close this dialog', exact: true }).click()
+  await page.getByRole('button', { name: '放弃修改', exact: true }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  await expect.poll(() => closeEvents(state).map(body => body.input.reason)).toEqual(['dismiss'])
   expect(state.reads.filter(item => item.endpoint.includes('/FORM_OPEN/'))).toHaveLength(1); clean(state)
+})
+
+test('关闭事件区分保存和取消，带上配置摘要且失败不阻止关闭', async ({ page }) => {
+  const state = await setup(page, {
+    config: () => form({ hasFormCloseBinding: true }),
+    actions: () => [...actions, action('close', '取消')],
+    closeEvent: body => body.input.reason === 'cancel' ? { failure: '通知接口不可用' } : {}
+  })
+  await start(page)
+  await dialog(page).getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  await expect.poll(() => closeEvents(state).length).toBe(1)
+  const [saved] = closeEvents(state)
+  expect(saved).toMatchObject({ configId: 'form-test', configHash: 'hash-1', input: { mode: 'create', reason: 'saved', savedRecordId: 'saved' } })
+  expect(saved.recordId).toBeUndefined()
+
+  await start(page, 'edit', 'b')
+  const failedNotification = page.waitForResponse(response => response.url().includes('/FORM_CLOSE/') && response.status() === 500)
+  await dialog(page).getByRole('button', { name: '取消', exact: true }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  await failedNotification
+  expect(closeEvents(state)).toHaveLength(2)
+  expect(closeEvents(state)[1]).toMatchObject({ recordId: 'b', input: { mode: 'edit', reason: 'cancel' } })
+  await expect(page.getByText('通知接口不可用', { exact: true })).toHaveCount(0)
+  clean(state)
 })
 
 for (const mode of ['create', 'edit']) test(`真实列表 ${mode}：加载配置时已打开，关闭立即释放入口，下一次重新解析发布表单`, async ({ page }) => {

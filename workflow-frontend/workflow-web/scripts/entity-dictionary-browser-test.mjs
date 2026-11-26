@@ -25,7 +25,9 @@ const fields = [
   {id:'published',fieldCode:'choice',fieldName:'已发布选择',fieldType:'SELECT',dictType:'demo_choice',isPublished:true},
   {id:'draft',fieldCode:'draftChoice',fieldName:'未发布选择',fieldType:'RADIO',dictType:'demo_choice',isPublished:false},
   {id:'retired',fieldCode:'retiredChoice',fieldName:'停用绑定',fieldType:'CHECKBOX',dictType:'retired',isPublished:true},
-  {id:'missing',fieldCode:'missingChoice',fieldName:'缺失绑定',fieldType:'MULTI_SELECT',dictType:'missing',isPublished:true}]
+  {id:'missing',fieldCode:'missingChoice',fieldName:'缺失绑定',fieldType:'MULTI_SELECT',dictType:'missing',isPublished:true},
+  {id:'name',fieldCode:'name',fieldName:'数据名称',fieldType:'STRING',isSystem:true},
+  {id:'status',fieldCode:'status',fieldName:'状态',fieldType:'STRING',isSystem:true,editable:false}]
 request.defaults.adapter = async config => {
   const url = config.url, data = config.data ? JSON.parse(config.data) : null
   state.calls.push({url, method:config.method, data})
@@ -78,6 +80,15 @@ try {
     await drawer.getByRole('button', { name: '关闭', exact: true }).click()
     await drawer.waitFor({ state: 'hidden' })
   }
+
+  // 已有实体仍返回 STRING 元数据，设计器应显示系统状态的实际组件和选项来源。
+  const statusField = page.locator('.field-item').filter({ has: page.getByText('status', { exact: true }) })
+  await statusField.getByText('下拉单选', { exact: true }).waitFor()
+  await statusField.click()
+  await panel.getByText('下拉单选', { exact: true }).waitFor()
+  await panel.getByText('实体状态（系统提供）', { exact: true }).waitFor()
+  assert.equal(await panel.locator('.picker-trigger').count(), 0)
+  await page.locator('.field-item').filter({ hasText: '数据名称' }).getByText('文本', { exact: true }).waitFor()
 
   await selectField('已发布选择')
   assert.equal(await panel.locator('.picker-trigger').isDisabled(), true)

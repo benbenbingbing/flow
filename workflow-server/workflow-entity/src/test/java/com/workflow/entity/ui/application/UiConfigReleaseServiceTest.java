@@ -27,7 +27,9 @@ import com.workflow.port.platform.context.audit.OperationContextHolder;
 import com.workflow.port.platform.model.audit.SystemAuditEvent;
 import com.workflow.port.platform.SystemOperationLogPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
@@ -1081,6 +1083,44 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void defaultSystemStatusBindingIsPublishableButNotALocalDraftEdit() {
+        TestContext context = context();
+        EntityForm form = form();
+        EntityFormNode status = new EntityFormNode();
+        status.setId("status-node");
+        status.setNodeKey("status");
+        status.setNodeType("FIELD");
+        status.setBindingType("ENTITY_FIELD");
+        status.setBindingRef("status");
+        status.setPropsDocument("{\"fieldCode\":\"status\",\"fieldName\":\"状态\",\"fieldType\":\"STRING\",\"componentType\":\"input\"}");
+        form.setNodes(List.of(status));
+        when(context.formService().getById("form-1")).thenReturn(form);
+        UiConfigRelease legacy = configRelease(context.codec(), "release-legacy", "FORM", "form-1",
+                context.service().draftSnapshot("FORM", "form-1"));
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(legacy);
+
+        EntityField field = new EntityField();
+        field.setFieldCode("status");
+        field.setIsSystem(true);
+        field.setEditable(false);
+        EntityFieldMapper fields = mock(EntityFieldMapper.class);
+        when(fields.findByEntityId(form.getEntityId())).thenReturn(List.of(field));
+        EntityDefinition entity = new EntityDefinition();
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        EntityDefinitionMapper entities = mock(EntityDefinitionMapper.class);
+        when(entities.selectById(form.getEntityId())).thenReturn(entity);
+        ReflectionTestUtils.setField(context.service(), "fieldOptionInterfaces",
+                new EntityFieldOptionInterfaces(fields, mock(UiExtensionDefinitionMapper.class), entities, context.codec()));
+
+        var draft = context.service().draftSnapshot("FORM", "form-1");
+        assertTrue(context.codec().write(draft.get("nodes"), "状态节点").contains(EntityStatusOptionsProvider.EXTENSION_ID));
+        assertFalse(legacy.getSnapshotDocument().contains(EntityStatusOptionsProvider.EXTENSION_ID));
+        UiConfigDiffDTO diff = context.service().diff("FORM", "form-1");
+        assertTrue(diff.isChanged());
+        assertFalse(diff.isCanDiscardDraft());
+    }
+
+    @Test
     void invalidCompositionDraftCanBeDiscardedUsingTheHashReturnedByDiff() {
         TestContext context = context();
         EntityForm published = form();
@@ -1932,7 +1972,9 @@ class UiConfigReleaseServiceTest {
                         "operationSnapshotVersion", 1,
                         "executableSnapshot", "{\"configDocument\":\"secret\"}"))),
                 Map.of("ownerType", "FORM", "ownerId", "form-1", "targetType", "OWNER",
-                        "eventCode", "FORM_OPEN", "steps", List.of(Map.of("name", "新增回填")))));
+                        "eventCode", "FORM_OPEN", "steps", List.of(Map.of("name", "新增回填"))),
+                Map.of("ownerType", "ENTITY", "ownerId", "entity-1", "targetType", "OWNER",
+                        "eventCode", "FORM_CLOSE", "steps", List.of(Map.of("name", "关闭通知")))));
         snapshot.put("viewCompositions", List.of(Map.of(
                 "compositionKey", "legacy-related-content",
                 "nested", Map.of(
@@ -1952,6 +1994,7 @@ class UiConfigReleaseServiceTest {
         Map<?, ?> runtimeSnapshot = (Map<?, ?>)
                 result.get("snapshotDocument");
         assertEquals(true, result.get("hasFormOpenBinding"));
+        assertEquals(true, ((Map<?, ?>) runtimeSnapshot.get("form")).get("hasFormCloseBinding"));
         assertFalse(runtimeSnapshot.containsKey("eventBindings"));
         String serialized = String.valueOf(runtimeSnapshot);
         assertFalse(serialized.contains("executableSnapshot"));
@@ -1960,6 +2003,23 @@ class UiConfigReleaseServiceTest {
         assertFalse(serialized.contains("api-token-secret"));
         assertTrue(active.getSnapshotDocument().contains(
                 "api-token-secret"));
+    }
+
+    @Test
+    void formDisableSuppressesInheritedCloseNotification() {
+        TestContext context = context();
+        Map<String, Object> snapshot = formSnapshot(List.of());
+        snapshot.put("eventBindings", List.of(
+                Map.of("ownerType", "ENTITY", "ownerId", "entity-1", "targetType", "OWNER",
+                        "eventCode", "FORM_CLOSE", "steps", List.of(Map.of("name", "关闭通知"))),
+                Map.of("ownerType", "FORM", "ownerId", "form-1", "targetType", "OWNER",
+                        "eventCode", "FORM_CLOSE", "inheritanceMode", "DISABLE")));
+        UiConfigRelease active = release(context.codec(), "release-active", snapshot);
+        active.setStatus("ACTIVE");
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(active);
+
+        Map<?, ?> runtimeSnapshot = (Map<?, ?>) context.service().runtimeFormRelease("form-1", Map.of()).get("snapshotDocument");
+        assertEquals(false, ((Map<?, ?>) runtimeSnapshot.get("form")).get("hasFormCloseBinding"));
     }
 
 

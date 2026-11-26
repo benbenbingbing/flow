@@ -1107,10 +1107,11 @@ public class UiDataSourceExecutionAccessService {
                 .contains(normalize(eventCode));
     }
 
-    /** 流程表单加载仅复用已验证任务/实例的读取权限，不包含保存或按钮操作。 */
+    /** 读取和关闭通知复用已验证任务或实例。Provider 仍须通过接口执行权限校验。 */
     static boolean isFormReadEvent(String configType, String eventCode) {
         return FORM.equals(normalize(configType)) && Set.of(UiDataSourceUsages.FORM_OPEN,
-                UiDataSourceUsages.DETAIL_LOAD, UiDataSourceUsages.SUBFORM_LOAD).contains(normalize(eventCode));
+                UiDataSourceUsages.DETAIL_LOAD, UiDataSourceUsages.SUBFORM_LOAD,
+                UiDataSourceUsages.FORM_CLOSE).contains(normalize(eventCode));
     }
 
     /**

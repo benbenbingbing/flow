@@ -90,10 +90,11 @@ const uiEventBindingApi = {
       expectedRevision
     })
   },
-  execute(eventCode, data) {
+  execute(eventCode, data, options) {
     return request.post(
       `/ui-runtime/events/${eventCode}/execute`,
-      buildUiEventExecutionPayload(runtimeRequest(data), eventCode)
+      buildUiEventExecutionPayload(runtimeRequest(data), eventCode),
+      options
     )
   }
 }

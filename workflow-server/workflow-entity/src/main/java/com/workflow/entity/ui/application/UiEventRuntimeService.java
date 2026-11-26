@@ -291,7 +291,12 @@ public class UiEventRuntimeService {
                     step, request, chain, state, result);
             // 查询回填是草稿效果；不能用它的部分 form 结构覆盖原始事件输入。
             if (!EntityLookupEventStep.matches(step) && stepResult instanceof Map<?, ?> map) {
-                mutableInput(state).putAll(stringMap(map));
+                Map<String, Object> output = stringMap(map);
+                if (UiDataSourceUsages.FORM_CLOSE.equals(normalize(request.getEventCode()))) {
+                    // 后续条件应继续匹配本次关闭的模式和原因，即使前置接口返回同名字段。
+                    output.keySet().removeAll(Set.of("mode", "reason", "savedRecordId", "params"));
+                }
+                mutableInput(state).putAll(output);
             }
             if (stepResult != null) {
                 latest = stepResult;
@@ -398,6 +403,14 @@ public class UiEventRuntimeService {
         EntityPermissionAction action = switch (eventCode) {
             case UiDataSourceUsages.DATA_CREATE ->
                     EntityPermissionAction.CREATE;
+            case UiDataSourceUsages.FORM_CLOSE -> {
+                if (StringUtils.hasText(request.getRecordId())) {
+                    // 关闭步骤可能把 ID 发送给外部接口，先按详情权限验证记录范围。
+                    entityLookupReader.requireAccessibleRecord(entityCode, request.getRecordId(), chain.listKey());
+                    yield null;
+                }
+                yield EntityPermissionAction.CREATE;
+            }
             case UiDataSourceUsages.DATA_UPDATE,
                     UiDataSourceUsages.FORM_SAVE,
                     UiDataSourceUsages.SUBFORM_SAVE,
@@ -1196,6 +1209,8 @@ public class UiEventRuntimeService {
                     execute.setServerFormMode(request.getServerAuthorizedMode());
                     execute.setServerTaskId(request.getServerTaskId());
                     execute.setServerProcessInstanceId(request.getServerProcessInstanceId());
+                } else if (UiDataSourceUsages.FORM_CLOSE.equals(execute.getUsage())) {
+                    execute.setServerRecordId(request.getRecordId());
                 }
                 execute.setTargetType(
                         StringUtils.hasText(request.getTargetType())

@@ -216,10 +216,18 @@ assert.match(interfaceEditorSource, /v-model="editor\.scopeEntityIds"\s+multiple
 assert.doesNotMatch(interfaceEditorSource, /v-model="editor\.scopeId"|选择具体表单或列表/)
 assert.match(interfaceEditorSource, /scopeEntityIds: editor\.scopeType === 'GLOBAL' \? \[\] : \[\.\.\.editor\.scopeEntityIds\]/)
 
+const formEventGroups = eventGroupsForScope('FORM', 'OWNER')
 assert.deepEqual(
-  eventGroupsForScope('FORM', 'OWNER').map(group => group.label),
+  formEventGroups.map(group => group.label),
   ['表单生命周期', '表单数据', '字段默认事件', '子表单默认事件', '表单按钮']
 )
+assert.deepEqual(formEventGroups[0].events, ['FORM_OPEN', 'FORM_SAVE', 'FORM_RESET', 'FORM_CLOSE'])
+assert.deepEqual(formEventGroups[1].events, [
+  'DETAIL_LOAD', 'DATA_CREATE', 'DATA_UPDATE'
+])
+assert.deepEqual(formEventGroups[2].events, [
+  'AFTER_LOAD', 'BEFORE_SUBMIT', 'FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK'
+])
 assert.equal(eventsForScope('FORM').includes('FORM_SAVE'), true)
 assert.equal(eventsForScope('FORM').includes('LIST_LOAD'), false)
 assert.deepEqual(eventsForScope('LIST', 'BUTTON'), [

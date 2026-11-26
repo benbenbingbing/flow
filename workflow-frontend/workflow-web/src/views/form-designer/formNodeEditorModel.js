@@ -12,6 +12,17 @@ import { DATA_PICKER_USAGES } from '@flow/workflow-core/data-picker'
 export const isGenericNodeDataSourceUsage = usage =>
   !['FIELD_OPTIONS', 'FIELD_DEFAULT', ...DATA_PICKER_USAGES].includes(usage)
 
+/** 普通字段的新生命周期规则在表单事件中创建，已有节点绑定仍可原位维护，以保留字段和子表行上下文。 */
+export function getEditableNodeDataSourceUsages(nodeType, bindings) {
+  const type = normalizeFormNodeType(nodeType)
+  const usages = getFormNodeDataSourceUsages(type).filter(isGenericNodeDataSourceUsage)
+  if (type !== 'FIELD') return usages
+  const configured = Object.entries(safeParseConfig(bindings))
+    .filter(([, binding]) => binding?.extensionId || binding?.interfaceExtensionId || binding?.serviceId || binding?.dataSourceId)
+    .map(([usage]) => usage.trim().toUpperCase())
+  return usages.filter(usage => configured.includes(usage))
+}
+
 /**
  * 统一组件目录按宿主节点、绑定与实体类型筛选；平台预置和项目组件遵守相同约束。
  * 未声明 nodeTypes 的字段控件只适用于 FIELD，避免误用于子表单的整行数据。
@@ -75,10 +86,10 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
       props,
       node.nodeKey
     )
-    const allowedDataSourceUsages = getFormNodeDataSourceUsages(nodeType).filter(isGenericNodeDataSourceUsage)
+    const editableDataSourceUsages = getEditableNodeDataSourceUsages(nodeType, bindings)
     const firstBinding = Object.entries(bindings)
       .find(([usage]) =>
-        allowedDataSourceUsages.includes(String(usage).toUpperCase())
+        editableDataSourceUsages.includes(String(usage).toUpperCase())
       ) || []
     const componentConfig = extractFormNodeComponentConfig(nodeType, props)
     const rulesSupported = formNodeSupports(nodeType, 'rules')
@@ -144,7 +155,7 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
       extensionConfig: rulesSupported
         ? stringifyConfig(rules.extension || {})
         : '',
-      dataSourceUsage: firstBinding[0] || allowedDataSourceUsages[0] || '',
+      dataSourceUsage: firstBinding[0] || editableDataSourceUsages[0] || '',
       interfaceExtensionId: firstBinding[1]?.extensionId || '',
       dataSourceInputMappingText: stringifyConfig(
         firstBinding[1]?.inputMapping || {}

@@ -1,11 +1,15 @@
 <template>
   <div class="node-data-settings">
+    <p v-if="isFieldNode && activeNodeSettingsTab === 'extension'" class="form-tip">
+      加载后处理和提交前处理在「表单设置 → 表单事件 → 字段默认事件」中配置。
+    </p>
     <SettingsSection
+      v-if="!isFieldNode || canConfigureSelectedNodeDataSource"
       :disabled="!canConfigureSelectedNodeDataSource"
       disabled-reason="当前节点不支持数据源绑定"
       v-show="activeNodeSettingsTab === 'extension'"
       title="数据源绑定"
-      description="按用途配置子表行数据、加载和提交处理"
+      :description="isFieldNode ? '维护当前字段已有的数据源绑定' : '按用途配置子表行数据、加载和提交处理'"
     >
       <template #summary>
         <el-tag
@@ -20,12 +24,10 @@
 
       <div class="data-source-usage-list">
         <button
-          v-for="usage in nodeDataSourceUsageOptions"
+          v-for="usage in availableNodeDataSourceUsages"
           :key="usage.value"
           type="button"
           class="data-source-usage-row"
-          :disabled="usage.disabled"
-          :title="usage.disabled ? '当前节点不支持此数据源用途' : usage.label"
           :class="{ active: selectedField.dataSourceUsage === usage.value }"
           @click="selectNodeDataSourceUsage(usage.value)"
         >
@@ -35,7 +37,7 @@
             :type="isNodeDataSourceUsageConfigured(usage.value) ? 'success' : 'info'"
             effect="plain"
           >
-            {{ usage.disabled ? '不适用' : isNodeDataSourceUsageConfigured(usage.value) ? '已配置' : '未配置' }}
+            {{ isNodeDataSourceUsageConfigured(usage.value) ? '已配置' : '未配置' }}
           </el-tag>
         </button>
       </div>
@@ -294,10 +296,10 @@ const {
   entityInfo,
   entityFields,
   activeNodeSettingsTab,
+  isFieldNode,
   canConfigureSelectedNodeDataSource,
   selectedNodeDataSourceBindingCount,
   availableNodeDataSourceUsages,
-  nodeDataSourceUsageOptions,
   isNodeDataSourceUsageConfigured,
   selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel,

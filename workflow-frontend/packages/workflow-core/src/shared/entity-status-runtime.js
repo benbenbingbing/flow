@@ -5,6 +5,9 @@ export const PROCESS_STATUS_OPTIONS = Object.freeze([
   { value: 'COMPLETED', label: '已完成' }
 ])
 
+// 与平台扩展目录的稳定 ID 对应，供草稿预览和旧版回显判断选项来源。
+export const ENTITY_STATUS_OPTIONS_EXTENSION_ID = 'platform_entity_status_options'
+
 export function isProcessStatusField(field) {
   return ['processStatus', 'process_status'].includes(field?.fieldCode || field?.fieldKey || '')
 }
@@ -86,6 +89,17 @@ export function isEntityStatusField(field) {
   return String(fieldCode).trim().toLowerCase() === 'status'
 }
 
+/** 仅给实体目录中的标准状态字段自动绑定平台数据源。 */
+export function isSystemEntityStatusField(field) {
+  return [true, 1, '1'].includes(field?.isSystem) && field.fieldCode === 'status'
+}
+
+function hasPublishedStatusOptions(node) {
+  const bindings = parseDocument(node?.dataSourceBindingsDocument || node?.dataSourceBindings)
+  return bindings.FIELD_OPTIONS?.extensionId === ENTITY_STATUS_OPTIONS_EXTENSION_ID
+    && bindings.FIELD_OPTIONS?.enabled !== false
+}
+
 export function withEntityStatusFieldOptions(
   field,
   statuses = [],
@@ -97,7 +111,7 @@ export function withEntityStatusFieldOptions(
         && ['select_multiple', 'multi_select'].includes(field?.componentType) ? 'select_multiple' : 'select', editable: false,
       readonly: true, options: PROCESS_STATUS_OPTIONS, runtimeOptions: PROCESS_STATUS_OPTIONS }
   }
-  if (!isEntityStatusField(field)) return field
+  if (!isEntityStatusField(field) || [false, 0, '0'].includes(field?.isSystem)) return field
   const statusOptions = getEffectiveEntityStatusOptions(statuses)
   const configuredComponent = String(field?.componentType || '')
     .trim()
@@ -132,12 +146,15 @@ export function withEntityStatusRuntimeNodes(nodes = [], fields = [], statuses =
   return (nodes || []).map(node => {
     const nodeType = String(node?.nodeType || '').toUpperCase()
     if (!['FIELD', 'SUB_FORM', 'REPEATER'].includes(nodeType)) return node
+    // 新快照由通用下拉按发布绑定查询；旧回显注入候选会遮住该绑定。
+    if (hasPublishedStatusOptions(node)) return node
 
     const nodeProps = parseDocument(node?.propsDocument || node?.props)
     const linkedField = resolveNodeField(node, nodeProps, fields)
     const fieldCode = nodeProps.fieldCode || linkedField?.fieldCode || node?.nodeKey
     const processStatus = ['processStatus', 'process_status'].includes(fieldCode)
     if (!processStatus && String(fieldCode || '').toLowerCase() !== 'status') return node
+    if (!processStatus && (node.bindingType === 'NONE' || [false, 0, '0'].includes(linkedField?.isSystem))) return node
 
     const runtimeProps = {
       ...nodeProps,
@@ -159,9 +176,14 @@ export function withEntityStatusRuntimeNodes(nodes = [], fields = [], statuses =
 export function withEntityStatusRuntimeForm(form, entityFields = [], statuses = []) {
   if (!form) return form
   const sourceFields = form.fields || []
-  const runtimeFields = sourceFields.map(field =>
-    withEntityStatusFieldOptions(field, statuses)
-  )
+  const providerNodes = (form.nodes || []).filter(hasPublishedStatusOptions)
+  const runtimeFields = sourceFields.map(field => {
+    const usesProvider = isEntityStatusField(field) && providerNodes.some(node =>
+      resolveNodeField(node, parseDocument(node.propsDocument || node.props), [field]))
+    // 字段列表与节点列表共存时也不为已绑定的数据源预填候选。
+    return usesProvider ? { ...field, options: undefined, runtimeOptions: undefined }
+      : withEntityStatusFieldOptions(field, statuses)
+  })
   const statusAwareEntityFields = (entityFields || []).map(field =>
     withEntityStatusFieldOptions(field, statuses)
   )
