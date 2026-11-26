@@ -2,8 +2,15 @@
   <el-card class="search-card">
     <el-form :model="form" inline :label-width="`${searchConfig.labelWidth || 100}px`">
       <el-form-item v-for="field in visibleQueryFields" :key="field.fieldCode" :label="field.fieldName">
+        <el-checkbox
+          v-if="useListConfig && isListNullQueryOperator(field.queryType)"
+          :model-value="form[field.fieldCode] === true"
+          @update:model-value="form[field.fieldCode] = $event"
+        >
+          {{ field.queryType === 'NOT_EMPTY' ? '非空' : '为空' }}
+        </el-checkbox>
         <!-- BETWEEN 范围查询：与单值查询共用字段渲染链路，查询组件覆盖、字典选项和 DATETIME 时分秒格式均一致生效 -->
-        <template v-if="field.queryType === 'BETWEEN' && useListConfig">
+        <template v-else-if="field.queryType === 'BETWEEN' && useListConfig">
           <div class="range-query-control">
             <FormFieldRenderer
               class="query-field-control"
@@ -12,6 +19,7 @@
               @patch-form="applyQueryPatch"
               v-model="form[field.fieldCode + '_start']"
               :field="rangeEndField(field, 'start')"
+              :options="field.dictType ? undefined : field.runtimeOptions"
             />
             <span>~</span>
             <FormFieldRenderer
@@ -21,6 +29,7 @@
               @patch-form="applyQueryPatch"
               v-model="form[field.fieldCode + '_end']"
               :field="rangeEndField(field, 'end')"
+              :options="field.dictType ? undefined : field.runtimeOptions"
             />
           </div>
         </template>
@@ -33,6 +42,7 @@
               @patch-form="applyQueryPatch"
           v-model="form[field.fieldCode]"
           :field="field"
+          :options="field.dictType ? undefined : field.runtimeOptions"
         />
       </el-form-item>
       <el-form-item>
@@ -55,6 +65,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { isListNullQueryOperator } from '@flow/workflow-core/list-query-filters'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 
 const props = defineProps<{

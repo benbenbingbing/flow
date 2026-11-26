@@ -1,4 +1,5 @@
 import { isSystemField } from '@flow/workflow-core/form-runtime'
+import { isListNullQueryOperator } from '@flow/workflow-core/list-query-filters'
 import {
   isEntityStatusField,
   resolveEntityStatusLabel,
@@ -20,6 +21,17 @@ export function toRuntimeFieldKey(fieldCode = '') {
 }
 
 export { buildListRequestFilters, toListFilterFieldCode } from '@flow/workflow-core/list-query-filters'
+
+/** 空值条件默认关闭；多选控件需要数组，兼容历史默认值使用逗号分隔的编码。 */
+export function resolveListQueryDefaultValue({ componentType, defaultValue }, queryType) {
+  if (isListNullQueryOperator(queryType)) return undefined
+  if (!['select_multiple', 'multi_select'].includes(componentType) || !['IN', 'NOT_IN'].includes(queryType)) {
+    return defaultValue
+  }
+  if (typeof defaultValue === 'string') return defaultValue.split(',').map(code => code.trim()).filter(Boolean)
+  if (Array.isArray(defaultValue)) return defaultValue
+  return defaultValue == null ? [] : [defaultValue]
+}
 
 function getContainerValue(container, fieldCode) {
   if (!container || typeof container !== 'object') return undefined

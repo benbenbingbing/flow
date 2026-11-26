@@ -666,10 +666,8 @@ public class EntityDataSqlProvider {
     // ============ 私有辅助方法 ============
 
     /**
-     * 追加查询条件到 SQL
-     * 支持查询方式：EQ(等于)、NE(不等于)、LIKE(包含)、GT(大于)、LT(小于)、
-     * BETWEEN(范围)、IN(包含于)、NOT_IN(不包含于)、IS_NULL(为空)
-     * 通过 _op 后缀参数指定查询方式，例如：name=xxx&name_op=EQ
+     * 追加查询条件到 SQL。使用 _op 指定等值、范围、模式、集合或空值判断；
+     * 空值判断只读取操作符，其他查询值按列类型绑定。
      *
      * @param sql SQL，作为 {@code appendInCondition} 的输入影响后续处理
      * @param params 参数，作为 {@code appendInCondition} 的输入影响后续处理
@@ -742,48 +740,59 @@ public class EntityDataSqlProvider {
             }
         }
 
+        // 空值判断允许只传 _op。旧调用附带的占位值也要移除，避免另外生成普通比较。
+        opMap.forEach((field, operator) -> {
+            String predicate = switch (operator) {
+                case "EMPTY", "IS_NULL" -> " IS NULL";
+                case "NOT_EMPTY" -> " IS NOT NULL";
+                default -> null;
+            };
+            if (predicate != null) {
+                sql.append(" AND ").append(conditionColumnName(field, condition, context)).append(predicate);
+                normalConditions.remove(field);
+            }
+        });
+
         // 处理普通条件（根据查询方式生成对应 SQL）
         for (Map.Entry<String, Object> entry : normalConditions.entrySet()) {
             String fieldKey = entry.getKey();
-            String columnName = conditionColumnName(fieldKey, condition, context);
             Object value = entry.getValue();
             String op = opMap.getOrDefault(fieldKey, "");
 
-            if ("IS_NULL".equals(op)) {
-                // IS_NULL 只接受由服务端可信配置生成的操作符。调用方仍需提供
-                // 非空占位值，使该字段进入 normalConditions；值本身不会拼入 SQL。
-                sql.append(" AND ").append(columnName).append(" IS NULL");
-            } else if ("EQ".equals(op)) {
-                sql.append(" AND ").append(conditionComparison(params, condition, fieldKey, "=", value, "condition." + fieldKey, context));
-            } else if ("NE".equals(op)) {
-                sql.append(" AND ").append(conditionComparison(params, condition, fieldKey, "<>", value, "condition." + fieldKey, context));
-            } else if ("GT".equals(op)) {
-                sql.append(" AND ").append(conditionComparison(params, condition, fieldKey, ">", value, "condition." + fieldKey, context));
-            } else if ("LT".equals(op)) {
-                sql.append(" AND ").append(conditionComparison(params, condition, fieldKey, "<", value, "condition." + fieldKey, context));
-            } else if ("IN".equals(op) || "NOT_IN".equals(op)) {
+            if ("IN".equals(op) || "NOT_IN".equals(op)) {
                 appendInCondition(
                         sql,
                         params,
                         condition,
-                        columnName,
+                        conditionColumnName(fieldKey, condition, context),
                         fieldKey,
                         value,
                         "NOT_IN".equals(op), context);
-            } else if ("LIKE".equals(op) || (op.isEmpty() && value instanceof String)) {
+            } else if ("LIKE".equals(op) || "NOT_LIKE".equals(op) || (op.isEmpty() && value instanceof String)) {
                 // 在 Java 中构造同样的包含模式再绑定，避免 Oracle 不支持三参数 CONCAT；
                 // 用户输入中的引号和 SQL 标记仍然只是参数值，不能进入 SQL 文本。
                 String parameterKey = "__condition_" + fieldKey + "_like";
                 params.put(parameterKey, "%" + value + "%");
-                String expression = columnName;
+                String expression = conditionColumnName(fieldKey, condition, context);
                 if (condition instanceof EntityQueryConditions typed) {
                     var column = typed.column(fieldKey);
                     expression = DatabaseQueryDialects.forDatabaseId(context.getDatabaseId())
                             .patternValueExpression(column.name(), column.type());
                 }
-                sql.append(" AND ").append(expression).append(" LIKE #{").append(parameterKey).append(",jdbcType=VARCHAR}");
+                sql.append(" AND ").append(expression)
+                        .append("NOT_LIKE".equals(op) ? " NOT LIKE #{" : " LIKE #{")
+                        .append(parameterKey).append(",jdbcType=VARCHAR}");
             } else {
-                sql.append(" AND ").append(conditionComparison(params, condition, fieldKey, "=", value, "condition." + fieldKey, context));
+                String comparison = switch (op) {
+                    case "NE" -> "<>";
+                    case "GT" -> ">";
+                    case "GE" -> ">=";
+                    case "LT" -> "<";
+                    case "LE" -> "<=";
+                    default -> "=";
+                };
+                sql.append(" AND ").append(conditionComparison(params, condition, fieldKey, comparison,
+                        value, "condition." + fieldKey, context));
             }
         }
     }

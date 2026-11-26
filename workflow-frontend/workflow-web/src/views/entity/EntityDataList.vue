@@ -263,7 +263,8 @@ import {
   buildListRequestFilters,
   formatDateValue,
   getCellValue,
-  isReferenceListField
+  isReferenceListField,
+  resolveListQueryDefaultValue
 } from '@/shared/list-runtime'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { filterRelatedContentButtons } from '@/shared/related-content-runtime'
@@ -514,8 +515,9 @@ const queryFields = computed(() => {
           ...f,
           componentType: queryConfig.componentType || originField?.componentType || f.componentType,
           placeholder: queryConfig.placeholder || f.placeholder,
-          defaultValue: queryConfig.defaultValue,
+          defaultValue: resolveListQueryDefaultValue(queryConfig, f.queryType),
           fieldType: originField?.fieldType || f.fieldType || 'STRING',
+          isSystem: originField?.isSystem ?? f.isSystem,
           dictType,
           options: dictOptions || [],
           refEntityType: originField?.refEntityType,

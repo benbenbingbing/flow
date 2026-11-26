@@ -272,7 +272,7 @@ public class EntityMultiValueRuntimeService {
         List<String> fragments = new ArrayList<>();
         int sequence = 0;
         for (EntityField field : multiValueFields(definition.getId())) {
-            String fieldKey = condition.containsKey(field.getFieldCode())
+            String fieldKey = condition.containsKey(field.getFieldCode()) || condition.containsKey(field.getFieldCode() + "_op")
                     ? field.getFieldCode()
                     : toSnakeCase(field.getFieldCode());
             String labelKey = field.getFieldCode() + "_label";
@@ -286,7 +286,10 @@ public class EntityMultiValueRuntimeService {
             String operation = text(condition.remove(fieldKey + "_op"));
             Object rawLabel = condition.remove(labelKey);
             String labelOperation = text(condition.remove(labelKey + "_op"));
-            if (rawValue == null && rawLabel == null && !"EMPTY".equalsIgnoreCase(operation)) {
+            // 独立多值字段没有主表列，按关联记录是否存在判断空值。
+            boolean empty = "EMPTY".equalsIgnoreCase(operation) || "IS_NULL".equalsIgnoreCase(operation);
+            boolean notEmpty = "NOT_EMPTY".equalsIgnoreCase(operation);
+            if (rawValue == null && rawLabel == null && !empty && !notEmpty) {
                 continue;
             }
             String entityParam = "__multi_entity_" + sequence;
@@ -308,8 +311,8 @@ public class EntityMultiValueRuntimeService {
                         base,
                         labelParam,
                         labelOperation));
-            } else if ("EMPTY".equalsIgnoreCase(operation)) {
-                fragments.add("NOT EXISTS (" + base + ")");
+            } else if (empty || notEmpty) {
+                fragments.add((empty ? "NOT EXISTS (" : "EXISTS (") + base + ")");
             } else {
                 List<String> targetIds = resolveTargetRecordIds(field, normalizeValues(rawValue));
                 if (targetIds.isEmpty()) {

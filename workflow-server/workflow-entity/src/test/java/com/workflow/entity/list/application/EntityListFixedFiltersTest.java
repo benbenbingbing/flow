@@ -52,4 +52,15 @@ class EntityListFixedFiltersTest {
                 Map.of("name", "部分", "name_op", "LIKE"),
                 EntityListFixedFilters.normalize(Map.of("name", "完整部分名称"))));
     }
+
+    @Test
+    void nullFiltersCannotBeOverriddenByScalarFilters() {
+        Map<String, Object> fixedValue = EntityListFixedFilters.normalize(Map.of("status", "ACTIVE"));
+        assertTrue(EntityListFixedFilters.conflictsWithFixedEquality(
+                Map.of("status", true, "status_op", "EMPTY"), fixedValue));
+        assertTrue(EntityListFixedFilters.conflictsWithFixedEquality(Map.of("status_op", "IS_NULL"), fixedValue));
+        assertFalse(EntityListFixedFilters.conflictsWithFixedEquality(Map.of("status_op", "NOT_EMPTY"), fixedValue));
+        assertEquals("IS_NULL", EntityListFixedFilters.apply(
+                Map.of("status", "ACTIVE", "status_op", "EQ"), Map.of("status_op", "IS_NULL")).get("status_op"));
+    }
 }

@@ -31,7 +31,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entityList.defaultSort':
     '不配置时，平台默认查询按创建时间（create_time）降序，最新创建的记录在前。系统表没有创建时间字段时按 ID 升序；两者都没有时不指定排序。若使用自定义查询，则以该查询返回的顺序为准。',
   'entityList.queryType':
-    '决定查询控件如何生成条件，例如等于、模糊、区间或多值匹配。可选项会按字段类型过滤。',
+    '决定如何匹配查询结果。选择“为空”或“非空”后，在列表查询区勾选即可按空值筛选。单选字段使用下拉多选时，默认按“包含于”匹配任一所选值。',
   'entityList.columnWidth':
     '单位为像素（px），例如 160 表示 160px。大于 0 时使用固定列宽；设为 0 时自动分配宽度，并以“最小宽度”为下限。',
   'entityList.columnSortable':

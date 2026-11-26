@@ -41,7 +41,7 @@ public class EntityListConfigurationValidator {
     /** 支持的查询方式 */
     private static final Set<String> QUERY_TYPES = Set.of(
             "EQ", "NE", "LIKE", "NOT_LIKE", "GT", "GE", "LT", "LE",
-            "BETWEEN", "IN", "NOT_IN", "EMPTY", "NOT_EMPTY");
+            "BETWEEN", "IN", "NOT_IN", "EMPTY", "NOT_EMPTY", "IS_NULL");
     /** 支持的列对齐方式 */
     private static final Set<String> ALIGNMENTS = Set.of("left", "center", "right");
     /** 支持的数据范围模式 */

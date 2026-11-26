@@ -134,5 +134,14 @@ class EntityMultiValueRuntimeServiceTest {
         assertTrue(prepared.sqlCondition().contains("FROM biz_expense_multi mv"));
         assertTrue(prepared.sqlCondition().contains("mv.record_id = biz_expense.id"));
         assertTrue(prepared.sqlCondition().contains("mv.target_record_id IN"));
+
+        for (String operator : List.of("EMPTY", "IS_NULL", "NOT_EMPTY")) {
+            var nullCheck = service.prepareConditions(definition, Map.of("projects_op", operator));
+            assertFalse(nullCheck.condition().containsKey("projects_op"));
+            assertTrue(nullCheck.condition().containsValue("projects"));
+            assertTrue(nullCheck.sqlCondition().contains("mv.deleted = 0"));
+            assertEquals(!"NOT_EMPTY".equals(operator), nullCheck.sqlCondition().contains("NOT EXISTS ("));
+            assertTrue(nullCheck.sqlCondition().contains("EXISTS (SELECT 1 FROM biz_expense_multi"));
+        }
     }
 }

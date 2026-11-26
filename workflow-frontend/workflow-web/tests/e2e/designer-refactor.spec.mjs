@@ -64,6 +64,219 @@ test('列表设计：元数据成功但规则失败时停止，重试使用新 r
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
   await page.screenshot({ path: '../../.codex-artifacts/frontend-refactor/pc-list-settings.png', fullPage: true, animations: 'disabled' })
 })
+
+test('单选字典字段可保存并发布多选查询，选中任一值即可匹配', async ({ page }) => {
+  const state = await mock(page)
+  const priority = {
+    id: 'priority-field', fieldCode: 'priority', fieldName: '优先级', fieldType: 'SELECT',
+    dictType: 'priority', componentType: 'select', showInList: true, isQuery: true
+  }
+  const status = { id: 'status-field', fieldCode: 'status', fieldName: '状态', fieldType: 'STRING', isSystem: true }
+  const draft = {
+    ...config,
+    fields: [priority, status].map((item, index) => ({
+      ...item, id: `column-${item.fieldCode}`, fieldId: item.id, revision: 1,
+      showInList: true, isQuery: true, queryType: 'EQ', orderKey: (index + 1) * 1000000
+    }))
+  }
+  draft.fields[0].queryConfig = JSON.stringify({ defaultValue: 'HIGH' })
+  let published = structuredClone(draft)
+  const queries = []
+  const records = [['HIGH', '高优先级记录'], ['URGENT', '紧急记录'], ['LOW', '低优先级记录']]
+    .map(([priorityCode, name]) => ({ id: name, name, status: 'READY', data: { priority: priorityCode } }))
+
+  // 草稿与发布快照各自保存，运行页只读取已发布版本。
+  await page.route('**/api/**', async route => {
+    const request = route.request()
+    const endpoint = new URL(request.url()).pathname.slice(4)
+    let data
+    if (['/entity/entity-test', '/entity/code/test'].includes(endpoint)) data = { ...entity, fields: [priority, status] }
+    else if (endpoint === '/system/dict/item/tree/code/priority') {
+      data = [['HIGH', '高'], ['URGENT', '紧急'], ['LOW', '低']]
+        .map(([itemCode, itemLabel]) => ({ itemCode, itemLabel, status: '0' }))
+    } else if (endpoint === '/entity-status/list/test') data = [{ statusCode: 'READY', statusName: '待处理' }]
+    else if (endpoint === '/entity-list-config/list-test') data = draft
+    else if (endpoint === '/entity-list-config/list-test/diff') data = { changed: draft.revision !== published.revision }
+    else if (endpoint === '/entity-list-config/list-test/fields/column-priority/patch') {
+      const { field: savedField } = request.postDataJSON()
+      draft.fields[0] = { ...draft.fields[0], ...savedField, revision: 2 }
+      draft.revision++
+      data = draft.fields[0]
+    } else if (endpoint === '/entity-list-config/list-test/publish-preview') {
+      data = { changed: true, canPublish: true, blockers: [], draftHash: 'priority-multi', activeReleaseId: 'list-release' }
+    } else if (endpoint === '/entity-list-config/list-test/publish') {
+      published = structuredClone(draft)
+      data = published
+    } else if (endpoint === '/entity-lists/test/main/schema') data = published
+    else if (endpoint === '/entity-lists/test/main/query') {
+      const { filters } = request.postDataJSON()
+      queries.push(filters)
+      const matches = filters.priority_op === 'IN'
+        ? records.filter(row => filters.priority.includes(row.data.priority))
+        : records
+      data = { records: matches, total: matches.length }
+    } else return route.fallback()
+    return route.fulfill({ json: { code: 200, data } })
+  })
+
+  const openSettings = () => page.getByRole('row', { name: /^优先级 priority/ }).getByRole('button', { name: '设置', exact: true }).click()
+  const advanced = page.getByRole('dialog', { name: '字段高级配置：优先级' })
+  const option = name => page.getByRole('option', { name, exact: true }).filter({ visible: true })
+  const select = (scope, label) => scope.locator('.el-select__wrapper').filter({
+    has: page.getByRole('combobox', { name: label, exact: true })
+  })
+
+  await page.goto('/tests/e2e/designer-fixture.html?view=list')
+  await openSettings()
+  await select(advanced, '查询组件').click()
+  await option('下拉多选').click()
+  await expect(advanced.getByText('包含于', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '保存当前列' }).click()
+  await expect(advanced).toBeHidden()
+  expect(draft.fields[0].queryType).toBe('IN')
+  expect(JSON.parse(draft.fields[0].queryConfig).componentType).toBe('select_multiple')
+
+  await page.reload()
+  await openSettings()
+  await expect(advanced.getByText('下拉多选', { exact: true })).toBeVisible()
+  await expect(advanced.getByText('包含于', { exact: true })).toBeVisible()
+  await advanced.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('button', { name: '发布生效' }).click()
+  await page.getByRole('button', { name: '确认发布' }).click()
+  await expect(page.getByText('发布成功，已全局生效')).toBeVisible()
+
+  await page.getByRole('button', { name: '预览', exact: true }).click()
+  const preview = page.getByRole('dialog', { name: '列表预览' })
+  await select(preview.locator('.search-card'), '优先级').click()
+  await option('高').click()
+  await preview.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => queries.at(-1)).toEqual({ priority: ['HIGH'], priority_op: 'IN' })
+  await select(preview.locator('.search-card'), '优先级').locator('.el-tag__close').click()
+  await preview.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => queries.at(-1)).toEqual({})
+  await preview.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await page.goto('/tests/e2e/designer-fixture.html?view=data')
+  await expect.poll(() => queries.at(-1)).toEqual({ priority: ['HIGH'], priority_op: 'IN' })
+  const runtimeSearch = page.locator('.search-card')
+  const runtimePriority = select(runtimeSearch, '优先级')
+  await runtimePriority.click()
+  await option('紧急').click()
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => queries.at(-1)).toEqual({ priority: ['HIGH', 'URGENT'], priority_op: 'IN' })
+  await expect(page.locator('.el-table__body tbody tr')).toHaveCount(2)
+
+  await select(runtimeSearch, '状态').click()
+  await option('待处理').click()
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => queries.at(-1)).toEqual({ priority: ['HIGH', 'URGENT'], priority_op: 'IN', status: 'READY', status_op: 'EQ' })
+  await page.getByRole('button', { name: '重置', exact: true }).click()
+  await expect.poll(() => queries.at(-1)).toEqual({ priority: ['HIGH'], priority_op: 'IN' })
+  await expect(page.locator('.el-table__body tbody tr')).toHaveCount(1)
+  expect(state.errors).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('查询方式显示伪 SQL，空值条件可以保存、勾选和重置', async ({ page }) => {
+  const state = await mock(page)
+  const comment = { ...field, id: 'comment-field', fieldCode: 'comment', fieldName: '备注', fieldLabel: '备注', fieldType: 'STRING', componentType: 'input' }
+  const draft = {
+    ...config,
+    fields: [{
+      ...column, ...comment, id: 'column-comment', fieldId: comment.id, queryType: 'LIKE',
+      queryConfig: JSON.stringify({ componentType: 'input', defaultValue: '旧默认值' })
+    }]
+  }
+  let published = structuredClone(draft)
+  const queries = []
+  await page.route('**/api/**', async route => {
+    const request = route.request()
+    const endpoint = new URL(request.url()).pathname.slice(4)
+    let data
+    if (['/entity/entity-test', '/entity/code/test'].includes(endpoint)) data = { ...entity, fields: [comment] }
+    else if (endpoint === '/entity-list-config/list-test') data = draft
+    else if (endpoint === '/entity-list-config/list-test/diff') data = { changed: draft.revision !== published.revision }
+    else if (endpoint === '/entity-list-config/list-test/fields/column-comment/patch') {
+      draft.fields[0] = { ...draft.fields[0], ...request.postDataJSON().field, revision: draft.fields[0].revision + 1 }
+      draft.revision++
+      data = draft.fields[0]
+    } else if (endpoint === '/entity-list-config/list-test/publish-preview') {
+      data = { changed: true, canPublish: true, blockers: [], draftHash: 'comment-null', activeReleaseId: 'list-release' }
+    } else if (endpoint === '/entity-list-config/list-test/publish') {
+      published = structuredClone(draft)
+      data = published
+    } else if (endpoint === '/entity-lists/test/main/schema') data = published
+    else if (endpoint === '/entity-lists/test/main/query') {
+      const { filters } = request.postDataJSON()
+      queries.push(filters)
+      data = { records: [], total: 0 }
+    } else return route.fallback()
+    return route.fulfill({ json: { code: 200, data } })
+  })
+  const advanced = page.getByRole('dialog', { name: '字段高级配置：备注' })
+  const openSettings = () => page.getByRole('row', { name: /^备注 comment/ }).getByRole('button', { name: '设置', exact: true }).click()
+  const openOperators = () => advanced.locator('.el-select__wrapper').filter({
+    has: page.getByRole('combobox', { name: /^查询方式/ })
+  }).click()
+  const optionFor = sql => page.getByRole('option').filter({ has: page.getByText(sql, { exact: true }) })
+  const saveColumn = async queryType => {
+    await expect(advanced.getByRole('textbox', { name: '默认值' })).toBeDisabled()
+    await advanced.getByRole('button', { name: '保存当前列' }).click()
+    await expect(advanced).toBeHidden()
+    expect(draft.fields[0].queryType).toBe(queryType)
+  }
+
+  await page.goto('/tests/e2e/designer-fixture.html?view=list')
+  await openSettings()
+  await openOperators()
+  const examples = [
+    '字段 = 值', '字段 <> 值', "字段 LIKE '%关键词%'", "字段 NOT LIKE '%关键词%'",
+    '字段 > 值', '字段 >= 值', '字段 < 值', '字段 <= 值', '字段 BETWEEN 起始值 AND 结束值',
+    '字段 IN (值1, 值2, …)', '字段 NOT IN (值1, 值2, …)', '字段 IS NULL', '字段 IS NOT NULL'
+  ]
+  for (const sql of examples) await expect(optionFor(sql)).toBeVisible()
+  await optionFor('字段 IS NOT NULL').click()
+  await saveColumn('NOT_EMPTY')
+
+  await page.getByRole('button', { name: '预览', exact: true }).click()
+  const preview = page.getByRole('dialog', { name: '列表预览' })
+  const previewFilter = preview.getByRole('checkbox', { name: '非空', exact: true })
+  await expect(previewFilter).not.toBeChecked()
+  await expect.poll(() => queries.at(-1)).toEqual({})
+  await preview.locator('label.el-checkbox').filter({ hasText: /^非空$/ }).click()
+  await expect(previewFilter).toBeChecked()
+  await preview.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => queries.at(-1)).toEqual({ comment: true, comment_op: 'NOT_EMPTY' })
+  await preview.getByRole('button', { name: '重置', exact: true }).click()
+  await expect(previewFilter).not.toBeChecked()
+  await expect.poll(() => queries.at(-1)).toEqual({})
+  await preview.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await openSettings()
+  await openOperators()
+  await optionFor('字段 IS NULL').click()
+  await saveColumn('EMPTY')
+  await page.getByRole('button', { name: '发布生效' }).click()
+  await page.getByRole('button', { name: '确认发布' }).click()
+  await expect(page.getByText('发布成功，已全局生效')).toBeVisible()
+
+  const beforeRuntime = queries.length
+  await page.goto('/tests/e2e/designer-fixture.html?view=data')
+  await expect.poll(() => queries.length).toBeGreaterThan(beforeRuntime)
+  expect(queries.at(-1)).toEqual({})
+  const runtimeFilter = page.getByRole('checkbox', { name: '为空', exact: true })
+  await expect(runtimeFilter).not.toBeChecked()
+  await page.locator('.search-card label.el-checkbox').filter({ hasText: /^为空$/ }).click()
+  await expect(runtimeFilter).toBeChecked()
+  await page.getByRole('button', { name: '查询', exact: true }).click()
+  await expect.poll(() => queries.at(-1)).toEqual({ comment: true, comment_op: 'EMPTY' })
+  await page.getByRole('button', { name: '重置', exact: true }).click()
+  await expect(runtimeFilter).not.toBeChecked()
+  await expect.poll(() => queries.at(-1)).toEqual({})
+  expect(state.errors).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
 for (const mode of ['entity', 'form', 'entities', 'data', 'related', 'events', 'node']) test(`拆分后真实页面可加载与交互：${mode}`, async ({ page }) => {
   const state = await mock(page)
   await page.goto(`/tests/e2e/designer-fixture.html?view=${mode}`)

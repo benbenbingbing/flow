@@ -23,14 +23,18 @@
     <el-dialog :model-value="state.open" :title="config.pickerTitle || `选择${field.fieldLabel || field.fieldName || '数据'}`"
       width="min(1000px, 94vw)" append-to-body destroy-on-close :close-on-click-modal="false" @close="close">
       <form v-if="config.pickerSource === 'ENTITY_LIST' && state.list?.queryFields.length" class="picker-filters" @submit.prevent="searchList">
-        <label v-for="item in state.list.queryFields" :key="item.fieldCode">
+        <div v-for="item in state.list.queryFields" :key="item.fieldCode" class="picker-filter">
           <span>{{ item.fieldName }}</span>
-          <template v-if="item.queryType === 'BETWEEN'">
+          <el-checkbox v-if="isListNullQueryOperator(item.queryType)" v-model="listFilters[item.fieldCode]"
+            :aria-label="item.fieldName + (item.queryType === 'NOT_EMPTY' ? ' 非空' : ' 为空')">
+            {{ item.queryType === 'NOT_EMPTY' ? '非空' : '为空' }}
+          </el-checkbox>
+          <template v-else-if="item.queryType === 'BETWEEN'">
             <el-input v-model="listFilters[item.fieldCode + '_start']" :aria-label="item.fieldName + ' 起始值'" placeholder="起始值" clearable />
             <el-input v-model="listFilters[item.fieldCode + '_end']" :aria-label="item.fieldName + ' 结束值'" placeholder="结束值" clearable />
           </template>
           <el-input v-else v-model="listFilters[item.fieldCode]" :aria-label="item.fieldName" :placeholder="item.placeholder" clearable />
-        </label>
+        </div>
         <el-button native-type="submit" :disabled="state.confirming" type="primary">搜索</el-button>
       </form>
       <el-form v-else-if="config.pickerSource !== 'ENTITY_LIST'" @submit.prevent="search">
@@ -63,7 +67,7 @@ import { ElMessageBox } from 'element-plus'
 import DOMPurify from 'dompurify'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useDataPickerFieldRuntime, usePickerNumericInput } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
-import { buildListRequestFilters, listQueryDefaults } from '@flow/workflow-core/list-query-filters'
+import { buildListRequestFilters, isListNullQueryOperator, listQueryDefaults } from '@flow/workflow-core/list-query-filters'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import DateField from './DateField.vue'
 import NumberField from './NumberField.vue'
@@ -110,6 +114,6 @@ defineExpose({ validate })
 .picker-error { color: var(--el-color-danger); font-size: 12px; }
 .picker-alert, .picker-pagination { margin-top: 16px; }
 .picker-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin-bottom: 12px; }
-.picker-filters label { display: flex; align-items: center; gap: 8px; }
+.picker-filter { display: flex; align-items: center; gap: 8px; }
 .picker-filters .el-input { width: 128px; }
 </style>

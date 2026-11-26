@@ -17,6 +17,7 @@ import java.lang.reflect.Proxy;
 import java.io.Reader;
 import java.io.StringWriter;
 import java.math.BigDecimal;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,7 +40,7 @@ class EntityDataSqlProviderTypedBindingTest {
                 new Case("day", "2026-09-23", LocalDate.of(2026, 9, 23), JdbcType.DATE, "setObject"),
                 new Case("instant", "2026-09-23 10:20:30.123456", LocalDateTime.of(2026, 9, 23, 10, 20, 30, 123456000), JdbcType.TIMESTAMP, "setObject"));
         for (var vendor : DatabaseVendor.values()) for (var test : cases) {
-            for (String operator : List.of("EQ", "NE", "GT", "LT", "IN", "NOT_IN")) {
+            for (String operator : List.of("EQ", "NE", "GT", "GE", "LT", "LE", "IN", "NOT_IN")) {
                 Object raw = operator.endsWith("IN") ? Arrays.asList(test.raw(), null, " ") : test.raw();
                 Map<String, Object> source = Map.of(test.field(), raw, test.field() + "_op", operator);
                 var rendered = render(vendor, typed(source));
@@ -97,6 +98,57 @@ class EntityDataSqlProviderTypedBindingTest {
     }
 
     @Test
+    void negativePatternAndNullChecksRenderOnEveryDialect() throws Exception {
+        String keyword = "业务'编号";
+        for (var vendor : DatabaseVendor.values()) {
+            var notLike = render(vendor, typed(Map.of("body", keyword, "body_op", "NOT_LIKE")));
+            assertTrue(notLike.sql().contains(" NOT LIKE ?"));
+            assertFalse(notLike.sql().contains(keyword));
+            assertEquals(List.of("%" + keyword + "%"), notLike.values());
+            assertEquals(List.of(JdbcType.VARCHAR), notLike.jdbcTypes());
+            for (String operator : List.of("EMPTY", "IS_NULL", "NOT_EMPTY")) {
+                var check = render(vendor, typed(Map.of("quantity", true, "quantity_op", operator)));
+                assertTrue(check.sql().contains(operator.equals("NOT_EMPTY") ? " IS NOT NULL" : " IS NULL"));
+                assertTrue(check.values().isEmpty());
+                assertEquals(check, render(vendor, typed(Map.of("quantity_op", operator))));
+            }
+        }
+    }
+
+    @Test
+    void listOperatorsReturnExpectedRowsIncludingInclusiveBoundsAndSqlNulls() throws Exception {
+        record Case(Map<String, Object> filters, List<Integer> ids) { }
+        var cases = List.of(
+                new Case(Map.of("amount", "2.00", "amount_op", "GE"), List.of(2, 3)),
+                new Case(Map.of("amount", "2.00", "amount_op", "LE"), List.of(1, 2)),
+                new Case(Map.of("body", "测试", "body_op", "NOT_LIKE"), List.of(2, 3)),
+                new Case(Map.of("body_op", "EMPTY"), List.of(4)),
+                new Case(Map.of("body", true, "body_op", "NOT_EMPTY"), List.of(1, 2, 3)));
+        try (var connection = DriverManager.getConnection("jdbc:h2:mem:list_operator_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE");
+             var setup = connection.createStatement()) {
+            setup.execute("CREATE TABLE biz_typed_query (id INT, amount DECIMAL(10,2), body_column VARCHAR(50), deleted INT, create_time INT)");
+            setup.execute("""
+                    INSERT INTO biz_typed_query VALUES
+                    (1, 1.00, '测试关键词', 0, 5), (2, 2.00, '其他', 0, 4), (3, 3.00, '', 0, 3),
+                    (4, NULL, NULL, 0, 2), (5, 2.00, '其他', 1, 1)
+                    """);
+            for (var test : cases) {
+                var query = render(DatabaseVendor.MYSQL, typed(test.filters()));
+                try (var statement = connection.prepareStatement(query.sql())) {
+                    for (int index = 0; index < query.values().size(); index++) {
+                        statement.setObject(index + 1, query.values().get(index));
+                    }
+                    try (var rows = statement.executeQuery()) {
+                        List<Integer> ids = new ArrayList<>();
+                        while (rows.next()) ids.add(rows.getInt("id"));
+                        assertEquals(test.ids(), ids, test.filters().toString());
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     void nullBlankAndEmptyCollectionSemanticsRemainUnchanged() throws Exception {
         Map<String, Object> absent = new LinkedHashMap<>();
         absent.put("quantity", null); absent.put("quantity_op", "EQ");
@@ -119,7 +171,7 @@ class EntityDataSqlProviderTypedBindingTest {
                 Map.entry("quantity", "12tail"), Map.entry("quantity", "1.2"), Map.entry("quantity", "2147483648"),
                 Map.entry("serial", "9223372036854775808"), Map.entry("amount", "NaN"), Map.entry("enabled", "2"),
                 Map.entry("day", "2026-02-30"), Map.entry("instant", "2026-09-23T10:20:30+08:00"))) {
-            for (String operator : List.of("EQ", "NE", "GT", "LT", "IN", "NOT_IN")) {
+            for (String operator : List.of("EQ", "NE", "GT", "GE", "LT", "LE", "IN", "NOT_IN")) {
                 assertThrows(IllegalArgumentException.class, () -> render(DatabaseVendor.MYSQL,
                         typed(Map.of(test.getKey(), test.getValue(), test.getKey() + "_op", operator))));
             }
@@ -160,7 +212,7 @@ class EntityDataSqlProviderTypedBindingTest {
         String value = "x".repeat(40000) + "尾'部";
         for (var vendor : DatabaseVendor.values()) for (String field : List.of("body", "legacy")) {
             boolean clob = usesClob(vendor);
-            for (var operator : Map.of("EQ", "=", "NE", "<>", "GT", ">", "LT", "<").entrySet()) {
+            for (var operator : Map.of("EQ", "=", "NE", "<>", "GT", ">", "GE", ">=", "LT", "<", "LE", "<=").entrySet()) {
                 var result = render(vendor, typed(Map.of(field, value, field + "_op", operator.getKey())));
                 assertEquals(List.of(value), result.values(), "全文必须经过实际框架处理器，不能只断言原参数还存在");
                 assertEquals(List.of(clob ? JdbcType.CLOB : JdbcType.VARCHAR), result.jdbcTypes());

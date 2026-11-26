@@ -10,7 +10,14 @@
       <VanNavBar :title="config.pickerTitle || '选择数据'" left-text="取消" @click-left="close" />
       <form v-if="config.pickerSource === 'ENTITY_LIST' && state.list?.queryFields.length" @submit.prevent="searchList">
         <template v-for="item in state.list.queryFields" :key="item.fieldCode">
-          <template v-if="item.queryType === 'BETWEEN'">
+          <VanField v-if="isListNullQueryOperator(item.queryType)" :label="item.fieldName">
+            <template #input>
+              <VanCheckbox v-model="listFilters[item.fieldCode]">
+                {{ item.queryType === 'NOT_EMPTY' ? '非空' : '为空' }}
+              </VanCheckbox>
+            </template>
+          </VanField>
+          <template v-else-if="item.queryType === 'BETWEEN'">
             <VanField v-model="listFilters[item.fieldCode + '_start']" :label="item.fieldName" placeholder="起始值" clearable />
             <VanField v-model="listFilters[item.fieldCode + '_end']" :label="item.fieldName" placeholder="结束值" clearable />
           </template>
@@ -42,11 +49,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
-import { Field as VanField, Popup as VanPopup, NavBar as VanNavBar, Search as VanSearch, Empty as VanEmpty, showConfirmDialog } from 'vant'
+import { Checkbox as VanCheckbox, Field as VanField, Popup as VanPopup, NavBar as VanNavBar, Search as VanSearch, Empty as VanEmpty, showConfirmDialog } from 'vant'
 import MobileLabeledField from './MobileLabeledField.vue'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useDataPickerFieldRuntime } from '@flow/workflow-core/vue/useDataPickerFieldRuntime'
-import { buildListRequestFilters, listQueryDefaults } from '@flow/workflow-core/list-query-filters'
+import { buildListRequestFilters, isListNullQueryOperator, listQueryDefaults } from '@flow/workflow-core/list-query-filters'
 import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
 const props = defineProps({ ...formFieldProps, required: Boolean, services: Object })
 const emit = defineEmits(['patch-form'])

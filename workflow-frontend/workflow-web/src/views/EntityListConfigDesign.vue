@@ -640,7 +640,7 @@
         >
           <el-form label-width="110px" size="small" class="field-config-grid">
             <el-form-item label="查询组件">
-              <el-select v-model="editingQueryConfig.componentType" clearable placeholder="自动匹配字段类型" style="width: 100%">
+              <el-select v-model="editingQueryConfig.componentType" clearable placeholder="自动匹配字段类型" style="width: 100%" @change="handleQueryComponentChange">
                 <el-option
                   v-for="option in queryComponentOptions"
                   :key="option.value"
@@ -666,14 +666,19 @@
                   :key="option.value"
                   :label="option.label"
                   :value="option.value"
-                />
+                >
+                  <span class="query-operator-option">
+                    <span>{{ option.label }}</span>
+                    <code :title="option.pseudoSql">{{ option.pseudoSql }}</code>
+                  </span>
+                </el-option>
               </el-select>
             </el-form-item>
             <el-form-item label="占位提示">
-              <el-input v-model="editingQueryConfig.placeholder" />
+              <el-input v-model="editingQueryConfig.placeholder" :disabled="isListNullQueryOperator(editingField.queryType)" />
             </el-form-item>
             <el-form-item label="默认值">
-              <el-input v-model="editingQueryConfig.defaultValue" />
+              <el-input v-model="editingQueryConfig.defaultValue" :disabled="isListNullQueryOperator(editingField.queryType)" />
             </el-form-item>
           </el-form>
         </SettingsSection>
@@ -913,7 +918,7 @@
 <script setup>
 import { showRequestError } from '@/shared/request'
 
-import { mergeFieldConfig as mergeListColumns, normalizeFieldForSave as serializeListColumn, isVirtualField } from './list-designer/listColumnModel.js'
+import { mergeFieldConfig as mergeListColumns, normalizeFieldForSave as serializeListColumn, isVirtualField, listQueryComponentOptions, listQueryOperatorOptions, supportsMultiSelectQuery } from './list-designer/listColumnModel.js'
 
 import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
 import { isListColumnSortable, resolveListColumnSort } from '@/shared/list-column-sort'
@@ -925,7 +930,10 @@ import { Connection, Delete, Document, Rank, Plus } from '@element-plus/icons-vu
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi } from '@/api/entity'
+import { getEntityStatusList } from '@/api/entityStatus'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
+import { isSystemEntityStatusField, withEntityStatusFieldOptions } from '@flow/workflow-core/entity-status-runtime'
+import { buildListRequestFilters, isListNullQueryOperator } from '@flow/workflow-core/list-query-filters'
 import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import { formatMaskedListCellValue, isListCellMaskingEnabled, listCellMaskingSchema } from '@/shared/list-cell-masking'
@@ -1047,6 +1055,7 @@ const loadError = ref('')
 const previewDialogVisible = ref(false)
 const previewError = ref('')
 const previewQueryForm = ref({})
+const previewStatusOptions = ref([])
 const previewDataList = ref([])
 const previewLoading = ref(false)
 const previewPageNum = ref(1)
@@ -1091,51 +1100,18 @@ const selectedCustomListCatalogOption = computed(() => {
       }
     : null
 })
-// 查询组件选项按当前字段类型过滤：扩展声明 supportedFieldTypes 时只保留兼容项，未声明的视为通用组件全部保留。
-const queryComponentOptions = computed(() => {
-  const originField = entityFields.value.find(item => item.id === editingField.value?.fieldId)
-  const fieldType = String(originField?.fieldType || editingField.value?.fieldType || '').toUpperCase()
-  return getFormFieldComponentOptions().filter(option => {
-    const supported = (option.supportedFieldTypes || []).map(item => String(item).toUpperCase())
-    return supported.length === 0 || supported.includes(fieldType)
-  })
-})
-const queryTypeOptions = [
-  { label: '等于', value: 'EQ' },
-  { label: '不等于', value: 'NE' },
-  { label: '包含', value: 'LIKE' },
-  { label: '不包含', value: 'NOT_LIKE' },
-  { label: '大于', value: 'GT' },
-  { label: '大于等于', value: 'GE' },
-  { label: '小于', value: 'LT' },
-  { label: '小于等于', value: 'LE' },
-  { label: '范围', value: 'BETWEEN' },
-  { label: '包含于', value: 'IN' },
-  { label: '不包含于', value: 'NOT_IN' },
-  { label: '为空', value: 'EMPTY' },
-  { label: '非空', value: 'NOT_EMPTY' }
-]
-const systemQueryTypeValues = new Set([
-  'EQ',
-  'NE',
-  'LIKE',
-  'IN',
-  'BETWEEN',
-  'GT',
-  'GE',
-  'LT',
-  'LE',
-  'IS_NULL'
-])
-const availableQueryTypeOptions = computed(() => {
-  if (!isSystemEntity.value) return queryTypeOptions
-  return [
-    ...queryTypeOptions.filter(option =>
-      systemQueryTypeValues.has(option.value)
-    ),
-    { label: '为空', value: 'IS_NULL' }
-  ]
-})
+const editingOriginField = computed(() => entityFields.value.find(item => item.id === editingField.value?.fieldId))
+const queryComponentOptions = computed(() =>
+  listQueryComponentOptions(getFormFieldComponentOptions(), editingField.value, editingOriginField.value))
+const multiSelectQuery = computed(() =>
+  ['select_multiple', 'multi_select'].includes(editingQueryConfig.value.componentType)
+  && supportsMultiSelectQuery(editingField.value, editingOriginField.value))
+const availableQueryTypeOptions = computed(() => listQueryOperatorOptions(isSystemEntity.value, multiSelectQuery.value))
+
+/** 主动切换多选控件时使用集合匹配，避免把一组值交给原有的单值比较方式。 */
+function handleQueryComponentChange() {
+  if (multiSelectQuery.value) editingField.value.queryType = 'IN'
+}
 const createDefaultViewConfig = () => ({
   search: {
     defaultVisibleCount: 4,
@@ -1223,13 +1199,14 @@ const previewQueryFields = computed(() =>
     .map(field => {
       const originField = entityFields.value.find(item => item.id === field.fieldId)
       const queryConfig = safeParseConfig(field.queryConfig)
-      return {
+      return withEntityStatusFieldOptions({
         ...field,
         componentType: queryConfig.componentType || field.componentType,
         placeholder: queryConfig.placeholder || field.placeholder,
         fieldType: originField?.fieldType || field.fieldType || 'STRING',
-        dictType: originField?.dictType || field.dictType
-      }
+        dictType: originField?.dictType || field.dictType,
+        isSystem: originField?.isSystem ?? field.isSystem
+      }, previewStatusOptions.value, { allowMultiple: true })
     })
 )
 const previewListFields = computed(() =>
@@ -1946,6 +1923,7 @@ function fieldConfigSummary(field) {
       IN: '包含于',
       NOT_IN: '不包含于',
       EMPTY: '为空',
+      IS_NULL: '为空',
       NOT_EMPTY: '非空'
     }[field.queryType] || '默认查询'
     parts.push(`查询：${queryLabel}`)
@@ -2296,18 +2274,18 @@ async function loadPreviewData() {
     // 配置加载和数据查询共用请求序号与 finally；失败重试必须重新读取配置，
     // 不能留下旧请求的 loading，也不能让过期配置重新开放排序入口。
     if (!previewSchemaLoaded.value) {
-      const schema = await entityListRuntimeApi.getSchema(entityCode.value, configInfo.value.listKey, 'PAGE')
+      const [schema, statuses] = await Promise.all([
+        entityListRuntimeApi.getSchema(entityCode.value, configInfo.value.listKey, 'PAGE'),
+        previewQueryFields.value.some(field => !field.dictType && isSystemEntityStatusField(field))
+          ? getEntityStatusList(entityCode.value, { listKey: configInfo.value.listKey }).catch(() => [])
+          : []
+      ])
       if (requestSequence !== previewRequestSequence) return
       previewPublishedFields.value = schema?.fields || []
+      previewStatusOptions.value = statuses || []
       previewSchemaLoaded.value = true
     }
-    const filters = { ...previewQueryForm.value }
-    previewQueryFields.value.forEach((field) => {
-      const code = field.fieldCode
-      if (code && filters[code] !== undefined && field.queryType) {
-        filters[`${code}_op`] = field.queryType
-      }
-    })
+    const filters = buildListRequestFilters(previewQueryForm.value, previewQueryFields.value)
     const result = await entityListRuntimeApi.query(
       entityCode.value,
       configInfo.value.listKey,
@@ -2752,6 +2730,22 @@ async function handleReleaseChanged(event) {
 .unit-text {
   color: #909399;
   font-size: 12px;
+}
+.query-operator-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.query-operator-option > span {
+  flex-shrink: 0;
+}
+.query-operator-option code {
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .unit-text {
   margin-left: 6px;

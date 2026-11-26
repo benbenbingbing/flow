@@ -441,7 +441,8 @@ assert.ok(
 )
 assert.ok(
   entityListConfigDesign.includes('availableQueryTypeOptions')
-    && entityListConfigDesign.includes("'IS_NULL'"),
+    && entityListConfigDesign.includes('listQueryOperatorOptions(isSystemEntity.value,')
+    && readFileSync(path.join(root, 'src/views/list-designer/listColumnModel.js'), 'utf8').includes("'IS_NULL'"),
   '平台系统表列表设计器应限制为可信只读查询方式'
 )
 assert.match(

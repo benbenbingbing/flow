@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { extractSfcFunctions } from '../../../scripts/test-sfc-functions.mjs'
 import { supportsEntityFieldQuery } from '../../shared/list-query-policy.js'
 import { isListColumnSortable } from '../../shared/list-column-sort.js'
+import { buildListRequestFilters } from '@flow/workflow-core/list-query-filters'
 
 const ref = value => ({ value })
 /** 执行真实编辑器方法，验证独立编辑缓冲中的排序开关确实写入列保存协议。 */
@@ -56,7 +57,8 @@ function previewPage() {
     previewError: ref(''), previewDataList: ref([]), previewTotal: ref(0), previewSort: ref(null),
     previewPageNum: ref(1), previewPageSize: ref(10), previewDialogVisible: ref(false),
     previewPublishedFields: ref([]), previewSchemaLoaded: ref(false),
-    previewQueryForm: ref({}), previewQueryFields: ref([]), console: { error: () => {} },
+    previewQueryForm: ref({}), previewQueryFields: ref([]), previewStatusOptions: ref([]),
+    buildListRequestFilters, isSystemEntityStatusField: () => false, console: { error: () => {} },
     entityListRuntimeApi: {
       getSchema: () => { const call = deferred(); schemas.push(call); return call.promise },
       query: () => { const call = deferred(); queries.push(call); return call.promise }
@@ -86,7 +88,7 @@ test('重开预览配置失败会结束加载，重试会重新读取配置和�
   assert.equal(page.schemas.length, 2)
   const fields = [{ fieldCode: 'amount', columnConfig: { sortable: true }, showInList: true }]
   page.schemas[1].resolve({ fields })
-  await Promise.resolve()
+  await new Promise(setImmediate)
   page.queries[1].resolve({ records: [{ id: 'new' }], total: 1 })
   await retry
   assert.deepEqual(page.previewPublishedFields.value, fields)
@@ -101,7 +103,7 @@ test('旧预览的配置响应不能覆盖新预览或再次发送旧查询', as
   const newOpen = page.openPreview()
   const fields = [{ fieldCode: 'name', columnConfig: { sortable: true } }]
   page.schemas[1].resolve({ fields })
-  await Promise.resolve()
+  await new Promise(setImmediate)
   page.queries[0].resolve({ records: [{ id: 'new' }], total: 1 })
   await newOpen
   page.schemas[0].resolve({ fields: [{ fieldCode: 'old' }] })

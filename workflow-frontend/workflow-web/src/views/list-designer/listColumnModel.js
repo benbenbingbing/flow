@@ -1,4 +1,58 @@
 import { resolveInterfaceExtensionId } from '@/components/ui-config/interfaceExtensionModel'
+import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
+import { isProcessStatusField, isSystemEntityStatusField } from '@flow/workflow-core/entity-status-runtime'
+
+const queryOperators = [
+  { label: '等于', value: 'EQ', pseudoSql: '字段 = 值' },
+  { label: '不等于', value: 'NE', pseudoSql: '字段 <> 值' },
+  { label: '包含', value: 'LIKE', pseudoSql: "字段 LIKE '%关键词%'" },
+  { label: '不包含', value: 'NOT_LIKE', pseudoSql: "字段 NOT LIKE '%关键词%'" },
+  { label: '大于', value: 'GT', pseudoSql: '字段 > 值' },
+  { label: '大于等于', value: 'GE', pseudoSql: '字段 >= 值' },
+  { label: '小于', value: 'LT', pseudoSql: '字段 < 值' },
+  { label: '小于等于', value: 'LE', pseudoSql: '字段 <= 值' },
+  { label: '范围', value: 'BETWEEN', pseudoSql: '字段 BETWEEN 起始值 AND 结束值' },
+  { label: '包含于', value: 'IN', pseudoSql: '字段 IN (值1, 值2, …)' },
+  { label: '不包含于', value: 'NOT_IN', pseudoSql: '字段 NOT IN (值1, 值2, …)' },
+  { label: '为空', value: 'EMPTY', pseudoSql: '字段 IS NULL' },
+  { label: '非空', value: 'NOT_EMPTY', pseudoSql: '字段 IS NOT NULL' }
+]
+const systemQueryOperators = new Set(['EQ', 'NE', 'LIKE', 'IN', 'BETWEEN', 'GT', 'GE', 'LT', 'LE'])
+const singleChoiceFieldTypes = new Set(['SELECT', 'RADIO'])
+
+/** 单值选项字段可在查询区复用多选下拉，查询值集合用于匹配每条记录上的单个值。 */
+export function supportsMultiSelectQuery(column, originField = column) {
+  const fieldType = String(originField?.fieldType || '').toUpperCase()
+  return supportsEntityFieldQuery(column) && (
+    singleChoiceFieldTypes.has(fieldType)
+    || (fieldType === 'STRING' && !!originField.dictType)
+    || isSystemEntityStatusField(originField)
+    || isProcessStatusField(originField)
+  )
+}
+
+/** 仅放宽列表查询控件的兼容性，表单设计器继续使用扩展清单声明的字段类型。 */
+export function listQueryComponentOptions(options, column, originField = column) {
+  const fieldType = String(originField?.fieldType || '').toUpperCase()
+  return options.filter(option => {
+    const supported = option.supportedFieldTypes || []
+    return supported.length === 0
+      || supported.some(type => String(type).toUpperCase() === fieldType)
+      || (option.value === 'select_multiple' && supportsMultiSelectQuery(column, originField))
+  })
+}
+
+/** 多选筛选单值字段时只提供集合比较，系统实体仅支持其中的 IN。 */
+export function listQueryOperatorOptions(systemEntity, multiSelectQuery) {
+  if (multiSelectQuery) {
+    return queryOperators.filter(option => option.value === 'IN' || (!systemEntity && option.value === 'NOT_IN'))
+  }
+  if (!systemEntity) return queryOperators
+  return [
+    ...queryOperators.filter(option => systemQueryOperators.has(option.value)),
+    { label: '为空', value: 'IS_NULL', pseudoSql: '字段 IS NULL' }
+  ]
+}
 
 /** 合并实体字段与保存过的列，保留隐藏列及稳定排序；系统实体不追加虚拟列。 */
 export function mergeFieldConfig(savedFields, { entityFields, availableListColumnInterfaces, isSystemEntity }) {

@@ -99,6 +99,30 @@ class EntityListConfigurationValidatorTest {
         assertNull(field.getRenderConfig());
     }
 
+    @Test
+    void acceptsNullAndInclusiveComparisonsWhenSavingEntityColumns() {
+        var mapper = mock(EntityFieldMapper.class);
+        var entityField = new EntityField();
+        entityField.setId("field-1");
+        when(mapper.findByEntityId("entity-1")).thenReturn(List.of(entityField));
+        var validator = validator(mapper);
+        var field = new EntityListField();
+        field.setFieldId("field-1");
+        field.setFieldCode("score");
+        field.setIsQuery(true);
+        var dto = new EntityListConfigDTO();
+        dto.setEntityId("entity-1");
+        dto.setEntityCode("expense");
+        dto.setListKey("default");
+        dto.setFields(List.of(field));
+
+        for (String operator : List.of("NOT_LIKE", "GE", "LE", "EMPTY", "NOT_EMPTY", "IS_NULL")) {
+            field.setQueryType(operator);
+            assertDoesNotThrow(() -> validator.validate(dto), operator);
+            assertEquals(operator, field.getQueryType());
+        }
+    }
+
     /** mutable 列表只保存直接 extensionId，不再要求旧 operationCode。 */
     @Test
     void acceptsDirectListQueryExtensionIdWithoutOperation() {

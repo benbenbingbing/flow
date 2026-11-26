@@ -44,7 +44,8 @@ public final class EntityListFixedFilters {
                 String base = field(key);
                 if ((key.endsWith("_start") || key.endsWith("_end")) && result.containsKey(key)) {
                     result.put(key, tighterBound(result.get(key), value, key.endsWith("_start")));
-                } else if (key.endsWith("_op") && !trusted.containsKey(base) && result.containsKey(base)) {
+                } else if (key.endsWith("_op") && !trusted.containsKey(base) && result.containsKey(base)
+                        && !isNullCheck(String.valueOf(value))) {
                     // BETWEEN 等范围运算符不参与标量比较；保留用户标量的运算符。
                     // 范围上下界仍由可信值约束，无法通过此运算符修改放宽。
                     return;
@@ -57,7 +58,7 @@ public final class EntityListFixedFilters {
     }
 
     /**
-     * 固定等值与用户同字段等值/集合筛选相斥时提前返回空页。扁平过滤格式不能
+     * 固定等值与用户同字段的等值、集合或空值筛选相斥时提前返回空页。扁平过滤格式不能
      * 同时携带两份标量条件，直接覆盖用户值会让页面显示与查询输入不一致。
      * 只判断可精确求交的运算符；其它运算符仍由固定条件确保访问范围不扩大。
      */
@@ -65,7 +66,7 @@ public final class EntityListFixedFilters {
         if (input == null || trusted == null) return false;
         for (Map.Entry<String, Object> entry : trusted.entrySet()) {
             String key = entry.getKey();
-            if (!key.equals(field(key)) || !input.containsKey(key)
+            if (!key.equals(field(key)) || (!input.containsKey(key) && !input.containsKey(key + "_op"))
                     || !"EQ".equalsIgnoreCase(String.valueOf(trusted.getOrDefault(key + "_op", "EQ")))) {
                 continue;
             }
@@ -75,12 +76,22 @@ public final class EntityListFixedFilters {
                     : requested instanceof String ? "LIKE" : "EQ";
             boolean contains = requested instanceof List<?> values
                     && values.stream().anyMatch(value -> equalValue(value, entry.getValue()));
+            if (("EMPTY".equals(operation) || "IS_NULL".equals(operation))
+                    && entry.getValue() != null
+                    && !(entry.getValue() instanceof String text && text.isBlank())) return true;
+            if (!input.containsKey(key)) continue;
             if ("EQ".equals(operation) && !equalValue(requested, entry.getValue())
                     || "NE".equals(operation) && equalValue(requested, entry.getValue())
                     || "IN".equals(operation) && !contains
                     || "NOT_IN".equals(operation) && contains) return true;
         }
         return false;
+    }
+
+    /** 空值运算符本身就是条件，可信来源只提供 _op 时也必须保留。 */
+    private static boolean isNullCheck(String operator) {
+        return "EMPTY".equalsIgnoreCase(operator) || "IS_NULL".equalsIgnoreCase(operator)
+                || "NOT_EMPTY".equalsIgnoreCase(operator);
     }
 
     private static boolean equalValue(Object left, Object right) {
