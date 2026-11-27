@@ -7,7 +7,17 @@
         <el-option v-for="field in fields" :key="fieldKey(field)" :label="field.fieldName || field.fieldLabel || fieldKey(field)" :value="fieldKey(field)" />
       </el-select>
       <el-select v-if="parameters.length" model-value="" :disabled="disabled" filterable placeholder="插入页面参数" aria-label="插入页面参数" @change="insertParameter">
-        <el-option v-for="parameter in parameters" :key="parameter.code" :label="parameter.name || parameter.code" :value="parameter.code" />
+        <el-option v-for="parameter in parameters" :key="parameter.code"
+          :label="parameterOptionLabel(parameter.name, parameter.code)" :value="parameter.code">
+          <ParameterOptionLabel :label="parameter.name" :code="parameter.code" />
+        </el-option>
+      </el-select>
+      <el-select v-if="contextParameters.length" model-value="" :disabled="disabled" filterable
+        placeholder="插入上下文参数" aria-label="插入上下文参数" @change="insertContext">
+        <el-option v-for="parameter in contextParameters" :key="parameter.key"
+          :label="parameterOptionLabel(parameter.label, parameter.key)" :value="parameter.key">
+          <ParameterOptionLabel :label="parameter.label" :code="parameter.key" />
+        </el-option>
       </el-select>
       <el-dropdown trigger="click" :disabled="disabled" @command="insert">
         <el-button :disabled="disabled">插入函数</el-button>
@@ -17,6 +27,7 @@
             <el-dropdown-item command="ADD_DAYS(TODAY(), 3)">ADD_DAYS · 日期加减天数</el-dropdown-item>
             <el-dropdown-item command="DATEDIFF(TODAY(), ADD_DAYS(TODAY(), 3))">DATEDIFF · 日期相差天数</el-dropdown-item>
             <el-dropdown-item command="IF(true, TODAY(), ADD_DAYS(TODAY(), 7))">IF · 按条件取值</el-dropdown-item>
+            <el-dropdown-item v-if="contextParameters.length" command='COALESCE(null, "")'>COALESCE · 空值时取备用值</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -27,11 +38,13 @@
 
 <script setup>
 import { nextTick, ref } from 'vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   fields: { type: Array, default: () => [] },
   parameters: { type: Array, default: () => [] },
+  contextParameters: { type: Array, default: () => [] },
   label: { type: String, default: '计算公式' },
   placeholder: { type: String, default: '例如 ${quantity} * ${price}' },
   disabled: Boolean
@@ -41,6 +54,7 @@ const input = ref()
 const fieldKey = field => field.fieldCode || field.fieldKey
 const insertField = code => insert('${' + code + '}')
 const insertParameter = code => insert('${param.' + code + '}')
+const insertContext = key => insert('${ctx.' + key + '}')
 
 /** 在光标处插入片段，使已有表达式可继续组合字段和函数。 */
 async function insert(fragment) {

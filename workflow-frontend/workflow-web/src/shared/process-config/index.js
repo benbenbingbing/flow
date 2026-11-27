@@ -258,12 +258,7 @@ export function relativeOrgPositionSummary(value = {}, labels = {}) {
   } else if (mode === 'BUSINESS_LEVEL') {
     lookup = `最近的业务层级「${labels.businessLevelName || config.hierarchy.businessLevelCode || '未选择'}」`
   }
-  const assignment = labels.isMultiInstance
-    ? '全部任职人参与多人办理'
-    : config.assignmentMode === 'CANDIDATE'
-      ? '全部任职人作为候选人'
-      : '仅唯一人员直接办理，多人时报错'
-  return `以流程发起人的${anchor}为锚点，查找${lookup}的「${position}」；${assignment}。`
+  return `以流程发起人的${anchor}为锚点，查找${lookup}中「${position}」的所有任职人。`
 }
 
 function firstNonBlankString(...values) {
@@ -507,7 +502,7 @@ export function buildMultiInstanceCompletionCondition({
 export const NODE_TYPE_DESCRIPTIONS = {
   'bpmn:UserTask': {
     title: '用户任务',
-    desc: '人工处理任务，支持审批、会签、或签等操作',
+    desc: '人工办理任务，可选择抢占、顺序或会签',
     scene: '审批、审核、确认等需要人工判断的场景'
   },
   'bpmn:ServiceTask': {
@@ -682,142 +677,9 @@ function configValues(value) {
   return result
 }
 
-function hasLegacyMultiInstanceAssignment(config, multiInstanceConfig) {
-  const values = [
-    config.multiInstanceUsers,
-    config.multiInstanceUserIds,
-    config.multiInstanceUsernames,
-    config.multiInstanceGroupIds,
-    config.multiInstanceGroupCodes,
-    config.multiInstanceRoleIds,
-    config.multiInstanceRoleCodes,
-    config.collectionResolverCode,
-    config.collectionInterface,
-    multiInstanceConfig.multiInstanceUsers,
-    multiInstanceConfig.multiInstanceUserIds,
-    multiInstanceConfig.multiInstanceUsernames,
-    multiInstanceConfig.multiInstanceGroupIds,
-    multiInstanceConfig.multiInstanceGroupCodes,
-    multiInstanceConfig.multiInstanceRoleIds,
-    multiInstanceConfig.multiInstanceRoleCodes,
-    multiInstanceConfig.collectionResolverCode,
-    multiInstanceConfig.collectionInterface
-  ]
-  return values.some(value => configValues(value).length > 0)
-    || ['interface', 'resolver'].includes(String(
-      config.collectionSource || multiInstanceConfig.collectionSource || ''
-    ).trim().toLowerCase())
-}
-
-/**
- * 将历史多实例独立人员配置投影到统一审批人表单。
- *
- * 历史配置允许用户、组、角色混合，当前基础表单一次只表达一种指定方式；
- * 因此原始配置同时作为 passthrough 保存，只有用户实际修改审批人后才升级为 v2，
- * 避免仅打开并保存节点就缩小原有参与人集合。
- */
-export function normalizeDesignerAssigneeConfig(
-  assigneeConfig,
-  multiInstanceConfig,
-  isMultiInstance
-) {
-  const config = normalizeNodeReferenceAssigneeConfig(restoreGroupTagAssignment(assigneeConfig))
-  const loopConfig = configObject(multiInstanceConfig)
-  const version = Number(config.assignmentConfigVersion || 0)
-  const hasLegacyAssignment = Boolean(isMultiInstance)
-    && version < ASSIGNMENT_CONFIG_VERSION
-    && hasLegacyMultiInstanceAssignment(config, loopConfig)
-
-  if (!hasLegacyAssignment) {
-    return {
-      ...config,
-      legacyAssigneeConfig: null,
-      legacyMultiInstanceConfig: null,
-      legacyMultiInstanceMixed: false,
-      assignmentConfigDirty: false
-    }
-  }
-
-  const collectionSource = String(
-    config.collectionSource || loopConfig.collectionSource || ''
-  ).trim().toLowerCase()
-  const resolverCode = String(
-    config.collectionResolverCode
-      || loopConfig.collectionResolverCode
-      || config.collectionInterface
-      || loopConfig.collectionInterface
-      || ''
-  ).trim()
-  const resolverAssignment = ['interface', 'resolver'].includes(collectionSource)
-    || (!collectionSource && Boolean(resolverCode))
-
-  const mixedValues = configValues([
-    config.multiInstanceUsers,
-    loopConfig.multiInstanceUsers
-  ])
-  const mixedUsers = mixedValues.filter(value => !value.startsWith('ROLE_'))
-  const mixedRoles = mixedValues
-    .filter(value => value.startsWith('ROLE_'))
-    .map(value => value.slice(5))
-
-  // 各历史版本曾分别保存 username/code、ID 和 mixed CSV。这里与后端
-  // LegacyMultiInstanceAssignmentParser 一致：按字段顺序取并集并保留首序。
-  const users = configValues([
-    config.multiInstanceUsernames,
-    config.multiInstanceUserIds,
-    loopConfig.multiInstanceUsernames,
-    loopConfig.multiInstanceUserIds,
-    mixedUsers
-  ])
-  const groups = configValues([
-    config.multiInstanceGroupCodes,
-    config.multiInstanceGroupIds,
-    loopConfig.multiInstanceGroupCodes,
-    loopConfig.multiInstanceGroupIds
-  ])
-  const roles = configValues([
-    config.multiInstanceRoleCodes,
-    config.multiInstanceRoleIds,
-    loopConfig.multiInstanceRoleCodes,
-    loopConfig.multiInstanceRoleIds,
-    mixedRoles
-  ].map(values => configValues(values).map(value =>
-    value.startsWith('ROLE_') ? value.slice(5) : value)))
-
-  const configuredKinds = [
-    resolverAssignment,
-    users.length > 0,
-    groups.length > 0,
-    roles.length > 0
-  ].filter(Boolean).length
-  const normalized = { ...config }
-  if (resolverAssignment) {
-    normalized.assigneeType = 'interface'
-    normalized.resolverCode = resolverCode
-    normalized.resolverDisplayName =
-      config.collectionResolverDisplayName || resolverCode
-    normalized.extraParams = configObject(
-      config.collectionExtraParams || loopConfig.collectionExtraParams
-    )
-  } else if (users.length) {
-    normalized.assigneeType = 'user'
-    normalized.assigneeValue = users[0] || ''
-    normalized.candidateUsers = users.join(',')
-  } else if (groups.length) {
-    normalized.assigneeType = 'group'
-    normalized.assigneeValue = groups.join(',')
-  } else if (roles.length) {
-    normalized.assigneeType = 'role'
-    normalized.assigneeValue = roles.map(value => `ROLE_${value}`).join(',')
-  }
-
-  return {
-    ...normalized,
-    legacyAssigneeConfig: JSON.parse(JSON.stringify(config)),
-    legacyMultiInstanceConfig: JSON.parse(JSON.stringify(loopConfig)),
-    legacyMultiInstanceMixed: configuredKinds > 1,
-    assignmentConfigDirty: false
-  }
+/** 还原节点引用和用户组标签的设计器来源。 */
+export function normalizeDesignerAssigneeConfig(assigneeConfig) {
+  return normalizeNodeReferenceAssigneeConfig(restoreGroupTagAssignment(assigneeConfig))
 }
 
 export function normalizeEmptyAssigneeStrategy(value = {}, allowInherit = true) {
@@ -1013,19 +875,9 @@ export function buildAssigneeConfig(form) {
     form.nextApproverSelection
   )
   const operationPermissions = normalizeNodeOperationPermissions(form)
-  if (form.legacyAssigneeConfig && !form.assignmentConfigDirty) {
-    const legacyAssigneeConfig = { ...form.legacyAssigneeConfig }
-    // 一次保存即迁移到简单布尔字段，避免新草稿继续携带已废弃矩阵。
-    delete legacyAssigneeConfig.nodeOperationPolicy
-    return {
-      ...legacyAssigneeConfig,
-      ...operationPermissions,
-      nextApproverSelection
-    }
-  }
-
   return {
     assignmentConfigVersion: ASSIGNMENT_CONFIG_VERSION,
+    ...(form.handlingMode ? { handlingMode: form.handlingMode } : {}),
     emptyAssigneeStrategy: normalizeEmptyAssigneeStrategy(form.emptyAssigneeStrategy),
     ...operationPermissions,
     assigneeType: type,

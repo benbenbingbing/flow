@@ -1939,7 +1939,7 @@ assert.deepEqual(
 assert.ok(nodeConfigPanel.includes("v-if=\"isCcConfigurable\""), '协同页签只应在支持知会的节点显示')
 assert.ok(nodeConfigPanel.includes("v-if=\"hasAdvancedConfig\""), '高级页签只应在任务或网关显示')
 ;[
-  'title="执行人与多人办理"',
+  'title="办理人配置"',
   'title="办理表单"',
   'title="审批设置"',
   'title="实体状态"',
@@ -1954,15 +1954,12 @@ assert.equal(
   '节点 BPMN 配置应共用一个“应用到画布”按钮'
 )
 assert.ok(nodeConfigPanel.includes('applyNodeConfiguration'), '节点配置缺少统一应用入口')
-assert.ok(nodeConfigPanel.includes('title="多人办理（会签/或签）"'), '多人办理配置缺少外层分组')
+assert.ok(nodeConfigPanel.includes('title="会签规则"'), '会签规则缺少分组')
 ;['title="办理方式"', 'title="完成规则"', 'title="技术参数"'].forEach((marker) => {
   assert.equal(nodeConfigPanel.includes(marker), false, `多人办理配置不应继续嵌套任务分组: ${marker}`)
 })
 ;[
-  'help-key="process.multiInstanceType"',
-  'help-key="process.multiInstanceCompletionCondition"',
-  'help-key="process.multiInstanceCollection"',
-  'help-key="process.multiInstanceElementVariable"'
+  'help-key="process.multiInstanceCompletionCondition"'
 ].forEach((marker) => {
   assert.ok(nodeConfigPanel.includes(marker), `多人办理设置说明应收进问号帮助: ${marker}`)
 })
@@ -1978,9 +1975,10 @@ for (const duplicateAssignmentMarker of [
     `多人办理不应继续维护独立人员配置: ${duplicateAssignmentMarker}`
   )
 }
-assert.ok(
-  nodeConfigPanel.includes('多人办理直接复用本区审批人配置'),
-  '多人办理应明确复用统一审批人配置'
+assert.equal(
+  (nodeConfigPanel.match(/v-model="assigneeForm\.candidateUserIds"/g) || []).length,
+  1,
+  '三种办理方式共用固定人员选择器'
 )
 assert.match(
   nodeConfigPanel,
@@ -2019,7 +2017,7 @@ assert.doesNotMatch(
 )
 assert.match(
   nodeConfigPanel,
-  /const isEntityUserReferenceAssignee[\s\S]*?ENTITY_USER_REFERENCE_RESOLVER_CODE[\s\S]*?assigneeType: isEntityUserReferenceAssignee[\s\S]*?ENTITY_USER_REFERENCE_ASSIGNEE_TYPE/,
+  /const isEntityUserReferenceAssignee[\s\S]*?ENTITY_USER_REFERENCE_RESOLVER_CODE[\s\S]*?const authoringType = isEntityUserReferenceAssignee[\s\S]*?ENTITY_USER_REFERENCE_ASSIGNEE_TYPE/,
   '已保存的内置字段解析器必须恢复为设计器的正式语义类型'
 )
 assert.match(
@@ -2055,7 +2053,7 @@ for (const marker of [
 }
 
 const multiInstanceAssignmentStart = nodeConfigPanel.lastIndexOf(
-  'if (assigneeForm.value.isMultiInstance)',
+  'if (isMultiInstance.value)',
   ordinaryAssignmentStart
 )
 assert.ok(

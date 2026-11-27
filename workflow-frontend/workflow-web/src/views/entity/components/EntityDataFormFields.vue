@@ -133,7 +133,7 @@ import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomVa
 import { CROSS_FIELD_ERROR_CODE } from '@flow/workflow-core/form-cross-field-validation'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
-import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
+import { formRuleContext, LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
 import {
   createCustomFormActionSlotContract,
@@ -263,7 +263,8 @@ function isLinkageStateEqual(a: any, b: any) {
 // 更新联动状态
 function updateLinkageState() {
   const fields = runtimeFormFields.value || []
-  const newState = LinkageEngine.processAllLinkages(fields, formData.value.data || {})
+  const newState = LinkageEngine.processAllLinkages(fields, formData.value.data || {},
+    formRuleContext(props.defaultForm, runtimeMode.value, false, props.runtimeContext))
 
   if (!isLinkageStateEqual(linkageState.value, newState)) {
     linkageState.value = newState

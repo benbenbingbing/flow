@@ -15,6 +15,20 @@
       >
         <el-option v-for="option in sourceOptions" :key="option.value" :label="option.label" :value="option.value" />
       </el-select>
+      <el-select
+        v-else-if="sourceGroups.length"
+        :model-value="row.sourcePath"
+        filterable allow-create default-first-option
+        placeholder="选择来源或输入路径"
+        @update:model-value="update(index, 'sourcePath', $event)"
+      >
+        <el-option-group v-for="group in sourceGroups" :key="group.label" :label="group.label">
+          <el-option v-for="option in group.options" :key="option.value"
+            :label="parameterOptionLabel(option.label, option.value)" :value="option.value">
+            <ParameterOptionLabel :label="option.label" :code="option.value" />
+          </el-option>
+        </el-option-group>
+      </el-select>
       <el-input
         v-else
         :model-value="row.sourcePath"
@@ -81,13 +95,15 @@
 <script setup>
 import { computed } from 'vue'
 import { Delete } from '@element-plus/icons-vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   mode: { type: String, default: 'output' },
   pathMapping: { type: Boolean, default: false },
   fieldOptions: { type: Array, default: () => [] },
-  sourceOptions: { type: Array, default: null }
+  sourceOptions: { type: Array, default: null },
+  sourceGroups: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['update:modelValue'])

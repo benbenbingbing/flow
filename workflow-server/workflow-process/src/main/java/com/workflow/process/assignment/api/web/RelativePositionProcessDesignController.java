@@ -8,6 +8,8 @@ import com.workflow.port.system.SysOrganizationPort;
 import com.workflow.port.system.model.identity.position.PositionDefinitionView;
 import com.workflow.port.process.error.assignment.PersonResolutionException;
 import com.workflow.core.result.ApiResponse;
+import com.workflow.core.result.PageRequest;
+import com.workflow.core.result.PageResult;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.process.assignment.api.request.RelativePositionPreviewRequest;
 import com.workflow.process.assignment.extension.RelativeOrgPositionPersonResolver;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -53,6 +56,37 @@ public class RelativePositionProcessDesignController {
     @GetMapping("/position-options")
     public ApiResponse<List<PositionDefinitionView>> positionOptions() {
         return ApiResponse.success(positions.listEnabledPositions());
+    }
+
+    /**
+     * 在流程查看权限下搜索启用职务，返回选择器当前页。
+     *
+     * @param keyword 职务名称或编码
+     * @param pageNum 从 1 开始的页码
+     * @param pageSize 所需页大小，最多 100 条
+     * @return 当前页职务定义与总数
+     */
+    @GetMapping("/position-options/page")
+    public ApiResponse<PageResult<PositionDefinitionView>> positionOptionsPage(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
+        SysPositionPort.PositionPage result = positions.pageEnabledPositions(
+                keyword, page.pageNumber(), page.pageSize());
+        return ApiResponse.success(new PageResult<>(
+                result.records(), result.total(), page.pageNumber(), page.pageSize()));
+    }
+
+    /**
+     * 按稳定编码读取已配置职务，用于首次打开节点时回显选择。
+     *
+     * @param codes 当前配置引用的职务编码
+     * @return 已配置且仍启用的职务定义
+     */
+    @GetMapping("/position-options/batch")
+    public ApiResponse<List<PositionDefinitionView>> positionOptionsBatch(@RequestParam List<String> codes) {
+        return ApiResponse.success(positions.findEnabledPositionsByCodes(codes));
     }
 
     /**

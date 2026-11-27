@@ -41,6 +41,8 @@ import com.workflow.process.definition.infrastructure.persistence.record.Process
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
 import org.flowable.engine.RuntimeService;
+import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.flowable.task.api.Task;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -73,7 +75,7 @@ class NodeFormSubmissionServiceTest {
     /** 旧 URL 快照不能覆盖已登记附件，可编辑字段的本次清空仍要经过必填校验。 */
     @Test
     void approvalValidatesCurrentAttachmentsInsteadOfLegacyProcessSnapshot() {
-        var runtime = mock(RuntimeService.class);
+        var runtime = runtimeService();
         var snapshots = mock(ProcessPublishedSnapshotService.class);
         var runtimeForms = mock(EntityFormRuntimeService.class);
         var mutations = mock(TrustedEntityRecordMutationPort.class);
@@ -151,7 +153,7 @@ class NodeFormSubmissionServiceTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"MISSING_ENTITY", "MISSING_RECORD", "REJECT"})
     void formBoundarySkipsMissingContextAndRejectsBeforeProjectionOrWrites(String scenario) {
-        var runtime = mock(RuntimeService.class);
+        var runtime = runtimeService();
         when(runtime.getVariable("instance-1", "entityCode")).thenReturn(scenario.equals("MISSING_ENTITY") ? null : "expense");
         when(runtime.getVariable("instance-1", "entityDataId")).thenReturn(scenario.equals("MISSING_RECORD") ? null : "data-1");
         var snapshots = mock(ProcessPublishedSnapshotService.class);
@@ -175,7 +177,7 @@ class NodeFormSubmissionServiceTest {
     /** 旧实例只读名称参与提交前派生时，预览与正式补齐后的结果一致，客户端不能伪造它。 */
     @Test
     void previewRepairsMissingNameBeforeSubmissionRulesWithoutWritingRuntime() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
         EntityFormRuntimeService runtimeFormService = mock(EntityFormRuntimeService.class);
         PublishedFormSubmissionService submissionService = mock(PublishedFormSubmissionService.class);
@@ -245,7 +247,7 @@ class NodeFormSubmissionServiceTest {
 
     @Test
     void previewUsesTrustedEditableProjectionAndSafeBeforeSubmit() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService =
                 mock(ProcessPublishedSnapshotService.class);
         EntityFormRuntimeService runtimeFormService =
@@ -348,7 +350,7 @@ class NodeFormSubmissionServiceTest {
     /** 测试仅保存发布节点表单中可编辑的字段：验证只读字段被剔除，更新仅含可编辑字段并触发表单提交 */
     @Test
     void savesOnlyFieldsEditableInPublishedNodeForm() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormRuntimeService runtimeFormService =
@@ -470,7 +472,7 @@ class NodeFormSubmissionServiceTest {
      */
     @Test
     void carriesEveryAppliedPublishedFormInOneApprovalMutation() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService =
                 mock(ProcessPublishedSnapshotService.class);
         EntityFormRuntimeService runtimeFormService =
@@ -617,7 +619,7 @@ class NodeFormSubmissionServiceTest {
     /** 测试全局只读节点即使空提交也不写回，但仍执行发布表单校验。 */
     @Test
     void globallyReadonlyNodeStillValidatesEmptySubmission() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
         EntityFormService formService = mock(EntityFormService.class);
         EntityFormRuntimeService runtimeFormService =
@@ -699,7 +701,7 @@ class NodeFormSubmissionServiceTest {
 
     @Test
     void defaultFormCarriesResolvedReleaseIntoApprovalMutation() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService =
                 mock(ProcessPublishedSnapshotService.class);
         EntityFormService formService = mock(EntityFormService.class);
@@ -764,14 +766,18 @@ class NodeFormSubmissionServiceTest {
                 eq("approve"),
                 org.mockito.ArgumentMatchers.anyMap(),
                 eq(executionContext),
-                org.mockito.ArgumentMatchers.isNull()))
-                .thenAnswer(invocation ->
-                        new PublishedFormSubmissionService
+                any(UiRuntimeResolutionContext.class)))
+                .thenAnswer(invocation -> {
+                    UiRuntimeResolutionContext context = invocation.getArgument(8);
+                    assertEquals("task-1", context.formValues().get("currentTask.id"));
+                    assertEquals("starter-user", context.formValues().get("currentProcessInstance.starterUserId"));
+                    return new PublishedFormSubmissionService
                                 .AuthorizedFormApplication(
                                         invocation.getArgument(6),
                                         "release-7",
                                         7,
-                                        "hotfix-8"));
+                                        "hotfix-8");
+                });
 
         service.applyEditableData(
                 task,
@@ -794,7 +800,7 @@ class NodeFormSubmissionServiceTest {
     /** 测试无法解析确切流程快照时 fail-closed：验证抛出 IllegalStateException 且不静默放行 */
     @Test
     void failsClosedWhenExactProcessSnapshotCannotBeResolved() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService =
                 mock(ProcessPublishedSnapshotService.class);
         NodeFormSubmissionService service =
@@ -833,7 +839,7 @@ class NodeFormSubmissionServiceTest {
 
     @Test
     void savesOnlyFieldsEditableInRecursiveApprovalNodes() {
-        RuntimeService runtimeService = mock(RuntimeService.class);
+        RuntimeService runtimeService = runtimeService();
         ProcessPublishedSnapshotService snapshotService =
                 mock(ProcessPublishedSnapshotService.class);
         EntityFormRuntimeService runtimeFormService =
@@ -936,6 +942,18 @@ class NodeFormSubmissionServiceTest {
                 Map.of(
                         "expectedDate",
                         "2026-08-20"));
+    }
+
+    /** 为审批上下文提供真实入口对应的流程实例和发起人样例。 */
+    private RuntimeService runtimeService() {
+        RuntimeService runtime = mock(RuntimeService.class);
+        ProcessInstanceQuery query = mock(ProcessInstanceQuery.class);
+        ProcessInstance instance = mock(ProcessInstance.class);
+        when(runtime.createProcessInstanceQuery()).thenReturn(query);
+        when(query.processInstanceId("instance-1")).thenReturn(query);
+        when(query.singleResult()).thenReturn(instance);
+        when(instance.getStartUserId()).thenReturn("starter-user");
+        return runtime;
     }
 
     /** 构造测试 Flowable 任务 Mock，含 id、流程实例与定义 ID */

@@ -4,6 +4,7 @@ import { projectRuntimeFields, validateRuntimeFields } from '../dist/shared/form
 import { buildRuntimeFieldRules } from '../dist/shared/config-runtime/index.js'
 import { applyRuntimeFieldEffects } from '../dist/shared/form-runtime/fieldEvents.js'
 import { formatReadonlyValue } from '../dist/views/entity/components/approval/entityApprovalDisplay.js'
+import { formRuleContext, LinkageEngine } from '../dist/utils/linkageEngine.js'
 const node = (id, type, parentId = '', props = {}) => ({ id, nodeKey: id, nodeType: type, parentId, props })
 
 test('嵌套分组保留节点身份，子表字段与父表记录隔离', () => {
@@ -24,6 +25,18 @@ test('折叠不影响校验，隐藏和只读字段不参与必填校验', async
 })
 
 test('只读 0 和 false 保持真实值，不变成占位符', () => { assert.equal(formatReadonlyValue(0), '0'); assert.equal(formatReadonlyValue(false), '否') })
+
+test('当前待办上下文可以控制字段编辑状态', () => {
+  const form = { contextValues: { 'currentTask.nodeKey': 'review' } }
+  const condition = { version: 1, root: { type: 'GROUP', logic: 'AND', children: [
+    { type: 'CONDITION', property: 'ctx.currentTask.nodeKey', operator: '==', value: 'review' }
+  ] } }
+  const fields = [{ fieldCode: 'contact', linkageRules: { enabledConditionConfig: condition } }]
+  const record = {}
+  const context = formRuleContext(form, 'approve')
+  assert.equal(LinkageEngine.processAllLinkages(fields, record, context).disabled.contact, false)
+  assert.equal(LinkageEngine.processAllLinkages(fields, record, formRuleContext({}, 'approve')).disabled.contact, true)
+})
 
 test('回填遵循覆盖确认，旧异步结果与不安全路径不会落地', async () => {
   let record = { amount: 2 }, current = true

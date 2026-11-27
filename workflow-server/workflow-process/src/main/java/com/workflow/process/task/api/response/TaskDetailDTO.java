@@ -162,6 +162,10 @@ public class TaskDetailDTO {
         private String configHash;
         /** 下次请求重新鉴权的任务/实例定位信息，不保存客户端授权结果。 */
         private Map<String, Object> runtimeContext;
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        private Map<String, Object> contextValues;
+        public Map<String, Object> getContextValues() { return contextValues; }
+        public void setContextValues(Map<String, Object> values) { this.contextValues = values; }
         public String getConfigHash() { return configHash; }
         public void setConfigHash(String configHash) { this.configHash = configHash; }
         public Map<String, Object> getRuntimeContext() { return runtimeContext; }

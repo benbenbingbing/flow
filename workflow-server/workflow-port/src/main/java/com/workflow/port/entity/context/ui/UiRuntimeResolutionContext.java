@@ -1,6 +1,7 @@
 package com.workflow.port.entity.context.ui;
 
 import com.workflow.port.entity.model.ui.UiRuntimePurpose;
+import java.util.Map;
 
 /**
  * 服务端可信的 UI 发布快照解析上下文。
@@ -12,6 +13,7 @@ import com.workflow.port.entity.model.ui.UiRuntimePurpose;
  * @param processInstanceId       ACTIVE_TASK 的流程实例 ID
  * @param entityCode              ACTIVE_TASK 的业务实体编码
  * @param recordId                ACTIVE_TASK 的业务记录 ID
+ * @param formValues              服务端按实际入口提供的流程值，独立于客户端的业务定位信息
  */
 public record UiRuntimeResolutionContext(
         UiRuntimePurpose purpose,
@@ -20,7 +22,23 @@ public record UiRuntimeResolutionContext(
         String taskId,
         String processInstanceId,
         String entityCode,
-        String recordId) {
+        String recordId,
+        Map<String, String> formValues) {
+
+    public UiRuntimeResolutionContext {
+        formValues = formValues == null ? Map.of() : Map.copyOf(formValues);
+    }
+
+    public UiRuntimeResolutionContext(UiRuntimePurpose purpose, String processVersionHistoryId, String nodeId,
+            String taskId, String processInstanceId, String entityCode, String recordId) {
+        this(purpose, processVersionHistoryId, nodeId, taskId, processInstanceId, entityCode, recordId, Map.of());
+    }
+
+    /** 由流程入口附加可信取值，不改变已有授权坐标。 */
+    public UiRuntimeResolutionContext withFormValues(Map<String, String> values) {
+        return new UiRuntimeResolutionContext(purpose, processVersionHistoryId, nodeId, taskId, processInstanceId,
+                entityCode, recordId, values);
+    }
 
     /**
      * 兼容无需任务主体绑定的独立、新建和历史解析调用。

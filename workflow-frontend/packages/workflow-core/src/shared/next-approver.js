@@ -3,6 +3,7 @@ const SOURCE_TYPES = new Set(['NODE_ASSIGNMENT', 'SCOPE', 'RESOLVER'])
 const ASSIGNMENT_MODES = new Set([
   'DIRECT',
   'CANDIDATE',
+  'CLAIM',
   'MULTI_INSTANCE'
 ])
 const SCOPE_TYPES = new Set([

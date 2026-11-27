@@ -2,6 +2,7 @@ import { formLifecycleEvents } from './formLifecycleEventModel.js'
 
 const formModeEvents = ['FORM_OPEN', 'FORM_RESET', 'FORM_CLOSE', 'FORM_BUTTON_CLICK', ...formLifecycleEvents]
 const fieldEvents = ['FIELD_CHANGE', 'FIELD_BUTTON_CLICK', 'ENTITY_SELECTED']
+const dataMutationEvents = ['DATA_CREATE', 'DATA_UPDATE']
 const listButtonEvents = ['ROW_BUTTON_CLICK', 'TOOLBAR_BUTTON_CLICK']
 
 // 列表事件使用后端重建的行 DTO，系统属性在行根部，业务字段在 data 中。
@@ -13,7 +14,7 @@ const rowProperties = new Set([
 
 const option = (label, value) => ({ label, value })
 
-/** 返回当前事件可识别的条件来源。接口自定义结构仍可用手写路径访问。 */
+/** 按事件输入结构生成执行条件和参数映射的来源选项。接口自定义结构仍可用手写路径访问。 */
 export function eventConditionPathGroups(event, fields, parameters) {
   const formMode = formModeEvents.includes(event)
   const lifecycle = formLifecycleEvents.includes(event)
@@ -35,6 +36,10 @@ export function eventConditionPathGroups(event, fields, parameters) {
     if (event !== 'FORM_CLOSE') {
       fieldsGroup = { label: '表单字段', options: fields.map(field => option(field.label, `${prefix}.${field.value}`)) }
     }
+  } else if (dataMutationEvents.includes(event)) {
+    // 新增和修改数据事件使用提交请求的 data，表单交互事件才使用当前页面的 form。
+    if (event === 'DATA_UPDATE') current.push(option('当前记录 ID', 'recordId'))
+    fieldsGroup = { label: '提交字段', options: fields.map(field => option(field.label, `input.data.${field.value}`)) }
   } else if (listButton) {
     const row = event === 'ROW_BUTTON_CLICK'
     const prefix = row ? 'input.row' : 'input.selectedRows.0'
@@ -49,11 +54,14 @@ export function eventConditionPathGroups(event, fields, parameters) {
   }
 
   const groups = [{ label: '当前事件', options: current }]
-  // 正式提交以服务端收到的表单值为准，页面参数须先回填到字段才能用于提交条件。
+  if (fieldsGroup) groups.push(fieldsGroup)
+  // 正式提交以服务端收到的表单值为准，通过字段传递需要参与提交的参数。
   if (event !== 'BEFORE_SUBMIT' && (formMode || fieldEvent || listButton || listLoad)) {
     const prefix = lifecycle ? 'params' : 'input.params'
-    groups.push({ label: '页面参数', options: parameters.map(item => option(item.name || item.code, `${prefix}.${item.code}`)) })
+    groups.push({
+      label: formMode || fieldEvent ? '表单参数' : '页面参数',
+      options: parameters.map(item => option(item.name || item.code, `${prefix}.${item.code}`))
+    })
   }
-  if (fieldsGroup) groups.push(fieldsGroup)
   return groups.filter(group => group.options.length > 0)
 }

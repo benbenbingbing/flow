@@ -2581,6 +2581,9 @@ public class UiViewCompositionService {
                 requirePublishedOwnerReadableField(ownerType, ownerSnapshot, schemas.source(),
                         String.valueOf(mapping.get("sourceField")), label, "页面传参", parameterIndex);
             }
+            if ("CONTEXT".equals(mapping.get("sourceType")) && !"FORM".equals(ownerType)) {
+                throw new IllegalArgumentException(label + "上下文参数传递需要表单作为来源页面");
+            }
         }
     }
 

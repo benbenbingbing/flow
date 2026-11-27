@@ -186,7 +186,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用按执行人和多人办理、办理表单、审批设置排列。', notes: '知会在协同页签，自动跳过、选择节点回退、SLA 和标识备注在高级页签。' },
+                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用包含办理人配置、办理表单和审批设置。', notes: '知会在协同页签，自动跳过、选择节点回退、SLA 和标识备注在高级页签。' },
                 { option: '服务任务 / 发送任务', meaning: '显示“常用、协同、高级、流程动作”。常用展示任务主配置，协同展示知会。', notes: 'REST 可靠性、结果映射等仍在常用内按低频分组折叠。' },
                 { option: '其他任务、调用活动与网关', meaning: '显示“常用、高级、流程动作”。常用展示类型专属配置。', notes: '页面不会为不支持的能力显示空页签。' },
                 { option: '开始、结束事件与连线', meaning: '开始、结束事件显示适用的基础配置和流程动作；连线条件与连线实体状态并入常用。', notes: '开始事件暂不支持节点表单配置；连线实体状态是常用内的折叠配置区。' },
@@ -306,64 +306,47 @@ export default {
     {
       id: 'process-assignee',
       index: '04',
-      title: '办理人、候选人与多实例',
-      summary: '统一配置固定人员、组、角色、其他节点审批人或受控人员接口，并按需启用会签/串行处理。',
+      title: '办理人和办理方式',
+      summary: '在用户任务的常用页选择办理方式，然后配置办理人来源。',
       topics: [
         {
           id: 'process-assignee-methods',
-          title: '普通用户任务指定方式',
+          title: '办理人来源',
           blocks: [
             {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '固定人员 user', meaning: '选择一个执行人，也可多选候选人。执行人直接拥有任务，候选人可认领。', notes: '默认指定方式；保存使用 username。一个任务同时配置执行人和候选人时要明确认领规则。' },
-                { option: '用户组 group', meaning: '多选用户组，组内成员可处理任务。', notes: '保存 groupCode；成员变更会影响后续新任务。' },
-                { option: '角色 role', meaning: '多选角色，拥有角色的用户可处理任务。', notes: '在 candidateGroups 中使用 ROLE_ 前缀区分；角色编码保持稳定。' },
-                { option: '使用其他节点审批人 node_reference', meaning: '直接引用同一流程中另一个用户任务的审批人规则，不复制人员名单。', notes: '必须选择同一 BPMN Process 的其他 UserTask；保存 referencedNodeId 作为权威主键、referencedNodeName 用于回显，禁止自身或循环引用，引用链最多 16 层。被引用节点规则修改后同步生效。' },
-                { option: '表达式 expression', meaning: '执行人、候选人、候选组由流程变量或表达式决定。', notes: '示例 ${submitUser}、${initiator}、${deptManagers}；返回值必须符合 Flowable 用户/组格式。' },
-                { option: '接口动态 interface', meaning: '通过 Spring Bean 或 REST 接口解析办理人。', notes: '必须配置接口名称；Spring 可填方法名，REST 可选 GET/POST；请求参数支持流程变量；返回映射指定流程变量名。' }
-              ]
-            },
-            {
-              type: 'table',
-              title: '接口动态字段',
-              columns: fieldColumns,
-              rows: [
-                { field: '接口类型', meaning: 'spring 或 rest。', defaultLimit: '新建内存默认 spring；历史配置加载可能按兼容值回显。', effect: '决定调用本地 Bean 还是 HTTP。', publish: '目标环境必须存在 Bean 或可访问接口。' },
-                { field: '接口名称', meaning: 'Bean 名称或完整 URL。', defaultLimit: '必填。', effect: '运行时定位人员解析器。', publish: 'URL 不应写环境固定域名，优先使用环境配置。' },
-                { field: '方法名', meaning: 'Spring Bean 方法。', defaultLimit: '示例 selectAssignee。', effect: '返回用户 ID/用户名或集合。', publish: '签名和返回类型必须与运行时解析器一致。' },
-                { field: '请求方式', meaning: 'REST GET/POST。', defaultLimit: '界面默认 POST。', effect: '决定参数发送方式。', publish: '敏感参数禁止放 GET 查询串。' },
-                { field: '请求参数', meaning: 'JSON 文本，支持流程变量。', defaultLimit: '可选。', effect: '传给接口的上下文。', publish: '必须是合法 JSON，禁止传递无必要敏感数据。' },
-                { field: '返回映射', meaning: '结果写入的变量名或结构路径。', defaultLimit: '界面默认 assignee。', effect: '后续人员绑定读取该结果。', publish: '与接口返回契约一致。' }
+                { option: '固定人员', meaning: '分页选择一名或多名办理人员。', notes: '顺序办理使用列表从上到下的顺序，可用上移和下移调整。' },
+                { option: '用户组', meaning: '分页选择用户组，将组内启用成员纳入办理范围。', notes: '可点击“配置”按成员标签筛选。' },
+                { option: '角色', meaning: '分页选择角色，将持有所选角色的启用用户纳入办理范围。' },
+                { option: '实体用户关系字段', meaning: '从流程绑定记录出发，按用户关系路径查找办理人。' },
+                { option: '相对组织职务', meaning: '以相对人的部门或组织为锚点，查找所选职务的所有任职人。', notes: '点击职务后的“配置”设置查找层级并试算。' },
+                { option: '使用其他节点审批人', meaning: '复用同一流程中另一个用户任务的人员规则。', notes: '引用链最多 16 层，且不能成环。' },
+                { option: '表达式', meaning: '通过流程变量解析用户或用户组。', notes: '抢占可使用表达式，例如 ${deptManagers}。' },
+                { option: '接口动态', meaning: '调用受控人员接口解析办理人。', notes: '选择支持当前办理方式的人员接口，可按接口契约填写 extraParams。' }
               ]
             }
           ]
         },
         {
           id: 'process-candidates',
-          title: '执行人和候选人的区别',
+          title: '抢占、顺序和会签',
           blocks: [
             {
               type: 'table',
-              columns: [
-                { key: 'role', label: '配置' },
-                { key: 'runtime', label: '运行效果' },
-                { key: 'recommendation', label: '使用建议' }
-              ],
+              columns: optionColumns,
               rows: [
-                { role: '执行人 assignee', runtime: '任务创建后直接归属一个用户，进入其待办。', recommendation: '责任人明确且无需认领时使用。' },
-                { role: '候选人 candidateUsers', runtime: '多个用户都可见任务；在工作台点击“认领”后写入当前办理人，才能审批、转办或加签。', recommendation: '小范围共享待办时使用；并发认领只有第一个用户成功，其他用户收到冲突提示。' },
-                { role: '候选组 candidateGroups', runtime: '组或角色成员可见任务；认领后任务从共享池转为个人待办。', recommendation: '按组织角色分配时使用；避免组过大导致所有人看到大量待办。' },
-                { role: '其他节点审批人', runtime: '按被引用 UserTask 的审批人规则解析当前任务办理人，不复制静态名单。', recommendation: '多个节点需要完全相同的人员规则时使用；避免引用链过长，并禁止循环引用。' },
-                { role: '接口动态', runtime: '运行时根据业务数据解析一个或多个处理人。', recommendation: '组织规则复杂或需要外部主数据时使用，并准备空结果兜底。' }
+                { option: '抢占', meaning: '节点只生成一条任务。一人直接办理，多人共享待办。', notes: '默认方式。共享待办可直接办理，也可先认领。' },
+                { option: '顺序', meaning: '固定人员依次办理，全部通过后继续，任一人驳回即结束本节点。', notes: '在节点中确定人员和顺序。前序审批可以展示这份名单。' },
+                { option: '会签', meaning: '每位办理人同时收到各自的任务。', notes: '默认等待全部办理，通过率阈值为 100%。' }
               ]
             },
             {
               type: 'callout',
-              tone: 'warning',
-              title: '空办理人',
-              text: '任何动态方式都要设计“无人员返回”的处理。发布前使用最小数据、缺失部门、停用用户和接口超时等场景验证，避免流程进入无人可办状态。'
+              tone: 'info',
+              title: '空办理人策略',
+              text: '人员解析为空时，使用用户任务“高级”页底部的“空办理人策略”。该分组默认继承流程策略。'
             }
           ]
         },
@@ -382,8 +365,8 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '审批时展示', meaning: '允许前序审批面板展示本节点及系统解析的默认审批人。', defaultLimit: '默认关闭。', effect: '只影响真正命中的下一人工节点。', publish: '只读展示时若无法解析到有效办理人，审批会被阻断。' },
-                { field: '允许修改', meaning: '允许前序办理人在受控范围内改选本节点审批人。', defaultLimit: '仅在“审批时展示”开启后可用。', effect: '直接办理为单选；候选池和多实例为多选，多实例保留选择顺序。', publish: '可编辑节点没有默认人员时，前序办理人必须至少选择一人。' },
-                { field: '使用本节点审批人', meaning: '直接引用本节点“执行人与多人办理”中已经设置的固定人员、用户组、角色或人员接口，不复制人员名单。', defaultLimit: '新配置默认使用；无需再次维护人员范围。', effect: '默认审批人与可选人员来自同一份节点规则，多实例按同一集合生成任务。', publish: '修改本节点审批人规则后同步生效，同时影响本节点默认分配和前序改选范围。' },
+                { field: '允许修改', meaning: '允许前序办理人在受控范围内改选本节点审批人。', defaultLimit: '抢占和会签可在开启“审批时展示”后启用。', effect: '抢占和会签均支持多选。顺序办理按节点设置展示。', publish: '可编辑节点没有默认人员时，前序办理人必须至少选择一人。' },
+                { field: '使用本节点审批人', meaning: '直接引用本节点“办理人配置”中已经设置的固定人员、用户组、角色或人员接口，不复制人员名单。', defaultLimit: '新配置默认使用；无需再次维护人员范围。', effect: '默认审批人与可选人员来自同一份节点规则，多实例按同一集合生成任务。', publish: '修改本节点审批人规则后同步生效，同时影响本节点默认分配和前序改选范围。' },
                 { field: '人员范围', meaning: '按指定用户、组织部门（可含下级）、角色、用户组或全部启用用户取并集。', defaultLimit: '必须至少配置一条规则；全员范围必须显式选择。', effect: '候选查询只返回启用且未删除的本地用户。', publish: '提交时服务端会重新校验范围，前端结果不能扩大权限。' },
                 { field: '人员接口', meaning: '从扩展管理中选择已注册的 PERSON_RESOLVER。', defaultLimit: '必须启用并支持 CANDIDATE 用途；extraParams 必须是 JSON 对象。', effect: '平台传入流程、节点、实体和操作人上下文后解析候选用户。', publish: '不支持在节点中填写任意 HTTP 地址；接口异常会阻止改选或只读展示。' },
                 { field: '条件变化', meaning: '审批操作、备注或表单值变化后重新计算下一节点和人员范围。', defaultLimit: '自动防抖刷新。', effect: '旧请求不会覆盖最新结果；切换分支会清理旧节点选择。', publish: '若提交时范围已变化，界面保留当前表单并要求重新确认。' }
@@ -399,32 +382,15 @@ export default {
         },
         {
           id: 'process-multi-instance',
-          title: '多实例（会签 / 或签）',
+          title: '会签规则',
           blocks: [
-            {
-              type: 'callout',
-              tone: 'info',
-              title: '多人办理分组',
-              text: '先在上方统一设置审批人，再启用多人办理。启用后只需设置并行/串行、完成规则和技术参数，不会再出现第二套会签人员配置。引用其他节点时按被引用节点规则展开参与人；集合变量由平台按节点生成并只读展示。'
-            },
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '启用多实例', meaning: '为上方审批人配置解析出的每个成员创建任务实例。', defaultLimit: '默认关闭。', effect: '开启后复用同一审批人来源生成多人任务，不再单独维护会签人员。', publish: '人员集合为空会阻止保存或运行，必须测试。' },
-                { field: '办理模式', meaning: 'countersign 会签或 orsign 或签。', defaultLimit: '默认会签。', effect: '会签只统计通过票，达标通过、剩余票不够则拒绝；或签第一人通过或驳回即结束。', publish: '并行/串行只表示创建顺序，不要把串行当成或签。' },
-                { field: '执行方式', meaning: 'parallel 并行或 sequential 串行。', defaultLimit: '默认 parallel。', effect: '并行同时生成任务；串行按集合顺序逐个生成。', publish: '不要把“串行”误当成自动一票通过。' },
-                { field: '审批人指定方式', meaning: '复用上方固定人员、用户组、角色、其他节点审批人或人员接口。固定人员在多人办理时显示为一个有序多选列表。', defaultLimit: '至少选择一人、一个组/角色、一个可引用节点，或支持 MULTI_INSTANCE 用途的人员接口。', effect: '平台展开成员、去重并写入当前节点集合变量；节点引用按被引用规则展开，固定人员的选择顺序会保留。', publish: '多人办理不支持表达式来源；节点引用不得形成环；切换办理模式后需重新选择匹配用途的人员接口。' },
-                { field: '集合变量', meaning: '多实例集合表达式。', defaultLimit: '系统按节点生成唯一的 ${_wfMultiInstanceUsers_<节点ID>}，界面只读。', effect: '发布时作为 loop collection，前序改选会覆盖对应目标节点的集合。', publish: '不同多实例节点不得共用集合变量；不要在 XML 外部覆盖为错误类型。' },
-                { field: '元素变量', meaning: '当前实例成员变量名。', defaultLimit: '默认 assignee。', effect: '每个子任务 assignee 写为 ${元素变量}。', publish: '与流程中其他变量避免重名。' },
-                { field: '完成条件', meaning: '满足后提前结束多实例。', defaultLimit: '会签按通过人数达标或剩余票不够结束；开启“需要所有人审批”则等全员。或签为通过人数 >= 1 或驳回标记。', effect: '会签驳回不加通过人数；未开全员时只在不可能达标时提前拒绝。', publish: '完成条件由设计器按办理模式生成，不要手改。' }
+                { field: '通过率阈值', meaning: '通过人数至少需要占总办理人数的比例。', defaultLimit: '默认 100%，可设为 1% 至 100%。', effect: '驳回票计入总人数和已完成人数。', publish: '按业务要求设置可接受的通过比例。' },
+                { field: '等待全部办理', meaning: '确定何时判定会签结果。', defaultLimit: '默认开启。', effect: '开启时等全员办完。关闭时达到通过率即通过，剩余人员全部通过仍无法达标时即驳回。', publish: '需要收集全部人员意见时开启。' }
               ]
-            },
-            {
-              type: 'callout',
-              tone: 'info',
-              title: '多实例保存语义',
-              text: '新保存节点使用 assignmentConfigVersion: 2：审批人与多实例共用 assigneeConfig，不再写入 multiInstance* 或 collection* 重复人员字段。BPMN assignee 仍设置为元素变量表达式。历史混合会签配置在人员未被修改时原样保留；重新选择后才升级为统一配置。'
             }
           ]
         }

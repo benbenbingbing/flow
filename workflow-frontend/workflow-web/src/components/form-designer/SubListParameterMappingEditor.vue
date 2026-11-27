@@ -104,9 +104,11 @@
           <el-option
             v-for="option in contextOptions"
             :key="option.value"
-            :label="option.label"
+            :label="parameterOptionLabel(option.label, option.value)"
             :value="option.value"
-          />
+          >
+            <ParameterOptionLabel :label="option.label" :code="option.value" />
+          </el-option>
         </el-select>
         <el-input
           v-else
@@ -203,6 +205,7 @@
 <script setup>
 import { computed, watch } from 'vue'
 import { QuestionFilled } from '@element-plus/icons-vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 import {
   enforceSubListParameterUsage,
   enforceSubListParentReferenceMapping,

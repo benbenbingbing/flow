@@ -118,20 +118,7 @@ public class PersonResolverTaskAssignmentListener
                         throw new IllegalStateException(
                                 "覆盖审批人列表为空");
                     }
-                    clearDefaultAssignments(task.getId());
-                    if ("CANDIDATE".equalsIgnoreCase(
-                            override.assignmentMode())) {
-                        override.usernames().forEach(user ->
-                                taskService.addCandidateUser(
-                                        task.getId(), user));
-                    } else {
-                        taskService.setAssignee(
-                                task.getId(), override.usernames().get(0));
-                        override.usernames().stream()
-                                .skip(1)
-                                .forEach(user -> taskService.addCandidateUser(
-                                        task.getId(), user));
-                    }
+                    applyResolvedUsers(task, override.usernames(), override.assignmentMode());
                     log.info(
                             "已消费下一审批人覆盖: sourceTaskId={}, taskId={}, nodeId={}, assignmentMode={}, userCount={}",
                             override.sourceTaskId(),
@@ -177,7 +164,7 @@ public class PersonResolverTaskAssignmentListener
         String configDocument = ConfiguredTaskPropertyReader.read(
                 userTask, "assigneeConfig");
         if (!StringUtils.hasText(configDocument)) {
-            if (!hasCurrentAssignment(task)) {
+            if (resolveCurrentAssignment(task).isEmpty()) {
                 handleEmptyAssignment(task, bpmnModel, Map.of(), processConfigId, processKey,
                         "EMPTY_CONFIGURATION", "Task has no effective assignee configuration");
             }
@@ -223,6 +210,7 @@ public class PersonResolverTaskAssignmentListener
         boolean strictAssignment = assignmentVersion == 2
                 || visible
                 || editable;
+        boolean claim = "CLAIM".equals(assigneeConfig.get("handlingMode"));
         ResolvedAssignment resolvedAssignment;
         try {
             resolvedAssignment = nodeReferenceResolver().resolve(
@@ -282,7 +270,7 @@ public class PersonResolverTaskAssignmentListener
                 applyResolvedUsers(
                         task,
                         users,
-                        NodeAssignmentReferenceResolver.assignmentMode(
+                        claim ? "CLAIM" : NodeAssignmentReferenceResolver.assignmentMode(
                                 userTask,
                                 resolvedAssignment.sourceTask(),
                                 effectiveConfig));
@@ -322,9 +310,12 @@ public class PersonResolverTaskAssignmentListener
             // 固定人员和组同样可能停用或失去成员，必须走版本快照中的策略。
             // 安全默认仍为 BLOCK_PUBLISH；显式配置的事件和兜底不应被 v2 强校验绕过。
             try {
-                if (!hasCurrentAssignment(task)) {
+                List<String> users = resolveCurrentAssignment(task);
+                if (users.isEmpty()) {
                     handleEmptyAssignment(task, bpmnModel, effectiveConfig, processConfigId, processKey,
                             "EMPTY_STATIC_ASSIGNMENT", "节点没有有效的实际办理人或候选人");
+                } else if (claim) {
+                    applyResolvedUsers(task, users, "CLAIM");
                 }
             } catch (RequiredAssignmentException exception) {
                 throw exception;
@@ -381,7 +372,7 @@ public class PersonResolverTaskAssignmentListener
                         "EMPTY_RESOLUTION", "Assignee resolver returned no users");
                 return;
             }
-            String assignmentMode = firstText(
+            String assignmentMode = claim ? "CLAIM" : firstText(
                     effectiveConfig.get("assignmentMode"), "DIRECT");
             applyResolvedUsers(task, users, assignmentMode);
             log.info(
@@ -610,6 +601,10 @@ public class PersonResolverTaskAssignmentListener
         String normalizedMode = StringUtils.hasText(assignmentMode)
                 ? assignmentMode.trim().toUpperCase(Locale.ROOT)
                 : "DIRECT";
+        if ("CLAIM".equals(normalizedMode)) {
+            // 抢占始终保留一条任务，按进入节点时解析出的有效人数决定是否直接分配。
+            normalizedMode = users.size() == 1 ? "DIRECT" : "CANDIDATE";
+        }
         if (!"DIRECT".equals(normalizedMode)
                 && !"CANDIDATE".equals(normalizedMode)) {
             // 普通任务只有两种可验证的分配语义；未知值不能
@@ -799,22 +794,22 @@ public class PersonResolverTaskAssignmentListener
     }
 
     /**
-     * 判断 Flowable 已创建的任务是否包含实际办理人或候选身份。
+     * 解析 Flowable 已创建任务的有效办理人，供空办理人策略和抢占分配使用。
      * 仅检查运行时事实，不信任配置 JSON 中尚未落到任务上的默认值。
      *
      * @param task 任务，作为 {@code resolverRuntimeService.resolvePrincipalUsernames} 的输入影响后续处理
-     * @return 当前分配条件成立时为 true，否则为 false
+     * @return 展开并去重后的启用用户列表
      */
-    private boolean hasCurrentAssignment(Task task) {
+    private List<String> resolveCurrentAssignment(Task task) {
         if (StringUtils.hasText(task.getAssignee())) {
-            return !resolverRuntimeService.resolvePrincipalUsernames(
+            return resolverRuntimeService.resolvePrincipalUsernames(
                     List.of(PersonPrincipal.user(
-                            task.getAssignee()))).isEmpty();
+                            task.getAssignee())));
         }
         List<IdentityLink> identityLinks =
                 taskService.getIdentityLinksForTask(task.getId());
         if (identityLinks == null) {
-            return false;
+            return List.of();
         }
         List<PersonPrincipal> principals = new ArrayList<>();
         for (IdentityLink identityLink : identityLinks) {
@@ -839,8 +834,7 @@ public class PersonResolverTaskAssignmentListener
                 }
             }
         }
-        return !resolverRuntimeService.resolvePrincipalUsernames(
-                principals).isEmpty();
+        return resolverRuntimeService.resolvePrincipalUsernames(principals);
     }
 
     /**

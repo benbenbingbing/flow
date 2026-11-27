@@ -27,6 +27,9 @@
       <el-form-item label="错误提示">
         <el-input :model-value="rule.message || ''" maxlength="200" placeholder="留空时自动生成提示" aria-label="跨字段错误提示" @update:model-value="update(index, 'message', $event)" />
       </el-form-item>
+      <FormContextConditionInput :model-value="rule.condition" title="触发条件"
+        description="满足条件时执行这条比较。" :fields="fields"
+        @update:model-value="update(index, 'condition', $event)" />
       <p class="cross-field-preview">规则预览：{{ preview(rule) }}</p>
     </div>
     <p class="cross-field-help">当前字段可见且可编辑时自动校验；隐藏、只读或禁用时跳过。任一值为空时跳过比较，必填由字段原有属性控制。</p>
@@ -37,6 +40,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import FormContextConditionInput from './FormContextConditionInput.vue'
 import {
   CROSS_FIELD_MAX_RULES,
   CROSS_FIELD_OPERATORS,
@@ -73,7 +77,12 @@ function add() {
   persist([...rules.value, { id: `cf_${id}`, operator: 'GE', targetFieldCode: '', message: '' }])
 }
 function update(index, key, value) {
-  persist(rules.value.map((rule, i) => i === index ? { ...rule, [key]: value } : rule))
+  persist(rules.value.map((rule, i) => {
+    if (i !== index) return rule
+    const updated = { ...rule, [key]: value }
+    if (key === 'condition' && value == null) delete updated.condition
+    return updated
+  }))
 }
 function remove(index) {
   persist(rules.value.filter((_, i) => i !== index))

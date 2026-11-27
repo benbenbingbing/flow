@@ -498,7 +498,7 @@
                   v-model="step.inputRows"
                   mode="input"
                   :path-mapping="lifecycleSelected"
-                  :field-options="fieldOptions"
+                  :source-groups="lookupOwner === 'FORM' ? eventSourcePathGroups : []"
                 />
               </el-collapse-item>
               <el-collapse-item v-if="!isListLookup(step)" name="output">
@@ -544,7 +544,7 @@
                   class="condition-grid"
                 >
                   <el-select
-                    v-if="conditionPathGroups.length"
+                    v-if="eventSourcePathGroups.length"
                     v-model="step.conditionPath"
                     aria-label="条件数据来源"
                     placeholder="选择字段或参数，也可输入路径"
@@ -553,11 +553,13 @@
                     default-first-option
                     clearable
                   >
-                    <el-option-group v-for="group in conditionPathGroups" :key="group.label" :label="group.label">
+                    <el-option-group v-for="group in eventSourcePathGroups" :key="group.label" :label="group.label">
                       <el-option
                         v-for="item in group.options" :key="item.value"
-                        :label="`${item.label} · ${item.value}`" :value="item.value"
-                      />
+                        :label="parameterOptionLabel(item.label, item.value)" :value="item.value"
+                      >
+                        <ParameterOptionLabel :label="item.label" :code="item.value" />
+                      </el-option>
                     </el-option-group>
                   </el-select>
                   <el-input v-else v-model="step.conditionPath" aria-label="条件数据来源" placeholder="输入自定义数据路径" clearable />
@@ -604,7 +606,7 @@
                     inactive-text="否"
                   />
                   <span class="condition-hint">
-                    {{ conditionPathGroups.length ? '可按名称搜索，自定义路径输入后按回车。' : '' }}来源留空时执行这一步。
+                    {{ eventSourcePathGroups.length ? '可按名称搜索，自定义路径输入后按回车。' : '' }}来源留空时执行这一步。
                   </span>
                 </div>
               </el-collapse-item>
@@ -628,6 +630,7 @@
 </template>
 
 <script setup>
+import { formContextParameters } from '@/shared/form-context-parameters'
 import ExcelButtonBinding from '@/components/excel/ExcelButtonBinding.vue'
 import { showRequestError } from '@/shared/request'
 
@@ -643,6 +646,7 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 import EntityLookupStepEditor from './EntityLookupStepEditor.vue'
 import { eventConditionPathGroups } from './eventConditionPaths'
 import { getFormById, patchFormMetadata } from '@/api/entityForm'
@@ -750,7 +754,13 @@ const lookupTargetFields = computed(() => props.fieldOptions.filter(field =>
     'deleted', 'create_by', 'update_by', 'create_time', 'update_time'].includes(field.value)))
 const eventParameters = ref([])
 const hasEditableStep = computed(() => editor.steps.some(step => !isBuiltinExcelStep(step)))
-const conditionPathGroups = computed(() => eventConditionPathGroups(editor.eventCode, props.fieldOptions, eventParameters.value))
+const contextOptions = computed(() => lookupOwner.value === 'FORM' && !['FORM_INIT', 'AFTER_LOAD'].includes(editor.eventCode)
+  ? formContextParameters.map(parameter => ({ value: 'ctx.' + parameter.key, label: parameter.label })) : [])
+// 执行条件与输入映射共用事件的路径约定，表单交互和生命周期步骤从各自的运行数据读取。
+const eventSourcePathGroups = computed(() => [
+  ...eventConditionPathGroups(editor.eventCode, props.fieldOptions, eventParameters.value),
+  ...(contextOptions.value.length ? [{ label: '上下文参数', options: contextOptions.value }] : [])
+])
 watch([dialogVisible, () => props.ownerId, lookupOwner, hasEditableStep],
   async ([visible, id, owner, hasStep], _, onCleanup) => {
     eventParameters.value = []
@@ -775,7 +785,9 @@ const allBindings = computed(() => [...bindings.value, ...formLifecycleRows(prop
 const selectedEventDefault = computed(() => platformDefaultHelp(editor.eventCode))
 
 function showFormModeChoices(step) {
-  return (['FORM_OPEN', 'FORM_RESET', 'FORM_CLOSE'].includes(editor.eventCode) || lifecycleSelected.value) && step.conditionPath === 'input.mode'
+  return !['exists', 'truthy'].includes(step.conditionOperator)
+    && (step.conditionPath === 'ctx.form.currentMode' || (['FORM_OPEN', 'FORM_RESET', 'FORM_CLOSE'].includes(editor.eventCode)
+      || lifecycleSelected.value) && step.conditionPath === 'input.mode')
     && ['equals', 'notEquals'].includes(step.conditionOperator)
 }
 

@@ -754,6 +754,9 @@ public final class EntityFormNodePropertyPolicy {
         if ("formula".equals(source) && !StringUtils.hasText(text(props.get("defaultFormula")))) {
             throw new IllegalArgumentException("请填写默认值公式");
         }
+        if ("formula".equals(source)) {
+            FormContextDefaults.validate(text(props.get("defaultFormula")));
+        }
         if ("fixed".equals(source) && (props.get("defaultValue") == null || "".equals(props.get("defaultValue")))) {
             throw new IllegalArgumentException("请填写固定默认值");
         }

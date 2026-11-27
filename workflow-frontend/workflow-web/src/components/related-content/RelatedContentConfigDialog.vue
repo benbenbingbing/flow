@@ -58,7 +58,7 @@
             </template>
           </template>
         </RelatedContentTargetStep>
-        <RelatedContentPageSettings v-if="embedded" v-show="settingsTab === 'child-pages'" :editor="editor" :parameter-schema="targetParameterSchema" :source-fields="sourceReadableFieldOptions.map(item => item.raw)" />
+        <RelatedContentPageSettings v-if="embedded" v-show="settingsTab === 'child-pages'" :editor="editor" :parameter-schema="targetParameterSchema" :source-fields="sourceReadableFieldOptions.map(item => item.raw)" :allow-context="ownerType === 'FORM'" />
         <el-empty v-if="embedded && settingsTab === 'rules'" description="子表单内部字段校验在目标表单中维护；当前关联区域不重复配置字段规则。" :image-size="70" />
         <el-empty v-if="embedded && settingsTab === 'interaction'" description="引用字段的选择与快捷回填请在字段属性中配置。" :image-size="70" />
 

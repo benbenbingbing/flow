@@ -1,4 +1,4 @@
-import { createApp, h, ref, shallowRef, onMounted, onBeforeUnmount } from 'vue'
+import { createApp, h, reactive, ref, shallowRef, onMounted, onBeforeUnmount } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
 import ElementPlus from 'element-plus'
@@ -10,10 +10,41 @@ import { useUserStore } from '/src/stores/user'
 
 const mode = new URLSearchParams(location.search).get('view') || 'list'
 const field = { id: 'amount-field', fieldCode: 'amount', fieldName: '金额', fieldType: 'DECIMAL', showInList: true, isQuery: true }
+const inputParameterSchema = { type: 'object', properties: { customerId: { type: 'string', title: '客户 ID' } } }
 let component, path, props
 if (mode === 'list') { component = (await import('/src/views/EntityListConfigDesign.vue')).default; path = '/list/:id'; props = {} }
 if (mode === 'entity') { component = (await import('/src/views/EntityDesign.vue')).default; path = '/entity/:id'; props = {} }
 if (mode === 'form') { component = (await import('/src/views/EntityFormDesignByEntity.vue')).default; path = '/form/:id'; props = {} }
+if (mode === 'form-context-default') {
+  const FormNodeDefaultValue = (await import('/src/components/form-designer/FormNodeDefaultValue.vue')).default
+  component = { setup() {
+    const fieldType = new URLSearchParams(location.search).get('fieldType') || 'USER'
+    const target = reactive({
+      fieldId: 'target', fieldCode: 'target', fieldType, bindingType: 'ENTITY_FIELD', defaultValueMode: 'formula'
+    })
+    return () => h('main', [
+      h(FormNodeDefaultValue, { field: target, viewConfig: { inputParameterSchema } }),
+      h('output', { 'data-testid': 'default-formula' }, target.defaultFormula)
+    ])
+  } }
+  path = '/form-context-default'
+}
+if (mode === 'parameter-mapping') {
+  const PageParameterMappingEditor = (await import('/src/components/page-parameters/PageParameterMappingEditor.vue')).default
+  component = { setup() {
+    const mappings = ref([{ parameter: '', sourceType: 'CONTEXT', sourceField: '' }])
+    return () => h('main', [
+      h(PageParameterMappingEditor, {
+        modelValue: mappings.value,
+        schema: inputParameterSchema,
+        allowContext: true,
+        'onUpdate:modelValue': value => { mappings.value = value }
+      }),
+      h('output', { 'data-testid': 'parameter-mappings' }, JSON.stringify(mappings.value))
+    ])
+  } }
+  path = '/parameter-mapping'
+}
 if (mode === 'entities') { component = (await import('/src/views/EntityList.vue')).default; path = '/entities'; props = {} }
 if (mode === 'data') { component = (await import('/src/views/entity/EntityDataList.vue')).default; path = '/data'; props = { entityCode: 'test', listKey: 'main' } }
 if (mode === 'related') {
@@ -22,8 +53,15 @@ if (mode === 'related') {
   path = '/related'
 }
 if (mode === 'events') {
-  const Events = (await import('/src/components/ui-config/EventBindingEditor.vue')).default
-  component = { setup() { return () => h(Events, { ownerType: 'FORM', ownerId: 'form-test', targetType: 'OWNER', targetKey: '', allowedEvents: ['ON_LOAD'], fieldOptions: [{ label: '金额', value: 'amount' }] }) } }
+  component = (await import('/src/components/ui-config/EventBindingEditor.vue')).default
+  props = {
+    ownerType: 'FORM',
+    ownerId: 'form-test',
+    targetType: 'FIELD',
+    targetKey: 'customer',
+    targetField: { fieldCode: 'customer', fieldType: 'REFERENCE' },
+    fieldOptions: [{ label: '金额', value: 'amount' }]
+  }
   path = '/events'
 }
 if (mode === 'node') {

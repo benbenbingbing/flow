@@ -1,8 +1,9 @@
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
-import { getLinkageExpressionError } from '@flow/workflow-core/utils/calcEngine'
+import { getFormContextReferences, getLinkageExpressionError } from '@flow/workflow-core/utils/calcEngine'
 import { resolveInterfaceExtensionId } from '../components/ui-config/interfaceExtensionModel.js'
 import { parseJsonConfig } from '../utils/jsonConfig.js'
 import { clearLegacyInitialFormula, readLegacyInitialFormula } from './form-field-linkage.js'
+import { formContextDefaults } from './form-context-parameters.js'
 
 export function readFieldDefaultFormula(field) {
   return field.defaultFormula ?? readLegacyInitialFormula(field)
@@ -45,6 +46,15 @@ export function writeFieldDefaultFormula(field, formula) {
   clearLegacyInitialFormula(field)
 }
 
+/** 默认值可以引用该入口可读取的参数，字段类型由最终数据校验处理。 */
+export function getDefaultFormulaError(formula) {
+  if (!formula.trim()) return '请填写默认值公式'
+  const error = getLinkageExpressionError(formula)
+  if (error) return error
+  const unavailable = getFormContextReferences(formula).find(key => !formContextDefaults.some(parameter => parameter.key === key))
+  return unavailable ? '新增时无法读取上下文参数 ' + unavailable : ''
+}
+
 /** 保存前校验新入口的草稿，避免把输入中的无效 JSON 当作空映射保存。 */
 export function getFieldDefaultError(field) {
   if (field.defaultValueMode === 'fixed' && (field.defaultValue == null || field.defaultValue === '')) {
@@ -53,7 +63,7 @@ export function getFieldDefaultError(field) {
   const formula = readFieldDefaultFormula(field).trim()
   if (formula || readFieldDefaultMode(field) === 'formula') {
     if (!formula) return '请填写默认值公式'
-    const error = getLinkageExpressionError(formula)
+    const error = getDefaultFormulaError(formula)
     if (error) return '的默认值公式有误（' + error + '）'
   }
   const draft = field.defaultDataSourceDraft

@@ -151,7 +151,10 @@ public class PublishedFormConditionEvaluator {
         if (!StringUtils.hasText(property)) {
             throw invalid(label, "引用字段不能为空");
         }
-        if (!validProperties.isEmpty()
+        if (property.startsWith("ctx.") && !FormContextDefaults.known(property.substring(4))) {
+            throw invalid(label, "未知上下文参数: " + property);
+        }
+        if (!property.startsWith("ctx.") && !validProperties.isEmpty()
                 && !validProperties.contains(property)) {
             throw invalid(label, "引用字段不存在: " + property);
         }
@@ -202,6 +205,7 @@ public class PublishedFormConditionEvaluator {
         if ("notEmpty".equals(operator)) {
             return !isEmpty(actual);
         }
+        if (property.startsWith("ctx.") && isEmpty(actual)) return false;
         Object expected = coerceExpected(node.get("value"), actual);
         return switch (operator) {
             case "==" -> equalsValue(actual, expected);
@@ -336,6 +340,7 @@ public class PublishedFormConditionEvaluator {
      * @return 处理后的路径结果，供调用方继续处理
      */
     private Object path(Map<String, Object> source, String path) {
+        if (path != null && path.startsWith("ctx.")) return source.getOrDefault(path, MISSING);
         Object current = source;
         for (String key : String.valueOf(path).split("\\.")) {
             if (!(current instanceof Map<?, ?> map)

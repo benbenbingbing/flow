@@ -78,6 +78,8 @@
 <script setup>
 import { computed, defineComponent, h, resolveComponent } from 'vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
+import { formContextParameters } from '@/shared/form-context-parameters'
 import { pageParameterInitializationFields } from '@flow/workflow-core/page-parameters'
 import {
   normalizeSubFormParameterContract,
@@ -97,7 +99,8 @@ const parameterTargets = computed(() =>
   withInvalidTargets(
     props.parameterOptions.map(item => ({
       value: item.code,
-      label: `${item.name || item.code} (${item.code})`
+      label: item.name,
+      code: item.code
     })),
     Object.keys(normalizedContract.value.parameterMapping)
   )
@@ -184,6 +187,7 @@ function mappingToRows(mapping) {
         sourceValue: source.slice('context.'.length)
       }
     }
+    if (source.startsWith('ctx.')) return { target, sourceType: 'FORM_CONTEXT', sourceValue: source.slice(4) }
     return { target, sourceType: 'PATH', sourceValue: source }
   })
 }
@@ -202,6 +206,8 @@ function serializeSource(row) {
       return row.sourceValue ? `parent.data.${row.sourceValue}` : ''
     case 'CONTEXT':
       return row.sourceValue ? `context.${row.sourceValue}` : ''
+    case 'FORM_CONTEXT':
+      return row.sourceValue ? `ctx.${row.sourceValue}` : ''
     case 'LITERAL':
       return { literal: row.sourceValue }
     default:
@@ -242,6 +248,7 @@ const MappingRows = defineComponent({
       { value: 'PARENT_FIELD', label: '父表单字段' },
       { value: 'PARENT_RECORD_ID', label: '父记录ID' },
       { value: 'CONTEXT', label: '运行上下文' },
+      { value: 'FORM_CONTEXT', label: '表单上下文参数' },
       { value: 'LITERAL', label: '固定值' },
       { value: 'PATH', label: '失效路径（需重新选择）', disabled: true }
     ]
@@ -281,19 +288,21 @@ const MappingRows = defineComponent({
           })
         ))
       }
-      if (row.sourceType === 'CONTEXT') {
+      if (row.sourceType === 'CONTEXT' || row.sourceType === 'FORM_CONTEXT') {
+        const fixed = row.sourceType === 'FORM_CONTEXT'
+        const options = fixed ? formContextParameters.map(item => ({ value: item.key, label: item.label })) : contextOptions
         return h(resolveComponent('ElSelect'), {
           modelValue: row.sourceValue,
           filterable: true,
-          allowCreate: true,
-          placeholder: '选择或输入上下文键',
+          allowCreate: !fixed,
+          placeholder: fixed ? '选择上下文参数' : '选择或输入上下文键',
           'onUpdate:modelValue': value => patch(index, { sourceValue: value })
-        }, () => contextOptions.map(item =>
+        }, () => options.map(item =>
           h(resolveComponent('ElOption'), {
             key: item.value,
-            label: item.label,
+            label: parameterOptionLabel(item.label, item.value),
             value: item.value
-          })
+          }, () => h(ParameterOptionLabel, { label: item.label, code: item.value }))
         ))
       }
       return h(resolveComponent('ElInput'), {
@@ -312,15 +321,16 @@ const MappingRows = defineComponent({
         h('div', { class: 'mapping-row', key: `${row.target}:${index}` }, [
           h(resolveComponent('ElSelect'), {
             modelValue: row.target,
+            filterable: true,
             placeholder: `选择${rowProps.targetLabel}`,
             'onUpdate:modelValue': value => patch(index, { target: value })
           }, () => rowProps.targetOptions.map(item =>
             h(resolveComponent('ElOption'), {
               key: item.value,
-              label: item.label,
+              label: parameterOptionLabel(item.label, item.code),
               value: item.value,
               disabled: item.invalid === true
-            })
+            }, () => h(ParameterOptionLabel, { label: item.label, code: item.code }))
           )),
           h(resolveComponent('ElSelect'), {
             modelValue: row.sourceType,

@@ -82,6 +82,8 @@ public class ProcessFormRuntimeDTO {
         private String configHash;
         /** 下次请求重新鉴权的任务/实例定位信息，不保存客户端授权结果。 */
         private Map<String, Object> runtimeContext;
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        private Map<String, Object> contextValues;
 
         /**
          * 表单ID

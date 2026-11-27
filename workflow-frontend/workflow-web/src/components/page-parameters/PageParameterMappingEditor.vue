@@ -11,8 +11,10 @@
       ? '请先在目标列表的「输入参数」中配置参数和筛选用途，再发布列表。'
       : '目标页面尚未声明输入参数，请先在目标页面的“输入参数”中配置并发布。'" type="info" :closable="false" />
     <div v-for="(row, index) in modelValue" :key="index" class="parameter-row" :class="{ 'reference-list-row': referenceList }">
-      <el-select :model-value="row.parameter" aria-label="目标参数" placeholder="目标参数" @update:model-value="patch(index, { parameter: $event })">
-        <el-option v-for="item in parameters" :key="item.code" :label="`${item.name} (${item.code})`" :value="item.code" />
+      <el-select :model-value="row.parameter" aria-label="目标参数" placeholder="目标参数" filterable @update:model-value="patch(index, { parameter: $event })">
+        <el-option v-for="item in parameters" :key="item.code" :label="parameterOptionLabel(item.name, item.code)" :value="item.code">
+          <ParameterOptionLabel :label="item.name" :code="item.code" />
+        </el-option>
       </el-select>
       <el-select :model-value="row.sourceType" aria-label="来源类型" @update:model-value="patch(index, { sourceType: $event, sourceField: '', value: '' })">
         <el-option v-for="item in sourceTypes" :key="item.value" :label="item.label" :value="item.value" />
@@ -28,6 +30,12 @@
         <el-option v-for="field in (row.sourceType === 'ENTITY_FIELD' ? entityFields : sourceFields)" :key="field.fieldCode" :value="field.fieldCode" :label="`${field.fieldLabel || field.fieldName || field.fieldCode} (${field.fieldCode})`" />
       </el-select>
       <el-input v-else-if="row.sourceType === 'PARAMETER'" :model-value="row.sourceField" placeholder="来源参数编码" @update:model-value="patch(index, { sourceField: $event })" />
+      <el-select v-else-if="row.sourceType === 'CONTEXT'" :model-value="row.sourceField" filterable
+        aria-label="来源上下文参数" placeholder="选择上下文参数" @update:model-value="patch(index, { sourceField: $event })">
+        <el-option v-for="item in formContextParameters" :key="item.key" :label="parameterOptionLabel(item.label, item.key)" :value="item.key">
+          <ParameterOptionLabel :label="item.label" :code="item.key" />
+        </el-option>
+      </el-select>
       <el-input
         v-else-if="row.sourceType === 'LITERAL'"
         :model-value="literalText(row.value)"
@@ -50,27 +58,31 @@
 <script setup>
 import { computed } from 'vue'
 import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
+import { formContextParameters } from '@/shared/form-context-parameters'
+import ParameterOptionLabel, { parameterOptionLabel } from './ParameterOptionLabel.vue'
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   schema: { type: Object, default: () => ({}) },
   sourceFields: { type: Array, default: () => [] },
   entityFields: { type: Array, default: () => [] },
+  allowContext: Boolean,
   referenceList: Boolean
 })
 const emit = defineEmits(['update:modelValue'])
 const parameters = computed(() => getInputParameterDefinitions(props.schema))
-const sourceTypes = computed(() => props.referenceList
-  ? [
+const sourceTypes = computed(() => [
+  ...(props.referenceList ? [
       { label: '表单属性', value: 'FIELD' },
       { label: '实体属性', value: 'ENTITY_FIELD' },
       { label: '固定值', value: 'LITERAL' }
-    ]
-  : [
+    ] : [
       { label: '当前数据字段', value: 'FIELD' },
       { label: '当前记录 ID', value: 'RECORD_ID' },
       { label: '当前页面参数', value: 'PARAMETER' },
       { label: '固定值', value: 'LITERAL' }
-    ])
+    ]),
+  ...(props.allowContext || props.referenceList ? [{ label: '上下文参数', value: 'CONTEXT' }] : [])
+])
 const literalText = value => typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')
 function patch(index, value) { emit('update:modelValue', props.modelValue.map((row, i) => i === index ? { ...row, ...value } : row)) }
 function add() { emit('update:modelValue', [...props.modelValue, { parameter: parameters.value.find(p => !props.modelValue.some(row => row.parameter === p.code))?.code || '', sourceType: 'FIELD', sourceField: '' }]) }

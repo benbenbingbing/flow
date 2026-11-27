@@ -65,14 +65,15 @@
         required
       >
         <OrganizationSelector v-if="rule.type === 'ORGANIZATION'" v-model="rule.values" multiple value-key="code" :disabled="disabled" />
-        <el-select-v2 v-else
+        <EntitySelector
+          v-else
+          :key="rule.type"
           v-model="rule.values"
-          :options="optionsForRule(rule.type)"
+          :entity-type="rule.type"
+          value-key="code"
           multiple
-          filterable
-          clearable
+          enabled-only
           :disabled="disabled"
-          style="width: 100%"
           :placeholder="`请选择${ruleValueLabel(rule.type)}`"
         />
       </el-form-item>
@@ -103,6 +104,7 @@
 import { ref, watch } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import EntitySelector from '@/components/EntitySelector.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import OrganizationSelector from '@/components/OrganizationSelector.vue'
 import {
@@ -112,14 +114,6 @@ import {
 
 const props = defineProps({
   modelValue: {
-    type: Array,
-    default: () => []
-  },
-  roleOptions: {
-    type: Array,
-    default: () => []
-  },
-  groupOptions: {
     type: Array,
     default: () => []
   },
@@ -187,21 +181,6 @@ function ruleValueLabel(type) {
     ROLE: '角色',
     GROUP: '用户组'
   })[type] || '范围数据'
-}
-
-function canonicalOptions(options) {
-  return (options || []).map(option => ({
-    ...option,
-    // 流程定义持久化稳定业务编码，避免环境间导入时依赖数据库主键。
-    value: String(option.code ?? option.value ?? option.id ?? ''),
-    label: option.label || option.name || option.code || option.value
-  })).filter(option => option.value)
-}
-
-function optionsForRule(type) {
-  if (type === 'ROLE') return canonicalOptions(props.roleOptions)
-  if (type === 'GROUP') return canonicalOptions(props.groupOptions)
-  return []
 }
 
 function validate() {

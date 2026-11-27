@@ -405,6 +405,7 @@ public class TaskDetailService {
                 || Integer.valueOf(1).equals(nodeForm.getIsReadonly()));
         formConfig.setConfigHash(form.getConfigHash());
         formConfig.setRuntimeContext(form.getRuntimeContext());
+        formConfig.setContextValues(form.getContextValues());
         formConfig.setDataSourceBindingsDocument(
                 form.getDataSourceBindingsDocument());
         if (form.getFields() != null) {

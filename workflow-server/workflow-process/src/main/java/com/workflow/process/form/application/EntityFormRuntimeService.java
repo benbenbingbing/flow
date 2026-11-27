@@ -10,6 +10,7 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.FormContextDefaults;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
@@ -30,6 +31,8 @@ public class EntityFormRuntimeService {
 
     private final UiConfigReleaseService releaseService;
     private final EntityFormMapper formMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private FormContextDefaults contextDefaults;
 
     /**
      * 根据表单ID解析运行时表单。
@@ -161,6 +164,7 @@ public class EntityFormRuntimeService {
             form.setHotfixApplied(resolved.hotfixApplied());
             form.setConfigHash(releaseService.formConfigHash(form.getId()));
             form.setRuntimeContext(businessContext(effectiveContext));
+            attachTaskValues(form, effectiveContext, !Integer.valueOf(1).equals(nodeForm.getIsReadonly()));
         }
         log.info(
                 "流程节点表单运行时解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, historyId={}, nodeId={}, purpose={}, formPresent={}",
@@ -239,9 +243,17 @@ public class EntityFormRuntimeService {
             runtimeForm.setConfigHash(releaseService.formConfigHash(runtimeForm.getId()));
             if (context != null) {
                 runtimeForm.setRuntimeContext(businessContext(context));
+                attachTaskValues(runtimeForm, context, true);
             }
         }
         return runtimeForm;
+    }
+
+    /** 精确任务入口重新校验当前办理权限，再为使用规则的表单投影变量。 */
+    private void attachTaskValues(EntityForm form, UiRuntimeResolutionContext entry, boolean editable) {
+        if (contextDefaults == null || entry.taskId() == null || !contextDefaults.hasRules(form)) return;
+        UiRuntimeResolutionContext trusted = releaseService.authorizeRuntimeContext(form.getId(), businessContext(entry));
+        form.setContextValues(contextDefaults.valuesFor(form, trusted, editable ? "approve" : "view"));
     }
     /** 只返回办理校验所需的稳定表单身份及摘要，避免跨模块传递表单持久化实体。 */
     public com.workflow.port.process.model.task.TaskFormReference submissionReference(

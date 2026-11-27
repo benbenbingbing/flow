@@ -53,6 +53,7 @@ public class EntitySelectorController {
      * @param keyword 搜索关键词（匹配name、code）
      * @param pageNum 页码
      * @param pageSize 每页数量
+     * @param enabledOnly 角色和用户组是否只列出启用记录，供流程等配置界面选取新值
      * @return 实体数据列表
      */
     @GetMapping("/{entityType}")
@@ -62,7 +63,8 @@ public class EntitySelectorController {
             @RequestParam(required = false) String refEntityId,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize) {
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(defaultValue = "false") boolean enabledOnly) {
         
         // 根据实体类型选择查询方式
         if ("CUSTOM".equalsIgnoreCase(entityType)) {
@@ -85,7 +87,8 @@ public class EntitySelectorController {
                     pageSize);
         } else {
             // 系统实体（USER/DEPT/ROLE/GROUP）
-            return Result.success(systemEntityService.selectList(entityType, keyword, pageNum, pageSize));
+            return Result.success(systemEntityService.selectList(
+                    entityType, keyword, pageNum, pageSize, enabledOnly));
         }
     }
 

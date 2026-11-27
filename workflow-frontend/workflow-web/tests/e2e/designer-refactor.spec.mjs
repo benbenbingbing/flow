@@ -4,7 +4,7 @@ const entity = { id: 'entity-test', entityCode: 'test', entityName: '测试实�
 const form = { id: 'form-test', formName: '测试表单', formKey: 'main', entityId: 'entity-test', entityCode: 'test', isDefault: true, revision: 3, fields: [field], viewConfig: '{}', rendererMode: 'DEFAULT', configHash: 'form-release' }
 const column = { ...field, id: 'column-amount', fieldId: field.id, revision: 1, orderKey: 1000000 }
 const config = { id: 'list-test', listName: '测试列表', listKey: 'main', entityId: 'entity-test', entityCode: 'test', revision: 3, viewConfig: '{}', fields: [column], releaseId: 'list-release', publishedVersion: 1 }
-async function mock(page, { failScope = false } = {}) {
+async function mock(page, { failScope = false, formViewConfig = form.viewConfig, eventInterfaces = [] } = {}) {
   const errors = [], unexpected = [], writes = []
   let revision = 3, scopeFails = failScope
   page.on('pageerror', error => errors.push(error.message))
@@ -33,14 +33,15 @@ async function mock(page, { failScope = false } = {}) {
     else if (endpoint.endsWith('/diff')) data = { changed: false, changedSections: [] }
     else if (endpoint === '/entity-list-config/entity/entity-test') data = [config]
     else if (endpoint === '/entity-form/entity/entity-test') data = [form]
-    else if (['/entity-form/form-test', '/entity-form-resolve/new-data/test'].includes(endpoint)) data = form
+    else if (['/entity-form/form-test', '/entity-form-resolve/new-data/test'].includes(endpoint)) data = { ...form, viewConfig: formViewConfig }
     else if (endpoint === '/entity-form/form-test/fields') data = [field]
     else if (endpoint === '/entity-forms/form-test/nodes') data = [{ id: 'amount-node', nodeKey: 'amount', nodeType: 'FIELD', formId: form.id, bindingType: 'ENTITY_FIELD', bindingRef: 'amount', revision: 1, orderKey: 1000000, propsDocument: JSON.stringify(field) }]
     else if (endpoint === '/entity-version-diff/pending/entity-test') data = { isFirstPublish: true, currentVersion: 0, nextVersion: 1, changeSummary: '首次发布', addedFields: [field], pendingDdls: [], schemaOperation: { riskLevel: 'LOW', status: 'DDL_PENDING' } }
     else if (endpoint === '/ui-runtime/form-actions/resolve') data = []
     else if (endpoint === '/ui-runtime/view-compositions/resolve') data = []
     else if (endpoint === '/ui-extensions/catalog') data = []
-    else if (['/entity-list-config/extension-options', '/ui-component-templates', '/ui-extensions/available-interfaces', '/ui-extensions', '/ui-event-bindings', '/task-sla-policies/published', '/work-calendars'].includes(endpoint)) data = []
+    else if (endpoint === '/ui-extensions/available-interfaces') data = eventInterfaces
+    else if (['/entity-list-config/extension-options', '/ui-component-templates', '/ui-extensions', '/ui-event-bindings', '/task-sla-policies/published', '/work-calendars'].includes(endpoint)) data = []
     else if (['/ui-view-compositions/FORM/form-test', '/ui-view-compositions/LIST/list-test', '/entity/entity-test/relations', '/entity/entity-test/relations/available', '/entity-status/test'].includes(endpoint)) data = []
     else if (['/system/dict/list', '/ui-event-bindings/catalog', '/extension-catalog/options', '/system/menu/entity-permission-options', '/entity-status/list/test', '/process-design/position-options', '/process-design/organization-business-levels', '/system/group/enabled', '/system/role/enabled', '/system/org/enabled', '/process/published'].includes(endpoint)) data = []
     else { unexpected.push(`${method} ${endpoint}`); console.warn('未声明测试接口', method, endpoint); return route.fulfill({ status: 500, json: { code: 500, message: `未声明测试接口 ${endpoint}` } }) }
@@ -48,6 +49,169 @@ async function mock(page, { failScope = false } = {}) {
   })
   return { errors, unexpected, writes }
 }
+
+test('选择实体事件的输入映射可选表单字段、表单参数、上下文及自定义路径', async ({ page }) => {
+  const state = await mock(page, {
+    formViewConfig: JSON.stringify({
+      inputParameterSchema: { type: 'object', properties: { customerId: { type: 'string', title: '客户 ID' } } }
+    }),
+    eventInterfaces: [{ extensionId: 'customer-check', extensionKey: 'customer_check', displayName: '校验客户' }]
+  })
+  await page.goto('/tests/e2e/designer-fixture.html?view=events')
+  await page.getByRole('button', { name: '新增绑定' }).click()
+  const dialog = page.getByRole('dialog', { name: '新增事件绑定' })
+  await expect(dialog.getByText('选择实体后 (ENTITY_SELECTED)', { exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: '增加步骤' }).click()
+  await dialog.getByText('留空表示只做字段映射', { exact: true }).click()
+  await page.getByRole('option', { name: /校验客户/ }).click()
+  await dialog.getByText('输入参数映射', { exact: true }).click()
+  for (const [index, [label, sourcePath, targetPath]] of [
+    ['金额', 'input.form.amount', 'amount'],
+    ['客户 ID', 'input.params.customerId', 'customerId'],
+    ['当前用户 ID', 'ctx.currentUser.userId', 'operatorId'],
+    ['所选实体记录 ID', 'selection.id', 'selectedId'],
+    ['', 'selection.data.phone', 'customerPhone']
+  ].entries()) {
+    await dialog.getByRole('button', { name: '增加参数映射' }).click()
+    const row = dialog.locator('.mapping-row').nth(index)
+    await row.getByText('选择来源或输入路径', { exact: true }).click()
+    const source = row.getByRole('combobox').first()
+    if (label) {
+      const listbox = page.locator(`[id="${await source.getAttribute('aria-controls')}"]`)
+      if (targetPath === 'customerId') await source.fill(sourcePath)
+      const option = listbox.getByRole('option').filter({ hasText: label })
+      await expect(option.locator('small')).toHaveText(sourcePath)
+      await option.click()
+    } else {
+      await source.fill(sourcePath)
+      await source.press('Enter')
+    }
+    await row.getByPlaceholder('接口参数，如 customerId').fill(targetPath)
+  }
+  await dialog.getByRole('button', { name: '保存绑定' }).click()
+  await expect(dialog).toBeHidden()
+  const binding = state.writes.find(item => item.endpoint === '/ui-event-bindings')?.body
+  expect(binding?.eventCode).toBe('ENTITY_SELECTED')
+  expect(binding.steps[0].inputMapping).toEqual({
+    amount: 'input.form.amount',
+    customerId: 'input.params.customerId',
+    operatorId: 'ctx.currentUser.userId',
+    selectedId: 'selection.id',
+    customerPhone: 'selection.data.phone'
+  })
+  expect(state.errors).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('传递参数时目标参数和来源上下文都显示英文编码', async ({ page }) => {
+  await mock(page)
+  await page.goto('/tests/e2e/designer-fixture.html?view=parameter-mapping')
+  await page.getByText('目标参数', { exact: true }).click()
+  const target = page.getByRole('option').filter({ hasText: '客户 ID' })
+  await expect(target.locator('small')).toHaveText('customerId')
+  await target.click()
+  await page.getByText('选择上下文参数', { exact: true }).click()
+  const source = page.getByRole('option').filter({ hasText: '当前用户部门 ID' })
+  await expect(source.locator('small')).toHaveText('currentUser.departmentId')
+  await source.click()
+  await expect(page.getByTestId('parameter-mappings')).toHaveText(JSON.stringify([
+    { parameter: 'customerId', sourceType: 'CONTEXT', sourceField: 'currentUser.departmentId' }
+  ]))
+})
+
+test('默认值公式的页面参数下拉显示编码并按原语法插入', async ({ page }) => {
+  await mock(page)
+  await page.goto('/tests/e2e/designer-fixture.html?view=form-context-default')
+  await page.getByRole('button', { name: '配置', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '配置默认值公式' })
+  await dialog.getByText('插入页面参数', { exact: true }).click()
+  const parameter = page.getByRole('option').filter({ hasText: '客户 ID' })
+  await expect(parameter.locator('small')).toHaveText('customerId')
+  await parameter.click()
+  await expect(dialog.getByRole('textbox', { name: '默认值公式' })).toHaveValue('${param.customerId}')
+})
+
+test('字段基础属性保留默认值并移除待办预填', async ({ page }) => {
+  await mock(page)
+  await page.goto('/tests/e2e/designer-fixture.html?view=form')
+  const node = page.locator('.form-node-design-item[data-node-id="amount-node"]')
+  await expect(node).toBeVisible()
+  await node.dblclick({ position: { x: 6, y: 6 } })
+  const drawer = page.getByRole('dialog', { name: /金额/ })
+  await expect(drawer.getByRole('combobox', { name: '默认值来源' })).toBeVisible()
+  await expect(drawer.getByText('待办预填', { exact: true })).toHaveCount(0)
+})
+
+test('默认值公式可以插入单个上下文参数并在重新打开时编辑', async ({ page }) => {
+  const state = await mock(page)
+  await page.goto('/tests/e2e/designer-fixture.html?view=form-context-default')
+  await page.getByRole('button', { name: '配置', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '配置默认值公式' })
+  await dialog.getByText('插入上下文参数', { exact: true }).click()
+  await expect(page.getByRole('option').filter({ hasText: '当前日期' }).first()).toBeVisible()
+  await page.getByRole('option', { name: /当前用户 ID/ }).click()
+  const formula = dialog.getByRole('textbox', { name: '默认值公式' })
+  await expect(formula).toHaveValue('${ctx.currentUser.userId}')
+  await dialog.getByRole('button', { name: '确定' }).click()
+  await expect(page.getByTestId('default-formula')).toHaveText('${ctx.currentUser.userId}')
+  await page.getByRole('button', { name: '配置', exact: true }).click()
+  await expect(formula).toBeEditable()
+  await expect(formula).toHaveValue('${ctx.currentUser.userId}')
+  expect(state.errors).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('在默认值公式光标处插入上下文参数后可继续计算和试算', async ({ page }) => {
+  await mock(page)
+  await page.goto('/tests/e2e/designer-fixture.html?view=form-context-default&fieldType=DATE')
+  await page.getByRole('button', { name: '配置', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '配置默认值公式' })
+  const formula = dialog.getByRole('textbox', { name: '默认值公式' })
+  await formula.fill('ADD_DAYS(, ${days})')
+  await formula.evaluate(textarea => textarea.setSelectionRange('ADD_DAYS('.length, 'ADD_DAYS('.length))
+  await dialog.getByText('插入上下文参数', { exact: true }).click()
+  await page.getByRole('option').filter({ hasText: /currentDate$/ }).click()
+  const expression = 'ADD_DAYS(${ctx.currentDate}, ${days})'
+  await expect(formula).toHaveValue(expression)
+  await dialog.getByText('试算公式', { exact: true }).click()
+  await dialog.getByRole('textbox', { name: '试算输入' }).fill('{"fields":{"days":3}}')
+  await dialog.getByRole('button', { name: '试算', exact: true }).click()
+  await expect(dialog.getByRole('status')).toHaveText('结果 "2026-11-30"')
+  await dialog.getByRole('button', { name: '确定' }).click()
+  await expect(page.getByTestId('default-formula')).toHaveText(expression)
+})
+
+test('数字字段也显示上下文参数入口，并可继续保存普通公式', async ({ page }) => {
+  const state = await mock(page)
+  await page.goto('/tests/e2e/designer-fixture.html?view=form-context-default&fieldType=DECIMAL')
+  await page.getByRole('button', { name: '配置', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '配置默认值公式' })
+  await expect(dialog.getByRole('combobox', { name: '插入上下文参数' })).toBeEnabled()
+  await dialog.getByRole('textbox', { name: '默认值公式' }).fill('2 * 3')
+  await dialog.getByRole('button', { name: '确定' }).click()
+  await expect(page.getByTestId('default-formula')).toHaveText('2 * 3')
+  expect(state.errors).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+for (const [fieldType, key] of [
+  ['DATE', 'currentDate'],
+  ['DATETIME', 'currentTime'],
+  ['STRING', 'currentDate'],
+  ['TEXT', 'currentTime']
+]) {
+  test(`${fieldType} 字段通过上下文参数选择日期时间默认值`, async ({ page }) => {
+    await mock(page)
+    await page.goto(`/tests/e2e/designer-fixture.html?view=form-context-default&fieldType=${fieldType}`)
+    await page.getByRole('button', { name: '配置', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '配置默认值公式' })
+    await dialog.getByText('插入上下文参数', { exact: true }).click()
+    await page.getByRole('option').filter({ hasText: new RegExp(key + '$') }).click()
+    await dialog.getByRole('button', { name: '确定' }).click()
+    await expect(page.getByTestId('default-formula')).toHaveText('${ctx.' + key + '}')
+  })
+}
+
 test('列表设计：元数据成功但规则失败时停止，重试使用新 revision', async ({ page }) => {
   const state = await mock(page, { failScope: true })
   await page.goto('/tests/e2e/designer-fixture.html?view=list')

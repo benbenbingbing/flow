@@ -436,6 +436,7 @@ public class UiEventBindingService {
         validateEventScope(configType, targetType, eventCode);
         if ("FORM".equals(configType)) {
             var authorizedContext = releaseService.authorizeRuntimeContext(request.getConfigId(), request.getRuntimeContext());
+            request.setServerFormEntry(authorizedContext);
             request.setServerReadOnly(authorizedContext != null && authorizedContext.purpose()
                     == com.workflow.port.entity.model.ui.UiRuntimePurpose.HISTORICAL);
             if (authorizedContext != null && StringUtils.hasText(authorizedContext.processInstanceId())

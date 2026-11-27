@@ -4,7 +4,7 @@ import { normalizeInputParameterSchema, normalizeInputParameterDefaultValue, val
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value))
 const blocked = new Set(['__proto__', 'constructor', 'prototype'])
-const referenceListSources = new Set(['FIELD', 'ENTITY_FIELD', 'LITERAL'])
+const referenceListSources = new Set(['FIELD', 'ENTITY_FIELD', 'CONTEXT', 'LITERAL'])
 // 旧发布字段只带 readonly、不带 isSystem；与后端 PublishedFormRecordView 的系统维护范围一致，
 // 放开业务只读字段时仍保护审计和流程状态。name/code/deptId 等业务初值不在此范围内。
 const systemManagedFields = new Set([
@@ -39,6 +39,7 @@ export function mapPageParameters(mappings = [], source = {}) {
       value = parameterFieldValue(source.data, field, parameterFieldValue(source.entityData, field))
     } else if (mapping.sourceType === 'RECORD_ID') value = source.recordId
     else if (mapping.sourceType === 'PARAMETER') value = source.params?.[mapping.sourceField]
+    else if (mapping.sourceType === 'CONTEXT') value = source.contextValues?.[mapping.sourceField]
     else if (mapping.sourceType === 'LITERAL') value = mapping.value
     else throw new Error(`参数 ${key} 的来源不合法`)
     // 每次打开时生成独立快照，目标编辑不能反向修改来源数据。
@@ -83,19 +84,20 @@ const emptyListParameter = value => isEmptySubFormValue(value)
 
 function checkReferenceListMappingShape(mappings) {
   if (!Array.isArray(mappings) || mappings.some(mapping => !referenceListSources.has(mapping?.sourceType))) {
-    throw new Error('列表参数来源仅支持表单属性、实体属性或固定值')
+    throw new Error('列表参数来源仅支持表单属性、实体属性、上下文参数或固定值')
   }
 }
 
 /** 使用当前作用域的编辑值和已加载记录；空来源阻止打开选择器，避免查询范围扩大。 */
-export function referenceListParameterState(mappings, data, fields = [], entityData) {
+export function referenceListParameterState(mappings, data, fields = [], entityData, contextValues) {
   if (mappings == null || (Array.isArray(mappings) && !mappings.length)) return null
   try {
     checkReferenceListMappingShape(mappings)
-    const parameters = mapPageParameters(mappings, { data, entityData })
+    const parameters = mapPageParameters(mappings, { data, entityData, contextValues })
     const missing = mappings.find(mapping => emptyListParameter(parameters[mapping.parameter]))
     if (!missing) return { parameters, error: '' }
     if (missing.sourceType === 'LITERAL') throw new Error(`请为参数 ${missing.parameter} 设置固定值`)
+    if (missing.sourceType === 'CONTEXT') throw new Error(`列表参数 ${missing.parameter} 在当前表单入口没有值`)
     if (!missing.sourceField) throw new Error(`请为参数 ${missing.parameter} 选择来源属性`)
     const source = fields.find(field => field.fieldCode === missing.sourceField)
     const label = source?.fieldLabel || source?.fieldName || missing.sourceField
@@ -176,6 +178,7 @@ export function validatePageParameterMappings(mappings = [], schemaValue, source
     keys.add(mapping.parameter)
     if (mapping.sourceType === 'FIELD' && !sourceFields.some(field => field.fieldCode === mapping.sourceField)) return `来源字段 ${mapping.sourceField || '（未选择）'} 不存在`
     if (mapping.sourceType === 'PARAMETER' && !mapping.sourceField) return '请选择来源参数'
+    if (mapping.sourceType === 'CONTEXT' && !mapping.sourceField) return '请选择上下文参数'
   }
   return ''
 }

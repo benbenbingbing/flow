@@ -22,14 +22,14 @@
     </el-form-item>
 
     <template v-if="localConfig.visible">
-      <el-form-item label="允许修改" for="">
+      <el-form-item v-if="allowEditing" label="允许修改" for="">
         <template #label>
           <ConfigHelpLabel label="允许修改" content="关闭后仅展示系统解析的审批人，不允许当前审批人调整" />
         </template>
         <el-switch v-model="localConfig.editable" aria-label="允许修改" />
       </el-form-item>
 
-      <el-form-item label="人员来源" for="" required>
+      <el-form-item v-if="allowEditing" label="人员来源" for="" required>
         <template #label>
           <ConfigHelpLabel label="人员来源" :content="sourceTypeHelp" />
         </template>
@@ -44,15 +44,11 @@
         </el-radio-group>
       </el-form-item>
 
-      <template v-if="localConfig.source.type === 'SCOPE'">
-        <PersonScopeRuleEditor
-          v-model="localConfig.source.rules"
-          :role-options="roleOptions"
-          :group-options="groupOptions"
-        />
+      <template v-if="allowEditing && localConfig.source.type === 'SCOPE'">
+        <PersonScopeRuleEditor v-model="localConfig.source.rules" />
       </template>
 
-      <template v-else-if="localConfig.source.type === 'RESOLVER'">
+      <template v-else-if="allowEditing && localConfig.source.type === 'RESOLVER'">
         <el-form-item label="人员接口" for="" required>
           <template #label>
             <ConfigHelpLabel
@@ -115,17 +111,10 @@ import {
 const props = defineProps({
   processId: { type: String, default: '' },
   entityCode: { type: String, default: '' },
+  allowEditing: { type: Boolean, default: true },
   modelValue: {
     type: Object,
     default: () => ({})
-  },
-  roleOptions: {
-    type: Array,
-    default: () => []
-  },
-  groupOptions: {
-    type: Array,
-    default: () => []
   }
 })
 

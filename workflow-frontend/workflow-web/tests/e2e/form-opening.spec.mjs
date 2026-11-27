@@ -42,6 +42,46 @@ const start = (page, mode = 'create', id = 'a', options = {}) => page.evaluate((
 const close = async page => { await dialog(page).getByRole('button', { name: 'Close this dialog', exact: true }).click(); await expect(dialog(page)).toHaveCount(0) }
 const closeEvents = state => state.reads.filter(item => item.endpoint.includes('/FORM_CLOSE/')).map(item => item.body)
 const clean = state => { expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([]) }
+test('新增表单读取已发布的上下文默认值，显式入口初值优先', async ({ page }) => {
+  const nickname = { fieldCode: 'nickname', fieldName: '申请人昵称', fieldType: 'STRING', componentType: 'input',
+    defaultValueMode: 'formula', defaultFormula: '${ctx.currentUser.nickname}' }
+  const state = await setup(page, { config: () => form({
+    contextValues: { 'currentUser.nickname': '张三' },
+    nodes: [{ id: 'nickname-node', nodeKey: 'nickname', nodeType: 'FIELD', bindingType: 'ENTITY_FIELD',
+      bindingRef: 'nickname', propsDocument: JSON.stringify(nickname) }]
+  }) })
+  await start(page)
+  const input = dialog(page).getByRole('textbox').first()
+  await expect(input).toHaveValue('张三')
+  await close(page)
+  await start(page, 'create', '', { initialData: { nickname: '' } })
+  await expect(input).toBeVisible()
+  await expect(input).toHaveValue('')
+  clean(state)
+})
+test('新增表单使用接口返回的业务日期时间上下文默认值', async ({ page }) => {
+  const dateFields = [
+    { fieldCode: 'requestDate', fieldName: '申请日期', fieldType: 'DATE', componentType: 'date', key: 'currentDate' },
+    { fieldCode: 'requestTime', fieldName: '申请时间', fieldType: 'DATETIME', componentType: 'datetime', key: 'currentTime' },
+    { fieldCode: 'dateAsText', fieldName: '日期文本', fieldType: 'STRING', componentType: 'input', key: 'currentDate' },
+    { fieldCode: 'timeAsText', fieldName: '时间文本', fieldType: 'TEXT', componentType: 'textarea', key: 'currentTime' }
+  ]
+  const state = await setup(page, { config: () => form({
+    contextValues: { currentDate: '2026-11-27', currentTime: '2026-11-27 00:00:01' },
+    nodes: dateFields.map(({ key, ...field }) => ({
+      id: field.fieldCode + '-node', nodeKey: field.fieldCode, nodeType: 'FIELD', bindingType: 'ENTITY_FIELD',
+      bindingRef: field.fieldCode, propsDocument: JSON.stringify({
+        ...field, defaultValueMode: 'formula', defaultFormula: '${ctx.' + key + '}'
+      })
+    }))
+  }) })
+  await start(page)
+  await expect(dialog(page).getByRole('combobox', { name: 'requestDate' })).toHaveValue('2026-11-27')
+  await expect(dialog(page).getByRole('combobox', { name: 'requestTime' })).toHaveValue('2026-11-27 00:00:01')
+  await expect(dialog(page).locator('input').filter({ visible: true }).last()).toHaveValue('2026-11-27')
+  await expect(dialog(page).locator('textarea')).toHaveValue('2026-11-27 00:00:01')
+  clean(state)
+})
 for (const mode of ['create', 'edit']) test(`${mode}：配置未返回即显示骨架，关闭后不继续读取详情或执行事件`, async ({ page }) => {
   const gate = deferred(), entered = deferred(), state = await setup(page, { config: async () => { entered.resolve(); await gate.promise; return form() } })
   await start(page, mode); await entered.promise; await expect(dialog(page).locator('.el-skeleton')).toBeVisible(); expect(state.reads).toHaveLength(1)

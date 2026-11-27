@@ -226,6 +226,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
   ],
   'src/components/NodeConfigPanel.vue': [
     "^(relativePositionSampleUserId|assigneeForm|slaForm)$",
+    '^(groupTagDialogVisible|relativePositionDialogVisible)$',
     '^selectedStatusName$'
   ],
   'src/components/FlowActionConfigPanel.vue': [
@@ -444,15 +445,27 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   },
   {
     domain: '流程配置',
-    area: '用户任务办理人方式',
+    area: '用户任务办理人来源',
     source: 'src/components/NodeConfigPanel.vue',
     values: [
-      ['user', '固定人员', '直接指定办理人或候选用户。'],
-      ['group', '用户组', '用户组成员成为候选办理人。'],
-      ['role', '角色', '拥有所选角色的用户成为候选办理人。'],
+      ['user', '固定人员', '分页选择办理人员。顺序办理按列表顺序创建任务。'],
+      ['group', '用户组', '从用户组的启用成员中确定办理人，可按成员标签筛选。'],
+      ['role', '角色', '使用持有所选角色的启用用户。'],
+      ['entity_user_reference', '实体用户关系字段', '沿流程绑定实体的用户关系路径查找办理人。'],
+      ['relative_position', '相对组织职务', '按组织查找规则取得所选职务的所有任职人。'],
       ['node_reference', '使用其他节点审批人', '按同一流程中被引用 UserTask 的审批人规则解析，不复制名单。'],
-      ['expression', '表达式', '从流程变量表达式解析办理人或候选组。'],
+      ['expression', '表达式', '在抢占方式下从流程变量解析用户或用户组。'],
       ['interface', '接口动态', '调用已注册人员解析器计算办理人。']
+    ]
+  },
+  {
+    domain: '流程配置',
+    area: '用户任务办理方式',
+    source: 'src/components/NodeConfigPanel.vue',
+    values: [
+      ['CLAIM', '抢占', '默认方式。一人直接办理，多人共享一条任务。'],
+      ['SEQUENTIAL', '顺序', '固定人员依次办理，全部通过后继续，任一人驳回即结束本节点。'],
+      ['COUNTERSIGN', '会签', '每位办理人同时收到各自的任务，按通过率和等待规则判定结果。']
     ]
   },
   {
@@ -780,7 +793,8 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/NodeConfigPanel.vue', '^formConfig\\.', '流程配置-流程-设计-节点属性-常用-办理表单'),
   locationRule('src/components/NodeConfigPanel.vue', '^(approvalForm\\.|option\\.)', '流程配置-流程-设计-用户任务属性-常用-审批设置'),
   locationRule('src/components/NodeConfigPanel.vue', '^(ccForm\\.|rule\\.)', '流程配置-流程-设计-节点属性-协同-知会配置'),
-  locationRule('src/components/NodeConfigPanel.vue', '^assigneeForm\\.', '流程配置-流程-设计-用户任务属性-常用-执行人与多人办理'),
+  locationRule('src/components/NodeConfigPanel.vue', '^assigneeForm\\.emptyAssigneeStrategy$', '流程配置-流程-设计-用户任务属性-高级-空办理人策略'),
+  locationRule('src/components/NodeConfigPanel.vue', '^assigneeForm\\.', '流程配置-流程-设计-用户任务属性-常用-办理人配置'),
   locationRule('src/components/NodeConfigPanel.vue', '^(serviceForm\\.|restForm\\.)', '流程配置-流程-设计-服务任务属性-常用-服务调用'),
   locationRule('src/components/NodeConfigPanel.vue', '^sendForm\\.', '流程配置-流程-设计-发送任务属性-常用-发送消息'),
   locationRule('src/components/NodeConfigPanel.vue', '^receiveForm\\.', '流程配置-流程-设计-接收任务属性-常用-接收消息'),
@@ -834,7 +848,8 @@ const ENUM_LOCATION_BY_AREA = Object.freeze({
   '统一事件步骤位置（有平台默认动作）': '实体配置或流程配置-对应设计器-事件绑定-步骤配置',
   '表单自定义按钮处理阶段': '实体配置-表单-编辑-按钮与操作-事件绑定-步骤配置',
   '统一事件失败策略': '实体配置或流程配置-对应设计器-事件绑定-步骤配置',
-  '用户任务办理人方式': '流程配置-流程-设计-用户任务属性-常用-执行人与多人办理',
+  '用户任务办理人来源': '流程配置-流程-设计-用户任务属性-常用-办理人配置',
+  '用户任务办理方式': '流程配置-流程-设计-用户任务属性-常用-办理人配置',
   '服务任务实现方式': '流程配置-流程-设计-服务任务属性-常用-服务调用',
   '顺序流条件类型': '流程配置-流程-设计-连线属性-常用-流转条件',
   '知会触发时机': '流程配置-流程-设计-节点属性-协同-知会配置',
@@ -1193,19 +1208,14 @@ const KEY_GUIDANCE = Object.freeze({
   sourceNodeName: ['记录状态映射所对应的流程来源节点名称。', '部门审批', '设计器用它说明该状态变更从哪个节点离开，不作为运行时匹配主键。'],
   targetNodeName: ['记录状态映射所对应的流程目标节点名称。', '财务审批', '设计器用它说明状态变更进入哪个节点，不作为运行时匹配主键。'],
   entityFormIds: ['兼容读取历史节点表单 ID 列表。', ['10001'], '只采用第一项并在重新保存后收敛为单个 entityFormId，不再合并多个完整表单。'],
-  assignee: ['设置固定办理人编码，或在表达式模式下设置办理人表达式。', 'zhangsan', '普通任务直接分配给该用户；固定人员多实例以有序人员列表首人同步此值。'],
-  candidateUserIds: ['选择普通任务候选用户，或选择多实例的有序固定审批人列表。', ['zhangsan', 'lisi'], '普通任务中用户可认领；多实例中平台按当前顺序为每个用户生成任务。'],
-  candidateGroupIds: ['选择候选用户组；启用多实例时同一配置作为参与人来源。', ['finance'], '普通任务中组成员成为候选人；多实例中启用成员会展开为任务实例。'],
-  candidateRoleIds: ['选择候选角色；启用多实例时同一配置作为参与人来源。', ['finance_manager'], '普通任务中角色成员成为候选人；多实例中启用成员会展开为任务实例。'],
+  candidateUserIds: ['分页选择办理人员。', ['zhangsan', 'lisi'], '顺序办理按列表顺序分配任务，可使用上移和下移。'],
+  candidateGroupIds: ['分页选择用户组。', ['finance'], '展开组内符合标签条件的启用成员，再按节点办理方式分配任务。'],
+  candidateRoleIds: ['分页选择角色。', ['finance_manager'], '使用拥有角色的启用用户作为办理人。'],
   referencedNodeId: ['选择同一 BPMN Process 中要复用审批人规则的其他用户任务节点。', 'UserTask_ManagerReview', '运行时只按该稳定节点 ID 定位被引用规则；禁止引用自身、已删除节点、跨 Process 或形成引用环，引用链最多 16 层。'],
   referencedNodeName: ['记录被引用用户任务的显示名称。', '经理审批', '仅用于设计器回显和审计；运行时不以名称定位节点。'],
-  candidateUsers: ['设置候选用户集合的流程表达式。', '${deptManagers}', '任务创建时表达式结果被解析为候选用户集合。'],
-  candidateGroups: ['设置候选用户组集合的流程表达式。', '${departmentCode}_manager', '任务创建时表达式结果被解析为候选组编码。'],
+  candidateUsers: ['设置返回办理人员的流程表达式。', '${deptManagers}', '节点进入时将结果纳入抢占办理范围。'],
+  candidateGroups: ['设置返回用户组编码的流程表达式。', '${departmentCode}_manager', '节点进入时展开组内启用用户。'],
   extraParamsText: ['为受管理人员或知会解析器提供额外 JSON 参数。', '{"level":2}', '运行时把参数连同流程、任务和实体上下文传给已注册解析器；多人办理要求解析器支持 MULTI_INSTANCE 用途。'],
-  isMultiInstance: ['把单个用户任务转换为多实例会签或依次办理任务。', true, '引擎按人员集合创建并行或串行任务实例。'],
-  multiInstanceType: ['选择多实例任务并行创建还是逐个串行创建。', 'parallel', '并行时同时产生多个实例；串行时前一个完成后再创建下一个。'],
-  collection: ['显示多实例内部使用的人员集合表达式。', '${_wfMultiInstanceUsers_}', '引擎从该内部变量读取多实例办理人集合；此字段由平台维护。'],
-  elementVariable: ['设置多实例中当前单个办理人的流程变量名。', 'approver', '每个实例执行时可通过该变量读取当前人员 ID。'],
   implementation: ['设置非 REST 服务任务的 Java 类名、表达式或 Spring Bean 表达式。', '${budgetCheckDelegate}', '服务任务按所选实现类型解析并执行该受管理实现。'],
   contentType: ['设置 REST 服务任务请求正文的媒体类型。', 'application/json', '当前运行时按 JSON 序列化请求体并发送 Content-Type 头。'],
   headers: ['配置 REST 服务任务要附加的请求头及流程变量模板。', '{"X-Business-Ref":"${businessRef}"}', '调用前解析模板并添加请求头，敏感头仍受服务端策略约束。'],
@@ -1533,26 +1543,9 @@ const CONTROL_OVERRIDES = Object.freeze({
     "configureWhen": "子表单需要独立标题以区分业务区域时开启。",
     "skipWhen": "父容器已给出足够说明时可关闭。",
     "expectedEffect": "只改变子表单标题显示，不改变子表数据和稳定表单身份。"
-  }
-,
-  "assigneeForm.relativePosition.assignmentMode": {
-    "label": "任务分配",
-    "meaning": "决定解析到的任职人直接成为办理人，还是进入候选办理集合。",
-    "example": "DIRECT",
-    "configureWhen": "需要控制单人直接领取与候选人员领取的任务分配方式时选择。",
-    "skipWhen": "不使用相对职务解析时不配置。",
-    "expectedEffect": "DIRECT 直接指定办理人；CANDIDATE 将解析人员加入候选集合。"
-  },
-  "assigneeForm.relativePosition.multipleMatchPolicy": {
-    "label": "多人命中",
-    "meaning": "设置同一目标单位和职务解析到多名有效任职人的处理规则。",
-    "example": "PRIMARY_OR_ERROR",
-    "configureWhen": "目标职务可能同时存在多名任职人时必须明确处理方式。",
-    "skipWhen": "未使用相对职务解析时不配置。",
-    "expectedEffect": "按所选策略优先主岗、选择全部或拒绝不明确结果；实际可选策略受分配模式约束。"
   },
   "assigneeForm.multiInstanceNeedAllApprovers": {
-    "label": "是否需要所有人审批",
+    "label": "等待全部办理",
     "meaning": "决定会签是否等待所有人员完成后才按通过率判定。",
     "example": true,
     "configureWhen": "必须收集全部人员意见，不能提前结束会签时开启。",
@@ -1651,21 +1644,21 @@ const CONTROL_OVERRIDES = Object.freeze({
     "skipWhen": "其他层级查找方式不使用此筛选。",
     "expectedEffect": "仅符合所选类型的单位可以成为最终任职人查找目标。"
   },
-  "assigneeForm.multiInstanceDecision": {
-    "label": "办理模式",
-    "meaning": "决定多人任务按会签通过票阈值，还是按或签第一人的结果结束。",
-    "example": "countersign",
-    "configureWhen": "多人共同决策或任一人员代表办理时选择。",
-    "skipWhen": "单人任务无需配置多人决策模式。",
-    "expectedEffect": "会签累计通过票；或签第一人通过或驳回即结束本节点。"
+  "assigneeForm.handlingMode": {
+    "label": "办理方式",
+    "meaning": "设置已选人员如何办理任务。",
+    "example": "CLAIM",
+    "configureWhen": "需要固定顺序办理或多人同时办理时选择对应方式。",
+    "skipWhen": "一人直接办理或多人任一人办理时保留默认抢占。",
+    "expectedEffect": "抢占生成一个任务，顺序为固定人员依次生成任务，会签为所有人同时生成任务。"
   },
   "assigneeForm.multiInstanceCompletionRate": {
-    "label": "通过率阈值（%）",
+    "label": "通过率阈值",
     "meaning": "设置会签所需的通过人数占总办理人数比例。",
     "example": 100,
     "configureWhen": "会签允许多数通过或要求全员通过时设置。",
-    "skipWhen": "或签不使用通过率阈值。",
-    "expectedEffect": "达到通过票比例才通过；需要所有人审批开启时会等全员完成后判断。"
+    "skipWhen": "使用抢占或顺序时由平台确定办理规则。",
+    "expectedEffect": "达到通过票比例才通过；等待全部办理开启时会等全员完成后判断。"
   },
   "advancedButton.parameterMappings": {
     "label": "表单输入参数映射",
@@ -2591,8 +2584,14 @@ function modelControls(file) {
         for (const child of item.children || []) collectOptions(child)
       }
       collectOptions(node)
+      const sourceToken = model.exp.content.trim()
+      // 相对职务弹窗编辑草稿，配置目录仍按确认后写入的节点字段建立索引。
+      const binding = file === 'src/components/NodeConfigPanel.vue'
+        ? sourceToken.replace(/^relativePositionDraft\./, 'assigneeForm.relativePosition.')
+        : sourceToken
       controls.push({
-        binding: model.exp.content.trim(),
+        binding,
+        sourceToken,
         component: node.tag,
         label: nextContext.label || attrValue(node, 'placeholder') || model.exp.content.trim(),
         placeholder: attrValue(node, 'placeholder'),
@@ -2793,7 +2792,7 @@ export function buildConfigurationReference() {
         binding: control.binding,
         component: control.component,
         source: `${group.file}:${control.line}`,
-        sourceToken: control.binding,
+        sourceToken: control.sourceToken,
         ...details,
         verification: EVIDENCE_BY_AREA[group.area]
           || `静态闭环：${group.file} 控件绑定、保存路径审计与前端构建`

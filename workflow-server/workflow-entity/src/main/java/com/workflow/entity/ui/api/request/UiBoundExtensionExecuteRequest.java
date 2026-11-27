@@ -20,6 +20,8 @@ public class UiBoundExtensionExecuteRequest {
     private String entityCode;
     private String listKey;
     private String recordId;
+    /** 普通表单查询时区分编辑与查看，仅作为上下文取值，授权仍依赖服务端验证的入口。 */
+    private String formMode;
     /** 绑定位置编码，例如 FIELD_OPTIONS、LIST_COLUMN。 */
     private String bindingCode;
     /** 精确目标类型，例如 FIELD、COLUMN、BUTTON 或 OWNER。 */

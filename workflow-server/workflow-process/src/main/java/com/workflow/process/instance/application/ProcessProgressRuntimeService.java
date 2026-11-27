@@ -846,6 +846,7 @@ public class ProcessProgressRuntimeService {
         formConfig.setViewConfig(entityForm.getViewConfig());
         formConfig.setConfigHash(entityForm.getConfigHash());
         formConfig.setRuntimeContext(entityForm.getRuntimeContext());
+        formConfig.setContextValues(entityForm.getContextValues());
         formConfig.setDataSourceBindingsDocument(
                 entityForm.getDataSourceBindingsDocument());
         if (entityForm.getFields() != null) {

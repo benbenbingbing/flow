@@ -470,6 +470,10 @@
           :statuses="statuses"
           :allow-custom-conditions="false"
         />
+        <FormContextConditionInput v-model="advancedButton.contextVisibleWhen" title="上下文显示条件"
+          description="满足条件时显示按钮。" :fields="entityFields" />
+        <FormContextConditionInput v-model="advancedButton.contextDisabledWhen" title="上下文禁用条件"
+          description="满足条件时禁用按钮。" :fields="entityFields" />
       </div>
       <template #footer>
         <el-button @click="advancedVisible = false">取消</el-button>
@@ -488,6 +492,8 @@ import { getEntityStatusList } from '@/api/entityStatus'
 import { resolveEntityPermissionOptions } from '@/extensions/core/registries/entityActionRuleRegistry.js'
 import { useFormButtonReferences } from '@/composables/useFormButtonReferences'
 import FormButtonExecutionSettings from './FormButtonExecutionSettings.vue'
+import FormContextConditionInput from './form-designer/FormContextConditionInput.vue'
+import { isFlowConditionGroupComplete, parseFlowConditionConfig } from '@flow/workflow-core/utils/flowConditionGroups'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
 import ActionRuleEditorPanel from '@/components/ActionRuleEditorPanel.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
@@ -907,6 +913,13 @@ function openCustomButtonSettings(button) {
 }
 
 function completeAdvanced() {
+  for (const field of ['contextVisibleWhen', 'contextDisabledWhen']) {
+    const condition = advancedButton.value?.[field]
+    if (condition && !isFlowConditionGroupComplete(parseFlowConditionConfig(condition))) {
+      ElMessage.warning('请填写完整的按钮上下文条件')
+      return
+    }
+  }
   const executionError = formButtonExecutionError(advancedButton.value)
   if (advancedButton.value?.enabled && executionError) { ElMessage.warning(executionError); return }
   const appearanceError = buttonAppearanceError(advancedButton.value)

@@ -125,6 +125,8 @@ public class UiEventRuntimeService {
     // Excel 解析器需要回调事件授权；延迟获取避免事件运行时与 Excel 运行时互相构造。
     private final ObjectProvider<EntityExcelRuntimeResolver> excelRuntimeResolver;
     private final EntityLookupEventReader entityLookupReader;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.form.application.FormContextDefaults formContextParameters;
 
     /**
      * 执行已发布事件。按钮和字段事件可直接调用此入口。
@@ -283,12 +285,16 @@ public class UiEventRuntimeService {
                 selectionRuntimeService.resolve(request, chain);
         Map<String, Object> state =
                 initialState(request, selection);
+        Map<String, Object> parameters = formContextParameters == null || !"FORM".equals(normalize(request.getConfigType()))
+                ? Map.of() : formContextParameters.valuesForConfiguration(chain.steps(), request.getServerFormEntry(),
+                        request.getServerAuthorizedMode() != null ? request.getServerAuthorizedMode()
+                                : StringUtils.hasText(request.getRecordId()) ? "view" : "create");
         Object latest = null;
 
         for (Map<String, Object> step :
                 steps(chain.steps(), "BEFORE")) {
             Object stepResult = executeStep(
-                    step, request, chain, state, result);
+                    step, request, chain, state, parameters, result);
             // 查询回填是草稿效果；不能用它的部分 form 结构覆盖原始事件输入。
             if (!EntityLookupEventStep.matches(step) && stepResult instanceof Map<?, ?> map) {
                 Map<String, Object> output = stringMap(map);
@@ -312,6 +318,7 @@ public class UiEventRuntimeService {
                     request,
                     chain,
                     state,
+                    parameters,
                     result);
         } else if (defaultHandler != null) {
             restoreListFilters(request, state);
@@ -325,7 +332,7 @@ public class UiEventRuntimeService {
         for (Map<String, Object> step :
                 steps(chain.steps(), "AFTER")) {
             Object stepResult = executeStep(
-                    step, request, chain, state, result);
+                    step, request, chain, state, parameters, result);
             if (Boolean.TRUE.equals(step.get("replaceResult"))) {
                 latest = stepResult;
                 state.put("result", latest);
@@ -1135,6 +1142,7 @@ public class UiEventRuntimeService {
      * @param request 本次请求，后续经校验后用于执行步骤
      * @param chain 链，作为 {@code execute.setReleaseId} 的输入影响后续处理
      * @param state 状态标识，决定后续步骤采用的处理分支
+     * @param parameters 从已授权表单入口读取的固定参数，用于条件和接口入参
      * @param result 结果，作为 {@code trace} 的输入影响后续处理
      * @return 执行后的步骤结果，供调用方继续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
@@ -1144,6 +1152,7 @@ public class UiEventRuntimeService {
             UiEventExecuteRequest request,
             UiEventBindingService.ResolvedEventChain chain,
             Map<String, Object> state,
+            Map<String, Object> parameters,
             UiEventExecutionResult result) {
         restoreListFilters(request, state);
         EntityLookupEventStep.Config lookup = null;
@@ -1158,7 +1167,9 @@ public class UiEventRuntimeService {
             ExcelEventAction.validateStep(step, normalize(request.getConfigType()),
                     normalize(request.getTargetType()), normalize(request.getEventCode()));
         }
-        if (!valueMapper.matches(step.get("condition"), state)) {
+        Map<String, Object> mappingInput = parameters.isEmpty() ? state
+                : com.workflow.entity.form.application.FormContextRules.withVariables(state, parameters);
+        if (!valueMapper.matches(step.get("condition"), mappingInput)) {
             trace(result, stepLabel(step), "SKIPPED", null);
             return null;
         }
@@ -1179,7 +1190,7 @@ public class UiEventRuntimeService {
             } else if (StringUtils.hasText(extensionId)) {
                 Object mappedInput = valueMapper.apply(
                         step.get("inputMapping"),
-                        state,
+                        mappingInput,
                         state.get("input"));
                 if (!(mappedInput instanceof Map<?, ?> inputMap)) {
                     throw new IllegalArgumentException(

@@ -24,6 +24,32 @@ public interface SysPositionPort {
     List<PositionDefinitionView> listEnabledPositions();
 
     /**
+     * 按名称或编码搜索启用职务，供流程设计器分页选取。
+     *
+     * @param keyword 可为空的搜索词
+     * @param pageNumber 已规范化的页码，从 1 开始
+     * @param pageSize 已规范化的页大小
+     * @return 当前页轻量职务定义与总数
+     */
+    PositionPage pageEnabledPositions(String keyword, long pageNumber, int pageSize);
+
+    /**
+     * 职务选择页。总数用于计算符合当前搜索条件的可翻页范围。
+     *
+     * @param records 当前页定义
+     * @param total 符合查询条件的总数
+     */
+    record PositionPage(List<PositionDefinitionView> records, long total) {}
+
+    /**
+     * 按配置中的稳定编码回显职务，缺失或停用的编码由设计器标记为不可用。
+     *
+     * @param codes 已保存的职务编码
+     * @return 仍可选择的职务定义
+     */
+    List<PositionDefinitionView> findEnabledPositionsByCodes(List<String> codes);
+
+    /**
      * 查询组织节点当前职务人员，过滤停用用户、职务和组织，按 userId 稳定排序。
      * 仅查询当前关系，已创建任务的办理人由流程自身保存。
      */

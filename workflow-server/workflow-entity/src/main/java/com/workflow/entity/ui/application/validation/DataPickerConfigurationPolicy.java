@@ -182,8 +182,12 @@ public final class DataPickerConfigurationPolicy {
                         "properties", Map.of(parameter, definitions.get(parameter)), "required", List.of(parameter))), Map.of(parameter, value));
             } else if ("FIELD".equals(source) || "ENTITY_FIELD".equals(source)) {
                 code(mapping.get("sourceField"));
+            } else if ("CONTEXT".equals(source)) {
+                if (!com.workflow.entity.form.application.FormContextDefaults.known(String.valueOf(mapping.get("sourceField")))) {
+                    invalid("列表映射引用了未知上下文参数");
+                }
             } else {
-                invalid("列表参数来源仅支持表单属性、实体属性或固定值");
+                invalid("列表参数来源仅支持表单属性、实体属性、上下文参数或固定值");
             }
         }
     }

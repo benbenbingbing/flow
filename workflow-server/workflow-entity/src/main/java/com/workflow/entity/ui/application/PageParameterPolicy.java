@@ -7,7 +7,7 @@ import java.util.*;
 /** 页面输入参数的公共契约；参数是业务输入，不能作为关系或权限的授权依据。 */
 public final class PageParameterPolicy {
     private static final Set<String> TYPES = Set.of("string", "number", "integer", "boolean", "object", "array");
-    private static final Set<String> SOURCES = Set.of("FIELD", "RECORD_ID", "PARAMETER", "LITERAL");
+    private static final Set<String> SOURCES = Set.of("FIELD", "RECORD_ID", "PARAMETER", "CONTEXT", "LITERAL");
     private static final Set<String> OPS = Set.of("EQ", "NE", "LIKE", "IN");
     private static final ObjectMapper JSON = new ObjectMapper();
     /**
@@ -118,6 +118,10 @@ public final class PageParameterPolicy {
             if (!seen.add(key)) throw new IllegalArgumentException("参数重复映射: " + key);
             if (!SOURCES.contains(mapping.get("sourceType"))) throw new IllegalArgumentException("参数来源类型不支持");
             if (Set.of("FIELD", "PARAMETER").contains(mapping.get("sourceType"))) identifier(String.valueOf(mapping.get("sourceField")));
+            if ("CONTEXT".equals(mapping.get("sourceType"))
+                    && !com.workflow.entity.form.application.FormContextDefaults.known(String.valueOf(mapping.get("sourceField")))) {
+                throw new IllegalArgumentException("页面映射引用了未知上下文参数");
+            }
             result.add(new LinkedHashMap<>(mapping));
         }
         return result;

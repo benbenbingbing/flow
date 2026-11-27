@@ -1775,6 +1775,7 @@ public class ProcessBpmnPublishSanitizer {
         }
 
         for (PublishedAssignmentNode current : userTasks.values()) {
+            validateHandlingMode(current);
             if (!NodeAssignmentReferenceResolver
                     .isEffectiveNodeReference(
                             current.assigneeConfig(),
@@ -1799,6 +1800,45 @@ public class ProcessBpmnPublishSanitizer {
                     processConfigId,
                     terminal.multiInstance(),
                     publishedAssignmentMode(current, terminal));
+        }
+    }
+
+    /**
+     * 校验办理方式与 BPMN 引擎结构及审批规则一致。
+     *
+     * @param node 待发布的用户任务及其办理人配置
+     * @throws IllegalArgumentException 办理方式与任务结构或规则不符时阻止发布
+     */
+    private void validateHandlingMode(PublishedAssignmentNode node) {
+        Map<String, Object> config = node.assigneeConfig();
+        if (!config.containsKey("handlingMode")) {
+            return;
+        }
+        Element loop = (Element) node.element().getElementsByTagNameNS(
+                BPMN_NAMESPACE, "multiInstanceLoopCharacteristics").item(0);
+        boolean sequential = loop != null && Set.of("true", "1")
+                .contains(loop.getAttribute("isSequential"));
+        String requiredMode = loop == null ? "CLAIM"
+                : sequential ? "SEQUENTIAL" : "COUNTERSIGN";
+        if (!requiredMode.equals(config.get("handlingMode"))) {
+            throw new IllegalArgumentException("节点 %s 的办理方式与任务结构不一致".formatted(node.id()));
+        }
+        if (loop == null) {
+            return;
+        }
+        var assignment = objectMapper.valueToTree(config);
+        var rate = assignment.path("multiInstanceCompletionRate");
+        var waitForAll = assignment.path("multiInstanceNeedAllApprovers");
+        if (!"countersign".equals(config.get("multiInstanceDecision"))
+                || !rate.isIntegralNumber() || rate.asInt() < 1 || rate.asInt() > 100
+                || !waitForAll.isBoolean()) {
+            throw new IllegalArgumentException("节点 %s 的通过率或等待规则无效".formatted(node.id()));
+        }
+        if (sequential && (!"user".equals(config.get("assigneeType"))
+                || rate.asInt() != 100 || waitForAll.asBoolean()
+                || assignment.path("nextApproverSelection").path("editable").asBoolean())) {
+            throw new IllegalArgumentException(
+                    "节点 %s 的顺序办理必须使用固定人员，全部通过且驳回时立即结束".formatted(node.id()));
         }
     }
 

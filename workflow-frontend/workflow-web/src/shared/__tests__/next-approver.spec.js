@@ -20,7 +20,6 @@ import {
 import {
   buildAssigneeConfig,
   buildNodeScopedMultiInstanceCollection,
-  normalizeDesignerAssigneeConfig
 } from '../process-config/index.js'
 
 const approvalDecisionPanelSource = readFileSync(new URL(
@@ -760,50 +759,6 @@ assert.equal(
   '隐藏配置中的未知数据源也不得静默进入 BPMN'
 )
 
-const legacyMixedAssigneeConfig = {
-  assigneeType: 'user',
-  assigneeValue: 'stale-owner',
-  multiInstanceUsernames: 'alice,bob',
-  multiInstanceGroupCodes: 'finance',
-  multiInstanceRoleCodes: 'manager',
-  nextApproverSelection: {
-    visible: true,
-    editable: false,
-    source: { type: 'SCOPE', rules: [{ type: 'ALL_USERS' }] }
-  }
-}
-const normalizedLegacyMixed = normalizeDesignerAssigneeConfig(
-  legacyMixedAssigneeConfig,
-  { collection: '${legacyUsers}', collectionSource: 'variable' },
-  true
-)
-assert.equal(
-  normalizedLegacyMixed.legacyMultiInstanceMixed,
-  true,
-  '旧会签用户、组和角色混合来源必须被显式识别'
-)
-const persistedLegacyMixed = buildAssigneeConfig({
-  ...normalizedLegacyMixed,
-  assignee: normalizedLegacyMixed.assigneeValue,
-  nextApproverSelection: normalizedLegacyMixed.nextApproverSelection
-})
-for (const field of [
-  'multiInstanceUsernames',
-  'multiInstanceGroupCodes',
-  'multiInstanceRoleCodes'
-]) {
-  assert.equal(
-    persistedLegacyMixed[field],
-    legacyMixedAssigneeConfig[field],
-    `旧 mixed 配置未被修改时必须原样保留 ${field}`
-  )
-}
-assert.equal(
-  Object.hasOwn(persistedLegacyMixed, 'assignmentConfigVersion'),
-  false,
-  '旧 mixed 配置未修改时不能伪装成已迁移的 v2'
-)
-
 const assignmentSourcePreview = normalizeNextApproverPreview({
   status: 'READY',
   scopeKey: 'assignment-source',
@@ -812,7 +767,7 @@ const assignmentSourcePreview = normalizeNextApproverPreview({
     nodeName: '复核',
     visible: true,
     editable: true,
-    assignmentMode: 'CANDIDATE',
+    assignmentMode: 'CLAIM',
     sourceType: 'NODE_ASSIGNMENT',
     assignees: [{ username: 'alice' }]
   }]

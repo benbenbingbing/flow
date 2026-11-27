@@ -12,7 +12,11 @@
       title="暂无可初始化字段，请先将业务字段添加到表单中。"
     />
     <div v-for="(row, index) in bindings" :key="index" class="usage-row">
-      <el-select :model-value="row.parameter" placeholder="输入参数" @update:model-value="patch(index, { parameter: $event })"><el-option v-for="p in parameters" :key="p.code" :value="p.code" :label="`${p.name} (${p.code})`" /></el-select>
+      <el-select :model-value="row.parameter" placeholder="输入参数" filterable @update:model-value="patch(index, { parameter: $event })">
+        <el-option v-for="p in parameters" :key="p.code" :value="p.code" :label="parameterOptionLabel(p.name, p.code)">
+          <ParameterOptionLabel :label="p.name" :code="p.code" />
+        </el-option>
+      </el-select>
       <span>{{ kind === 'LIST' ? '筛选字段' : '初始化字段' }}</span>
       <el-select :model-value="row.targetField" filterable placeholder="目标字段" @update:model-value="patch(index, { targetField: $event })"><el-option v-for="f in usableFields" :key="f.fieldCode" :value="f.fieldCode" :label="f.fieldLabel || f.fieldName || f.fieldCode" /></el-select>
       <el-select v-if="kind === 'LIST'" :model-value="row.operator || 'EQ'" @update:model-value="patch(index, { operator: $event })"><el-option label="等于" value="EQ" /><el-option label="不等于" value="NE" /><el-option label="包含" value="LIKE" /><el-option label="包含于" value="IN" /></el-select>
@@ -25,6 +29,7 @@ import { computed } from 'vue'
 import { pageParameterFilterFields, pageParameterInitializationFields } from '@flow/workflow-core/page-parameters'
 import FormInputParameterEditor from '@/components/form-designer/FormInputParameterEditor.vue'
 import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
+import ParameterOptionLabel, { parameterOptionLabel } from './ParameterOptionLabel.vue'
 const props = defineProps({ kind: { type: String, default: 'FORM' }, fields: { type: Array, default: () => [] } })
 const config = defineModel({ type: Object, default: () => ({}) })
 const schema = computed({ get: () => config.value.inputParameterSchema || {}, set: value => { config.value = { ...config.value, inputParameterSchema: value } } })

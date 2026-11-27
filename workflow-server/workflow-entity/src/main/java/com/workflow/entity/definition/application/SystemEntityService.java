@@ -61,13 +61,29 @@ public class SystemEntityService {
      * @return 分页结果
      */
     public Map<String, Object> selectList(String entityType, String keyword, int pageNum, int pageSize) {
+        return selectList(entityType, keyword, pageNum, pageSize, false);
+    }
+
+    /**
+     * 分页查询系统实体。流程设计可限制角色和用户组的新增选择；
+     * 批量回显独立于此筛选，已有停用记录仍可辨认和移除。
+     *
+     * @param entityType 系统实体类型
+     * @param keyword 名称或编码搜索词
+     * @param pageNum 从 1 开始的页码
+     * @param pageSize 所需页大小
+     * @param enabledOnly 是否仅查询启用的角色和用户组
+     * @return 当前页记录与总数
+     */
+    public Map<String, Object> selectList(
+            String entityType, String keyword, int pageNum, int pageSize, boolean enabledOnly) {
         requirePermission(entityType);
         PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
         Selection selection = switch (entityType.toUpperCase(Locale.ROOT)) {
             case "USER" -> selectUserList(keyword, page);
             case "DEPT" -> selectDeptList(keyword, page);
-            case "ROLE" -> selectRoleList(keyword, page);
-            case "GROUP" -> selectGroupList(keyword, page);
+            case "ROLE" -> selectRoleList(keyword, page, enabledOnly);
+            case "GROUP" -> selectGroupList(keyword, page, enabledOnly);
             case "MENU" -> selectMenuList(keyword, page);
             case "DICT" -> selectDictList(keyword, page);
             case "DICT_ITEM" -> selectDictItemList(keyword, page);
@@ -425,10 +441,13 @@ public class SystemEntityService {
      *
      * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
      * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param enabledOnly 仅允许选择启用角色时用于过滤查询
      * @return 查询后的角色列表结果，供调用方继续处理
      */
-    private Selection selectRoleList(String keyword, PageRequest page) {
-        LambdaQueryWrapper<SysRole> query = new LambdaQueryWrapper<>();
+    private Selection selectRoleList(String keyword, PageRequest page, boolean enabledOnly) {
+        LambdaQueryWrapper<SysRole> query = new LambdaQueryWrapper<SysRole>()
+                .eq(enabledOnly, SysRole::getStatus, SysRole.Status.ENABLED.getValue())
+                .orderByAsc(SysRole::getRoleCode, SysRole::getId);
         if (StringUtils.hasText(keyword)) {
             query.and(wrapper -> wrapper.like(SysRole::getRoleName, keyword)
                     .or()
@@ -443,10 +462,13 @@ public class SystemEntityService {
      *
      * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
      * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param enabledOnly 仅允许选择启用用户组时用于过滤查询
      * @return 查询后的分组列表结果，供调用方继续处理
      */
-    private Selection selectGroupList(String keyword, PageRequest page) {
-        LambdaQueryWrapper<SysGroup> query = new LambdaQueryWrapper<>();
+    private Selection selectGroupList(String keyword, PageRequest page, boolean enabledOnly) {
+        LambdaQueryWrapper<SysGroup> query = new LambdaQueryWrapper<SysGroup>()
+                .eq(enabledOnly, SysGroup::getStatus, SysGroup.Status.ENABLED.getValue())
+                .orderByAsc(SysGroup::getGroupCode, SysGroup::getId);
         if (StringUtils.hasText(keyword)) {
             query.and(wrapper -> wrapper.like(SysGroup::getGroupName, keyword)
                     .or()
@@ -617,6 +639,7 @@ public class SystemEntityService {
         map.put("id", group.getId());
         map.put("name", group.getGroupName());
         map.put("code", group.getGroupCode());
+        map.put("status", group.getStatus());
         map.put("entityType", "GROUP");
         return map;
     }

@@ -3,6 +3,7 @@ package com.workflow.entity.form.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.port.process.model.ProcessCatalogItem;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.port.process.ProcessDefinitionConfigPort;
 import com.workflow.port.process.ProcessRecordPermissionPort;
 import com.workflow.port.process.ProcessTaskPermissionPort.ActionableTaskContext;
@@ -51,6 +52,8 @@ import java.util.Set;
 public class EntityFormActionService {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.ExcelButtonAvailabilityService> excelAvailability;
+    @org.springframework.beans.factory.annotation.Autowired
+    private FormContextDefaults formContextParameters;
 
     private static final TypeReference<List<Map<String, Object>>> MAP_LIST =
             new TypeReference<>() {};
@@ -98,7 +101,12 @@ public class EntityFormActionService {
                     ? dataService.findAccessibleActionSummaryById(definition.getEntityCode(), request.getRecordId(), request.getListKey())
                     : loadRow(definition, request.getRecordId(), request.getListKey(), mode, request.getTaskId(),
                             request.getRuntimeContext(), source).row();
-            return resolveActions(source, definition, mode, row);
+            UiRuntimeResolutionContext entry = null;
+            if (hasContextActions(source)) {
+                entry = "create".equals(mode) ? releaseService.resolveNewRecordContext(definition.getEntityCode(), source.form().getId())
+                        : releaseService.authorizeRuntimeContext(source.form().getId(), request.getRuntimeContext());
+            }
+            return resolveActions(source, definition, mode, row, entry);
         } finally {
             log.debug("表单按钮解析耗时: mode={}, elapsedMs={}", LogValue.safe(request.getMode()),
                     (System.nanoTime() - started) / 1_000_000);
@@ -230,12 +238,12 @@ public class EntityFormActionService {
                 List.of(),
                 null,
                 null);
-        return resolveActions(source, definition, normalizedMode, authorizedRow);
+        return resolveActions(source, definition, normalizedMode, authorizedRow, null);
     }
 
     /** 同一次解析复用已固定的发布配置；调用方须完成对应运行模式的记录授权。 */
     private List<FormActionRuntimeDTO> resolveActions(RuntimeSource source, EntityDefinition definition,
-            String normalizedMode, EntityDataDTO authorizedRow) {
+            String normalizedMode, EntityDataDTO authorizedRow, UiRuntimeResolutionContext entry) {
         Map<String, Object> actionBar =
                 configPolicy.actionBar(source.viewConfig());
         Map<String, Object> overrides =
@@ -317,6 +325,9 @@ public class EntityFormActionService {
                             readRule(button),
                             authorizedRow);
             EntityActionCapabilityDTO combined = intersectCapabilities(modeCapability, configuredCapability);
+            if (combined.isVisible() && combined.isEnabled() && hasContextConditions(button)) {
+                combined = contextButtonCapability(button, normalizedMode, authorizedRow, entry, combined);
+            }
             if (excelAvailability != null && combined.isVisible() && combined.isEnabled()) {
                 String excelReason = excelAvailability.getObject().formReason(definition.getEntityCode(), source.form(), button,
                         authorizedRow == null ? null : authorizedRow.getId());
@@ -340,6 +351,30 @@ public class EntityFormActionService {
                 visibleCount(result),
                 enabledCount(result));
         return result;
+    }
+
+    private boolean hasContextActions(RuntimeSource source) {
+        return mapList(configPolicy.actionBar(source.viewConfig()).get("customButtons")).stream().anyMatch(this::hasContextConditions);
+    }
+
+    private boolean hasContextConditions(Map<String, Object> button) {
+        return button.get("contextVisibleWhen") != null || button.get("contextDisabledWhen") != null;
+    }
+
+    /** 服务端展示和事件执行共享按钮条件。条件读取已授权记录与入口，避免使用未经核验的按钮输入。 */
+    private EntityActionCapabilityDTO contextButtonCapability(Map<String, Object> button, String mode,
+            EntityDataDTO row, UiRuntimeResolutionContext entry, EntityActionCapabilityDTO available) {
+        Map<String, Object> variables = formContextParameters == null ? Map.of()
+                : formContextParameters.valuesForConfiguration(button, entry, mode);
+        Map<String, Object> record = row == null ? Map.of()
+                : com.workflow.entity.form.application.model.PublishedFormRecordView.flatten(objectMapper.convertValue(row, MAP_OBJECT));
+        Map<String, Object> state = FormContextRules.withVariables(record, variables);
+        var evaluator = new PublishedFormConditionEvaluator(objectMapper);
+        if (button.get("contextVisibleWhen") != null && !evaluator.evaluateStructured(button.get("contextVisibleWhen"), state)) {
+            return EntityActionCapabilityDTO.hidden("当前上下文未满足显示条件");
+        }
+        return evaluator.evaluateStructured(button.get("contextDisabledWhen"), state)
+                ? EntityActionCapabilityDTO.disabled("当前上下文满足禁用条件") : available;
     }
 
     /**
@@ -469,6 +504,12 @@ public class EntityFormActionService {
                 text(button.get("perm")),
                 readRule(button),
                 row);
+        if (hasContextConditions(button)) {
+            UiRuntimeResolutionContext entry = request.getServerFormEntry();
+            if ("create".equals(mode)) entry = releaseService.resolveNewRecordContext(definition.getEntityCode(), source.form().getId());
+            var available = contextButtonCapability(button, mode, row, entry, EntityActionCapabilityDTO.allowed());
+            if (!available.isVisible() || !available.isEnabled()) throw new ForbiddenException(available.getReason());
+        }
         // 条件和 inputMapping 不能读取客户端伪造的 input.button；把同一份
         // 已鉴权发布快照按钮复制到 server-only 字段，供事件运行时重建输入。
         request.setServerPublishedButton(objectMapper.convertValue(
@@ -655,7 +696,7 @@ public class EntityFormActionService {
         }
         for (Map<String, Object> button : mapList(actionBar.get("customButtons"))) {
             if (Boolean.FALSE.equals(button.get("enabled")) || !modes(button).contains(mode)) continue;
-            if (ruleRequiresAggregate(readRule(button))) return true;
+            if (ruleRequiresAggregate(readRule(button)) || hasContextConditions(button)) return true;
         }
         return false;
     }

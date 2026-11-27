@@ -36,7 +36,10 @@ export function resolveRuntimeFormTabLayout(form, visibilityOptions = {}) {
     }
   }
 
-  const isVisible = createFormNodeVisibility(nodes, visibilityOptions)
+  const isVisible = createFormNodeVisibility(nodes, {
+    ...visibilityOptions,
+    context: { ...visibilityOptions.context, form }
+  })
   const childrenMap = new Map()
   nodes.forEach(node => {
     const parentId = node.parentId || ''

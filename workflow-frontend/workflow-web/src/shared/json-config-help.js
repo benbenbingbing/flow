@@ -2,6 +2,7 @@
 export const FORM_DATA_SOURCE_INPUT_SOURCES = Object.freeze([
   { prefix: 'data', description: '当前表单字段值，子表里取当前行', examples: ['data.country_code'] },
   { prefix: 'params', description: '当前表单声明并接收的输入参数', examples: ['params.regionType'] },
+  { prefix: 'ctx', description: '当前表单入口提供的上下文参数', examples: ['ctx.currentUser.userId', 'ctx.currentDate'] },
   { prefix: 'context', description: '当前页面的运行信息', examples: ['context.mode', 'context.formId', 'context.entityId'] },
   { prefix: 'input', description: '执行映射前平台组装的接口请求参数', examples: ['input.fieldCode', 'input.recordId', 'input.formData'] },
   { prefix: 'parent', description: '父表单记录，子表、明细等提供父记录的场景可用', examples: ['parent.recordId', 'parent.data.country_code'] },

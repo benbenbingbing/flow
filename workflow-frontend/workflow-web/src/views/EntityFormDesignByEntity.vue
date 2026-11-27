@@ -1122,6 +1122,7 @@ import { createFormDataSourceRuntime, getFormDataSourceBindings } from '@flow/wo
 import FormActionBar from '@/components/FormActionBar.vue'
 import FormNodeValueLinkage from '@/components/form-designer/FormNodeValueLinkage.vue'
 import FormNodeDefaultValue from '@/components/form-designer/FormNodeDefaultValue.vue'
+import { formContextSample } from '@/shared/form-context-parameters'
 import FormNodeDataSourceBindingEditor from '@/components/form-designer/FormNodeDataSourceBindingEditor.vue'
 import { getFormDataSourceInterfaceHelp } from '@/shared/config-field-help'
 import FormNodeAttachmentConditions from '@/components/form-designer/FormNodeAttachmentConditions.vue'
@@ -2193,6 +2194,7 @@ const previewForm = computed(() => {
     viewConfig: viewConfig.value,
     fields: sortedFields,
     nodes: previewNodes,
+    contextValues: formContextSample,
     viewCompositions: relatedContents.value
   }
 })

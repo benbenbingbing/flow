@@ -2,7 +2,7 @@ import { buildRuntimeContext } from './context.js'
 import { resolvePageParameters, initializePageFields, pageParameterFields } from '../page-parameters.js'
 import { safeParseConfig } from '../config-runtime/index.js'
 import { projectRuntimeFields } from './formModel.js'
-import { applyInitialFormulaDefaults, LinkageEngine } from '../../utils/linkageEngine.js'
+import { applyInitialFormulaDefaults, formRuleContext, LinkageEngine, withFormContext } from '../../utils/linkageEngine.js'
 
 function parseBindings(value) {
   return safeParseConfig(value) || {}
@@ -35,16 +35,17 @@ function bindingsFor(owner, usage) {
     .filter(binding => binding?.extensionId)
 }
 
-function resolveFieldOptionQueryParameters(field, record) {
+function resolveFieldOptionQueryParameters(field, record, contextValues) {
   const rule = LinkageEngine.getFieldLinkageRules(field).optionsLinkage
   if (rule?.mode !== 'query' || !Array.isArray(rule.parameterMappings)) return null
+  const source = withFormContext(record, contextValues)
   return Object.fromEntries(rule.parameterMappings.filter(row => row?.parameter && row.fieldCode)
-    .map(({ parameter, fieldCode }) => [parameter, Object.hasOwn(record || {}, fieldCode) ? record[fieldCode] ?? null : null]))
+    .map(({ parameter, fieldCode }) => [parameter, Object.hasOwn(source, fieldCode) ? source[fieldCode] ?? null : null]))
 }
 
 /** 用实际发送的参数检测依赖变化，避免无关字段或候选结果变化引起重查。 */
-export function getFieldOptionQueryKey(field, record) {
-  const parameters = resolveFieldOptionQueryParameters(field, record)
+export function getFieldOptionQueryKey(field, record, form, mode) {
+  const parameters = resolveFieldOptionQueryParameters(field, record, formRuleContext(form, mode).contextValues)
   return parameters ? JSON.stringify(parameters) : null
 }
 
@@ -96,6 +97,7 @@ function mappingPathParts(path) {
 }
 
 function resolvePath(source, path) {
+  if (typeof path === 'string' && path.startsWith('ctx.')) return source[path]
   return mappingPathParts(path)
     .reduce((current, key) => current?.[key], source)
 }
@@ -129,6 +131,8 @@ function applyMapping(mapping, source, fallback) {
 function matchesLifecycleCondition(condition, source) {
   if (!condition?.path) return true
   const actual = resolvePath(source, condition.path)
+  if (typeof condition.path === 'string' && condition.path.startsWith('ctx.')
+      && actual == null && !Object.hasOwn(condition, 'exists')) return false
   if (Object.hasOwn(condition, 'equals')) return (actual ?? null) === condition.equals
   if (Object.hasOwn(condition, 'notEquals')) return (actual ?? null) !== condition.notEquals
   if (Object.hasOwn(condition, 'exists')) return (actual != null) === condition.exists
@@ -182,6 +186,7 @@ export function buildFormDataSourceExecutionRequest({
   targetKey,
   extensionId,
   legacyOperationCode,
+  formMode,
   input
 }) {
   const contextualForm = runtimeContext.form
@@ -226,6 +231,7 @@ export function buildFormDataSourceExecutionRequest({
     input
   }
   if (legacyOperationCode) request.legacyOperationCode = legacyOperationCode
+  if (formMode) request.formMode = formMode
 
   if (configHash) request.configHash = configHash
   if (entityCode) request.entityCode = entityCode
@@ -297,6 +303,8 @@ export function createFormDataSourceRuntime(options) {
       ...runtimeContext.input
     }
     const mappingSource = {
+      ...withFormContext({}, formRuleContext(runtimeContext.form || options.getForm?.(), runtimeTargetContext.mode,
+        false, runtimeContext).contextValues),
       data: record,
       context,
       input: rawInput,
@@ -331,6 +339,7 @@ export function createFormDataSourceRuntime(options) {
       targetKey: runtimeContext.targetKey || normalized.targetKey || '',
       extensionId: normalized.extensionId,
       legacyOperationCode: normalized.legacyOperationCode,
+      formMode: usage === 'FIELD_OPTIONS' ? runtimeTargetContext.mode : undefined,
       input
     }))
     return applyMapping(
@@ -448,7 +457,14 @@ export function createFormDataSourceRuntime(options) {
           }
         }
       }
-      applyInitialFormulaDefaults(defaultFields, record, runtimeContext)
+      const parameterFields = (safeParseConfig(form?.viewConfig).inputParameterBindings || [])
+        .filter(binding => binding.usage === 'INITIALIZE' && runtimeContext.params[binding.parameter] !== undefined)
+        .map(binding => binding.targetField)
+      applyInitialFormulaDefaults(defaultFields, record, {
+        ...runtimeContext,
+        contextValues: runtimeMode === 'create' ? formRuleContext(form, runtimeMode, false, runtimeContext).contextValues : undefined,
+        contextProtectedFields: new Set([...parameterFields, ...Object.keys(initialRuntimeContext.initialData || {})])
+      })
     } catch (error) {
       initialized.delete(initializationKey)
       throw error
@@ -464,7 +480,8 @@ export function createFormDataSourceRuntime(options) {
       }
     }
     const record = runtimeContext.record || currentRecord()
-    const optionParams = resolveFieldOptionQueryParameters(field, record)
+    const ruleContext = formRuleContext(runtimeContext.form || options.getForm?.(), baseContext(runtimeContext).mode, false, runtimeContext)
+    const optionParams = resolveFieldOptionQueryParameters(field, record, ruleContext.contextValues)
     const [result] = await executeOwnerUsage(field, 'FIELD_OPTIONS', {
       ...runtimeContext,
       record,

@@ -15,6 +15,7 @@ import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
+import com.workflow.port.entity.model.ui.UiRuntimePurpose;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;
@@ -57,6 +58,11 @@ public class PublishedFormSubmissionService {
     private final PublishedFormCrossFieldValidator crossFieldValidator;
     private final UiEventValueMapper lifecycleConditions = new UiEventValueMapper();
     private EntityPublishedRelationService publishedRelationService;
+
+    @Autowired
+    private FormContextDefaults contextDefaults;
+    @Autowired
+    private FormContextRules contextRules;
 
     /**
      * 可选注入发布关系读取能力；缺失时提交阶段回退到关系 Mapper。
@@ -378,6 +384,14 @@ public class PublishedFormSubmissionService {
                         formId,
                         configHash,
                 runtimeContext);
+        UiRuntimeResolutionContext entry = null;
+        if (contextDefaults != null && resolved.form() != null && contextDefaults.hasRules(resolved.form())) {
+            entry = releaseService.authorizeRuntimeContext(formId, runtimeContext);
+            if (entry != null && entry.purpose() == UiRuntimePurpose.STANDALONE
+                    && "CREATE".equals(normalizeOperation(mode)) && !StringUtils.hasText(recordId)) {
+                entry = releaseService.resolveNewRecordContext(entityCode, formId);
+            }
+        }
         Map<String, Object> data = applyResolvedForm(
                     resolved,
                     entityCode,
@@ -385,7 +399,7 @@ public class PublishedFormSubmissionService {
                     mode,
                     submittedData,
                     executionContext,
-                    null,
+                    entry,
                     PublishedSubFormSubmissionProcessor.Context.root(),
                     0,
                     BindingExecutionMode.AUTHORITATIVE);
@@ -673,6 +687,25 @@ public class PublishedFormSubmissionService {
                 filterUndeclaredRelationData(
                         form,
                         submittedData);
+        FormContextDefaults.RuntimeValues contextValues = null;
+        FormContextRules.Submission contextSubmission = null;
+        String formMode = normalizeOperation(mode).toLowerCase(java.util.Locale.ROOT);
+        if (contextDefaults != null && depth == 0 && FormContextRules.MODES.contains(formMode)
+                && !FormCrossFieldRuntimeContext.isReadonly(executionContext == null ? Map.of() : executionContext.attributes(), form.getId())
+                && contextDefaults.hasRules(form)) {
+            contextValues = contextDefaults.runtime(form, resolutionContext, formMode);
+            Map<String, Object> params = com.workflow.entity.ui.application.PageParameterPolicy.resolve(
+                    com.workflow.entity.ui.application.PageParameterPolicy.map(form.getViewConfig()), nestedContext.params());
+            // 默认值在前置扩展前填充，计算结果则在扩展完成后从最终输入推导。
+            if ("create".equals(formMode) && !StringUtils.hasText(recordId)) {
+                contextDefaults.apply(form, result, contextValues, params);
+            }
+            if (contextRules != null) {
+                contextSubmission = contextRules.new Submission(form, formMode, contextValues,
+                        requiredValidator.mergedRecord(entityCode, recordId, Map.of()), params);
+                contextSubmission.discardClientCalculations(result);
+            }
+        }
         Map<String, Object> formBindings =
                 StringUtils.hasText(
                         form.getDataSourceBindingsDocument())
@@ -693,6 +726,7 @@ public class PublishedFormSubmissionService {
                 executionContext,
                 resolved,
                 nestedContext,
+                contextValues,
                 executionMode);
         // 新版节点配置是绑定归属的权威来源；只有无节点的历史发布表单
         // 才回退字段绑定，避免同一字段在两套配置中被执行两次。
@@ -721,6 +755,7 @@ public class PublishedFormSubmissionService {
                         executionContext,
                         resolved,
                         nestedContext,
+                        contextValues,
                         executionMode);
                 subFormSubmissionProcessor().apply(
                         node,
@@ -773,21 +808,20 @@ public class PublishedFormSubmissionService {
                         executionContext,
                         resolved,
                         nestedContext,
+                        contextValues,
                         executionMode);
             }
         }
-        requiredValidator.validate(
-                form,
-                entityCode,
-                recordId,
-                mode,
-                result);
+        if (contextSubmission != null) contextSubmission.finish(result);
+        if (contextValues == null) requiredValidator.validate(form, entityCode, recordId, mode, result);
+        else requiredValidator.validate(form, entityCode, recordId, mode, result, contextValues.values());
         // 扩展处理结束后校验最终补丁；仅处理根实体，子表仍走原有提交链路。
         if (depth == 0 && !FormCrossFieldRuntimeContext.isReadonly(
                 executionContext == null ? Map.of() : executionContext.attributes(), form.getId())
                 && crossFieldValidator.hasRules(form)) {
-            crossFieldValidator.validateRecord(form, mode,
-                    crossFieldValidator.finalRecord(entityCode, recordId, result));
+            Map<String, Object> finalRecord = crossFieldValidator.finalRecord(entityCode, recordId, result);
+            crossFieldValidator.validateRecord(form, mode, contextValues == null ? finalRecord
+                    : FormContextRules.withVariables(finalRecord, contextValues.values()));
         }
         return result;
     }
@@ -941,6 +975,7 @@ public class PublishedFormSubmissionService {
      * @param executionContext 单次提交追踪上下文，用于绑定输入和幂等键生成
      * @param resolved 固定发布快照及版本坐标，保证绑定按同一版本执行
      * @param nestedContext 子表行和父记录坐标，区分递归绑定实例
+     * @param contextValues 从本次实际提交入口读取的固定参数，仅供条件和映射选用
      * @param executionMode 正式提交或安全预览，决定是否跳过有副作用绑定
      */
     private void executeBindings(
@@ -956,6 +991,7 @@ public class PublishedFormSubmissionService {
             FormSubmissionExecutionContext executionContext,
             ResolvedEntityFormRelease resolved,
             PublishedSubFormSubmissionProcessor.Context nestedContext,
+            FormContextDefaults.RuntimeValues contextValues,
             BindingExecutionMode executionMode) {
         if (bindings == null) {
             return;
@@ -1068,6 +1104,7 @@ public class PublishedFormSubmissionService {
                     nestedContext.runtimeValues());
             Map<String, Object> mappingSource =
                     new LinkedHashMap<>();
+            if (contextValues != null) contextValues.values().forEach((key, parameter) -> mappingSource.put("ctx." + key, parameter));
             mappingSource.put("data", record);
             mappingSource.put("context", context);
             mappingSource.put("input", rawInput);
@@ -1281,7 +1318,8 @@ public class PublishedFormSubmissionService {
                 entityDefinitionMapper,
                 releaseService,
                 schemaValidator,
-                codec);
+                codec,
+                contextDefaults);
     }
 
     /**
@@ -1446,6 +1484,7 @@ public class PublishedFormSubmissionService {
     private Object resolvePath(
             Map<String, Object> source,
             String path) {
+        if (path.startsWith("ctx.")) return source.get(path);
         Object current = source;
         for (String part : path.split("\\.")) {
             if (part.isBlank()) {

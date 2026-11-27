@@ -11,6 +11,7 @@ import com.workflow.port.entity.EntityProcessStatePort;
 import com.workflow.port.system.model.identity.IdentityUser;
 import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
@@ -113,8 +114,12 @@ class TaskAssignmentAccessFlowableIntegrationTest {
         PersonResolverRuntimeService resolverRuntime = mock(PersonResolverRuntimeService.class);
         when(resolverRuntime.supportsConfigured(anyString(), eq(PersonResolveUsage.ASSIGNEE)))
                 .thenReturn(true);
-        when(resolverRuntime.resolveUsernames(anyString(), any())).thenReturn(List.of("alice"));
-        when(resolverRuntime.resolvePrincipalUsernames(any())).thenReturn(List.of("alice"));
+        when(resolverRuntime.resolveUsernames(anyString(), any())).thenAnswer(call ->
+                "relativeTwoHolders".equals(call.getArgument(0))
+                        ? List.of("alice", "bob") : List.of("alice"));
+        when(resolverRuntime.resolvePrincipalUsernames(any())).thenAnswer(call ->
+                ((java.util.Collection<?>) call.getArgument(0)).contains(PersonPrincipal.user("bob"))
+                        ? List.of("alice", "bob") : List.of("alice"));
         assignmentListener = new PersonResolverTaskAssignmentListener(
                 mock(ProcessVersionHistoryMapper.class), engine.getRepositoryService(),
                 engine.getRuntimeService(), engine.getTaskService(), resolverRuntime, objectMapper);
@@ -211,6 +216,43 @@ class TaskAssignmentAccessFlowableIntegrationTest {
                 .processInstanceId(instance.getId()).singleResult());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"approve", "reject"})
+    void sequentialReviewUsesConfiguredOrderAndStopsOnRejection(String firstAction) {
+        String taskXml = """
+                <bpmn:userTask id="review" flowable:assignee="${participant}">
+                  <bpmn:extensionElements><flowable:properties>
+                    <flowable:property name="assigneeConfig" value="%s" />
+                  </flowable:properties></bpmn:extensionElements>
+                  <bpmn:multiInstanceLoopCharacteristics isSequential="true"
+                      flowable:collection="${participants}" flowable:elementVariable="participant">
+                    <bpmn:completionCondition>${_wf_mi_approved_count_review * 100 &gt;= nrOfInstances * 100
+                        || (_wf_mi_approved_count_review + nrOfInstances - nrOfCompletedInstances) * 100 &lt; nrOfInstances * 100}</bpmn:completionCondition>
+                  </bpmn:multiInstanceLoopCharacteristics>
+                </bpmn:userTask>
+                """.formatted(escape("""
+                {"assignmentConfigVersion":2,"handlingMode":"SEQUENTIAL","assigneeType":"user",
+                 "candidateUsers":"alice,bob","multiInstanceDecision":"countersign",
+                 "multiInstanceCompletionRate":100,"multiInstanceNeedAllApprovers":false}
+                """));
+        ProcessInstance instance = deployAndStart(taskXml, "", Map.of(
+                "participants", List.of("alice", "bob"), "_wf_mi_approved_count_review", 0));
+        Task alice = engine.getTaskService().createTaskQuery()
+                .processInstanceId(instance.getId()).singleResult();
+        assertEquals("alice", alice.getAssignee());
+        taskActionService.completeTask(alice.getId(), "alice", firstAction, "办理", null, null);
+        if ("approve".equals(firstAction)) {
+            Task bob = engine.getTaskService().createTaskQuery()
+                    .processInstanceId(instance.getId()).singleResult();
+            assertEquals("bob", bob.getAssignee());
+            UserContext.setCurrentUser("bob-id", "bob");
+            taskActionService.completeTask(bob.getId(), "bob", "approve", "同意", null, null);
+        }
+        assertEquals(0, engine.getTaskService().createTaskQuery().processInstanceId(instance.getId()).count());
+        assertNull(engine.getRuntimeService().createProcessInstanceQuery()
+                .processInstanceId(instance.getId()).singleResult());
+    }
+
     private static Stream<Arguments> assignmentModes() {
         Stream.Builder<AssignmentMode> modes = Stream.builder();
         modes.add(staticMode("固定用户 username", "assignee", "alice", "alice", false));
@@ -244,6 +286,21 @@ class TaskAssignmentAccessFlowableIntegrationTest {
                 {"assignmentConfigVersion":2,"assigneeType":"node_reference",
                 "referencedNodeId":"source","assignmentMode":"CANDIDATE"}
                 """), source, Map.of(), null, Set.of("alice"), Set.of()));
+        modes.add(new AssignmentMode("抢占固定单人", task("flowable:candidateUsers=\"alice\"", """
+                {"assignmentConfigVersion":2,"handlingMode":"CLAIM","assigneeType":"user","candidateUsers":"alice"}
+                """), "", Map.of(), "alice", Set.of(), Set.of()));
+        modes.add(new AssignmentMode("抢占固定多人", task("flowable:candidateUsers=\"alice,bob\"", """
+                {"assignmentConfigVersion":2,"handlingMode":"CLAIM","assigneeType":"user","candidateUsers":"alice,bob"}
+                """), "", Map.of(), null, Set.of("alice", "bob"), Set.of()));
+        modes.add(new AssignmentMode("抢占用户组仅一人", task("flowable:candidateGroups=\"reviewers\"", """
+                {"assignmentConfigVersion":2,"handlingMode":"CLAIM","assigneeType":"group","assigneeValue":"reviewers"}
+                """), "", Map.of(), "alice", Set.of(), Set.of()));
+        modes.add(new AssignmentMode("抢占引用单人", task("", """
+                {"assignmentConfigVersion":2,"handlingMode":"CLAIM","assigneeType":"node_reference","referencedNodeId":"source"}
+                """), source, Map.of(), "alice", Set.of(), Set.of()));
+        modes.add(new AssignmentMode("抢占动态多人", task("", """
+                {"assignmentConfigVersion":2,"handlingMode":"CLAIM","assigneeType":"interface","resolverCode":"relativeTwoHolders"}
+                """), "", Map.of(), null, Set.of("alice", "bob"), Set.of()));
         return modes.build().flatMap(mode -> Stream.of(Arguments.of(mode, true), Arguments.of(mode, false)));
     }
 

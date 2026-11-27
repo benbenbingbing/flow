@@ -86,6 +86,7 @@ public class PublishedFormCrossFieldValidator {
             FormCrossFieldRulePolicy.validateReferences(config, field.getFieldCode(), types);
             if (config == null || !editableAndVisible(form, field, mode, record)) continue;
             for (FormCrossFieldRulePolicy.Rule rule : FormCrossFieldRulePolicy.parse(config, types.get(field.getFieldCode()))) {
+                if (rule.condition() != null && !conditionEvaluator.evaluateStructured(rule.condition(), record)) continue;
                 Object left = record.get(field.getFieldCode());
                 Object right = record.get(rule.targetFieldCode());
                 if (blank(left) || blank(right)) continue;
@@ -126,6 +127,7 @@ public class PublishedFormCrossFieldValidator {
         Map<?, ?> props = codec.readObject(field.getComponentProps(), "已发布字段组件配置");
         Map<?, ?> linkage = map(props.get("linkageRules"));
         if (!conditionEvaluator.evaluate(linkage.get("visibilityConditionConfig"), text(linkage.get("visibilityRule")), record, true)
+                || !conditionEvaluator.evaluate(linkage.get("enabledConditionConfig"), null, record, true)
                 || conditionEvaluator.evaluate(linkage.get("disabledConditionConfig"), text(linkage.get("disabledRule")), record, false)) return false;
         Map<String, EntityFormNode> nodes = new LinkedHashMap<>();
         if (form.getNodes() != null) form.getNodes().forEach(node -> nodes.put(node.getId(), node));
@@ -137,6 +139,8 @@ public class PublishedFormCrossFieldValidator {
             String modeAccess = text(map(nodeProps.get("modeAccess")).get(mode));
             if (flag(nodeProps.get("hidden")) || flag(nodeProps.get("readonly")) || flag(nodeProps.get("disabled"))
                     || "HIDDEN".equalsIgnoreCase(modeAccess) || "READONLY".equalsIgnoreCase(modeAccess)) return false;
+            Map<?, ?> nodeLinkage = map(nodeProps.get("linkageRules"));
+            if (!conditionEvaluator.evaluate(nodeLinkage.get("visibilityConditionConfig"), text(nodeLinkage.get("visibilityRule")), record, true)) return false;
             String permission = text(nodeProps.get("permissionCode"));
             if (StringUtils.hasText(permission) && !PermissionUtil.hasPermission(permission)) return false;
             node = nodes.get(node.getParentId());

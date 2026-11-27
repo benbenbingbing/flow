@@ -13,6 +13,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -43,6 +44,28 @@ class PublishedFormRequiredValidatorTest {
                     new PublishedFormConditionEvaluator(objectMapper),
                     new JsonDocumentCodec(objectMapper),
                     objectMapper);
+
+    @Test
+    void skipsRequiredFieldsInsideAContextHiddenContainer() throws Exception {
+        EntityFormField details = field("details", "STRING", null);
+        details.setId("details-field");
+        details.setIsRequired(1);
+        EntityFormNode fieldNode = new EntityFormNode();
+        fieldNode.setId(details.getId());
+        fieldNode.setParentId("review-tab");
+        EntityFormNode tab = new EntityFormNode();
+        tab.setId("review-tab");
+        tab.setPropsDocument(objectMapper.writeValueAsString(Map.of("linkageRules",
+                Map.of("visibilityConditionConfig", condition("ctx.currentProcessNode.key", "==", "review")))));
+        EntityForm form = new EntityForm();
+        form.setFields(List.of(details));
+        form.setNodes(List.of(tab, fieldNode));
+
+        assertDoesNotThrow(() -> validator.validate(form, "requirement", null, "approve",
+                Map.of(), Map.of("currentProcessNode.key", "prepare")));
+        assertThrows(BusinessConflictException.class, () -> validator.validate(form, "requirement", null, "approve",
+                Map.of(), Map.of("currentProcessNode.key", "review")));
+    }
 
     @Test
     void requiresOneFileWhenNestedConditionMatches() {

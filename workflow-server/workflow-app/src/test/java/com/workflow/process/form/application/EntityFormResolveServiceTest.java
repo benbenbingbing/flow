@@ -1,6 +1,7 @@
 package com.workflow.process.form.application;
 
 import com.workflow.port.entity.model.form.EntityFormBinding;
+import com.workflow.port.entity.context.ui.UiRuntimeResolutionContext;
 import com.workflow.port.entity.model.form.EntityFormRuntimeContext;
 import com.workflow.port.entity.EntityFormPort;
 import com.workflow.port.entity.model.ui.UiRuntimePurpose;
@@ -102,6 +103,7 @@ class EntityFormResolveServiceTest {
         binding.setFormReleaseVersion(2);
         ProcessVersionHistory history = new ProcessVersionHistory();
         history.setId("history-1");
+        history.setProcessKey("expense-flow");
         when(snapshotService.getNodeFormsContext(
                 "expense-flow",
                 "Task_First"))
@@ -117,8 +119,8 @@ class EntityFormResolveServiceTest {
                 2);
         when(entityFormRuntimePort.findFormByBinding(
                 runtimeBinding,
-                "history-1",
-                UiRuntimePurpose.NEW_INSTANCE))
+                new UiRuntimeResolutionContext(UiRuntimePurpose.NEW_INSTANCE, "history-1", "Task_First")
+                        .withFormValues(Map.of("processDefinition.key", "expense-flow"))))
                 .thenReturn(Map.of("id", "form-first"));
 
         assertEquals(
@@ -127,6 +129,9 @@ class EntityFormResolveServiceTest {
         verify(entityFormRuntimePort).requireCurrentBindingForNewData(
                 runtimeBinding,
                 "history-1");
+        assertEquals("expense-flow", service.resolveNewRecordContext("expense", "form-first")
+                .formValues().get("processDefinition.key"));
+        assertEquals(UiRuntimePurpose.STANDALONE, service.resolveNewRecordContext("expense", "other-form").purpose());
     }
 
     @Test

@@ -519,10 +519,10 @@ final class SubFormParameterContractPolicy {
             String source = path.trim();
             if (!"parent.recordId".equals(source)
                     && !source.startsWith("parent.data.")
-                    && !source.startsWith("context.")) {
+                    && !source.startsWith("context.") && !contextPath(source)) {
                 throw new IllegalArgumentException(
                         label + "仅支持 parent.recordId、"
-                                + "parent.data.<字段>、context.<键> 或固定值: "
+                                + "parent.data.<字段>、context.<键>、ctx.<参数> 或固定值: "
                                 + entry.getKey());
             }
         }
@@ -542,6 +542,7 @@ final class SubFormParameterContractPolicy {
                 && literal.containsKey("literal")) {
             return copyValue(literal.get("literal"));
         }
+        if (selector instanceof String path && path.startsWith("ctx.")) return source.get(path);
         Object current = source;
         for (String part : String.valueOf(selector)
                 .split("\\.")) {
@@ -603,9 +604,14 @@ final class SubFormParameterContractPolicy {
                         value.substring("context.".length()))) {
             return ValueType.UNKNOWN;
         }
+        if (contextPath(value)) return ValueType.UNKNOWN;
         throw new IllegalArgumentException(
                 label + " 仅支持 parent.recordId、parent.data.<字段>、"
-                        + "context.<键> 或固定值");
+                        + "context.<键>、ctx.<参数> 或固定值");
+    }
+
+    private static boolean contextPath(String path) {
+        return path.startsWith("ctx.") && FormContextDefaults.known(path.substring(4));
     }
 
     /**

@@ -28,6 +28,10 @@ import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
+import com.workflow.entity.form.application.FormContextDefaults;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -188,12 +192,33 @@ class UiInterfaceExtensionServiceTest {
         request.setTargetType("OWNER"); request.setExtensionId("source-1");
         request.setRuntimeContext(Map.of("taskId", "task-1")); request.setRecordId("record-1");
         request.setInput(Map.of("recordId", "untrusted-business-value", "mode", "create"));
+        if ("FIELD_OPTIONS".equals(usage)) {
+            EntityForm form = new EntityForm();
+            EntityFormNode field = new EntityFormNode();
+            field.setNodeType("FIELD");
+            field.setPropsDocument("""
+                    {"fieldCode":"warehouse","componentProps":{"linkageRules":{"optionsLinkage":{"mode":"query",
+                      "parameterMappings":[{"parameter":"mode","fieldCode":"ctx.form.currentMode"}]}}}}
+                    """);
+            form.setNodes(List.of(field));
+            when(releases.resolveAuthorizedRuntimeFormRelease(eq("form-1"), any(), anyMap()))
+                    .thenReturn(new ResolvedEntityFormRelease(form, "release-1", 1));
+            var parameters = new FormContextDefaults(null, null, null, fixture.codec(), "Asia/Shanghai");
+            org.springframework.test.util.ReflectionTestUtils.setField(fixture.service(), "formContextParameters", parameters);
+            request.setTargetType("FIELD");
+            request.setTargetKey("warehouse");
+            request.setFormMode("create");
+            request.setInput(Map.of("optionParams", Map.of("mode", "create", "region", "east")));
+        }
         assertEquals(List.of("ok"), fixture.service().executeBoundOperation(request));
         ArgumentCaptor<UiExtensionExecuteRequest> internal = ArgumentCaptor.forClass(UiExtensionExecuteRequest.class);
         verify(fixture.executionAccessService()).authorizePublished(eq(definition), internal.capture());
         assertEquals("task-1", internal.getValue().getServerTaskId());
         assertEquals("record-1", internal.getValue().getServerRecordId());
         assertEquals("approve", internal.getValue().getServerFormMode());
+        if ("FIELD_OPTIONS".equals(usage)) {
+            assertEquals(Map.of("mode", "approve", "region", "east"), internal.getValue().getInput().get("optionParams"));
+        }
 
         request.setRecordId("different-record");
         assertEquals("FORM_DATA_SOURCE_RECORD_CONTEXT_MISMATCH", assertThrows(BusinessForbiddenException.class,

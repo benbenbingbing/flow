@@ -144,6 +144,24 @@
         </div>
       </el-tab-pane>
 
+      <el-tab-pane label="上下文参数" name="context-parameters">
+        <div class="form-settings-pane">
+          <p>可在默认值公式、值与计算和状态条件中选用参数。流程和待办参数随表单入口提供。</p>
+          <el-table :data="formContextParameters" row-key="key">
+            <el-table-column prop="label" label="参数名称" min-width="138" />
+            <el-table-column label="公式写法" min-width="240">
+              <template #default="{ row }"><code>{{ '${ctx.' + row.key + '}' }}</code></template>
+            </el-table-column>
+            <el-table-column prop="sample" label="示例值" min-width="120" />
+            <el-table-column label="取值来源" min-width="125">
+              <template #default="{ row }">
+                {{ row.taskOnly ? '已有流程待办' : /^(processDefinition|currentProcessNode)\./.test(row.key) ? '流程表单入口' : '表单运行时' }}
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-tab-pane>
+
       <el-tab-pane name="related-content">
         <template #label>
           <span>关联内容</span>
@@ -165,6 +183,7 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import PageInputParameterSettings from '@/components/page-parameters/PageInputParameterSettings.vue'
+import { formContextParameters } from '@/shared/form-context-parameters'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 import { FORM_LABEL_POSITION_OPTIONS, resolveFormLabelPosition } from '@/shared/form-layout'
 import {

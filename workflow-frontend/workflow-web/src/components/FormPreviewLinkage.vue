@@ -148,6 +148,7 @@
         :source-record-id="sourceRecordId"
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
+        :source-context-values="formRuleContext(form, mode, readonly, runtimeContext).contextValues"
         :mode="mode"
         :composition-context="runtimeCompositionContext"
         :config-hash="runtimeConfigHash"
@@ -167,6 +168,7 @@
         :source-record-id="sourceRecordId"
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
+        :source-context-values="formRuleContext(form, mode, readonly, runtimeContext).contextValues"
         :mode="mode"
         :composition-context="runtimeCompositionContext"
         :config-hash="runtimeConfigHash"
@@ -189,7 +191,7 @@ import FormActionBar from './FormActionBar.vue'
 import RelatedContentRuntime from './related-content/RelatedContentRuntime.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from '../extensions/builtin/fields/components/SectionField.vue'
-import LinkageEngine, { applyInitialFormulaDefaults } from '@flow/workflow-core/utils/linkageEngine'
+import LinkageEngine, { applyInitialFormulaDefaults, formRuleContext } from '@flow/workflow-core/utils/linkageEngine'
 import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
 import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
@@ -429,7 +431,7 @@ const tabRelatedContents = computed(() => {
       && !configHash.value) return []
   const tabNode = (props.form?.nodes || [])
     .find(node => String(node?.id || '') === String(props.nodeRootParentId))
-  if (!tabNode || !createFormNodeVisibility(props.form?.nodes || [], { data: formData.value, mode: props.mode, context: props.context })(tabNode)) return []
+  if (!tabNode || !createFormNodeVisibility(props.form?.nodes || [], { data: formData.value, mode: props.mode, context: runtimeContext.value })(tabNode)) return []
   return formRelatedContentsAt(
     props.form?.viewCompositions, tabNode, { preview: props.designPreview })
 })
@@ -496,7 +498,7 @@ const processedFields = computed(() => {
 })
 
 const nodeVisibility = computed(() => createFormNodeVisibility(props.form?.nodes || [], {
-  data: formData.value, mode: props.mode, context: props.context, rootParentId: props.nodeRootParentId
+  data: formData.value, mode: props.mode, context: runtimeContext.value, rootParentId: props.nodeRootParentId
 }))
 const visibleValidationFields = computed(() => processedFields.value.filter(field => {
   const node = (props.form?.nodes || []).find(node => String(node.id) === String(field.id) || node.bindingRef === field.fieldCode)
@@ -687,7 +689,8 @@ function isLinkageStateEqual(a, b) {
 // 更新联动状态（只更新 linkageState，不直接修改 formData，避免 watcher 递归）
 function updateLinkageState() {
   const fields = processedFields.value
-  const newState = LinkageEngine.processAllLinkages(fields, formData.value)
+  const newState = LinkageEngine.processAllLinkages(fields, formData.value,
+    formRuleContext(props.form, props.mode, props.readonly, props.context))
   if (!isLinkageStateEqual(linkageState.value, newState)) {
     linkageState.value = newState
   }
@@ -713,7 +716,7 @@ function applyCalculatedValues() {
   nextTick(() => {
     fields.forEach(field => {
       const rules = LinkageEngine.getFieldLinkageRules(field)
-      if (rules.calculationFormula && rules.valueFormulaMode !== 'initial') {
+      if (rules.calculationFormula && !rules.contextCalculation && rules.valueFormulaMode !== 'initial') {
         const fieldKey = field.fieldCode || field.fieldKey
         const calculatedValue = LinkageEngine.calculate(rules.calculationFormula, formData.value)
         if (calculatedValue !== null && formData.value[fieldKey] !== calculatedValue) {
@@ -745,7 +748,9 @@ onMounted(() => {
       Object.entries(parameterSchema?.properties || {}).map(([key, definition]) => [key, definition.default])
     )
     const params = { ...defaultParams, ...(props.context.params || props.context.parameters) }
-    applyInitialFormulaDefaults(runtimeContext.value.scriptFields, formData.value, { params })
+    applyInitialFormulaDefaults(runtimeContext.value.scriptFields, formData.value, {
+      ...formRuleContext(props.form, props.mode, props.readonly, props.context), params
+    })
   }
   updateLinkageState()
   applyLinkageValues()

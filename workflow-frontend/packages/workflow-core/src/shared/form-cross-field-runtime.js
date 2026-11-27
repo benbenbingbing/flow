@@ -1,6 +1,6 @@
 import { isFormNodeVisible } from './form-runtime/nodeProjection.js'
 import { getFieldModeAccess, isFieldReadonlyForMode, resolveRuntimeNodeFieldRules, safeParseConfig } from './config-runtime/index.js'
-import LinkageEngine from '../utils/linkageEngine.js'
+import LinkageEngine, { formRuleContext, withFormContext } from '../utils/linkageEngine.js'
 import { buildCrossFieldDependencyIndex, evaluateCrossField, getCrossFieldConfig } from './form-cross-field-validation.js'
 import { resolveFormNodeBinding } from './form-node-property-schema.js'
 
@@ -61,9 +61,10 @@ export function resolveCrossFieldRuntimeState(field, {
   form = {}, record = {}, mode = 'view', readonly = false, context = {}, rootParentId = '', excludedNodeIds = []
 } = {}) {
   const access = getFieldModeAccess(field, mode)
-  let visible = access.visible && LinkageEngine.shouldShowField(field, record)
+  const conditionRecord = withFormContext(record, formRuleContext(form, mode, readonly, context).contextValues)
+  let visible = access.visible && LinkageEngine.shouldShowField(field, conditionRecord)
   let canBackfill = mode !== 'view' && !readonly && !flag(form.isReadonly)
-    && !LinkageEngine.shouldDisableField(field, record)
+    && !LinkageEngine.shouldDisableField(field, conditionRecord)
   let fieldReadonly = isFieldReadonlyForMode(field, mode)
   const byId = new Map((form.nodes || []).map(node => [String(node.id), node]))
   let node = byId.get(String(field.id))
@@ -75,7 +76,7 @@ export function resolveCrossFieldRuntimeState(field, {
     if (seen.has(key) || excluded.has(key)) return { visible: false, editable: false, canBackfill: false }
     seen.add(key)
     if (key === String(rootParentId)) { inScope = true; break }
-    if (!isFormNodeVisible(node, { data: record, mode, context })) visible = false
+    if (!isFormNodeVisible(node, { data: record, mode, context: { ...context, form } })) visible = false
     const props = nodeProps(node)
     if (flag(props.hidden) || String(props.modeAccess?.[mode] || '').toUpperCase() === 'HIDDEN') visible = false
     // 节点只读限制输入。整表只读及禁用规则也会阻止组件回填。
@@ -90,7 +91,7 @@ export function resolveCrossFieldRuntimeState(field, {
     }
     node = byId.get(String(node.parentId))
   }
-  return { visible: visible && inScope, editable: canBackfill && !fieldReadonly, canBackfill }
+  return { visible: visible && inScope, editable: canBackfill && !fieldReadonly, canBackfill, conditionRecord }
 }
 
 /**

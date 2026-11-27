@@ -128,6 +128,7 @@ const props = defineProps({
   sourceRecordId: { type: [String, Number], default: '' },
   sourceData: { type: Object, default: () => ({}) },
   sourceParameters: { type: Object, default: () => ({}) },
+  sourceContextValues: { type: Object, default: () => ({}) },
   mode: { type: String, default: 'view' },
   compositionContext: { type: Object, default: () => null },
   configHash: { type: String, default: '' },
@@ -368,7 +369,7 @@ async function resolveComposition({ force = false } = {}) {
   clearResolvedState()
   try {
     const parameters = mapPageParameters(config.value.parameterMappings, {
-      data: props.sourceData, recordId: props.sourceRecordId, params: props.sourceParameters
+      data: props.sourceData, recordId: props.sourceRecordId, params: props.sourceParameters, contextValues: props.sourceContextValues
     })
     const value = assertRelatedContentResolveContract(
       await uiCompositionRuntimeApi.resolve(input)
@@ -551,7 +552,7 @@ function parameterFingerprint() {
 function sourceParameterFingerprint() {
   try {
     return JSON.stringify([config.value.parameterMappings, mapPageParameters(config.value.parameterMappings, {
-      data: props.sourceData, recordId: props.sourceRecordId, params: props.sourceParameters
+      data: props.sourceData, recordId: props.sourceRecordId, params: props.sourceParameters, contextValues: props.sourceContextValues
     })])
   } catch {
     // 不在 watch/render 抛异常，交给 resolveComposition 显示可重试的错误。

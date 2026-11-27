@@ -76,6 +76,14 @@ export const removePositionAssignment = (id: string, revision: number) =>
 export const getProcessDesignPositionOptions = () =>
   request.get('/process-design/position-options')
 
+/** 分页搜索流程可用的启用职务，保存和回显均使用职务编码。 */
+export const getProcessDesignPositionPage = (params: PositionQuery) =>
+  request.get('/process-design/position-options/page', { params })
+
+/** 按已保存的职务编码回显选择。 */
+export const getProcessDesignPositionsByCodes = (codes: string[]) =>
+  request.get('/process-design/position-options/batch', { params: { codes: codes.join(',') } })
+
 export const getOrganizationBusinessLevels = () =>
   request.get('/process-design/organization-business-levels')
 

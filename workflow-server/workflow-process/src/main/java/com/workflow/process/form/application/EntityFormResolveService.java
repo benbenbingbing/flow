@@ -130,6 +130,31 @@ public class EntityFormResolveService {
         return null;
     }
 
+    /** 为新增写入重新定位已发布的入口，只有相同的首节点绑定才能提供流程值。 */
+    public UiRuntimeResolutionContext resolveNewRecordContext(String entityCode, String formId) {
+        EntityFormRuntimeContext context = entityFormRuntimePort.findContext(entityCode).orElse(null);
+        if (context == null || context.defaultForm() != null || !context.workflowEnabled()
+                || context.processDefinitionId() == null) return UiRuntimeResolutionContext.standalone();
+        ProcessDefinitionConfig config = processDefinitionConfigMapper.selectById(context.processDefinitionId());
+        if (config == null) return UiRuntimeResolutionContext.standalone();
+        String nodeId = resolveFirstUserTaskId(config.getBpmnXml());
+        if (nodeId == null || nodeId.isBlank()) return UiRuntimeResolutionContext.standalone();
+        var published = processPublishedSnapshotService.getNodeFormsContext(config.getProcessKey(), nodeId);
+        if (published == null || published.history() == null || published.nodeForms() == null
+                || published.nodeForms().isEmpty()) return UiRuntimeResolutionContext.standalone();
+        ProcessNodeForm nodeForm = published.nodeForms().get(0);
+        if (!java.util.Objects.equals(nodeForm.getFormId(), formId)) return UiRuntimeResolutionContext.standalone();
+        EntityFormBinding binding = toBinding(nodeForm);
+        entityFormRuntimePort.requireCurrentBindingForNewData(binding, published.history().getId());
+        return newRecordContext(published, nodeId, nodeForm);
+    }
+
+    private static UiRuntimeResolutionContext newRecordContext(
+            ProcessPublishedSnapshotService.PublishedNodeForms published, String nodeId, ProcessNodeForm nodeForm) {
+        return new UiRuntimeResolutionContext(UiRuntimePurpose.NEW_INSTANCE, published.history().getId(), nodeId)
+                .withFormValues(ProcessFormContextValues.start(published.history(), nodeForm));
+    }
+
     /**
      * 解析查看实体数据时使用的表单。
      *
@@ -457,8 +482,7 @@ public class EntityFormResolveService {
                     binding,
                     processVersionHistoryId);
         }
-        // 只有 ACTIVE_TASK 需要新增的主体绑定重载；新建/历史路径继续调用旧
-        // 公共端口签名，保持外部适配器和既有行为兼容。
+        // 新建和待办携带各自入口的可信取值，历史路径保持原发布快照解析。
         Map<String, Object> result =
                 UiRuntimePurpose.ACTIVE_TASK.equals(purpose)
                         ? entityFormRuntimePort.findFormByBinding(
@@ -470,7 +494,10 @@ public class EntityFormResolveService {
                                         processInstanceId,
                                         entityCode,
                                         recordId))
-                        : entityFormRuntimePort.findFormByBinding(
+                        : UiRuntimePurpose.NEW_INSTANCE.equals(purpose)
+                                ? entityFormRuntimePort.findFormByBinding(
+                                        binding, newRecordContext(published, nodeId, nodeForms.get(0)))
+                                : entityFormRuntimePort.findFormByBinding(
                                 binding,
                                 processVersionHistoryId,
                                 purpose);

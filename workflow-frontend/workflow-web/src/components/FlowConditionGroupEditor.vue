@@ -59,9 +59,11 @@
             <el-option
               v-for="field in entityFields"
               :key="getProcessConditionFieldCode(field)"
-              :label="getProcessConditionFieldLabel(field)"
+              :label="parameterOptionLabel(getProcessConditionFieldLabel(field), field.optionCode)"
               :value="getProcessConditionFieldCode(field)"
-            />
+            >
+              <ParameterOptionLabel :label="getProcessConditionFieldLabel(field)" :code="field.optionCode" />
+            </el-option>
           </el-select>
 
           <el-select
@@ -158,6 +160,7 @@
 
 <script setup>
 import { Delete } from '@element-plus/icons-vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 import { createFlowCondition, createFlowConditionGroup, selectionConditionCodes } from '@flow/workflow-core/utils/flowConditionGroups'
 import {
   getProcessConditionFieldCode,

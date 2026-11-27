@@ -1,6 +1,7 @@
 package com.workflow.entity.form.application.validation;
 
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
+import com.workflow.entity.form.application.FormContextRules;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +15,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -59,18 +61,27 @@ public class PublishedFormRequiredValidator {
             String recordId,
             String mode,
             Map<String, Object> submittedData) {
+        validate(form, entityCode, recordId, mode, submittedData, Map.of());
+    }
+
+    /** 上下文值只供条件判断，不进入持久化补丁。 */
+    public void validate(EntityForm form, String entityCode, String recordId, String mode,
+            Map<String, Object> submittedData, Map<String, Object> variables) {
         if (form == null || form.getFields() == null
                 || form.getFields().isEmpty()
                 || !hasConditionalRequiredRules(form.getFields())) {
             return;
         }
-        Map<String, Object> record = mergedRecord(
+        Map<String, Object> record = FormContextRules.withVariables(mergedRecord(
                 entityCode,
                 recordId,
-                submittedData);
+                submittedData), variables);
         Map<String, List<EntityFieldFileItem>> currentItems =
                 currentAttachmentItems(form);
+        Map<String, EntityFormNode> nodes = new LinkedHashMap<>();
+        if (form.getNodes() != null) form.getNodes().forEach(node -> nodes.put(node.getId(), node));
         for (EntityFormField field : form.getFields()) {
+            if (field == null || hiddenByContextContainer(nodes, field, record)) continue;
             validateField(
                     field,
                     mode,
@@ -79,6 +90,21 @@ public class PublishedFormRequiredValidator {
                             field.getFieldCode(),
                             List.of()));
         }
+    }
+
+    /** 容器隐藏时用户无法填写后代字段，必填校验沿用提交时的上下文和最新字段值。 */
+    private boolean hiddenByContextContainer(Map<String, EntityFormNode> nodes,
+            EntityFormField field, Map<String, Object> record) {
+        EntityFormNode fieldNode = nodes.get(field.getId());
+        if (fieldNode == null) return false;
+        Set<String> visited = new LinkedHashSet<>();
+        for (EntityFormNode parent = nodes.get(fieldNode.getParentId()); parent != null; parent = nodes.get(parent.getParentId())) {
+            if (!visited.add(parent.getId())) throw failure("表单节点存在循环引用");
+            Map<?, ?> props = readObject(parent.getPropsDocument(), "已发布表单容器属性");
+            Object condition = FormContextRules.nodeLinkageRules(props).get("visibilityConditionConfig");
+            if (FormContextRules.referencesContext(condition) && !conditionEvaluator.evaluate(condition, null, record, true)) return true;
+        }
+        return false;
     }
 
     /**
@@ -148,9 +174,12 @@ public class PublishedFormRequiredValidator {
                 record);
         Object value = parseJsonValue(record.get(field.getFieldCode()));
         if (fieldVisible) {
-            boolean required = Integer.valueOf(1).equals(
-                    field.getIsRequired())
-                    || conditionEvaluator.evaluate(
+            boolean editableForContext = !FormContextRules.referencesContext(linkageRules.get("requiredConditionConfig"))
+                    || (!Integer.valueOf(1).equals(field.getIsReadonly())
+                            && !conditionEvaluator.evaluate(linkageRules.get("disabledConditionConfig"), text(linkageRules.get("disabledRule")), record, false)
+                            && conditionEvaluator.evaluate(linkageRules.get("enabledConditionConfig"), null, record, true));
+            boolean required = Integer.valueOf(1).equals(field.getIsRequired())
+                    || editableForContext && conditionEvaluator.evaluate(
                             linkageRules.get(
                                     "requiredConditionConfig"),
                             text(linkageRules.get("requiredRule")),
@@ -306,7 +335,7 @@ public class PublishedFormRequiredValidator {
      * @param submittedData 已提交数据，作为 {@code flattenSubmitted} 的输入影响后续处理
      * @return {@code merged}记录键值结果，供调用方继续处理
      */
-    private Map<String, Object> mergedRecord(
+    public Map<String, Object> mergedRecord(
             String entityCode,
             String recordId,
             Map<String, Object> submittedData) {

@@ -1,9 +1,10 @@
 import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { isFlowConditionGroupComplete, parseFlowConditionConfig } from '@flow/workflow-core/utils/flowConditionGroups'
-import { getLinkageExpressionError } from '@flow/workflow-core/utils/calcEngine'
+import { getFormContextReferences, getLinkageExpressionError } from '@flow/workflow-core/utils/calcEngine'
+import { formContextParameters } from './form-context-parameters.js'
 
-const VALUE_KEYS = ['valueMapping', 'valueFormula', 'valueFormulaMode', 'calculationFormula', 'calculationPrecision', 'calculationEditable']
+const VALUE_KEYS = ['valueMapping', 'valueFormula', 'valueFormulaMode', 'calculationFormula', 'calculationPrecision', 'calculationEditable', 'contextCalculation']
 const INITIAL_FORMULA_KEYS = VALUE_KEYS.filter(key => key !== 'valueMapping')
 const clone = value => JSON.parse(JSON.stringify(value))
 
@@ -61,6 +62,7 @@ export function readFieldValueLinkage(field) {
     formula: isReactive ? rules.calculationFormula ?? rules.valueFormula ?? '' : '',
     calculationPrecision: calculation ? rules.calculationPrecision : undefined,
     calculationEditable: calculation ? rules.calculationEditable : undefined,
+    contextModes: [...(rules.contextCalculation?.modes || ['create', 'edit', 'approve'])],
     sourceField: rules.valueMapping?.sourceField || '',
     mappings: clone(rules.valueMapping?.rules || []),
     fallback: clone(rules.valueMapping?.fallback ?? null),
@@ -90,6 +92,9 @@ export function updateFieldValueLinkage(field, model, group) {
       if (model.fallback) patch.valueMapping.fallback = model.fallback
     } else {
       patch[model.formulaKey] = normalizeFormulaReferences(model.formula)
+      if (model.formula.includes('${ctx.')) {
+        patch.contextCalculation = { expressionVersion: 1, modes: model.contextModes }
+      }
       if (model.formulaKey === 'calculationFormula') {
         // 切到其他方式会清除节点里的旧公式规则，切回时从编辑器草稿恢复历史计算设置。
         for (const key of ['calculationPrecision', 'calculationEditable']) {
@@ -118,6 +123,9 @@ export function getFieldValueLinkageError(model, { querySourceAvailable = true, 
       if (!model.formula.trim()) return '请填写公式，或将值联动方式设为“不启用”'
       const error = getLinkageExpressionError(model.formula)
       if (error) return '的计算公式有误（' + error + '）'
+      const keys = getFormContextReferences(model.formula)
+      if (keys.some(key => !formContextParameters.some(parameter => parameter.key === key))) return '引用了未知的上下文参数'
+      if (keys.length && !model.contextModes.length) return '请选择上下文公式生效模式'
     }
     if (model.sourceType === 'field') {
       if (!model.sourceField || (!model.mappings.length && !model.fallback)) return '请填写源字段和映射规则，或将值联动方式设为“不启用”'
@@ -131,7 +139,10 @@ export function getFieldValueLinkageError(model, { querySourceAvailable = true, 
       if (!mappings.length || mappings.some(row => !row?.fieldCode || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(row.parameter || ''))) {
         return '请配置选项联动的依赖字段和参数名，参数名使用字母、数字或下划线，且以字母或下划线开头'
       }
-      if (fieldCodes && mappings.some(row => !fieldCodes.includes(row.fieldCode))) return '选项联动引用了不可用的依赖字段'
+      if (fieldCodes && mappings.some(row => !fieldCodes.includes(row.fieldCode)
+          && !formContextParameters.some(parameter => row.fieldCode === 'ctx.' + parameter.key))) {
+        return '选项联动引用了不可用的依赖字段或参数'
+      }
       return new Set(mappings.map(row => row.parameter)).size === mappings.length ? '' : '选项联动的参数名不能重复'
     }
     if (!model.dependsOn || !model.filters.length) return '请填写选项联动的依赖字段和过滤规则，或关闭选项联动'

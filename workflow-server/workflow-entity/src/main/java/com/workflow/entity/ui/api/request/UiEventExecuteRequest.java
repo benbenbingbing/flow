@@ -66,6 +66,10 @@ public class UiEventExecuteRequest {
     @JsonIgnore
     private String serverAuthorizedMode;
 
+    /** 已核验的表单入口，供发布步骤读取固定参数，客户端无法写入。 */
+    @JsonIgnore
+    private com.workflow.port.entity.context.ui.UiRuntimeResolutionContext serverFormEntry;
+
     /**
      * 从已验证发布快照取得的按钮描述。客户端同名 input.button 不得写入该字段，
      * 事件条件和映射只使用这里的服务端副本。

@@ -51,9 +51,9 @@ function evaluateSafeExpression(expression) {
  * 按值联动公式读取字段原值。字段值以数据传入解析器，避免引号、反斜线或函数名改变公式语义。
  * now 可由表单初始化统一传入，确保同一批初值使用同一个本地日期。
  */
-export function evaluateLinkageExpression(expression, fields, now = new Date(), { params = {} } = {}) {
+export function evaluateLinkageExpression(expression, fields, now = new Date(), { params = {}, contextValues = {} } = {}) {
   try {
-    const value = new ExpressionParser(tokenizeExpression(expression), fields, now, params).parse()
+    const value = new ExpressionParser(tokenizeExpression(expression), fields, now, params, contextValues).parse()
     return typeof value === 'number' && !Number.isFinite(value) ? null : value
   } catch {
     return null
@@ -94,6 +94,12 @@ function tokenizeExpression(expression) {
     }
 
     if ((char === '$' || char === '#') && expression[index + 1] === '{') {
+      const contextReference = /^\$\{ctx\.([A-Za-z][\w.]*)\}/.exec(expression.slice(index))
+      if (contextReference) {
+        tokens.push({ type: 'field', scope: 'ctx', value: contextReference[1] })
+        index += contextReference[0].length
+        continue
+      }
       const reference = /^[$#]\{(?:(field|param)\.)?(\w+)\}/.exec(expression.slice(index))
       if (!reference) throw new Error('字段引用格式错误')
       tokens.push({ type: 'field', scope: reference[1], value: reference[2] })
@@ -159,12 +165,15 @@ function tokenizeExpression(expression) {
 }
 
 class ExpressionParser {
-  constructor(tokens, fields, now = new Date(), params = {}) {
+  constructor(tokens, fields, now = new Date(), params = {}, contextValues = {}) {
     this.tokens = tokens
     this.position = 0
     this.fields = fields
     this.now = now
     this.params = params
+    this.contextValues = contextValues
+    this.hasContext = tokens.some(token => token.scope === 'ctx')
+    this.evaluating = true
   }
 
   parse() {
@@ -178,7 +187,13 @@ class ExpressionParser {
     const operator = this.peek().type
     if (!Object.hasOwn(comparisons, operator)) return left
     this.expect(operator)
-    return comparisons[operator](left, this.parseSum())
+    const right = this.parseSum()
+    if (this.hasContext && (isEmptyOperand(left) || isEmptyOperand(right))) return null
+    // 上下文 ID 与文本常量保留字符串比较，数值字段可与数字常量比较。
+    if (this.hasContext && (typeof left === 'number' || typeof right === 'number') && [left, right].every(isNumericOperand)) {
+      return comparisons[operator](Number(left), Number(right))
+    }
+    return comparisons[operator](left, right)
   }
 
   parseSum() {
@@ -186,7 +201,8 @@ class ExpressionParser {
     while (this.match('+') || this.match('-')) {
       const operator = this.previous().type
       const right = this.parseTerm()
-      if (value == null || right == null || value === '' || right === '') value = null
+      if (isEmptyOperand(value) || isEmptyOperand(right)) value = null
+      else if (operator === '+' && this.hasContext && [value, right].every(isNumericOperand)) value = Number(value) + Number(right)
       else value = operator === '+' ? value + right : value - right
     }
     return value
@@ -217,17 +233,20 @@ class ExpressionParser {
 
   parsePrimary() {
     if (this.match('number') || this.match('string')) {
-      return this.previous().value
+      return this.evaluating ? this.previous().value : null
     }
 
     if (this.match('field')) {
+      if (!this.evaluating) return null
       const { value, scope } = this.previous()
+      if (scope === 'ctx') return this.fieldValue(value, this.contextValues)
       return this.fieldValue(value, scope === 'param' ? this.params : this.fields)
     }
 
     if (this.match('identifier')) {
       const functionName = this.previous().value
       if (this.fields && !this.check('(')) {
+        if (!this.evaluating) return null
         if (functionName === 'true') return true
         if (functionName === 'false') return false
         if (functionName === 'null') return null
@@ -235,17 +254,21 @@ class ExpressionParser {
       }
       this.expect('(')
       const args = []
+      const name = functionName.toUpperCase()
+      const evaluating = this.evaluating
       if (!this.check(')')) {
         do {
+          // 未命中的分支仍完成语法检查，求值时跳过分支内的运算。
+          this.evaluating = evaluating && this.shouldEvaluateArgument(name, args)
           args.push(this.parseExpression())
         } while (this.match(','))
       }
+      this.evaluating = evaluating
       this.expect(')')
-      const name = functionName.toUpperCase()
       if (!Object.hasOwn(formulaFunctions, name)) throw new Error('不支持的函数 ' + functionName)
       const { parameters, calculate } = formulaFunctions[name]
       if (args.length !== parameters) throw new Error(name + ' 需要 ' + parameters + ' 个参数')
-      return calculate(args, this.now)
+      return evaluating ? calculate(args, this.now) : null
     }
 
     if (this.match('(')) {
@@ -255,6 +278,13 @@ class ExpressionParser {
     }
 
     throw new Error('表达式格式错误')
+  }
+
+  shouldEvaluateArgument(name, args) {
+    if (!args.length) return true
+    if (name === 'COALESCE') return isEmptyOperand(args[0])
+    if (name === 'IF') return !isEmptyOperand(args[0]) && (isTruthyOperand(args[0]) ? args.length === 1 : args.length === 2)
+    return true
   }
 
   fieldValue(key, values = this.fields) {
@@ -287,6 +317,15 @@ class ExpressionParser {
   }
 }
 
+/** 供设计器检查待发布的复合引用，忽略带引号的公式文本。 */
+export function hasFormContextReference(formula) {
+  return getFormContextReferences(formula).length > 0
+}
+
+export function getFormContextReferences(formula) {
+  return [...new Set(tokenizeExpression(formula).filter(token => token.scope === 'ctx').map(token => token.value))]
+}
+
 const comparisons = {
   '==': (left, right) => left === right,
   '!=': (left, right) => left !== right,
@@ -296,12 +335,16 @@ const comparisons = {
   '>=': (left, right) => left != null && right != null && left >= right
 }
 
+const isEmptyOperand = value => value == null || value === ''
+const isTruthyOperand = value => [true, 1, '1', 'true'].includes(value)
+const isNumericOperand = value => typeof value === 'number' || typeof value === 'string' && /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)
 const formulaFunctions = {
   TODAY: { parameters: 0, calculate: (_, now) => localDateText(now) },
   ADD_DAYS: { parameters: 2, calculate: ([date, days]) => addCalendarDays(date, days) },
   DATEDIFF: { parameters: 2, calculate: ([start, end]) => datediff(start, end) },
   WORKDAYDIFF: { parameters: 2, calculate: ([start, end]) => workdaydiff(start, end) },
-  IF: { parameters: 3, calculate: ([condition, yes, no]) => condition == null ? null : [true, 1, '1', 'true'].includes(condition) ? yes : no }
+  IF: { parameters: 3, calculate: ([condition, yes, no]) => isEmptyOperand(condition) ? null : isTruthyOperand(condition) ? yes : no },
+  COALESCE: { parameters: 2, calculate: ([value, fallback]) => isEmptyOperand(value) ? fallback : value }
 }
 
 function localDateText(date) {

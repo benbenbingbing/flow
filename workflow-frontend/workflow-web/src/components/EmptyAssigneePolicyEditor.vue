@@ -1,8 +1,8 @@
 <template>
-  <div class="policy-editor">
-    <el-form-item label="空办理人策略" for="">
+  <div class="policy-editor" :class="{ 'is-embedded': embedded }">
+    <el-form-item :label="policyLabel" for="">
       <template #label>
-        <ConfigHelpLabel label="空办理人策略" :content="policyHint" />
+        <ConfigHelpLabel :label="policyLabel" :content="policyHint" />
       </template>
       <el-select :model-value="policy.policy" aria-label="空办理人策略" style="width: 100%" @update:model-value="update('policy', $event)">
         <el-option v-if="allowInherit" label="继承流程默认策略" value="INHERIT" />
@@ -61,9 +61,12 @@ import { normalizeEmptyAssigneeStrategy } from '@/shared/process-config'
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
-  allowInherit: { type: Boolean, default: true }
+  allowInherit: { type: Boolean, default: true },
+  // 节点分组已有标题和边框，内嵌时沿用分组表单的排版。
+  embedded: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:modelValue'])
+const policyLabel = computed(() => props.embedded ? '处理方式' : '空办理人策略')
 const policy = computed(() => normalizeEmptyAssigneeStrategy(props.modelValue, props.allowInherit))
 const legacyOwnerType = ref('USER')
 const ownerType = computed(() => policy.value.responsibilityOwnerType || legacyOwnerType.value)
@@ -116,8 +119,9 @@ function updateOwner(value) {
 </script>
 
 <style scoped>
-.policy-editor { padding: 14px 14px 2px; border: 1px solid #dfe7e1; border-radius: 12px; background: linear-gradient(145deg, #f7faf7, #fff); }
+.policy-editor:not(.is-embedded) { padding: 14px 14px 2px; border: 1px solid #dfe7e1; border-radius: 12px; background: linear-gradient(145deg, #f7faf7, #fff); }
 .retry-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.is-embedded .retry-grid { display: block; }
 .retry-grid :deep(.el-input-number) { width: 100%; }
 .owner-selector { display: grid; gap: 10px; width: 100%; }
 .policy-editor :deep(.entity-selector) { width: 100%; }

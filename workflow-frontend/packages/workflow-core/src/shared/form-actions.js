@@ -1,3 +1,6 @@
+import { evaluateFlowConditionGroup, parseFlowConditionConfig } from '../utils/flowConditionGroups.js'
+import { formRuleContext, withFormContext } from '../utils/linkageEngine.js'
+
 export const FORM_ACTION_MODES = Object.freeze([
   { value: 'create', label: '新增' },
   { value: 'edit', label: '编辑' },
@@ -188,6 +191,8 @@ export function normalizeCustomButton(value = {}, index = 0) {
     slotKey: source.slotKey || '',
     perm: source.perm || '',
     availabilityRule: source.availabilityRule || null,
+    ...(source.contextVisibleWhen && { contextVisibleWhen: source.contextVisibleWhen }),
+    ...(source.contextDisabledWhen && { contextDisabledWhen: source.contextDisabledWhen }),
     confirm: {
       enabled: source.confirm?.enabled === true,
       message: source.confirm?.message || ''
@@ -227,11 +232,15 @@ export function resolveLocalFormActions(form, context = {}) {
   }
 
   if (!systemEntity) {
+    const state = withFormContext(context.record, formRuleContext(form, mode).contextValues)
     actionBar.customButtons
       .filter(button => button.enabled !== false && button.modes.includes(mode))
       .forEach(button => {
+        const visible = !button.contextVisibleWhen || evaluateFlowConditionGroup(parseFlowConditionConfig(button.contextVisibleWhen), state)
+        const disabled = button.contextDisabledWhen && evaluateFlowConditionGroup(parseFlowConditionConfig(button.contextDisabledWhen), state)
         result.push(withRuntimeState(
-          normalizeCustomButton(button),
+          { ...normalizeCustomButton(button), visible, enabled: visible && !disabled,
+            ...(disabled && { reason: '当前上下文满足禁用条件' }) },
           form?.id || form?.formId || form?.entityFormId,
           true
         ))

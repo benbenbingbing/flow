@@ -16,7 +16,9 @@
         style="width: 100%"
         @update:model-value="updateConfig({ idPath: $event })"
       >
-        <el-option v-for="item in idSources" :key="item.value" :label="item.label" :value="item.value" />
+        <el-option v-for="item in idSources" :key="item.value" :label="parameterOptionLabel(item.label, item.value)" :value="item.value">
+          <ParameterOptionLabel :label="item.label" :code="item.value" />
+        </el-option>
       </el-select>
     </el-form-item>
     <el-alert v-if="loadError" :title="loadError" type="warning" :closable="false" show-icon />
@@ -39,6 +41,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 import { entityApi } from '@/api/entity'
 
 const props = defineProps({

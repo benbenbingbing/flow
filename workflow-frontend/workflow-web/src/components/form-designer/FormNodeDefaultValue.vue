@@ -14,7 +14,7 @@
 
   <el-dialog v-model="configVisible" :title="configTitles[source]"
     width="min(640px, calc(100vw - 32px))" append-to-body destroy-on-close>
-    <el-form label-width="96px" size="small" @submit.prevent>
+    <el-form label-width="108px" size="small" @submit.prevent>
       <el-form-item v-if="source === 'fixed'" label="固定默认值" class="default-fixed-value">
         <el-date-picker v-if="dateType" v-model="fixedValueDraft" aria-label="固定默认值" :type="dateType"
           :value-format="dateType === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD'" />
@@ -28,7 +28,9 @@
       <template v-else-if="source === 'formula'">
         <el-form-item label="默认值公式">
           <FormNodeFormulaInput v-model="formula" :fields="formulaFields" :parameters="parameters" label="默认值公式"
+            :context-parameters="contextParameters"
             :placeholder="dateType ? '例如 ADD_DAYS(TODAY(), 3)' : undefined" />
+          <p v-if="contextUnavailableReason" class="context-unavailable">{{ contextUnavailableReason }}</p>
         </el-form-item>
         <el-form-item>
           <details class="default-formula-trial">
@@ -41,7 +43,7 @@
       </template>
       <FormNodeDataSourceBindingEditor v-else-if="source === 'dataSource'" v-model:extension-id="bindingDraft.extensionId"
         v-model:input-mapping-text="bindingDraft.inputMappingText" v-model:output-mapping-text="bindingDraft.outputMappingText"
-        :interfaces="interfaces" :help="interfaceHelp" output-placeholder='{"value":"data.defaultValue"}' />
+        :interfaces="interfaces" :context-parameters="contextParameters" :help="interfaceHelp" output-placeholder='{"value":"data.defaultValue"}' />
     </el-form>
     <p class="default-value-scope">新增记录初始化时填充空字段，填入后可以修改。</p>
     <el-alert v-if="configError" :title="configError" type="error" :closable="false" show-icon />
@@ -54,16 +56,18 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { evaluateLinkageExpression, getLinkageExpressionError } from '@flow/workflow-core/utils/calcEngine'
+import { evaluateLinkageExpression, hasFormContextReference } from '@flow/workflow-core/utils/calcEngine'
 import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
 import { resolvePageParameters } from '@flow/workflow-core/page-parameters'
+import { resolveFormNodeBinding } from '@flow/workflow-core/form-node-property-schema'
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
 import { getFormDataSourceInterfaceHelp } from '@/shared/config-field-help'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
-  changeFieldDefaultMode, getFieldDefaultError, readFieldDefaultDataSourceDraft, readFieldDefaultFormula,
+  changeFieldDefaultMode, getDefaultFormulaError, getFieldDefaultError, readFieldDefaultDataSourceDraft, readFieldDefaultFormula,
   readFieldDefaultMode, writeFieldDefaultFormula
 } from '@/shared/form-field-default'
+import { formContextDefaults, formContextSample } from '@/shared/form-context-parameters'
 import FormNodeFormulaInput from './FormNodeFormulaInput.vue'
 import FormNodeDataSourceBindingEditor from './FormNodeDataSourceBindingEditor.vue'
 
@@ -103,6 +107,9 @@ const interfaceHelp = getFormDataSourceInterfaceHelp('FIELD_DEFAULT')
 const configVisible = ref(false)
 const configError = ref('')
 const formula = ref('')
+const hasContextBinding = computed(() => resolveFormNodeBinding(props.field, 'FIELD').bindingType === 'ENTITY_FIELD')
+const contextParameters = computed(() => hasContextBinding.value ? formContextDefaults : [])
+const contextUnavailableReason = computed(() => hasContextBinding.value ? '' : '绑定实体字段后可选择上下文参数。')
 const bindingDraft = ref({})
 const sampleText = ref('')
 const sampleResult = ref('')
@@ -120,10 +127,6 @@ function openConfig() {
   configVisible.value = true
 }
 
-function validateFormula() {
-  return formula.value.trim() ? getLinkageExpressionError(formula.value) : '请填写默认值公式'
-}
-
 /** 确认后才回写节点草稿，沿用设计器的保存流程；未改动的旧配置无需重写。 */
 function confirmConfig() {
   const field = props.field
@@ -135,9 +138,13 @@ function confirmConfig() {
       field.defaultValue = fixedValueDraft.value
     }
   } else if (source.value === 'formula') {
-    configError.value = validateFormula()
+    const expression = formula.value
+    configError.value = getDefaultFormulaError(expression)
+    if (!configError.value && !hasContextBinding.value && hasFormContextReference(expression)) {
+      configError.value = contextUnavailableReason.value
+    }
     if (configError.value) return
-    if (formula.value !== readFieldDefaultFormula(field)) writeFieldDefaultFormula(field, formula.value)
+    if (expression !== readFieldDefaultFormula(field)) writeFieldDefaultFormula(field, expression)
   } else if (source.value === 'dataSource') {
     configError.value = getFieldDefaultError({
       defaultValueMode: field.defaultValueMode,
@@ -155,11 +162,11 @@ function confirmConfig() {
 /** 用与表单相同的解析器和参数契约试算，样例输入只在编辑器中使用。 */
 function evaluateSample() {
   try {
-    const error = validateFormula()
+    const error = getDefaultFormulaError(formula.value)
     if (error) throw new Error(error)
     const sample = parseJsonConfig(sampleText.value, { fieldName: '试算输入' })
     const params = resolvePageParameters(props.viewConfig, sample.params)
-    const value = evaluateLinkageExpression(formula.value, sample.fields || {}, new Date(), { params })
+    const value = evaluateLinkageExpression(formula.value, sample.fields || {}, new Date(), { params, contextValues: formContextSample })
     sampleResult.value = value == null ? '未得到值，请检查样例中的字段和参数' : `结果 ${JSON.stringify(value)}`
   } catch (error) {
     sampleResult.value = error.message
@@ -170,6 +177,7 @@ function evaluateSample() {
 <style scoped>
 .node-default-value { display: flex; align-items: center; width: 100%; gap: 10px; }
 .node-default-value > .el-select { flex: 1; min-width: 0; }
+.context-unavailable { margin: 6px 0 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
 .default-fixed-value :deep(.el-date-editor), .default-fixed-value :deep(.el-input-number) { width: 100%; }
 .default-formula-trial { width: 100%; }
 .default-formula-trial summary { cursor: pointer; color: var(--el-color-primary); }

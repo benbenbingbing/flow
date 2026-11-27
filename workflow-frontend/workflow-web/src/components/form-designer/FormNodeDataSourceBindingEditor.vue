@@ -21,6 +21,18 @@
         <el-input :model-value="inputMappingText" aria-label="输入映射" type="textarea" :rows="3"
           :placeholder="JSON.stringify(cascader ? cascaderInputHelp.example : { 'filters.ownerId': 'data.owner_id' })"
           @update:model-value="$emit('update:inputMappingText', $event)" />
+        <div v-if="extensionId && contextParameters.length" class="context-mapping">
+          <el-input v-model.trim="contextTarget" aria-label="接口入参路径" placeholder="接口入参路径" :disabled="disabled" />
+          <el-select v-model="contextKey" aria-label="接口入参上下文参数" placeholder="选择上下文参数"
+            filterable :disabled="disabled">
+            <el-option v-for="parameter in contextParameters" :key="parameter.key"
+              :value="parameter.key" :label="parameterOptionLabel(parameter.label, parameter.key)">
+              <ParameterOptionLabel :label="parameter.label" :code="parameter.key" />
+            </el-option>
+          </el-select>
+          <el-button :disabled="disabled || !contextTarget || !contextKey" @click="addContextMapping">加入映射</el-button>
+          <span v-if="contextMappingError" class="el-form-item__error" role="status">{{ contextMappingError }}</span>
+        </div>
         <div class="form-tip">左边填接口接收的参数名，右边填取值路径。接口使用默认入参时留空。</div>
         <details class="mapping-reference" :open="cascader">
           <summary>可用取值来源和示例</summary>
@@ -75,10 +87,12 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 import { CASCADER_INPUT_MAPPING_NOTE, FORM_DATA_SOURCE_INPUT_SOURCES, getJsonConfigHelp } from '@/shared/json-config-help'
+import { formContextParameters } from '@/shared/form-context-parameters'
 
 const cascaderInputHelp = {
   title: '级联接口输入映射怎么填',
@@ -90,6 +104,7 @@ const props = defineProps({
   extensionId: { type: [String, Number], default: '' },
   inputMappingText: { type: String, default: '' },
   outputMappingText: { type: String, default: '' },
+  contextParameters: { type: Array, default: () => formContextParameters },
   interfaces: { type: Array, default: () => [] },
   label: { type: String, default: '扩展接口' },
   help: { type: String, default: '' },
@@ -99,7 +114,29 @@ const props = defineProps({
   cascaderNodeFields: { type: Object, default: () => ({}) },
   cascaderLoadMode: { type: String, default: 'ALL' }
 })
-defineEmits(['update:extensionId', 'update:inputMappingText', 'update:outputMappingText', 'update:cascaderNodeField'])
+const emit = defineEmits(['update:extensionId', 'update:inputMappingText', 'update:outputMappingText', 'update:cascaderNodeField'])
+const contextTarget = ref('')
+const contextKey = ref('')
+const contextMappingError = ref('')
+
+/** 合并到现有映射，允许同一接口接收字段、固定值和上下文值。 */
+function addContextMapping() {
+  const reserved = ['__proto__', 'constructor', 'prototype']
+  if (contextTarget.value.split('.').some(part => !part || part.trim() !== part || reserved.includes(part))) {
+    contextMappingError.value = '请输入有效的接口入参路径'
+    return
+  }
+  try {
+    const current = JSON.parse(props.inputMappingText.trim() || '{}')
+    if (!current || typeof current !== 'object' || Array.isArray(current)) throw new Error('输入映射须为 JSON 对象')
+    emit('update:inputMappingText', JSON.stringify({ ...current, [contextTarget.value]: 'ctx.' + contextKey.value }, null, 2))
+    contextTarget.value = ''
+    contextKey.value = ''
+    contextMappingError.value = ''
+  } catch {
+    contextMappingError.value = '请先修正现有的输入映射'
+  }
+}
 
 const cascaderOutputFields = computed(() => [
   { key: 'value', label: '节点值' },
@@ -119,6 +156,8 @@ const hasResponseMapping = computed(() => !['', '{}'].includes(props.outputMappi
 .property-advanced { margin: 4px 0 12px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; background: var(--el-fill-color-extra-light); }
 .property-advanced > summary { padding: 10px 12px; color: var(--el-text-color-regular); cursor: pointer; font-size: 12px; font-weight: 500; }
 .property-advanced-body { padding: 12px 12px 0; border-top: 1px solid var(--el-border-color-lighter); background: var(--el-bg-color); }
+.context-mapping { position: relative; display: grid; grid-template-columns: minmax(80px, 1fr) minmax(100px, 1fr) auto; gap: 6px; width: 100%; margin: 6px 0; }
+.context-mapping [role="status"] { position: static; grid-column: 1 / -1; }
 .mapping-reference {
   width: 100%;
   margin-top: 8px;

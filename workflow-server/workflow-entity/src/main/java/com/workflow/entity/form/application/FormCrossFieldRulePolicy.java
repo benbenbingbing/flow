@@ -3,6 +3,7 @@ package com.workflow.entity.form.application;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -12,12 +13,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** 表单字段间比较的配置契约；规则存在即生效，不接受独立模式或跳过开关。 */
+/** 表单字段间比较的配置契约，允许用结构化条件定义单条规则的触发范围。 */
 public final class FormCrossFieldRulePolicy {
     public static final int MAX_RULES = 20;
     private static final Set<String> NUMBER_TYPES = Set.of("INTEGER", "LONG", "DECIMAL", "DOUBLE");
     private static final Set<String> OPERATORS = Set.of("EQ", "NE", "GT", "GE", "LT", "LE");
-    private static final Set<String> RULE_KEYS = Set.of("id", "operator", "targetFieldCode", "message");
+    private static final Set<String> RULE_KEYS = Set.of("id", "operator", "targetFieldCode", "message", "condition");
+    private static final PublishedFormConditionEvaluator CONDITIONS = new PublishedFormConditionEvaluator(new ObjectMapper());
     private static final Pattern FIELD_CODE = Pattern.compile("[A-Za-z][A-Za-z0-9_]{0,99}");
     private static final Pattern RULE_ID = Pattern.compile("[A-Za-z0-9_-]{1,100}");
 
@@ -33,8 +35,9 @@ public final class FormCrossFieldRulePolicy {
      * @param operator 操作人，保存在对象中供后续校验、查询或展示
      * @param targetFieldCode 目标字段编码，后续用于处理规则时定位或关联目标
      * @param message 消息，保存在对象中供后续校验、查询或展示
+     * @param condition 可选触发条件，比较前用最终记录和可信表单上下文求值
      */
-    public record Rule(String id, String operator, String targetFieldCode, String message) {}
+    public record Rule(String id, String operator, String targetFieldCode, String message, Object condition) {}
 
     /**
      * 判断是否支持表单跨字段规则策略；判断结果决定调用方的后续分支。
@@ -122,7 +125,9 @@ public final class FormCrossFieldRulePolicy {
             if (map.containsKey("message") && !(messageValue instanceof String)) throw invalid("错误提示必须为文本");
             String message = messageValue instanceof String text ? text : "";
             if (message.codePointCount(0, message.length()) > 200) throw invalid("错误提示不能超过 200 字");
-            rules.add(new Rule(id, operator, target, message));
+            Object condition = map.get("condition");
+            if (condition != null) CONDITIONS.validateStructured(condition, Set.of(), "跨字段触发条件");
+            rules.add(new Rule(id, operator, target, message, condition));
         }
         return List.copyOf(rules);
     }

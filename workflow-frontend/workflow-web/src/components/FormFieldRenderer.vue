@@ -37,7 +37,7 @@ const hasDynamicOptions = computed(() =>
   ['SELECT', 'MULTI_SELECT', 'SELECT_MULTIPLE', 'RADIO', 'CHECKBOX'].includes(String(props.field.componentType || props.field.fieldType).toUpperCase())
     && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length > 0)
 const optionQueryKey = computed(() => hasDynamicOptions.value
-  ? getFieldOptionQueryKey(props.field, props.formData) : null)
+  ? getFieldOptionQueryKey(props.field, props.formData, props.context.form, props.mode) : null)
 const hostOptions = computed(() => optionQueryKey.value === null ? props.options : undefined)
 const dictionaryOptions = useFieldDictionaryOptions(() => hostOptions.value == null && !hasDynamicOptions.value ? [props.field] : [])
 const dynamicOptions = ref([]), optionError = ref('')

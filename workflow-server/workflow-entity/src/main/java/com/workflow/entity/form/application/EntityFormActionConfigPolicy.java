@@ -279,6 +279,10 @@ public class EntityFormActionConfigPolicy {
                     "自定义按钮执行前校验");
             validateConfirm(button.get("confirm"));
             normalizeAvailabilityRule(button);
+            var evaluator = new PublishedFormConditionEvaluator(new com.fasterxml.jackson.databind.ObjectMapper());
+            for (String property : List.of("contextVisibleWhen", "contextDisabledWhen")) {
+                if (button.get(property) != null) evaluator.validateStructured(button.get(property), Set.of(), key + " 按钮上下文条件");
+            }
             if (enabled && requireBindings && "event".equals(customMode)
                     && !boundButtonKeys.contains(key)) {
                 throw new IllegalArgumentException(

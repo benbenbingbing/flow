@@ -44,7 +44,8 @@ test('实体选项联动只使用映射字段触发查询，并保留空值、�
     componentProps: { linkageRules: { optionsLinkage: { mode: 'query', parameterMappings: [
       { fieldCode: 'warehouse_id', parameter: 'warehouseId' },
       { fieldCode: 'active', parameter: 'active' },
-      { fieldCode: 'floor', parameter: 'floor' }
+      { fieldCode: 'floor', parameter: 'floor' },
+      { fieldCode: 'ctx.form.currentMode', parameter: 'mode' }
     ] } } }
   }
   const record = { warehouse_id: 'A', active: false, floor: 0, note: '备注' }
@@ -52,10 +53,11 @@ test('实体选项联动只使用映射字段触发查询，并保留空值、�
   assert.notEqual(getFieldOptionQueryKey(field, record), getFieldOptionQueryKey(field, { ...record, warehouse_id: 'B' }))
   assert.deepEqual(await runtime.loadOptions(field, { form: { id: 'form' }, record, mode: 'edit' }), [{ value: 'A1', label: '库位 A1' }])
   assert.equal(requests[0].extensionId, 'entity-options')
-  assert.deepEqual(requests[0].input.optionParams, { warehouseId: 'A', active: false, floor: 0 })
+  assert.equal(requests[0].formMode, 'edit')
+  assert.deepEqual(requests[0].input.optionParams, { warehouseId: 'A', active: false, floor: 0, mode: 'edit' })
   assert.deepEqual(requests[0].input.formData, record)
   await runtime.loadOptions(field, { form: { id: 'form' }, record: {}, mode: 'edit' })
-  assert.deepEqual(requests[1].input.optionParams, { warehouseId: null, active: null, floor: null })
+  assert.deepEqual(requests[1].input.optionParams, { warehouseId: null, active: null, floor: null, mode: 'edit' })
 })
 
 test('历史发布的数据源绑定完整传递服务和操作，新接口不携带旧路由', async () => {

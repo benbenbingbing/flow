@@ -18,7 +18,7 @@ import { computed, inject, nextTick, onBeforeUnmount, provide, ref, unref, watch
 import { Loading as VanLoading } from 'vant'
 import { getFieldKey, applyRuntimeFieldDefaults } from '@flow/workflow-core/form-runtime'
 import { resolveComponentFormPatch, projectRuntimeFields, settleRuntimeLinkages, runtimeFieldState, validateRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
-import { applyInitialFormulaDefaults } from '@flow/workflow-core/utils/linkageEngine'
+import { applyInitialFormulaDefaults, formRuleContext } from '@flow/workflow-core/utils/linkageEngine'
 import { createFormUniquePrecheckController, resolveFormUniqueRuntimeIdentity, resolveFormFieldUniqueness } from '@flow/workflow-core/form-field-uniqueness'
 import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
 import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
@@ -81,9 +81,9 @@ provide(FIELD_SCRIPT_CONTEXT, {
   reportError(message) { emit('error', message) }
 })
 watch(() => props.modelValue, value => { if (record.value !== value) record.value = value || {} })
-watch(() => [record.value, fields.value], () => {
+watch(() => [record.value, fields.value, props.mode, props.form.contextValues], () => {
   try {
-    const settled = settleRuntimeLinkages(fields.value, record.value)
+    const settled = settleRuntimeLinkages(fields.value, record.value, formRuleContext(props.form, props.mode, props.readonly, props.context))
     linkage.value = settled.linkage; modelError.value = ''
     if (JSON.stringify(settled.record) !== JSON.stringify(record.value)) record.value = settled.record
     unique.handleRecordChange(fields.value, record.value)
@@ -108,7 +108,11 @@ async function initialize() {
       await props.dataSourceRuntime.initialize({ form: props.form, fields: fields.value, nodes: projection.value.nodes, record: record.value, recordId: props.context.recordId || record.value.id, initializationKey: props.context.initializationKey, runtimeContext: { ...props.context, mode: props.mode, readonly: props.readonly, rootParentId: props.rootParentId } })
     } else if (!props.readonly && isNew) {
       // 部分表单入口没有接口运行时，公式初值仍随记录初始化填入。
-      applyInitialFormulaDefaults(fields.value, record.value, props.context)
+      applyInitialFormulaDefaults(fields.value, record.value, {
+        ...props.context,
+        contextValues: props.mode === 'create' ? formRuleContext(props.form, props.mode, props.readonly, props.context).contextValues : undefined,
+        contextProtectedFields: new Set(Object.keys(props.context.initialData || {}))
+      })
     }
   } catch (cause) { if (version === generation) loadError.value = cause.message || '表单初始化失败' }
   finally { if (version === generation) loading.value = false }

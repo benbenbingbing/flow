@@ -132,6 +132,7 @@ function evaluateNode(node, formData) {
   }
   if (node.operator === 'empty') return isEmptyValue(actual)
   if (node.operator === 'notEmpty') return !isEmptyValue(actual)
+  if (node.property.startsWith('ctx.') && isEmptyValue(actual)) return false
   const expected = coerceExpected(node.value, actual)
   switch (node.operator) {
     case '==': return actual === expected
@@ -146,6 +147,7 @@ function evaluateNode(node, formData) {
 }
 
 function readProperty(source, path) {
+  if (String(path).startsWith('ctx.')) return Object.hasOwn(source, path) ? source[path] : undefined
   return String(path || '').split('.').reduce((value, key) => {
     if (value == null || !Object.prototype.hasOwnProperty.call(value, key)) {
       return undefined

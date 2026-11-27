@@ -114,11 +114,15 @@ public class NextApproverSelectionPolicyReader {
         }
         boolean visible = normalized.visible();
         boolean editable = normalized.editable();
-        String assignmentMode = assignmentMode(
+        String assignmentMode = "CLAIM".equals(currentConfig.get("handlingMode"))
+                ? "CLAIM" : assignmentMode(
                 assigneeConfig, userTask, assignmentSourceTask);
         boolean multiple = !"DIRECT".equals(assignmentMode);
         if (editable && !visible) {
             throw invalid(userTask, "可修改时必须同时允许展示");
+        }
+        if (editable && "SEQUENTIAL".equals(currentConfig.get("handlingMode"))) {
+            throw invalid(userTask, "顺序办理使用节点配置的固定人员和顺序");
         }
 
         NextApproverSelectionPolicy.SourceType sourceType = sourceType(

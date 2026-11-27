@@ -19,6 +19,8 @@ import java.util.Map;
 public class PublishedFormCrossFieldMutationValidator {
     private final UiConfigReleaseService releaseService;
     private final PublishedFormCrossFieldValidator validator;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.form.application.FormContextDefaults formContextParameters;
 
     /**
      * 调用方须持有记录锁（新增记录则在创建事务内），传入持久化后的完整记录。
@@ -38,7 +40,19 @@ public class PublishedFormCrossFieldMutationValidator {
                     reference.formId(), reference.releaseId(), reference.releaseVersion(),
                     reference.effectiveReleaseId(), reference.effectiveContentHash(), reference.hotfixTargetId());
             if (resolved != null && resolved.releaseId() != null && resolved.form() != null) {
-                validator.validateRecord(resolved.form(), mode, PublishedFormRecordView.flatten(finalRecord));
+                Map<String, Object> record = PublishedFormRecordView.flatten(finalRecord);
+                if (formContextParameters != null && validator.hasRules(resolved.form()) && formContextParameters.hasRules(resolved.form())) {
+                    // 最终校验持有记录锁，按命令中的服务器任务坐标恢复同一入口，不依赖页面的上下文副本。
+                    var entry = switch (mode) {
+                        case "create" -> releaseService.resolveNewRecordContext(command.entityCode(), reference.formId());
+                        case "approve" -> command.context().taskId() == null ? null
+                                : releaseService.authorizeRuntimeContext(reference.formId(), Map.of("taskId", command.context().taskId()));
+                        default -> null;
+                    };
+                    record = com.workflow.entity.form.application.FormContextRules.withVariables(record,
+                            formContextParameters.valuesFor(resolved.form(), entry, mode));
+                }
+                validator.validateRecord(resolved.form(), mode, record);
             }
         }
     }

@@ -192,7 +192,8 @@ class EntitySelectorControllerTest {
                         "system-user-definition",
                         "管理",
                         1,
-                        10);
+                        10,
+                        false);
 
         assertEquals(200, result.getCode());
         assertEquals(1L, result.getData().get("total"));

@@ -130,7 +130,7 @@ test('打开表单按名称提供表单字段和参数，选中的路径保持�
   const parameters = [{ code: 'customerId', name: '客户 ID' }]
   const groups = eventConditionPathGroups('FORM_OPEN', fields, parameters)
   assert.deepEqual(groups.find(group => group.label === '表单字段').options, [{ label: '状态', value: 'input.form.status' }])
-  assert.deepEqual(groups.find(group => group.label === '页面参数').options, [{ label: '客户 ID', value: 'input.params.customerId' }])
+  assert.deepEqual(groups.find(group => group.label === '表单参数').options, [{ label: '客户 ID', value: 'input.params.customerId' }])
   const step = createEventStepEditor().normalizeStep({}, 0)
   step.conditionPath = groups[0].options.find(item => item.label === '打开方式').value
   step.conditionValue = 'create'
@@ -147,4 +147,5 @@ test('来源选项随事件变化，列表系统字段和业务字段使用实�
   assert.ok(pathsFor('ENTITY_SELECTED').includes('selection.id'))
   assert.ok(!pathsFor('FIELD_CHANGE').includes('selection.id'))
   assert.ok(!pathsFor('LIST_LOAD').some(path => path.startsWith('input.row')))
+  assert.deepEqual(pathsFor('DATA_UPDATE'), ['recordId', 'input.data.id', 'input.data.status', 'input.data.customer_id'])
 })

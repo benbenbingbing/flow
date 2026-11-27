@@ -31,6 +31,7 @@ export function normalizeRuntimeFormRelease(
       : [],
     contentHash: release.contentHash,
     runtimeContext: release.runtimeContext || {},
+    ...(release.contextValues ? { contextValues: release.contextValues } : {}),
     configHash:
       configHash
       || release.configHash

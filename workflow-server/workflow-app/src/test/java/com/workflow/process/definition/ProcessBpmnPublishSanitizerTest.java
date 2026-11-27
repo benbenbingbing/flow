@@ -29,6 +29,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ProcessBpmnPublishSanitizerTest {
 
+    @Test
+    void validatesSequentialHandlingBeforeDeploying() {
+        var sanitizer = new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = wrap("""
+                <bpmn:userTask id="review" flowable:assignee="${assignee}">
+                  <bpmn:extensionElements><flowable:properties>
+                    <flowable:property name="assigneeConfig"
+                      value="{&quot;assignmentConfigVersion&quot;:2,&quot;handlingMode&quot;:&quot;SEQUENTIAL&quot;,
+                       &quot;assigneeType&quot;:&quot;user&quot;,&quot;candidateUsers&quot;:&quot;alice,bob&quot;,
+                       &quot;multiInstanceDecision&quot;:&quot;countersign&quot;,&quot;multiInstanceCompletionRate&quot;:100,
+                       &quot;multiInstanceNeedAllApprovers&quot;:false}"/>
+                  </flowable:properties></bpmn:extensionElements>
+                  <bpmn:multiInstanceLoopCharacteristics isSequential="true"
+                      flowable:collection="${_wfMultiInstanceUsers_review}" flowable:elementVariable="assignee">
+                    <bpmn:completionCondition>${_wf_mi_approved_count_review * 100 &gt;= nrOfInstances * 100
+                        || (_wf_mi_approved_count_review + nrOfInstances - nrOfCompletedInstances) * 100 &lt; nrOfInstances * 100}</bpmn:completionCondition>
+                  </bpmn:multiInstanceLoopCharacteristics>
+                </bpmn:userTask>
+                """);
+        UserTask task = (UserTask) parse(sanitizer.sanitize(input, "runtime_process"))
+                .getMainProcess().getFlowElement("review");
+        assertTrue(task.getLoopCharacteristics().isSequential());
+        assertThrows(IllegalArgumentException.class, () -> sanitizer.sanitize(
+                input.replace("isSequential=\"true\"", "isSequential=\"false\""), "runtime_process"));
+        assertThrows(IllegalArgumentException.class, () -> sanitizer.sanitize(
+                input.replace("&quot;multiInstanceNeedAllApprovers&quot;:false",
+                        "&quot;multiInstanceNeedAllApprovers&quot;:true"), "runtime_process"));
+    }
+
     /** 发布净化必须为未重新保存的历史草稿兜底，禁止异步属性进入部署 XML。 */
     @Test
     void sanitizeForcesHistoricalAsyncDraftToSynchronousExecution() {

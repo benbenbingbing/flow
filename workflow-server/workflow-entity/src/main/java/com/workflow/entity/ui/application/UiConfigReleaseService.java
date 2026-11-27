@@ -9,6 +9,7 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.application.EntityFormNodeService;
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.form.application.FormContextDefaults;
 import com.workflow.entity.form.application.context.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
@@ -110,6 +111,9 @@ import java.util.UUID;
 @Slf4j
 @RequiredArgsConstructor
 public class UiConfigReleaseService {
+    @Autowired
+    private FormContextDefaults contextDefaults;
+
     @Autowired
     private EntityFieldOptionInterfaces fieldOptionInterfaces;
     @org.springframework.beans.factory.annotation.Autowired
@@ -345,13 +349,24 @@ public class UiConfigReleaseService {
      * 配置摘要只检测页面变化，绝不参与授权或选择历史配置。
      */
     public Map<String, Object> runtimeFormRelease(String formId, Map<String, Object> runtimeContext) {
-        authorizeRuntimeContext(formId, runtimeContext);
+        UiRuntimeResolutionContext entry = authorizeRuntimeContext(formId, runtimeContext);
         UiConfigRelease current = requireCurrentFormRelease(formId);
         Map<String, Object> published = verifiedSnapshot(current);
         ResolvedEntityFormRelease resolved = resolvedRuntimeForm(current, false, published);
         Map<String, Object> result = runtimeReleaseResult(resolved, runtimeSnapshot(resolved.form()));
         result.put("configHash", formConfigHash(formId));
         result.put("runtimeContext", runtimeContext == null ? Map.of() : runtimeContext);
+        // 指定表单的打开入口直接读取此响应。用户值独立于可复用的发布快照。
+        if (contextDefaults != null) {
+            String mode = entry == null ? null : switch (entry.purpose()) {
+                case NEW_INSTANCE -> "create";
+                case ACTIVE_TASK -> "approve";
+                case HISTORICAL -> "view";
+                case STANDALONE -> null;
+            };
+            Map<String, Object> values = contextDefaults.valuesFor(resolved.form(), entry, mode);
+            if (!values.isEmpty()) result.put("contextValues", values);
+        }
         result.put("hasFormOpenBinding", hasFormOwnerEventSteps(published, UiDataSourceUsages.FORM_OPEN));
         return result;
     }
@@ -387,6 +402,12 @@ public class UiConfigReleaseService {
             throw CurrentFormRuntimeContext.changed();
         }
         return resolveRuntimeFormRelease(formId);
+    }
+
+    /** 新增入口无客户端流程坐标时，按实体当前发布绑定补充流程参数。 */
+    public UiRuntimeResolutionContext resolveNewRecordContext(String entityCode, String formId) {
+        return runtimeAccessPort == null ? UiRuntimeResolutionContext.standalone()
+                : runtimeAccessPort.getObject().resolveNewRecord(entityCode, formId);
     }
 
     /**

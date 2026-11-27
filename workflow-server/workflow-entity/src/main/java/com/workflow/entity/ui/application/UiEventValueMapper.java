@@ -172,7 +172,9 @@ public class UiEventValueMapper {
         if (condition.containsKey("not")) {
             return !matches(condition.get("not"), source);
         }
-        Object actual = resolve(source, text(condition.get("path")));
+        String path = text(condition.get("path"));
+        Object actual = resolve(source, path);
+        if (path != null && path.startsWith("ctx.") && actual == null && !condition.containsKey("exists")) return false;
         if (condition.containsKey("equals")) {
             return Objects.equals(actual, condition.get("equals"));
         }
@@ -215,6 +217,7 @@ public class UiEventValueMapper {
         if (!StringUtils.hasText(path)) {
             return source;
         }
+        if (path.startsWith("ctx.") && source instanceof Map<?, ?> context) return context.get(path);
         Object current = source;
         for (String part : path.split("\\.")) {
             if (current instanceof Map<?, ?> map) {

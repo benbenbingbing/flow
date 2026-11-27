@@ -44,10 +44,10 @@ export function projectRuntimeFields(form = {}, entityFields = [], { rootParentI
 }
 
 /** 计算规则到稳定状态；循环联动明确失败，避免持续触发 UI watcher。 */
-export function settleRuntimeLinkages(fields, record) {
+export function settleRuntimeLinkages(fields, record, context = {}) {
   const result = { ...record }
   for (let round = 0; round < 32; round++) {
-    const linkage = LinkageEngine.processAllLinkages(fields, result)
+    const linkage = LinkageEngine.processAllLinkages(fields, result, context)
     let changed = false
     for (const [key, value] of Object.entries(linkage.values || {})) {
       if (value == null || JSON.stringify(result[key]) === JSON.stringify(value)) continue

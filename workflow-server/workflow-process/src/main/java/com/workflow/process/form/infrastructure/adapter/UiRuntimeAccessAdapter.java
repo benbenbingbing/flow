@@ -7,6 +7,9 @@ import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
+import com.workflow.process.form.application.ProcessFormContextValues;
+import com.workflow.process.form.application.EntityFormResolveService;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import com.workflow.process.task.application.TaskIdentityAccessService;
@@ -33,6 +36,13 @@ public class UiRuntimeAccessAdapter implements UiFormContextPort {
     private final ProcessPublishedSnapshotService snapshots;
     private final EntityDefinitionMapper definitions;
     private final UiConfigReleaseService releases;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<EntityFormResolveService> formResolver;
+
+    @Override
+    public UiRuntimeResolutionContext resolveNewRecord(String entityCode, String formId) {
+        return formResolver.getObject().resolveNewRecordContext(entityCode, formId);
+    }
 
     /**
      * 活动任务始终重新校验办理身份；历史详情只授予实例读取能力。
@@ -85,24 +95,31 @@ public class UiRuntimeAccessAdapter implements UiFormContextPort {
         requireCoordinate(input, "nodeId", task.getTaskDefinitionKey());
         requireCoordinate(input, "entityCode", entityCode);
         requireCoordinate(input, "recordId", recordId);
-        requireForm(formId, task.getProcessDefinitionId(), task.getTaskDefinitionKey(), entityCode);
+        ProcessNodeForm binding = requireForm(formId, task.getProcessDefinitionId(), task.getTaskDefinitionKey(), entityCode);
         var history = snapshots.getVersionByProcessDefinitionId(task.getProcessDefinitionId());
         if (history == null) throw denied();
+        var instance = historyService.createHistoricProcessInstanceQuery()
+                .processInstanceId(task.getProcessInstanceId()).singleResult();
+        boolean addSign = !Objects.equals(task.getId(), taskId);
         return UiRuntimeResolutionContext.activeTask(history.getId(), task.getTaskDefinitionKey(), taskId,
-                task.getProcessInstanceId(), entityCode, recordId);
+                task.getProcessInstanceId(), entityCode, recordId)
+                .withFormValues(ProcessFormContextValues.task(history, binding, task, taskId,
+                        addSign ? local.getAssigneeId() : task.getAssignee(),
+                        instance == null ? null : instance.getStartUserId()));
     }
 
     /** 显式绑定优先；没有绑定时只允许实体当前默认表单，不允许客户端任意指定另一张表单。 */
-    private void requireForm(String formId, String definitionId, String nodeId, String entityCode) {
+    private ProcessNodeForm requireForm(String formId, String definitionId, String nodeId, String entityCode) {
         if (!StringUtils.hasText(formId)) throw denied();
         var bindings = StringUtils.hasText(nodeId) ? snapshots.getNodeFormsByProcessDefinitionId(definitionId, nodeId) : null;
         if (bindings != null && bindings.stream().anyMatch(binding -> StringUtils.hasText(binding.getFormId()))) {
-            if (bindings.stream().noneMatch(binding -> Objects.equals(formId, binding.getFormId()))) throw denied();
-            return;
+            return bindings.stream().filter(binding -> Objects.equals(formId, binding.getFormId()))
+                    .findFirst().orElseThrow(UiRuntimeAccessAdapter::denied);
         }
         var entity = definitions.findByEntityCode(entityCode).orElseThrow(UiRuntimeAccessAdapter::denied);
         var form = releases.currentDefaultForm(entity.getId());
         if (form == null || !Objects.equals(formId, form.getId())) throw denied();
+        return null;
     }
 
     private String variable(String instanceId, String name) {

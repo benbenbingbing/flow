@@ -25,6 +25,7 @@ import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.application.FormContextRules;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
@@ -114,6 +115,8 @@ public class UiInterfaceExtensionService {
         /** 统一扩展定义持久化入口；本服务只访问 INTERFACE 类型。 */
         @org.springframework.beans.factory.annotation.Autowired
         private org.springframework.beans.factory.ObjectProvider<UiConfigReleaseService> runtimeReleases;
+        @org.springframework.beans.factory.annotation.Autowired
+        private com.workflow.entity.form.application.FormContextDefaults formContextParameters;
 
         private final UiExtensionDefinitionMapper mapper;
         /** 表单作用域对象查询入口。 */
@@ -576,10 +579,11 @@ public class UiInterfaceExtensionService {
                 UiExtensionDefinition definition = requireExecutableDefinition(
                                 bindingPoint.extensionId(), request.getLegacyOperationCode());
                 UiExtensionExecuteRequest internal = new UiExtensionExecuteRequest();
+                Map<String, Object> input = request.getInput() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(request.getInput());
                 if (runtimeReleases != null && "FORM".equals(bindingPoint.ownerType())) {
                         var releases = runtimeReleases.getObject();
                         var context = releases.authorizeRuntimeContext(bindingPoint.ownerId(), request.getRuntimeContext());
-                        releases.resolveAuthorizedRuntimeFormRelease(bindingPoint.ownerId(), request.getConfigHash(), request.getRuntimeContext());
+                        var resolved = releases.resolveAuthorizedRuntimeFormRelease(bindingPoint.ownerId(), request.getConfigHash(), request.getRuntimeContext());
                         internal.setServerReadOnly(context != null && context.purpose()
                                 == com.workflow.port.entity.model.ui.UiRuntimePurpose.HISTORICAL);
                         if (context != null && StringUtils.hasText(context.processInstanceId())) {
@@ -595,6 +599,10 @@ public class UiInterfaceExtensionService {
                                 internal.setServerProcessInstanceId(context.processInstanceId());
                                 internal.setServerFormMode(internal.isServerReadOnly() ? "view" : "approve");
                         }
+                        if (!pinned && resolved != null && UiDataSourceUsages.FIELD_OPTIONS.equals(bindingPoint.bindingCode())) {
+                                applyOptionContext(resolved.form(), bindingPoint.targetKey(), releases, context,
+                                        internal.getServerFormMode(), request, input);
+                        }
                 } else if (runtimeReleases != null && "LIST".equals(bindingPoint.ownerType()) && !pinned) {
                         runtimeReleases.getObject().resolveRuntimeListRelease(bindingPoint.ownerId(), request.getConfigHash(), request.getRuntimeContext());
                 }
@@ -608,9 +616,7 @@ public class UiInterfaceExtensionService {
                 internal.setConfigId(bindingPoint.ownerId());
                 internal.setTargetType(bindingPoint.targetType());
                 internal.setTargetKey(bindingPoint.targetKey());
-                internal.setInput(request.getInput() == null
-                                ? Map.of()
-                                : new LinkedHashMap<>(request.getInput()));
+                internal.setInput(input);
                 if (pinned) {
                         // serverPinnedRelease 与内部执行种子只在此服务端分支设置，
                         // 公开请求没有对应字段，不能自行选择历史快照。
@@ -621,6 +627,40 @@ public class UiInterfaceExtensionService {
                                         "embed-delegated-runtime");
                 }
                 return executeResolved(definition, internal);
+        }
+
+        /** 已发布选项参数的上下文来源由服务端覆写。普通表单的编辑提示仅用于业务入参。 */
+        private void applyOptionContext(EntityForm form, String fieldCode, UiConfigReleaseService releases,
+                        com.workflow.port.entity.context.ui.UiRuntimeResolutionContext entry, String authorizedMode,
+                        UiBoundExtensionExecuteRequest request, Map<String, Object> input) {
+                if (formContextParameters == null || form == null || form.getNodes() == null || fieldCode == null) return;
+                for (var node : form.getNodes()) {
+                        if (!"FIELD".equals(node.getNodeType())) continue;
+                        Map<String, Object> props = codec.readObject(node.getPropsDocument(), "已发布字段属性");
+                        if (!fieldCode.equals(props.getOrDefault("fieldCode", node.getBindingRef()))) continue;
+                        Map<?, ?> rules = FormContextRules.nodeLinkageRules(props);
+                        Map<String, Object> query = PageParameterPolicy.map(rules.get("optionsLinkage"));
+                        if (!"query".equals(query.get("mode")) || !(query.get("parameterMappings") instanceof List<?> mappings)) return;
+                        var candidates = mappings.stream().map(PageParameterPolicy::map)
+                                .filter(mapping -> mapping.get("fieldCode") instanceof String source && source.startsWith("ctx.")).toList();
+                        if (candidates.isEmpty()) return;
+                        String mode = StringUtils.hasText(authorizedMode) ? authorizedMode
+                                : !StringUtils.hasText(request.getRecordId()) ? "create"
+                                : "edit".equals(request.getFormMode()) ? "edit" : "view";
+                        if ("create".equals(mode) && StringUtils.hasText(request.getEntityCode())) {
+                                // 新增记录尚未生成实例，流程值来自当前实体已发布且匹配本表单的入口。
+                                entry = releases.resolveNewRecordContext(request.getEntityCode(), form.getId());
+                        }
+                        Map<String, Object> variables = formContextParameters.valuesForConfiguration(candidates, entry, mode);
+                        Map<String, Object> options = new LinkedHashMap<>(PageParameterPolicy.map(input.get("optionParams")));
+                        for (var mapping : candidates) {
+                                String key = text(mapping.get("fieldCode")).substring(4);
+                                String parameter = text(mapping.get("parameter"));
+                                if (StringUtils.hasText(parameter)) options.put(parameter, variables.get(key));
+                        }
+                        input.put("optionParams", options);
+                        return;
+                }
         }
 
         /**

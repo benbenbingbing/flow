@@ -68,16 +68,8 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '仅在按钮通过显示条件后判断。启用条件不满足时按钮仍然可见，但不可点击，并展示配置的禁用提示。',
   'actionRule.disabledMessage':
     '启用条件不满足时展示给用户的原因。请写清限制主体、当前状态或下一步，例如“仅本人未流转草稿可以删除”。',
-  'process.multiInstanceType':
-    '并行会同时创建多人任务；串行会按人员集合顺序逐个创建任务。并行或串行只表示创建顺序，不决定会签还是或签。',
-  'process.multiInstanceDecision':
-    '会签只统计通过票：达到阈值就通过，剩下的人全通过也凑不够才拒绝。或签第一人通过或驳回即结束本节点。',
   'process.multiInstanceCompletionCondition':
-    '会签按已通过人数判断是否达标；驳回不加通过人数。开启“需要所有人审批”后等全员办完再按阈值判定，不会因一人驳回提前结束。',
-  'process.multiInstanceCollection':
-    '系统为当前节点生成的用户名集合变量，用于创建多实例任务。该变量只读，无需手工配置。',
-  'process.multiInstanceElementVariable':
-    '集合中的单个用户名在每个任务实例内使用的变量名，通常保持默认值 assignee。',
+    '开启后等全部人办完再判断通过率。关闭后，达到通过率时立即通过，剩余人员全部通过仍达不到阈值时立即驳回。',
   'process.serviceImplementationType':
     'Java 类需实现 Flowable JavaDelegate 并填写全限定类名；Spring Bean 同样实现 JavaDelegate、加 @Component，并填写 ${beanName}。外部 HTTP 使用 REST 配置。',
   'process.sequenceConditionType':
@@ -109,7 +101,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'uiEvent.formButtonStepStrategy':
     'FORM_BUTTON_CLICK 没有平台默认动作。步骤按“前置处理 → 主处理 → 后置处理”执行；最终有效链必须恰好包含一个无执行条件的主处理（底层值为 REPLACE），主处理结果供后置步骤使用。条件请配置在按钮显示/启用规则或前置、后置步骤中。',
   'uiEvent.inputMapping':
-    '把当前事件数据组装成接口入参：左侧填写来源路径，右侧填写接口参数路径，例如 input.form.customerId → customerId。不配置时会直接使用事件原始输入。用户、任务、流程等可信身份信息由服务端上下文提供，不要通过页面参数传入。',
+    '把当前事件数据组装成接口入参。左侧填写来源路径。配置表单事件时，可直接选择当前事件支持的字段、参数或上下文，也可输入自定义路径后按回车。右侧填写接口参数路径，例如 input.form.customerId → customerId。不配置时会直接使用事件原始输入。用户、任务、流程等身份信息由服务端上下文提供。',
   'uiEvent.outputMapping':
     '把接口结果或当前事件数据写入目标字段：左侧填写来源路径，右侧选择或填写回填路径，并可设置值转换和覆盖策略。未选择扩展接口时，本步骤至少需要配置一条字段回填。',
   'uiEvent.lifecycleInputMapping':

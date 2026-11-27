@@ -2,7 +2,26 @@
  * 表单字段联动引擎
  * 支持显隐控制、值联动、选项联动、计算字段
  */
-import { evaluateExpression, evaluateLinkageExpression } from './calcEngine.js'
+import { evaluateExpression, evaluateLinkageExpression, hasFormContextReference } from './calcEngine.js'
+import { isFieldReadonlyForMode, isFieldVisibleForMode } from '../shared/config-runtime/index.js'
+
+/** 将上下文临时加入条件求值输入，业务模型始终只包含真实字段。 */
+export function withFormContext(record, contextValues = {}) {
+  return Object.fromEntries([
+    ...Object.entries(record || {}).filter(([key]) => !key.startsWith('ctx.')),
+    ...Object.entries(contextValues).map(([key, value]) => ['ctx.' + key, value])
+  ])
+}
+
+export function formRuleContext(form, mode, readonly = false, context = {}) {
+  const contextValues = context.row ? {} : { ...form?.contextValues, 'form.currentMode': mode }
+  return { ...context, mode, readonly, contextValues }
+}
+
+function usesContext(source) {
+  if (!/\$\{ctx\./.test(source || '')) return false
+  try { return hasFormContextReference(source) } catch { return true }
+}
 import {
   collectFlowConditionProperties,
   evaluateFlowConditionExpression,
@@ -60,8 +79,10 @@ export const LinkageEngine = {
     const ruleKeys = [
       'visibilityConditionConfig', 'visibilityRule',
       'disabledConditionConfig', 'disabledRule',
+      'enabledConditionConfig',
       'requiredConditionConfig', 'requiredRule',
       'calculationFormula', 'calculationPrecision', 'calculationEditable',
+      'contextCalculation',
       'optionsLinkage', 'valueFormula', 'valueFormulaMode', 'valueMapping', 'attachmentItemRequiredRules'
     ]
 
@@ -274,7 +295,7 @@ export const LinkageEngine = {
       'disabledRule',
       formData,
       false
-    )
+    ) || !this.evaluateLinkageRule(rules, 'enabledConditionConfig', '', formData, true)
   },
 
   /**
@@ -302,17 +323,19 @@ export const LinkageEngine = {
    * @param {Object} formData - 表单数据
    * @returns {Object} 处理后的字段状态和值
    */
-  processAllLinkages(fields, formData) {
+  processAllLinkages(fields, formData, context = {}) {
     const result = {
       visibility: {},  // 显隐状态
       disabled: {},    // 禁用状态
       required: {},    // 必填状态
       attachmentItemRequired: {}, // 附件项必填状态
       values: {},      // 联动值
+      contextComputed: {},
       options: {}      // 联动选项
     }
 
     if (!Array.isArray(fields)) return result
+    const conditionData = withFormContext(formData, context.contextValues)
 
 
 
@@ -326,18 +349,12 @@ export const LinkageEngine = {
         rules,
         'visibilityConditionConfig',
         'visibilityRule',
-        formData,
+        conditionData,
         true
       )
 
-      // 处理禁用
-      result.disabled[fieldKey] = this.evaluateLinkageRule(
-        rules,
-        'disabledConditionConfig',
-        'disabledRule',
-        formData,
-        false
-      )
+      // 可编辑条件未满足时与显式禁用采用同一套运行结果。
+      result.disabled[fieldKey] = this.shouldDisableField(field, conditionData)
 
       // 处理必填
       const staticRequired = field.isRequired === 1
@@ -346,7 +363,7 @@ export const LinkageEngine = {
         rules,
         'requiredConditionConfig',
         'requiredRule',
-        formData,
+        conditionData,
         false
       )
       result.required[fieldKey] = staticRequired || conditionalRequired
@@ -356,7 +373,7 @@ export const LinkageEngine = {
         getAttachmentItemRequiredState(
           fileItems,
           rules.attachmentItemRequiredRules,
-          formData,
+          conditionData,
           (config, data) => result.visibility[fieldKey] !== false
             && this.evaluateStructuredCondition(config, data)
         )
@@ -379,12 +396,22 @@ export const LinkageEngine = {
       }
 
       // 初值公式由新增生命周期执行；联动刷新不能覆盖手工修改或重新填入已清空的值。
-      if (rules.valueFormulaMode !== 'initial' && rules.valueFormula && result.values[fieldKey] === undefined) {
+      const formula = rules.valueFormula || rules.calculationFormula
+      if (usesContext(formula) && rules.valueFormulaMode !== 'initial') {
+        if (rules.contextCalculation?.modes?.includes(context.mode) && !context.readonly
+            && result.visibility[fieldKey] && !result.disabled[fieldKey]
+            && isFieldVisibleForMode(field, context.mode) && !isFieldReadonlyForMode(field, context.mode)) {
+          result.contextComputed[fieldKey] = true
+          result.disabled[fieldKey] = true
+          const value = evaluateLinkageExpression(formula, formData, new Date(), context)
+          result.values[fieldKey] = value ?? ''
+        }
+      } else if (rules.valueFormulaMode !== 'initial' && rules.valueFormula && result.values[fieldKey] === undefined) {
         result.values[fieldKey] = evaluateLinkageExpression(rules.valueFormula, formData)
       }
 
       // 处理计算字段
-      if (rules.valueFormulaMode !== 'initial' && rules.calculationFormula && result.values[fieldKey] === undefined) {
+      if (rules.valueFormulaMode !== 'initial' && rules.calculationFormula && !usesContext(formula) && result.values[fieldKey] === undefined) {
         result.values[fieldKey] = this.calculate(rules.calculationFormula, formData)
       }
 
@@ -395,7 +422,7 @@ export const LinkageEngine = {
           result.options[fieldKey] = this.getLinkedOptions(
             opts,
             rules.optionsLinkage,
-            formData
+            conditionData
           )
         }
       }
@@ -469,7 +496,8 @@ export function applyInitialFormulaDefaults(fields, record, context = {}) {
     if (field.defaultValueMode && field.defaultValueMode !== 'formula') return []
     const formula = field.defaultFormula
       || (rules.valueFormulaMode === 'initial' ? rules.calculationFormula || rules.valueFormula : '')
-    return formula ? [{ key, formula }] : []
+    if (!formula || (usesContext(formula) && context.contextProtectedFields?.has(key))) return []
+    return [{ key, formula }]
   })
   if (!pending.length) return
   const now = new Date()

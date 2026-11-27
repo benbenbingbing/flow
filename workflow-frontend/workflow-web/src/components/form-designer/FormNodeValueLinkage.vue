@@ -46,7 +46,15 @@
     <el-form-item v-else-if="valueLinkageMode === 'formula'" label="公式">
       <div class="linkage-description">随依赖字段变化实时计算</div>
       <FormNodeFormulaInput v-model="model.formula" :fields="availableFields" :disabled="disabled"
+        :context-parameters="formContextParameters"
         :placeholder="formulaPlaceholder" @update:model-value="persist('value')" />
+    </el-form-item>
+    <el-form-item v-if="valueLinkageMode === 'formula' && contextual" label="生效模式">
+      <el-checkbox-group v-model="model.contextModes" :disabled="disabled" @change="persist('value')">
+        <el-checkbox value="create">新增</el-checkbox>
+        <el-checkbox value="edit">编辑</el-checkbox>
+        <el-checkbox value="approve">审批</el-checkbox>
+      </el-checkbox-group>
     </el-form-item>
 
     <SettingsCapability :disabled="disabled || !supportsOptions" reason="仅选择类组件支持选项联动">
@@ -59,8 +67,14 @@
         <el-form-item v-if="model.optionsEnabled && model.optionsMode === 'query'" label="参数映射">
           <div class="linkage-rows option-query-mappings">
             <div v-for="(row, index) in model.parameterMappings" :key="index" class="mapping-row">
-              <el-select v-model="row.fieldCode" filterable aria-label="依赖字段" placeholder="选择依赖字段" @change="persist('options')">
+              <el-select v-model="row.fieldCode" filterable aria-label="查询参数来源" placeholder="选择字段或上下文参数" @change="persist('options')">
                 <el-option v-for="item in availableFields" :key="fieldKey(item)" :label="item.fieldName || item.fieldLabel || fieldKey(item)" :value="fieldKey(item)" />
+                <el-option-group label="上下文参数">
+                  <el-option v-for="item in formContextParameters" :key="item.key"
+                    :label="parameterOptionLabel(item.label, item.key)" :value="'ctx.' + item.key">
+                    <ParameterOptionLabel :label="item.label" :code="item.key" />
+                  </el-option>
+                </el-option-group>
               </el-select>
               <el-input v-model.trim="row.parameter" aria-label="接口参数名" placeholder="接口参数名" @input="persist('options')" />
               <el-button type="danger" text aria-label="删除参数映射" @click="removeOptionParameter(index)"><el-icon><Delete /></el-icon></el-button>
@@ -105,6 +119,8 @@ import SettingsCapability from '@/components/SettingsCapability.vue'
 import { useFieldValueLinkage } from '@/composables/useFieldValueLinkage'
 import { useFieldDictionaryOptions } from '@/composables/useFieldDictionaryOptions'
 import { getDefaultFormFieldComponentType } from '@flow/workflow-core/extensions/core/fieldPolicy'
+import { formContextParameters } from '@/shared/form-context-parameters'
+import ParameterOptionLabel, { parameterOptionLabel } from '@/components/page-parameters/ParameterOptionLabel.vue'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -119,6 +135,7 @@ const supportsOptions = computed(() => ['select', 'select_multiple', 'radio', 'c
 const dictionaryOptions = useFieldDictionaryOptions(() => [props.field])
 const currentOptions = computed(() => dictionaryOptions.value[props.field.dictType] || [])
 const { model, persist: persistDraft } = useFieldValueLinkage(() => props.field, () => props.disabled)
+const contextual = computed(() => model.value.formula.includes('${ctx.'))
 // 选中项决定节点草稿中的取值规则，暂未选中的输入保留在编辑器草稿中，方便保存前切回。
 const valueLinkageMode = computed({
   get: () => model.value.valueEnabled ? model.value.sourceType : 'none',

@@ -202,30 +202,6 @@ assert.equal(
   '新保存的 assigneeConfig 不得继续输出 nodeOperationPolicy'
 )
 
-const migratedLegacyPassthrough = buildAssigneeConfig({
-  legacyAssigneeConfig: {
-    assignmentConfigVersion: 1,
-    assigneeType: 'user',
-    nodeOperationPolicy: unrestrictedLegacyPolicy
-  },
-  assignmentConfigDirty: false
-})
-assert.deepEqual(
-  {
-    allowTransfer: migratedLegacyPassthrough.allowTransfer,
-    allowAddSign: migratedLegacyPassthrough.allowAddSign,
-    allowTerminate: migratedLegacyPassthrough.allowTerminate,
-    allowWithdraw: migratedLegacyPassthrough.allowWithdraw
-  },
-  defaultOperationPermissions,
-  '旧人员配置直通保存时也必须回填简化后的操作权限'
-)
-assert.equal(
-  Object.hasOwn(migratedLegacyPassthrough, 'nodeOperationPolicy'),
-  false,
-  '旧人员配置直通保存后也不得残留 nodeOperationPolicy'
-)
-
 const orderedMultiInstance = buildAssigneeConfig({
   isMultiInstance: true,
   assigneeType: 'user',
@@ -626,179 +602,15 @@ assert.deepEqual(
   '引用链后续节点跨流程或已删除时也必须拒绝保存'
 )
 
-const normalizedVersionTwo = normalizeDesignerAssigneeConfig(
-  versionTwo,
-  {
-    collectionSource: 'resolver',
-    collectionResolverCode: 'staleLegacyResolver'
-  },
-  true
-)
-assert.equal(normalizedVersionTwo.assignmentConfigVersion, 2)
-assert.equal(normalizedVersionTwo.legacyAssigneeConfig, null)
-assert.equal(normalizedVersionTwo.legacyMultiInstanceConfig, null)
-assert.equal(
-  normalizedVersionTwo.legacyMultiInstanceMixed,
-  false,
-  'v2 必须忽略残留的旧 multiInstanceConfig，不能重新进入 legacy 分支'
-)
-
-const legacyAssigneeConfig = {
+const claimAssignment = buildAssigneeConfig({
+  handlingMode: 'CLAIM',
   assigneeType: 'user',
-  assigneeValue: 'stale-normal-owner',
-  multiInstanceUsernames: 'alice,bob',
-  multiInstanceGroupCodes: 'finance',
-  multiInstanceRoleCodes: 'ROLE_MANAGER',
-  collectionSource: 'variable',
-  nextApproverSelection: {
-    version: 1,
-    visible: true,
-    editable: true,
-    source: { type: 'NODE_ASSIGNMENT' }
-  }
-}
-const legacyMultiInstanceConfig = {
-  collection: '${legacyReviewers}',
-  elementVariable: 'reviewer',
-  completionCondition: '${nrOfCompletedInstances > 0}'
-}
-const normalizedLegacy = normalizeDesignerAssigneeConfig(
-  legacyAssigneeConfig,
-  legacyMultiInstanceConfig,
-  true
-)
-assert.equal(normalizedLegacy.legacyMultiInstanceMixed, true)
-assert.equal(normalizedLegacy.assigneeType, 'user')
-assert.equal(normalizedLegacy.assigneeValue, 'alice')
-assert.equal(normalizedLegacy.candidateUsers, 'alice,bob')
-assert.deepEqual(
-  normalizedLegacy.legacyAssigneeConfig,
-  legacyAssigneeConfig,
-  '旧 mixed 会签必须保留原始三类人员来源，不能只投影后覆盖保存'
-)
-assert.deepEqual(
-  normalizedLegacy.legacyMultiInstanceConfig,
-  legacyMultiInstanceConfig,
-  '旧会签技术参数也必须参与无修改往返'
-)
-
-const unionedLegacyUsers = normalizeDesignerAssigneeConfig({
-  collectionSource: 'variable',
-  collectionResolverCode: 'stale-resolver-must-not-win',
-  multiInstanceUsernames: 'alice,bob',
-  multiInstanceUserIds: ['bob', 'carol'],
-  multiInstanceUsers: 'dave,ROLE_AUDITOR'
-}, {
-  multiInstanceUsernames: ['carol', 'erin'],
-  multiInstanceUserIds: 'frank,alice',
-  multiInstanceUsers: 'grace,ROLE_REVIEWER'
-}, true)
-assert.equal(
-  unionedLegacyUsers.assigneeType,
-  'user',
-  '显式 variable 必须优先，残留 resolverCode 不能把历史静态人员误判成接口'
-)
-assert.equal(
-  unionedLegacyUsers.candidateUsers,
-  'alice,bob,carol,erin,frank,dave,grace',
-  'username、userId、multiInstanceUsers 与 multiInstanceConfig 必须保序并集'
-)
-const upgradedUnionedUsers = buildAssigneeConfig({
-  ...unionedLegacyUsers,
-  isMultiInstance: true,
-  assignmentConfigDirty: true,
-  assignee: unionedLegacyUsers.assigneeValue
+  candidateUserIds: ['alice', 'bob']
 })
-assert.equal(upgradedUnionedUsers.assignmentConfigVersion, 2)
-assert.equal(upgradedUnionedUsers.assigneeValue, 'alice')
-assert.equal(
-  upgradedUnionedUsers.candidateUsers,
-  'alice,bob,carol,erin,frank,dave,grace',
-  '用户确认编辑并升级 v2 时不得丢失任一代历史固定人员字段'
-)
-
-const unionedLegacyGroups = normalizeDesignerAssigneeConfig({
-  multiInstanceGroupCodes: 'finance,legal',
-  multiInstanceGroupIds: ['legal', 'operations']
-}, {
-  multiInstanceGroupCodes: 'audit,finance',
-  multiInstanceGroupIds: 'risk'
-}, true)
-assert.equal(unionedLegacyGroups.assigneeType, 'group')
-assert.equal(
-  unionedLegacyGroups.assigneeValue,
-  'finance,legal,operations,audit,risk',
-  'groupCode/groupId 及 multiInstanceConfig 对应字段必须保序并集'
-)
-assert.equal(
-  buildAssigneeConfig({
-    ...unionedLegacyGroups,
-    assignmentConfigDirty: true,
-    assigneeType: 'group',
-    candidateGroups: unionedLegacyGroups.assigneeValue,
-    nextApproverSelection: {}
-  }).assigneeValue,
-  'finance,legal,operations,audit,risk',
-  '用户确认编辑组来源并升级 v2 时不得丢失旧 code/id 并集'
-)
-
-const unionedLegacyRoles = normalizeDesignerAssigneeConfig({
-  multiInstanceRoleCodes: 'ROLE_MANAGER,AUDITOR',
-  multiInstanceRoleIds: ['AUDITOR', 'RISK']
-}, {
-  multiInstanceRoleCodes: 'LEGAL,ROLE_MANAGER',
-  multiInstanceRoleIds: 'OPS'
-}, true)
-assert.equal(unionedLegacyRoles.assigneeType, 'role')
-assert.equal(
-  unionedLegacyRoles.assigneeValue,
-  'ROLE_MANAGER,ROLE_AUDITOR,ROLE_RISK,ROLE_LEGAL,ROLE_OPS',
-  'roleCode/roleId 及 ROLE_ 前缀必须归一后保序并集'
-)
-assert.equal(
-  buildAssigneeConfig({
-    ...unionedLegacyRoles,
-    assignmentConfigDirty: true,
-    assigneeType: 'role',
-    candidateGroups: unionedLegacyRoles.assigneeValue,
-    nextApproverSelection: {}
-  }).assigneeValue,
-  'ROLE_MANAGER,ROLE_AUDITOR,ROLE_RISK,ROLE_LEGAL,ROLE_OPS',
-  '用户确认编辑角色来源并升级 v2 时不得丢失旧 code/id 并集'
-)
-
-const unchangedLegacySave = buildAssigneeConfig(normalizedLegacy)
-assert.equal(
-  Object.hasOwn(unchangedLegacySave, 'assignmentConfigVersion'),
-  false,
-  '用户未修改旧 mixed 人员时必须保持 legacy 语义，不能伪装成有损 v2'
-)
-assert.equal(unchangedLegacySave.multiInstanceUsernames, 'alice,bob')
-assert.equal(unchangedLegacySave.multiInstanceGroupCodes, 'finance')
-assert.equal(unchangedLegacySave.multiInstanceRoleCodes, 'ROLE_MANAGER')
-
-const upgradedLegacySave = buildAssigneeConfig({
-  ...normalizedLegacy,
-  assignmentConfigDirty: true,
-  assigneeType: 'user',
-  assignee: 'carol',
-  candidateUsers: 'carol,dave'
-})
-assert.equal(upgradedLegacySave.assignmentConfigVersion, 2)
-assert.equal(upgradedLegacySave.assigneeValue, 'carol')
-assert.equal(upgradedLegacySave.candidateUsers, 'carol,dave')
-for (const legacyKey of [
-  'multiInstanceUsernames',
-  'multiInstanceGroupCodes',
-  'multiInstanceRoleCodes',
-  'collectionSource'
-]) {
-  assert.equal(
-    Object.hasOwn(upgradedLegacySave, legacyKey),
-    false,
-    `用户明确修改基础审批人后必须升级为纯 v2: ${legacyKey}`
-  )
-}
+assert.equal(claimAssignment.handlingMode, 'CLAIM')
+assert.equal(claimAssignment.assigneeValue, '')
+assert.equal(claimAssignment.candidateUsers, 'alice,bob')
+assert.equal(Object.hasOwn(claimAssignment, 'multiInstanceDecision'), false)
 
 assert.doesNotMatch(
   nodeConfigPanelSource,
@@ -825,22 +637,22 @@ assert.match(
 )
 assert.match(
   nodeConfigPanelSource,
-  /type === 'expression'[\s\S]*?isMultiInstance[\s\S]*?多人办理不支持表达式人员来源/,
+  /type === 'expression'[\s\S]*?isMultiInstance[\s\S]*?会签不支持表达式来源/,
   '保存 v2 多实例时必须明确拒绝无法枚举的表达式人员来源'
 )
 assert.match(
   nodeConfigPanelSource,
-  /enabled && assigneeForm\.value\.assigneeType === 'expression'[\s\S]*?isMultiInstance = false[\s\S]*?return/,
-  '表达式模式开启多人办理时必须立即回退开关，不能停留在无效状态'
+  /mode === 'COUNTERSIGN' && form\.assigneeType === 'expression'\)\)[\s\S]*?onAssigneeTypeChange\('user'\)/,
+  '切换会签时必须将表达式来源切换为可用来源'
 )
 assert.match(
   nodeConfigPanelSource,
-  /组内启用用户会展开为多人办理参与人并分别生成任务/,
+  /组内启用用户分别收到自己的会签任务/,
   '用户组在多人办理模式下必须说明展开任务语义'
 )
 assert.match(
   nodeConfigPanelSource,
-  /拥有该角色的启用用户会展开为多人办理参与人并分别生成任务/,
+  /拥有该角色的启用用户分别收到自己的会签任务/,
   '角色在多人办理模式下必须说明展开任务语义'
 )
 assert.match(
@@ -900,7 +712,7 @@ assert.match(
 )
 assert.match(
   nodeConfigPanelSource,
-  /function updateMultiInstance\(\)[\s\S]*?assignee: '\$\{'[\s\S]*?candidateGroups: undefined[\s\S]*?candidateUsers: undefined/,
+  /function updateMultiInstance\(\)[\s\S]*?assignee: '\$\{assignee\}'[\s\S]*?candidateGroups: undefined[\s\S]*?candidateUsers: undefined/,
   '多实例节点引用必须只保留元素变量 assignee，并清理旧候选属性'
 )
 
@@ -1046,8 +858,8 @@ assert.equal(
 )
 assert.match(
   relativeOrgPositionSummary(relativeResolver, { positionName: '负责人' }),
-  /流程发起人的所属部门[\s\S]*最近有任职人的单位[\s\S]*负责人[\s\S]*候选人/,
-  '自然语言摘要必须包含主体、相对范围、职务和任务分配语义'
+  /流程发起人的所属部门[\s\S]*最近有任职人的单位[\s\S]*负责人[\s\S]*所有任职人/,
+  '相对职务摘要应明确主体、查找范围和任职人'
 )
 for (const marker of [
   'label="相对组织职务" value="relative_position"',

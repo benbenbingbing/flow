@@ -30,6 +30,7 @@ import SettingsCapability from '@/components/SettingsCapability.vue'
 import { useFieldStateConditions } from '@/composables/useFieldStateConditions'
 import { FIELD_STATE_CONDITIONS } from '@/shared/form-field-state-conditions'
 import { getProcessConditionFieldType } from '@/shared/process-config'
+import { formContextConditionFields } from '@/shared/form-context-parameters'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -43,9 +44,10 @@ const definitions = computed(() => props.visibilityOnly
   ? [{ ...FIELD_STATE_CONDITIONS[0], description: '满足条件时显示整个节点及其内部内容；关闭时不附加显示条件。' }]
   : FIELD_STATE_CONDITIONS)
 
-const availableFields = computed(() => props.fields.filter(field =>
+const availableFields = computed(() => [...props.fields.filter(field =>
   field.uiConfigurable !== false
-    && (field.fieldCode || field.fieldKey) !== (props.field.fieldCode || props.field.fieldKey)))
+    && (field.fieldCode || field.fieldKey) !== (props.field.fieldCode || props.field.fieldKey)),
+...formContextConditionFields])
 const { states, persist, setEnabled, resetCondition } = useFieldStateConditions(
   () => props.field,
   code => getProcessConditionFieldType(availableFields.value.find(field =>

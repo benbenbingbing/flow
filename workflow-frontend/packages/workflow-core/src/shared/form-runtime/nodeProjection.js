@@ -1,4 +1,4 @@
-import LinkageEngine from '../../utils/linkageEngine.js'
+import LinkageEngine, { formRuleContext, withFormContext } from '../../utils/linkageEngine.js'
 import { resolveRuntimeNodeFieldRules, safeParseConfig } from '../config-runtime/index.js'
 
 /** 两端共用发布节点到字段的投影；组件身份只取 componentType，不推断另一种渲染模式。 */
@@ -120,7 +120,7 @@ export function isFormNodeVisible(node, { data = {}, mode = 'view', context = {}
   if (permission && !(typeof context.hasPermission === 'function'
     ? context.hasPermission(permission)
     : context.permissions?.includes('*') || context.permissions?.includes(permission))) return false
-  return LinkageEngine.shouldShowField(config, data)
+  return LinkageEngine.shouldShowField(config, withFormContext(data, formRuleContext(context.form, mode, false, context).contextValues))
 }
 
 /**

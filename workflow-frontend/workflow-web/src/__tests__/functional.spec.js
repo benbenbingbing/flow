@@ -516,17 +516,6 @@ assert.equal(
   false,
   '新保存的办理人配置不得继续包含旧节点操作矩阵'
 )
-const migratedLegacyNodeOperationConfig = buildAssigneeConfig({
-    legacyAssigneeConfig: { assignmentConfigVersion: 1, assigneeType: 'user' },
-    assignmentConfigDirty: false,
-    nodeOperationPolicy
-  })
-assert.equal(
-  Object.hasOwn(migratedLegacyNodeOperationConfig, 'nodeOperationPolicy'),
-  false,
-  '旧配置直通保存也必须移除节点操作矩阵'
-)
-
 assert.ok(ENTITY_FIELD_TYPES.length >= 20)
 assert.equal(getEntityFieldTypeLabel('STRING'), '文本')
 assert.equal(getEntityFieldTypeLabel('UNKNOWN_TYPE'), 'UNKNOWN_TYPE')

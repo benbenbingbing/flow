@@ -13,4 +13,9 @@ public interface UiFormContextPort {
      * @return 从实际任务/实例恢复的上下文，供记录校验和只读约束继续使用
      */
     UiRuntimeResolutionContext resolve(String formId, Map<String, Object> runtimeContext);
+
+    /** 查询实体新增入口已选定的发布流程上下文；无唯一绑定时沿用独立表单入口。 */
+    default UiRuntimeResolutionContext resolveNewRecord(String entityCode, String formId) {
+        return UiRuntimeResolutionContext.standalone();
+    }
 }

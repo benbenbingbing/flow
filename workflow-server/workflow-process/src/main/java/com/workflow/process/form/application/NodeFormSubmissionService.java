@@ -328,6 +328,9 @@ public class NodeFormSubmissionService {
                 new HashMap<>(submittedValues);
         List<FormUniqueMutationContext.Reference> formReferences =
                 new ArrayList<>();
+        UiRuntimeResolutionContext taskContext = UiRuntimeResolutionContext.activeTask(
+                processVersionHistoryId, task.getTaskDefinitionKey(), task.getId(),
+                task.getProcessInstanceId(), entityCode, entityDataId);
         if (!nodeForms.isEmpty()) {
             Set<String> appliedFormReleases =
                     new HashSet<>();
@@ -337,11 +340,7 @@ public class NodeFormSubmissionService {
                                 releaseKey(nodeForm))) {
                     continue;
                 }
-                UiRuntimeResolutionContext resolutionContext =
-                        new UiRuntimeResolutionContext(
-                                UiRuntimePurpose.ACTIVE_TASK,
-                                processVersionHistoryId,
-                                task.getTaskDefinitionKey());
+                UiRuntimeResolutionContext resolutionContext = withTaskValues(taskContext, task, nodeForm);
                 if (sideEffectFreePreview) {
                     result = formSubmissionService.previewSideEffectFreeForm(
                                 nodeForm.getFormId(),
@@ -395,6 +394,7 @@ public class NodeFormSubmissionService {
                     result,
                     List.of());
         }
+        UiRuntimeResolutionContext resolutionContext = withTaskValues(taskContext, task, null);
         if (sideEffectFreePreview) {
             return new AppliedFormSubmission(
                     formSubmissionService.previewSideEffectFreeForm(
@@ -406,7 +406,7 @@ public class NodeFormSubmissionService {
                         "approve",
                         result,
                         executionContext,
-                        null),
+                        resolutionContext),
                     List.of());
         }
         PublishedFormSubmissionService.AuthorizedFormApplication
@@ -419,7 +419,7 @@ public class NodeFormSubmissionService {
                         "approve",
                         result,
                         executionContext,
-                        null);
+                        resolutionContext);
         // 无显式节点绑定时，默认表单仍是本次实际应用的表单；
         // 是否有唯一规则由事务终检按该精确发布快照解析。
         return new AppliedFormSubmission(
@@ -431,6 +431,14 @@ public class NodeFormSubmissionService {
                         applied.effectiveReleaseId(),
                         applied.effectiveContentHash(),
                         applied.hotfixTargetId())));
+    }
+
+    /** 同一确切任务驱动预判和正式提交，流程定义、节点绑定和任务人员均从引擎恢复。 */
+    private UiRuntimeResolutionContext withTaskValues(UiRuntimeResolutionContext entry, Task task, ProcessNodeForm binding) {
+        var snapshot = processPublishedSnapshotService.getVersionByProcessDefinitionId(task.getProcessDefinitionId());
+        var instance = runtimeService.createProcessInstanceQuery().processInstanceId(task.getProcessInstanceId()).singleResult();
+        return entry.withFormValues(ProcessFormContextValues.task(snapshot, binding, task, task.getId(), task.getAssignee(),
+                instance == null ? null : instance.getStartUserId()));
     }
 
     /**

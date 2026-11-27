@@ -287,6 +287,7 @@ function resolveSelector(source, selector) {
       && Object.prototype.hasOwnProperty.call(selector, 'literal')) {
     return cloneValue(selector.literal)
   }
+  if (typeof selector === 'string' && selector.startsWith('ctx.')) return source?.contextValues?.[selector.slice(4)]
   return String(selector || '').split('.').filter(Boolean)
     .reduce((current, key) => current?.[key], source)
 }

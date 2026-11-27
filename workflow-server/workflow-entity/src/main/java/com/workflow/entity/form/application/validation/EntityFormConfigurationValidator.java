@@ -63,6 +63,7 @@ public class EntityFormConfigurationValidator {
     private static final List<Map.Entry<String, String>>
             LINKAGE_CONDITION_LABELS = List.of(
                     Map.entry("visibilityConditionConfig", "显示条件"),
+                    Map.entry("enabledConditionConfig", "启用条件"),
                     Map.entry("disabledConditionConfig", "禁用条件"),
                     Map.entry("requiredConditionConfig", "必填条件"));
 
@@ -74,6 +75,8 @@ public class EntityFormConfigurationValidator {
     private final EntityFieldFileItemMapper fileItemMapper;
     private final FormUniqueRulePolicy uniqueRulePolicy;
     private UiMutableInterfaceReferenceNormalizer interfaceReferenceNormalizer;
+    @Autowired
+    private com.workflow.entity.form.application.FormContextRules contextRules;
 
     /**
      * 可变表单草稿保存前统一清理历史服务身份和发布钉版字段。
@@ -156,6 +159,7 @@ public class EntityFormConfigurationValidator {
                 form.getFields(),
                 persistentEntityProperties(entityFields));
         validateCrossFieldRules(form, entityFields == null ? List.of() : entityFields);
+        if (contextRules != null) contextRules.validate(form);
     }
 
     /**

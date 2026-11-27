@@ -1,6 +1,8 @@
+import { collectFlowConditionProperties, evaluateFlowConditionGroup, isFlowConditionGroupComplete, parseFlowConditionConfig } from '../utils/flowConditionGroups.js'
+
 const NUMBER_TYPES = new Set(['INTEGER', 'LONG', 'DECIMAL', 'DOUBLE'])
 const FIELD_CODE = /^[A-Za-z][A-Za-z0-9_]{0,99}$/
-const RULE_KEYS = new Set(['id', 'operator', 'targetFieldCode', 'message'])
+const RULE_KEYS = new Set(['id', 'operator', 'targetFieldCode', 'message', 'condition'])
 const CONFIG_KEYS = new Set(['version', 'rules'])
 
 export const CROSS_FIELD_OPERATORS = Object.freeze([
@@ -67,6 +69,7 @@ export function validateCrossFieldConfiguration(config, field, fields) {
     if (!CROSS_FIELD_OPERATORS.some(item => item.value === rule.operator)) errors.push(prefix + '请选择有效的比较方式')
     if (typeof rule.targetFieldCode !== 'string' || !FIELD_CODE.test(rule.targetFieldCode)) errors.push(prefix + '请选择有效的比较字段')
     if (rule.targetFieldCode === codeOf(field)) errors.push(prefix + '不能与当前字段自身比较')
+    if (rule.condition && !isFlowConditionGroupComplete(parseFlowConditionConfig(rule.condition))) errors.push(prefix + '请填写完整的触发条件')
     if (rule.message !== undefined && (typeof rule.message !== 'string' || [...rule.message].length > 200)) {
       errors.push(prefix + '错误提示必须为不超过 200 字的文本')
     }
@@ -89,7 +92,8 @@ export function buildCrossFieldDependencyIndex(fields) {
     const owner = codeOf(field)
     const config = getCrossFieldConfig(field)
     if (!Array.isArray(config?.rules) || !config.rules.length) continue
-    for (const key of new Set([owner, ...config.rules.map(rule => rule?.targetFieldCode).filter(Boolean)])) {
+    const conditionFields = config.rules.flatMap(rule => rule.condition ? collectFlowConditionProperties(parseFlowConditionConfig(rule.condition)) : [])
+    for (const key of new Set([owner, ...conditionFields, ...config.rules.map(rule => rule?.targetFieldCode).filter(Boolean)])) {
       if (!index.has(key)) index.set(key, new Set())
       index.get(key).add(owner)
     }
@@ -175,6 +179,7 @@ export function evaluateCrossField(field, record, fields, state = {}) {
   if (errors.length) return fail(null, `${labelOf(field)}：${errors[0]}`)
   let deferred = false
   for (const rule of config?.rules || []) {
+    if (rule.condition && !evaluateFlowConditionGroup(parseFlowConditionConfig(rule.condition), state.conditionRecord || record)) continue
     // 未加载字段与明确空值区分：留给权威提交检查，不伪造一个“已通过”的结论。
     if (!Object.hasOwn(record, fieldCode) || !Object.hasOwn(record, rule.targetFieldCode)) {
       deferred = true

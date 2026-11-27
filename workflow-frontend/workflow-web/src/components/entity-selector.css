@@ -202,3 +202,11 @@
   z-index: 1;
   background: var(--el-bg-color);
 }
+.ordered-selection {
+  margin: 6px 0 0;
+  padding-left: 24px;
+}
+
+.ordered-selection li > span {
+  margin-right: 8px;
+}

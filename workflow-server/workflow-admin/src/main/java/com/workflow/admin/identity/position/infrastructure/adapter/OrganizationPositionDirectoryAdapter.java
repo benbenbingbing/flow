@@ -1,5 +1,7 @@
 package com.workflow.admin.identity.position.infrastructure.adapter;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
@@ -196,6 +198,29 @@ public class OrganizationPositionDirectoryAdapter
     @Override
     public List<PositionDefinitionView> listEnabledPositions() {
         return positionMapper.selectEnabled().stream()
+                .map(this::definition)
+                .toList();
+    }
+
+    @Override
+    public PositionPage pageEnabledPositions(String keyword, long pageNumber, int pageSize) {
+        String search = keyword == null ? "" : keyword.trim();
+        // 与启用职务目录保持相同排序，并在数据库筛选后分页，避免把全部职务传给设计器。
+        var query = Wrappers.<SysPosition>lambdaQuery()
+                .eq(SysPosition::getStatus, SysPosition.Status.ENABLED.name())
+                .and(!search.isEmpty(), wrapper -> wrapper.like(SysPosition::getPositionCode, search)
+                        .or().like(SysPosition::getPositionName, search))
+                .orderByAsc(SysPosition::getSortOrder, SysPosition::getPositionCode);
+        Page<SysPosition> result = positionMapper.selectPage(
+                new Page<>(pageNumber, pageSize), query);
+        return new PositionPage(result.getRecords().stream().map(this::definition).toList(),
+                result.getTotal());
+    }
+
+    @Override
+    public List<PositionDefinitionView> findEnabledPositionsByCodes(List<String> codes) {
+        return positionMapper.selectByCodes(codes).stream()
+                .filter(position -> SysPosition.Status.ENABLED.name().equals(position.getStatus()))
                 .map(this::definition)
                 .toList();
     }

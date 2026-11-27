@@ -37,6 +37,7 @@ final class PublishedSubFormSubmissionProcessor {
     private final UiConfigReleaseService releaseService;
     private final UiExtensionDefinitionValidator schemaValidator;
     private final JsonDocumentCodec codec;
+    private final FormContextDefaults formContextParameters;
 
     /**
      * 应用已发布子级表单提交，并将结果传给后续步骤。
@@ -131,6 +132,11 @@ final class PublishedSubFormSubmissionProcessor {
                         Map.of(),
                         Map.of(),
                         relation.asMap());
+        // 两类映射共用同一份父表入口值，业务字段初始化和传参使用同一时刻。
+        Map<String, Object> variables = formContextParameters == null ? Map.of()
+                : formContextParameters.valuesForConfiguration(List.of(contract.parameterMapping(), contract.fieldInitializationMapping()),
+                        resolutionContext, mode == null ? "edit" : mode.toLowerCase(java.util.Locale.ROOT));
+        variables.forEach((key, value) -> parameterSource.put("ctx." + key, value));
         Map<String, Object> params =
                 SubFormParameterContractPolicy.resolveParameters(
                         contract,
@@ -156,6 +162,7 @@ final class PublishedSubFormSubmissionProcessor {
                             params,
                             rowContext,
                             relation.asMap());
+            variables.forEach((key, value) -> source.put("ctx." + key, value));
             Collection<String> blockedFields =
                     StringUtils.hasText(relation.childRefFieldCode())
                             ? List.of(relation.childRefFieldCode())

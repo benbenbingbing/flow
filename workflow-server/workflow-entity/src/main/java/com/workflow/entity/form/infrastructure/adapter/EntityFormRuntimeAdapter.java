@@ -1,6 +1,7 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +18,7 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.FormContextDefaults;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +46,9 @@ public class EntityFormRuntimeAdapter implements EntityFormPort {
     private final ObjectMapper objectMapper;
     private final ObjectProvider<NewEntityRecordFormResolver> newRecordForms;
 
+    @Autowired
+    private FormContextDefaults contextDefaults;
+
     /**
      * 查询上下文；查询结果供调用方展示或继续处理。
      *
@@ -58,7 +63,7 @@ public class EntityFormRuntimeAdapter implements EntityFormPort {
                         definition.getEntityCode(),
                         definition.getProcessDefinitionId(),
                         definition.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW,
-                        toMap(getDefaultForm(definition.getId()))));
+                        withCreateContext(getDefaultForm(definition.getId()), null)));
     }
 
     /**
@@ -169,7 +174,7 @@ public class EntityFormRuntimeAdapter implements EntityFormPort {
                 LogValue.safe(processVersionHistoryId),
                 LogValue.safe(binding.nodeId()),
                 LogValue.safe(purpose));
-        return toMap(form);
+        return UiRuntimePurpose.NEW_INSTANCE.equals(purpose) ? withCreateContext(form, effectiveContext) : toMap(form);
     }
 
     /**
@@ -250,6 +255,16 @@ public class EntityFormRuntimeAdapter implements EntityFormPort {
      */
     private Map<String, Object> toMap(EntityForm form) {
         return form == null ? null : objectMapper.convertValue(form, MAP_TYPE);
+    }
+
+    /** 在授权读取后的响应副本中附加变量，避免把请求身份写入发布快照或配置摘要。 */
+    private Map<String, Object> withCreateContext(EntityForm form, UiRuntimeResolutionContext entry) {
+        Map<String, Object> response = toMap(form);
+        if (response != null && contextDefaults != null) {
+            Map<String, Object> values = contextDefaults.valuesFor(form, entry, "create");
+            if (!values.isEmpty()) response.put("contextValues", values);
+        }
+        return response;
     }
 
     /** 延迟解析由流程模块提供的回退规则，流程表单解析本身也会读取此端口的发布表单。 */

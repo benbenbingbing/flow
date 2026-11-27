@@ -11,6 +11,7 @@ import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 
 export const FIELD_STATE_CONDITIONS = [
   { name: 'visibility', title: '条件显示', configKey: 'visibilityConditionConfig', expressionKey: 'visibilityRule', description: '满足条件时显示当前字段；关闭时不附加显示条件。' },
+  { name: 'enabled', title: '条件启用', configKey: 'enabledConditionConfig', expressionKey: 'enabledRule', description: '满足条件才可编辑，并继续遵守原有权限。' },
   { name: 'disabled', title: '条件禁用', configKey: 'disabledConditionConfig', expressionKey: 'disabledRule', description: '满足条件时禁用当前字段，使字段可见但不可编辑。' },
   { name: 'required', title: '条件必填', configKey: 'requiredConditionConfig', expressionKey: 'requiredRule', description: '满足条件时要求填写当前字段；默认必填仍独立生效。' }
 ]

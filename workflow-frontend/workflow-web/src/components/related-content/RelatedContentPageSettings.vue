@@ -16,7 +16,7 @@
         <el-form-item label="加载方式"><el-radio-group v-model="editor.config.presentation.loadMode"><el-radio value="ON_DEMAND">按需加载</el-radio><el-radio value="IMMEDIATE">立即加载</el-radio></el-radio-group></el-form-item>
         <el-form-item label="空状态提示"><el-input v-model="editor.config.presentation.emptyText" placeholder="未找到关联数据" maxlength="500" /></el-form-item>
       </el-form>
-      <PageParameterMappingEditor v-model="editor.config.parameterMappings" :schema="parameterSchema" :source-fields="sourceFields" />
+      <PageParameterMappingEditor v-model="editor.config.parameterMappings" :schema="parameterSchema" :source-fields="sourceFields" :allow-context="allowContext" />
     </SettingsSection>
     <SettingsSection title="内置按钮外观" :default-expanded="true">
       <BuiltInButtonAppearanceEditor
@@ -32,7 +32,7 @@ import { computed } from 'vue'
 import BuiltInButtonAppearanceEditor from '@/components/BuiltInButtonAppearanceEditor.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
-const props = defineProps({ editor: { type: Object, required: true }, parameterSchema: { type: Object, default: () => ({}) }, sourceFields: { type: Array, default: () => [] } })
+const props = defineProps({ editor: { type: Object, required: true }, parameterSchema: { type: Object, default: () => ({}) }, sourceFields: { type: Array, default: () => [] }, allowContext: Boolean })
 const switches = [{ key: 'showSearch', label: '显示查询' }, { key: 'showPagination', label: '显示分页' }, { key: 'showToolbar', label: '显示工具栏' }, { key: 'showRowActions', label: '显示操作列' }]
 // 配置入口随页面形态展示实际按钮；运行时是否可用仍只由原有业务能力决定。
 const buttonActions = computed(() => {

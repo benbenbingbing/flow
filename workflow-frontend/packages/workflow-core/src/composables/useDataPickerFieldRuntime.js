@@ -4,6 +4,7 @@ import { getFormDataSourceBindings } from '../shared/form-runtime/dataSourceRunt
 import { createDataPickerRuntime, createEntityListPickerSource, DEFAULT_PICKER_SCHEMA, isEntityListPicker, pickerNativeComponent,
   pickerNumericValue, pickerSchemaSource, preparePickerPatch } from '../shared/data-picker.js'
 import { referenceListParameterState } from '../shared/page-parameters.js'
+import { formRuleContext } from '../utils/linkageEngine.js'
 
 /**
  * 让 PC、移动端共用字段的查询、回显和回填生命周期；组件仅展示会话并发出一次 patch-form。
@@ -17,7 +18,8 @@ export function useDataPickerFieldRuntime(props, emit, confirmOverwrite, getList
   const record = () => props.context?.getFormData?.() || props.formData || props.context?.formData || props.context?.record?.data || props.context?.record || {}
   const disabled = () => props.disabled || props.readonly
   const sourceParameters = computed(() => isEntityListPicker(config.value)
-    ? referenceListParameterState(config.value.pickerList?.parameterMappings, record(), props.context?.scriptFields, props.context?.record)
+    ? referenceListParameterState(config.value.pickerList?.parameterMappings, record(), props.context?.scriptFields,
+        props.context?.record, formRuleContext(props.context?.form, props.mode, props.readonly, props.context).contextValues)
     : null)
   // 只保存普通业务对象，宿主函数、组件实例和校验状态不参与失效判断。
   const identity = computed(() => {

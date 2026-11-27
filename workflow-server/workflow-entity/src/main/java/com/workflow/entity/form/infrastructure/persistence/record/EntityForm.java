@@ -168,4 +168,9 @@ public class EntityForm {
 
     @TableField(exist = false)
     private java.util.Map<String, Object> runtimeContext = java.util.Map.of();
+
+    /** 当前请求计算用参数，由运行时 DTO 明确投影，不进入发布快照。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Map<String, Object> contextValues;
 }

@@ -37,6 +37,7 @@
 </template>
 
 <script setup>
+import { formRuleContext } from '@flow/workflow-core/utils/linkageEngine'
 
 // 仅声明此实现已接入的前端事件，供字段配置和运行时共用。
 defineOptions({ scriptEvents: [
@@ -397,7 +398,8 @@ const childInputParameterSchema = computed(() => {
 })
 const parameterSource = computed(() => ({
   parent: parentContext.value,
-  context: props.context
+  context: props.context,
+  contextValues: formRuleContext(props.context.form, props.mode, props.readonly, props.context).contextValues
 }))
 const resolvedParameters = computed(() =>
   resolveSubFormParameters(

@@ -23,6 +23,7 @@
   </section>
 </template>
 <script setup>
+import { formRuleContext } from '@flow/workflow-core/utils/linkageEngine'
 import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed, nextTick, onBeforeUnmount, ref, watch, toRaw } from 'vue'
 import { Cell as VanCell, Empty as VanEmpty, Loading as VanLoading, NavBar as VanNavBar, Popup as VanPopup, showConfirmDialog } from 'vant'
@@ -63,7 +64,9 @@ const canAddRow = computed(() => !props.disabled && !loading.value && rows.value
 const parent = computed(() => buildSubFormParentContext(props.context))
 const contract = computed(() => normalizeSubFormParameterContract(config.value.parameterContract))
 const schema = computed(() => normalizeInputParameterSchema(safeParseConfig(definition.value?.viewConfig).inputParameterSchema))
-const parameters = computed(() => resolveSubFormParameters(contract.value, { parent: parent.value, context: props.context }, schema.value))
+const parameterSource = computed(() => ({ parent: parent.value, context: props.context,
+  contextValues: formRuleContext(props.context.form, props.mode, props.readonly, props.context).contextValues }))
+const parameters = computed(() => resolveSubFormParameters(contract.value, parameterSource.value, schema.value))
 let sequence = 0, nextKey = 0
 const keys = new WeakMap(), rowRefs = new Map(), runtimes = new Map()
 function rowKey(row) { row = toRaw(row); if (!keys.has(row)) keys.set(row, row.id ? `id:${row.id}` : `draft:${++nextKey}`); return keys.get(row) }
@@ -124,7 +127,7 @@ async function loadDefinition() {
 watch(() => [meta.value.childFormId, meta.value.refEntityId, props.context.initializationKey], loadDefinition, { immediate: true })
 watch(() => [rows.value, parameters.value], () => {
   if (props.disabled) return
-  for (const row of rows.value) applySubFormFieldInitialization(row, contract.value, { parent: parent.value, context: props.context, params: parameters.value, row: { index: rows.value.indexOf(row), id: row.id, data: row } }, ['id', meta.value.childRefFieldCode])
+  for (const row of rows.value) applySubFormFieldInitialization(row, contract.value, { ...parameterSource.value, params: parameters.value, row: { index: rows.value.indexOf(row), id: row.id, data: row } }, ['id', meta.value.childRefFieldCode])
 }, { deep: true })
 async function addRow() { const row = {}; publish([...rows.value, row]); await nextTick(); opened.value = rowKey(row) }
 async function removeRow(row) {

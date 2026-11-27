@@ -120,7 +120,7 @@ const multiple = computed(() => type.value === 'select_multiple' || parsedCompon
 const remoteOptions = ref(null), optionError = ref(''), pickerOpen = ref(false), selectionDraft = ref([]), selectedRecords = ref([])
 const optionRecord = () => props.context.getFormData?.() ?? props.formData
 const optionQueryKey = computed(() => getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length
-  ? getFieldOptionQueryKey(props.field, optionRecord()) : null)
+  ? getFieldOptionQueryKey(props.field, optionRecord(), props.context.form, props.mode) : null)
 const hostOptions = computed(() => optionQueryKey.value === null ? props.options : undefined)
 const referenceConfig = computed(() => parsedComponentProps.value.refConfig || {})
 const pickerParameters = computed(() => type.value === 'entity'

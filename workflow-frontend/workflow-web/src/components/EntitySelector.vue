@@ -43,7 +43,7 @@
         @keydown.enter="openSelector"
         @keydown.space.prevent="openSelector"
       >
-        <div v-if="selectedList.length > 0" class="selected-list">
+        <div v-if="selectedList.length > 0 && !ordered" class="selected-list">
           <el-tag
             v-for="item in selectedList"
             :key="item.id"
@@ -55,9 +55,26 @@
             {{ getItemLabel(item) }}
           </el-tag>
         </div>
-        <div v-else class="placeholder">{{ placeholder }}</div>
+        <div v-else class="placeholder">{{ ordered && selectedList.length ? '调整人员选择' : placeholder }}</div>
         <el-icon class="arrow-icon"><ArrowDown /></el-icon>
       </div>
+      <ol v-if="ordered && selectedList.length" class="ordered-selection" aria-label="办理顺序">
+        <li v-for="(item, index) in selectedList" :key="item.id">
+          <span>{{ getItemLabel(item) }}</span>
+          <el-button
+            link
+            :disabled="disabled || index === 0"
+            :aria-label="`上移 ${getItemLabel(item)}`"
+            @click="moveSelection(index, -1)"
+          >上移</el-button>
+          <el-button
+            link
+            :disabled="disabled || index === selectedList.length - 1"
+            :aria-label="`下移 ${getItemLabel(item)}`"
+            @click="moveSelection(index, 1)"
+          >下移</el-button>
+        </li>
+      </ol>
     </template>
 
     <!-- 选择弹窗 -->
@@ -244,7 +261,7 @@ import {
 import request from '@/utils/request'
 
 const props = defineProps({
-  // 实体类型：CUSTOM(用户实体)/USER/DEPT/ROLE/GROUP
+  // 实体类型：CUSTOM(用户实体)/USER/DEPT/ROLE/GROUP；POSITION 由流程设计数据源提供。
   entityType: {
     type: String,
     required: true
@@ -280,6 +297,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  ordered: {
+    type: Boolean,
+    default: false
+  },
   // 当前值（单选为id，多选为id数组）
   modelValue: {
     type: [String, Array],
@@ -301,6 +322,11 @@ const props = defineProps({
   },
   // 是否禁用
   disabled: {
+    type: Boolean,
+    default: false
+  },
+  // 流程配置只允许新增启用记录，同时保留历史编码供回显和显式移除。
+  enabledOnly: {
     type: Boolean,
     default: false
   },
@@ -348,7 +374,8 @@ const dialogTitle = computed(() => {
     'USER': '选择用户',
     'DEPT': '选择部门',
     'ROLE': '选择角色',
-    'GROUP': '选择用户组'
+    'GROUP': '选择用户组',
+    'POSITION': '选择职务'
   }
   return typeMap[props.entityType] || '选择数据'
 })
@@ -490,7 +517,7 @@ async function loadSelectedData() {
     } else {
       records = []
       // 大量任职人必须分批回显，避免受代理或应用服务器的 URL 长度限制。
-      const batchSize = props.entityType === 'USER' ? 50 : values.length
+      const batchSize = props.entityType === 'USER' || props.enabledOnly ? 50 : values.length
       for (let index = 0; index < values.length; index += batchSize) {
         params.set('ids', values.slice(index, index + batchSize).join(','))
         const batch = await request.get(`/entity-selector/${props.entityType}/batch?${params}`)
@@ -499,6 +526,17 @@ async function loadSelectedData() {
       }
     }
     if (requestId !== selectedRequestId) return
+
+    if (props.enabledOnly || props.ordered) {
+      // 批量回显可能缺少已删除记录。补占位项，避免翻页增选时悄悄覆盖旧配置。
+      const recordsByValue = new Map((records || []).map(row => [selectionValue(row), row]))
+      records = values.map(value => recordsByValue.get(String(value)) || {
+        id: props.valueKey === 'id' ? String(value) : `unavailable:${value}`,
+        code: String(value),
+        name: `${value}（已不可用）`,
+        entityType: props.entityType
+      })
+    }
 
     if (props.multiple) {
       selectedList.value = records || []
@@ -558,9 +596,9 @@ function handleRuntimeConfirm(rows) {
 async function loadData() {
   const requestId = ++listRequestId
   loading.value = true
-  // 加载和失败期间清空旧可选行，不能让上次查询的人继续作为这次搜索结果被误选。
+  // 请求期间保留总数，避免分页组件把正在加载的页码修正回第 1 页。
+  // 旧可选行立即清空，防止误选上一次查询的记录。
   tableData.value = []
-  total.value = 0
   // CUSTOM 类型必须配置 entityCode 或 refEntityId
   if (
     !props.dataSource
@@ -580,6 +618,9 @@ async function loadData() {
     })
     if (searchKeyword.value) {
       params.append('keyword', searchKeyword.value)
+    }
+    if (props.enabledOnly) {
+      params.append('enabledOnly', 'true')
     }
     if (props.entityType === 'CUSTOM') {
       if (effectiveEntityCode.value) {
@@ -685,6 +726,19 @@ function removeSelection(item) {
   emit('change', selectedList.value)
 }
 
+/** 调整绑定值中的人员顺序，选择弹窗下次打开时也从该顺序恢复。 */
+function moveSelection(index, offset) {
+  const target = index + offset
+  if (props.disabled || target < 0 || target >= selectedList.value.length) return
+  selectedRequestId += 1
+  const rows = [...selectedList.value]
+  const [moved] = rows.splice(index, 1)
+  rows.splice(target, 0, moved)
+  selectedList.value = rows
+  emit('update:modelValue', recordSelectionValues(rows, props.valueKey))
+  emit('change', rows)
+}
+
 function selectionValue(item) {
   if (!item) return null
   const value = item[props.valueKey]
@@ -729,7 +783,8 @@ function getEntityTypeLabel(type) {
     'USER': '用户',
     'DEPT': '部门',
     'ROLE': '角色',
-    'GROUP': '用户组'
+    'GROUP': '用户组',
+    'POSITION': '职务'
   }
   return map[type] || type
 }
@@ -740,7 +795,8 @@ function getEntityTypeTag(type) {
     'USER': 'primary',
     'DEPT': 'success',
     'ROLE': 'warning',
-    'GROUP': 'info'
+    'GROUP': 'info',
+    'POSITION': 'info'
   }
   return map[type]
 }
@@ -751,7 +807,8 @@ function getEntityTypeDesc(type) {
     'USER': '系统用户',
     'DEPT': '组织架构部门',
     'ROLE': '系统角色',
-    'GROUP': '用户组'
+    'GROUP': '用户组',
+    'POSITION': '组织职务'
   }
   return map[type] || ''
 }
