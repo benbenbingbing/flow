@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { build } from 'vite'
 import { flowExtensionsPlugin } from '../../../build/extensions/vite-plugin.mjs'
-import { createTextLengthValidator } from '../examples/contracts/validatorFactory.js'
+import { createTextLengthValidator } from '../../../../packages/workflow-extensions/src/extensions/examples/contracts/validators/contract_text_length/pc/validatorFactory.js'
 
 // 真实 bundler 校验具名导出；仅检查路径存在无法发现该类错误。
 test('缺少具名导出阻止构建；只修正 JSON 即可恢复', async () => {

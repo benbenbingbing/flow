@@ -1,6 +1,6 @@
 # 平台内置扩展
 
-`fields/` 实现标准表单控件，`list-cells/` 实现标准单元格。注册声明位于 [platform 清单](../../../../packages/workflow-extensions/manifests/README.md)，应用启动时自动安装。
+`fields/` 实现标准表单控件，`list-cells/` 实现标准单元格。注册声明位于 [platform 清单](../../../../packages/workflow-extensions/src/extensions/README.md)，应用启动时自动安装。
 
 ## 如何使用现有控件
 
@@ -14,7 +14,7 @@
 
 - 修改所有使用方共用的行为：修改此处实现，并核对对应清单的 `configSchema`、兼容类型和别名。
 - 只服务一个业务的变化：复制模板到 `custom/biz-<module>/src/pc/`（相对前端工作区根目录），使用独立注册名与业务清单。
-- 新增平台字段：实现后在 `manifests/platform/fields/` 写 JSON；确认哪些类型默认使用它，避免与已有 `defaultForFieldTypes` 冲突。
+- 新增平台字段：实现后在 `packages/workflow-extensions/src/extensions/platform/fields/<注册名>/` 写 JSON；确认哪些类型默认使用它，避免与已有 `defaultForFieldTypes` 冲突。
 
 以下命令从 `workflow-frontend/workflow-web/` 执行；修改平台字段清单后先更新生成数据：
 
@@ -29,7 +29,7 @@ npm run build
 
 本节文件路径相对 `builtin/fields/`。
 
-`components/` 提供文本、数字、日期、选择、附件、实体引用和子表等控件；`composables/useFormField.js` 共享值同步、选项、禁用态、默认值和标准事件。注册名、别名和类型兼容范围来自 [平台字段清单](../../../../packages/workflow-extensions/manifests/platform/fields)。
+`components/` 提供文本、数字、日期、选择、附件、实体引用和子表等控件；`composables/useFormField.js` 共享值同步、选项、禁用态、默认值和标准事件。注册名、别名和类型兼容范围来自 [平台字段清单](../../../../packages/workflow-extensions/src/extensions/platform/fields)。
 
 ### 在表单中使用
 
@@ -48,7 +48,7 @@ npm run build
 
 ### 开发控件时复用逻辑
 
-以 [CustomFieldTemplate.vue](../templates/CustomFieldTemplate.vue) 为起点，在 Vue 的 `script setup` 中使用：
+以 [CustomFieldTemplate.vue](../../../../packages/workflow-extensions/src/extensions/examples/contracts/fields/contract_example_text/pc/CustomFieldTemplate.vue) 为起点，在 Vue 的 `script setup` 中使用：
 
 ```js
 import { formFieldProps, formFieldEmits } from '@/extensions/contracts/form-field.js'
@@ -71,7 +71,7 @@ const { fieldValue, isDisabled, parsedComponentProps, handleChange, handleBlur, 
 
 本节实现位于 `builtin/list-cells/`。
 
-此目录的三个组件由 [平台单元格清单](../../../../packages/workflow-extensions/manifests/platform/list-cells) 自动注册，业务列表无需再次注册。
+此目录的三个组件由 [平台单元格清单](../../../../packages/workflow-extensions/src/extensions/platform/list-cells) 自动注册，业务列表无需再次注册。
 
 ### 如何配置
 
@@ -97,6 +97,6 @@ const { fieldValue, isDisabled, parsedComponentProps, handleChange, handleBlur, 
 
 ### 如何扩展单元格
 
-复制 [CustomCellTemplate.vue](../templates/CustomCellTemplate.vue) 到业务目录，使用 `listCellProps`，再新增 LIST_CELL 清单。组件的 `value` 已经格式化；原始状态或 ID 应从 `row` 读取。`StatusBadge.statusMap` 按小写原始值匹配，`labelMap` 按传入展示值匹配。
+复制 [CustomCellTemplate.vue](../../../../packages/workflow-extensions/src/extensions/examples/contracts/list-cells/ContractExampleCell/pc/CustomCellTemplate.vue) 到业务目录，使用 `listCellProps`，再新增 LIST_CELL 清单。组件的 `value` 已经格式化；原始状态或 ID 应从 `row` 读取。`StatusBadge.statusMap` 按小写原始值匹配，`labelMap` 按传入展示值匹配。
 
 仅改变某列的格式时优先配置参数；新增业务呈现用独立组件名。修改后从 `workflow-frontend/workflow-web/` 执行 `npm run extensions:check`、`npm run test:list-cell-actions` 和 `npm run build`，并在目标列表验证空值、真实行数据与参数效果。

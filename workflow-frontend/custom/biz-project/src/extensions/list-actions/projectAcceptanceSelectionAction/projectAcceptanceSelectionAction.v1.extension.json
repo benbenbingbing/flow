@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../../../packages/workflow-extensions/schemas/extension.schema.json",
+  "$comment": "用途：projectAcceptanceSelectionAction。name=projectAcceptanceSelectionAction 是业务配置的稳定引用，移动文件时保持注册名。 在列表按钮 customHandler 或选择回调 selectionHandler 中填写 name；处理器在交互时收到 context，启动时不会执行。 实现入口相对于本清单目录。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 targets=TOOLBAR,ROW 决定安装到工具栏或行动作表；双位置共享同一函数。",
+  "schemaVersion": 1,
+  "type": "LIST_ACTION",
+  "name": "projectAcceptanceSelectionAction",
+  "label": "projectAcceptanceSelectionAction",
+  "description": "",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "export": "projectAcceptanceSelectionAction",
+    "kind": "FUNCTION",
+    "path": "./pc/projectAcceptanceSelectionAction.js"
+  },
+  "metadata": {},
+  "targets": [
+    "TOOLBAR",
+    "ROW"
+  ]
+}

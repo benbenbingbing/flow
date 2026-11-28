@@ -11,7 +11,7 @@ const install = createExtensionInstaller(extensionAdapters)
 /** Node 校验测试加载正式 JSON 与实际 JS 实现；不复制金额注册配置，不伪造 Vue 实现。 */
 export async function installTestValidators() {
   const entries = await Promise.all(discoverExtensions(root).filter(item => item.type === 'VALIDATOR' && item.enabled !== false).map(async descriptor => {
-    const module = await import(pathToFileURL(resolveImplementation(root, descriptor.implementation, { moduleId: descriptor.module })).href)
+    const module = await import(pathToFileURL(resolveImplementation(root, descriptor.implementation, { moduleId: descriptor.module, sourceFile: descriptor.sourceFile })).href)
     return { descriptor, implementation: module[descriptor.implementation.export] }
   }))
   install(entries)

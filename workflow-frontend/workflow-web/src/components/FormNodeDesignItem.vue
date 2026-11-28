@@ -496,7 +496,7 @@ import FormNodeGridResizeHandle from '@/components/form-designer/FormNodeGridRes
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
-import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
+import SectionField from '../../../packages/workflow-extensions/src/extensions/platform/fields/section/pc/SectionField.vue'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
 import {

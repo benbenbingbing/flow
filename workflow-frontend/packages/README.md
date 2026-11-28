@@ -11,7 +11,7 @@
 | `@flow/workflow-mobile-ui` | Vant 移动端通用表单和字段组件 |
 
 公共产品包不导入业务包；业务包只使用依赖包的公开 `exports`，不引用应用私有源码。
-自定义模块统一在 `../custom/biz-*` 开发，实现与 `manifests/` 共处一处。模块选择来自
+自定义模块统一在 `../custom/biz-*` 开发，实现和清单共处于模块的 `src/extensions/<类型>/<注册名>/`。模块选择来自
 `../config/frontend-modules.json`，无需在产品页面硬编码业务导入。
 
 在 `workflow-frontend/` 执行：

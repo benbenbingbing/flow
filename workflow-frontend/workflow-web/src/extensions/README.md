@@ -2,9 +2,7 @@
 
 路径说明：前端工作区根目录为仓库中的 `workflow-frontend/`，npm 依赖统一在该目录安装；包和清单的相对关系不变。
 
-这里维护 PC 产品扩展、示例和安装入口。业务实现统一位于前端工作区根目录 `custom/biz-*`，
-注册声明位于 `custom/biz-*/manifests`，对业务公开的契约位于 `workflow-extensions`。
-新增已有类型的扩展，完成实现、公开包入口并新增 JSON 即可；主应用与 Embed 共用安装入口。
+这里维护 PC/Embed 安装入口及注册表。系统实现和声明位于 `packages/workflow-extensions/src/extensions`，业务实现和声明位于 `custom/biz-*/src/extensions`。主应用与 Embed 共用安装入口。
 
 ## 按用途阅读
 
@@ -12,8 +10,8 @@ README 只保留在本目录和下一层目录，子模块用法合并到对应�
 
 | 说明 | 什么时候看 |
 | --- | --- |
-| [manifests](../../../packages/workflow-extensions/manifests/README.md) | 注册配置项完整说明、十类类型、填写示例、启用和排错 |
-| [templates](templates/README.md) | 选择和复制组件模板，完成从模板到注册的步骤 |
+| [manifests](../../../packages/workflow-extensions/src/extensions/README.md) | 注册配置项完整说明、十类类型、填写示例、启用和排错 |
+| [templates](../../../packages/workflow-extensions/templates/README.md) | 选择和复制组件模板，完成从模板到注册的步骤 |
 | [contracts](contracts/README.md) | 导入 props/emits、调用校验方法、处理宿主上下文 |
 | [builtin](builtin/README.md) | 使用平台字段和单元格，复用 useFormField |
 | [common](common/README.md) | 复用金额校验，添加通用实现 |
@@ -26,50 +24,19 @@ README 只保留在本目录和下一层目录，子模块用法合并到对应�
 
 ## 从模板新增一个字段
 
-以下命令均从 `workflow-frontend/workflow-web/` 执行。示例使用文本模板真实支持的 suffix 参数。
+从[扩展模板](../../../packages/workflow-extensions/templates/README.md)复制字段实现和清单，放入业务包同一个目录。例如：
 
-```sh
-mkdir -p src/extensions/common/fields ../packages/workflow-extensions/manifests/common/fields
-cp src/extensions/templates/CustomFieldTemplate.vue src/extensions/common/fields/NoteField.vue
+```text
+custom/biz-order/src/extensions/fields/OrderNoteField/
+├── OrderNoteField.v1.extension.json
+├── pc/OrderNoteField.vue
+├── mobile/OrderNoteField.vue
+└── tests/
 ```
 
-在前端工作区根目录 `packages/workflow-extensions/manifests/common/fields/note_field.v1.extension.json` 写入：
+填写注册名、版本和参数 Schema。顶层 `implementation.path` 指向 `./pc/OrderNoteField.vue`，移动实现由同一清单的 `platforms.mobile.implementation.path` 指向 `./mobile/OrderNoteField.vue`。组件使用 SDK 契约及宿主能力。构建器从模块目录发现清单和实现。
 
-```json
-{
-  "$schema": "../../../schemas/extension.schema.json",
-  "$comment": "通用备注字段。name 是设计器保存的稳定名称；suffix 是每个字段独立填写的展示参数。",
-  "schemaVersion": 1,
-  "type": "FIELD",
-  "name": "note_field",
-  "label": "备注输入",
-  "version": 1,
-  "implementation": {
-    "path": "src/extensions/common/fields/NoteField.vue",
-    "export": "default",
-    "kind": "COMPONENT"
-  },
-  "metadata": {
-    "supportedFieldTypes": ["STRING", "TEXT"],
-    "configSchema": [{
-      "key": "suffix", "label": "输入框后缀", "type": "text", "defaultValue": "备注",
-      "description": "模板从 field.componentProps.suffix 读取，只改变展示，不写入字段值。"
-    }]
-  }
-}
-```
-
-然后运行：
-
-```sh
-npm run extensions:check
-npm run test:extensions
-npm run dev
-```
-
-进入实体表单设计器，选择字符串或文本字段，在组件选项中选“备注输入”，填写后缀。若页面要求纳管，先按现有扩展管理流程纳管；保存并预览，检查输入同步、后缀和只读状态。发布后，引用该实体表单的流程也可使用。生产部署前运行 `npm run build`。
-
-不用修改 `main.js`、业务 index 或手工 import 表。开发服务器监听清单新增/修改/删除并整页刷新；生产新增实现需要重新构建部署。模板文件本身不会自动注册。
+从前端工作区运行 `npm run extensions:check --workspace workflow-web` 和 `npm run build`。进入实体表单设计器选择适用字段，绑定扩展并预览。
 
 ## 已有扩展如何配置
 
@@ -93,4 +60,4 @@ JSON 的 `metadata.configSchema` 是参数定义，上表中的值才是某个�
 - `manifest.js`：应用初始化后读取 `getBundledExtensionManifest()`；需要服务端可治理的四类时使用 `getManagedExtensionManifest()`。
 - `index.js`：对外汇总上述接口；普通组件优先直接导入契约或所需查询模块，避免把启动依赖带入实现。
 
-FORM/LIST 用 usageContexts 区分 PAGE 和 RELATED_CONTENT。支持多版本的类型、清单与数据库启停的区别，以及示例开关详见 [注册配置手册](../../../packages/workflow-extensions/manifests/README.md)。历史绑定使用稳定名称；制品摘要锁定仍遵守原有检查。
+FORM/LIST 用 usageContexts 区分 PAGE 和 RELATED_CONTENT。支持多版本的类型、清单与数据库启停的区别，以及示例开关详见 [注册配置手册](../../../packages/workflow-extensions/src/extensions/README.md)。历史绑定使用稳定名称；制品摘要锁定仍遵守原有检查。

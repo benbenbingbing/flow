@@ -20,7 +20,7 @@ export function isExtensionManifestChange(filename, options = {}) {
   const layout = extensionLayout(options)
   const relative = path.relative(layout.customDirectory, filename).split(path.sep).join('/')
   return (filename.startsWith(layout.manifestDirectory + path.sep) && filename.endsWith('.extension.json'))
-    || /^[^/]+\/manifests\/.+\.extension\.json$/.test(relative)
+    || /^[^/]+\/(?:src\/extensions|manifests)\/.+\.extension\.json$/.test(relative)
     || /^[^/]+\/package\.json$/.test(relative)
 }
 

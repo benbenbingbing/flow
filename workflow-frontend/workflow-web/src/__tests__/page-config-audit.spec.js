@@ -370,7 +370,7 @@ dynamicRuntimeFiles.forEach((file) => {
 })
 
 const switchFieldSource = readFileSync(
-  path.join(root, 'src/extensions/builtin/fields/components/SwitchField.vue'),
+  path.join(root, '../packages/workflow-extensions/src/extensions/platform/fields/switch/pc/SwitchField.vue'),
   'utf8'
 )
 assert.ok(
@@ -1243,7 +1243,7 @@ assert.equal(
   '正则测试文本只能保存在前端本地状态，不能写入校验规则'
 )
 const textFieldSource = readFileSync(
-  path.join(root, 'src/extensions/builtin/fields/components/TextField.vue'),
+  path.join(root, '../packages/workflow-extensions/src/extensions/platform/fields/input/pc/TextField.vue'),
   'utf8'
 )
 assert.ok(
@@ -1605,7 +1605,7 @@ assert.ok(
 })
 
 const subFormField = readFileSync(
-  path.join(root, 'src/extensions/builtin/fields/components/SubFormField.vue'),
+  path.join(root, '../packages/workflow-extensions/src/extensions/platform/fields/sub_form/pc/SubFormField.vue'),
   'utf8'
 )
 const subFormRenderer = readFileSync(
@@ -1613,7 +1613,7 @@ const subFormRenderer = readFileSync(
   'utf8'
 )
 const checkboxField = readFileSync(
-  path.join(root, 'src/extensions/builtin/fields/components/CheckboxField.vue'),
+  path.join(root, '../packages/workflow-extensions/src/extensions/platform/fields/checkbox/pc/CheckboxField.vue'),
   'utf8'
 )
 assert.ok(
@@ -2318,8 +2318,8 @@ const guideExpectations = {
     'supportedEntityCodes',
     'GET /api/entity-list-config/extension-options'
   ],
-  'src/views/system/CustomListGuide.vue': ['packages/workflow-extensions/manifests', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
-  'src/views/system/CustomFormGuide.vue': ['扩展清单', 'packages/workflow-extensions/manifests', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
+  'src/views/system/CustomListGuide.vue': ['packages/workflow-extensions/src/extensions', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
+  'src/views/system/CustomFormGuide.vue': ['扩展清单', 'packages/workflow-extensions/src/extensions', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
 }
 for (const [file, markers] of Object.entries(guideExpectations)) {
   const source = readFileSync(path.join(root, file), 'utf8')
@@ -2529,12 +2529,12 @@ for (const file of [
 }
 
 const demoExpectations = {
-  '../packages/workflow-extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json': ['DemoProjectForm', 'COMPONENT'],
-  '../packages/workflow-extensions/manifests/examples/demo/lists/DemoProjectCardList.v1.extension.json': ['DemoProjectCardList', 'COMPONENT'],
-  '../packages/workflow-extensions/manifests/examples/demo/list-cells/DemoRiskProgressCell.v1.extension.json': ['DemoRiskProgressCell', 'COMPONENT'],
-  'src/extensions/examples/demo/list-fields/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
-  'src/extensions/examples/demo/lists/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
-  'src/extensions/examples/demo/forms/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],
+  '../packages/workflow-extensions/src/extensions/examples/demo/forms/DemoProjectForm/DemoProjectForm.v1.extension.json': ['DemoProjectForm', 'COMPONENT'],
+  '../packages/workflow-extensions/src/extensions/examples/demo/lists/DemoProjectCardList/DemoProjectCardList.v1.extension.json': ['DemoProjectCardList', 'COMPONENT'],
+  '../packages/workflow-extensions/src/extensions/examples/demo/list-cells/DemoRiskProgressCell/DemoRiskProgressCell.v1.extension.json': ['DemoRiskProgressCell', 'COMPONENT'],
+  '../packages/workflow-extensions/src/extensions/examples/demo/list-cells/DemoRiskProgressCell/pc/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
+  '../packages/workflow-extensions/src/extensions/examples/demo/lists/DemoProjectCardList/pc/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
+  '../packages/workflow-extensions/src/extensions/examples/demo/forms/DemoProjectForm/pc/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],
   'scripts/real-dynamic-extension-demo.mjs': ['createCustomList', 'progressWithCustomForm', 'completeDemoProcess']
 }
 for (const [file, markers] of Object.entries(demoExpectations)) {

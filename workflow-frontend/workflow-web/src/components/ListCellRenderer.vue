@@ -14,7 +14,7 @@
 <script setup>
 import { computed } from 'vue'
 import { getCellComponent, hasCellComponent } from '@/extensions/core/registries/listCellRegistry.js'
-import DefaultText from '@/extensions/builtin/list-cells/DefaultText.vue'
+import DefaultText from '../../../packages/workflow-extensions/src/extensions/platform/list-cells/DefaultText/pc/DefaultText.vue'
 import { formatListFieldValue, parseDataSourceConfig } from '@/shared/list-runtime'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { formatMaskedListCellValue, isListCellMaskingEnabled } from '@/shared/list-cell-masking'

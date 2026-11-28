@@ -257,7 +257,7 @@ async function main() {
     entityId: entity.id,
     formName: 'Demo项目定制表单',
     formKey: `demo_project_form_${suffix}`,
-    description: 'src/extensions/examples/demo/forms/DemoProjectForm.vue 真实配置',
+    description: 'packages/workflow-extensions/src/extensions/examples/demo/forms/DemoProjectForm/pc/DemoProjectForm.vue 真实配置',
     layoutType: 'grid',
     isDefault: true,
     status: 1,
@@ -323,7 +323,7 @@ async function main() {
     entityCode,
     listKey,
     listName: 'Demo项目卡片列表',
-    description: 'src/extensions/examples/demo/lists/DemoProjectCardList.vue 真实配置',
+    description: 'packages/workflow-extensions/src/extensions/examples/demo/lists/DemoProjectCardList/pc/DemoProjectCardList.vue 真实配置',
     isDefault: true,
     customComponent: 'DemoProjectCardList',
     viewConfig: {

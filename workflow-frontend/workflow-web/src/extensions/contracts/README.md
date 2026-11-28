@@ -2,7 +2,7 @@
 
 本目录保留产品内部的契约兼容入口，公开契约由 `packages/workflow-extensions` 维护。
 业务统一从 `@flow/workflow-extensions/contracts/*` 引入 props、emits、动作上下文与校验协议，
-不引用应用私有别名。导入契约不等于注册扩展，仍需按 [清单手册](../../../../packages/workflow-extensions/manifests/README.md) 添加 JSON。
+不引用应用私有别名。导入契约不等于注册扩展，仍需按 [清单手册](../../../../packages/workflow-extensions/src/extensions/README.md) 添加 JSON。
 
 ## 根据实现选择文件
 
@@ -37,7 +37,7 @@ defineProps(listCellProps)
 </script>
 ```
 
-字段组件可照 [CustomFieldTemplate.vue](../templates/CustomFieldTemplate.vue) 导入 formFieldProps/emits 和 useFormField。保留宿主传入的 readonly/disabled，不原地修改 props 中的对象；数组和对象默认值采用工厂。
+字段组件可照 [CustomFieldTemplate.vue](../../../../packages/workflow-extensions/src/extensions/examples/contracts/fields/contract_example_text/pc/CustomFieldTemplate.vue) 导入 formFieldProps/emits 和 useFormField。保留宿主传入的 readonly/disabled，不原地修改 props 中的对象；数组和对象默认值采用工厂。
 
 ## 校验契约怎么调用
 
@@ -51,7 +51,7 @@ if (!result.valid) console.log(result.message)
 
 字段校验的 validate(value, context) 可返回 boolean、非空错误文本或 {valid,message}，可为异步；不要把返回文本的真值当成通过。整表单组件的 validate() 是另一套无参接口，应返回 boolean/Promise<boolean> 并通过 defineExpose 暴露。错误和接口异常不能转为校验成功。
 
-Element Plus 独立页面可参考 [ValidatedAmountForm.vue](../examples/contracts/ValidatedAmountForm.vue)，按每次校验的最新上下文调用 createElementPlusValidator。
+Element Plus 独立页面可参考 [ValidatedAmountForm.vue](../../../../packages/workflow-extensions/src/extensions/examples/contracts/validators/contract_required/pc/ValidatedAmountForm.vue)，按每次校验的最新上下文调用 createElementPlusValidator。
 
 ## 关联内容与普通页面
 

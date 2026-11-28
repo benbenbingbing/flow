@@ -20,7 +20,7 @@ async function collectEntries(directory) {
   return result.sort()
 }
 
-const entries = (await Promise.all([contractsRoot, path.join(frontendRoot, 'src/extensions/templates'), path.join(frontendRoot, 'src/extensions/examples/contracts')].map(collectEntries))).flat()
+const entries = (await Promise.all([contractsRoot, path.join(frontendRoot, '../packages/workflow-extensions/src/extensions/examples/contracts')].map(collectEntries))).flat()
 const virtualId = '\0contracts-verification'
 await build({
   configFile: false,

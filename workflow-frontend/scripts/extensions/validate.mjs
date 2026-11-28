@@ -44,8 +44,17 @@ function validateValue(value, rule, location) {
 }
 
 /** 校验所有平台的引用形状，不读组件源码，禁用模块也不能夹带任意导入。 */
-function validateReference(reference, { moduleId, platform = 'pc' } = {}) {
+function validateReference(reference, { moduleId, platform = 'pc', sourceFile } = {}) {
   if (Boolean(reference.path) === Boolean(reference.package)) throw new Error('path 与 package 必须且只能填写一个')
+  if (reference.path?.startsWith('./')) {
+    const match = /^\.\/(pc|mobile|shared)\/(?:[\w.-]+\/)*[\w.-]+\.(vue|js|mjs)$/.exec(reference.path)
+    if (!sourceFile || !sourceFile.endsWith('.extension.json') || !match
+        || reference.path.slice(2).split('/').some(part => part === '.' || part === '..')
+        || (match[1] !== platform && match[1] !== 'shared') || (match[1] === 'shared' && match[2] === 'vue')) {
+      throw new Error(`扩展实现必须位于清单同目录的 ${platform}/ 或跨端 JS 的 shared/ 下：${reference.path}`)
+    }
+    return
+  }
   if (reference.package) {
     const match = /^@flow\/(biz-[a-z][a-z0-9]*(?:-[a-z0-9]+)*)\/(pc|mobile)\/([A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*)$/.exec(reference.package)
     if (!match || match[1] !== moduleId || match[2] !== platform) {
@@ -69,6 +78,13 @@ function validateReference(reference, { moduleId, platform = 'pc' } = {}) {
  */
 export function resolveImplementation(root, reference, options = {}) {
   validateReference(reference, options)
+  if (reference.path?.startsWith('./')) {
+    // 校验与装配使用同一个文件；不允许通过清单内的目录或文件链接跳到另一模块。
+    const directory = realpathSync(path.dirname(path.resolve(root, options.sourceFile)))
+    const filename = path.resolve(directory, reference.path)
+    if (realpathSync(filename) !== filename || !statSync(filename).isFile()) throw new Error(`扩展实现不能通过符号链接越界：${filename}`)
+    return filename
+  }
   if (reference.package) {
     const module = (options.businessModules || discoverBusinessModules(options)).get(options.moduleId)
     if (!module) throw new Error(`未知前端业务模块：${options.moduleId}`)
@@ -107,8 +123,10 @@ export function resolveImplementation(root, reference, options = {}) {
 }
 
 /** 生成器只保留公开包名；已校验的本地文件继续使用绝对路径供 Vite 加载。 */
-export function implementationImport(root, reference) {
-  return reference.package || path.join(root, reference.path).split(path.sep).join('/')
+export function implementationImport(root, reference, sourceFile) {
+  if (reference.package) return reference.package
+  const base = reference.path.startsWith('./') ? path.dirname(path.resolve(root, sourceFile)) : root
+  return path.join(base, reference.path).split(path.sep).join('/')
 }
 
 /** 包组件通过 dist 加载；监听源码和对应产物，确保复制构建完成后事件目录再次刷新。 */
@@ -141,10 +159,11 @@ export function validateManifest(manifest, root, filename, options = {}) {
   if (scope.includes('*') && scope.length !== 1) fail('全部实体范围只使用 ["*"]')
   const keys = (metadata.configSchema || []).map(item => item.key)
   if (new Set(keys).size !== keys.length) fail('configSchema 参数 key 重复')
-  for (const ref of [implementation, ...Object.values(hooks)]) validateReference(ref, { ...options, platform: 'pc' })
+  const sourceFile = path.resolve(root, filename)
+  for (const ref of [implementation, ...Object.values(hooks)]) validateReference(ref, { ...options, sourceFile, platform: 'pc' })
   if (manifest.platforms?.mobile) {
     const mobile = manifest.platforms.mobile.implementation
-    validateReference(mobile, { ...options, platform: 'mobile' })
+    validateReference(mobile, { ...options, sourceFile, platform: 'mobile' })
     if (!['FIELD', 'FORM', 'VALIDATOR', 'FIELD_EVENT_HANDLER'].includes(type)) fail(`尚不支持的移动扩展类型：${type}`)
     const kinds = type === 'VALIDATOR' ? ['OBJECT', 'CLASS', 'FACTORY'] : type === 'FIELD_EVENT_HANDLER' ? ['FUNCTION'] : ['COMPONENT']
     if (!kinds.includes(mobile.kind)) fail(`移动扩展实现类型不符：${manifest.name}`)
@@ -154,7 +173,7 @@ export function validateManifest(manifest, root, filename, options = {}) {
   const references = structureOnly || platform === 'metadata' ? [] : platform === 'mobile'
     ? (manifest.platforms?.mobile ? [manifest.platforms.mobile.implementation] : [])
     : [implementation, ...Object.values(hooks)]
-  for (const ref of references) resolveImplementation(implementationRoot, ref, options)
+  for (const ref of references) resolveImplementation(implementationRoot, ref, { ...options, sourceFile })
 }
 
 /** 按最终注册规则校验启用项；同名组件允许多个版本，别名不能跨名称抢占。 */

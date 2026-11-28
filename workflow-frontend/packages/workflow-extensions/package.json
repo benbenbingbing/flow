@@ -20,7 +20,6 @@
     "./contracts/form-field": "./dist/contracts/form-field.js",
     "./contracts/validation": "./dist/contracts/validation.js",
     "./contracts/mobile-form": "./dist/contracts/mobile-form.js",
-    "./manifests/*": "./manifests/*",
     "./schemas/extension.schema.json": "./schemas/extension.schema.json"
   },
   "scripts": {

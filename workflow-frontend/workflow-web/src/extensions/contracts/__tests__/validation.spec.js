@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   CustomValidator, defineCustomValidator, validateCustomValue, createElementPlusValidator
 } from '@flow/workflow-core/extensions/contracts/validation'
-import { AmountValidator, requiredValidator } from '../../examples/contracts/AmountValidator.js'
+import { AmountValidator, requiredValidator } from '../../../../../packages/workflow-extensions/src/extensions/examples/contracts/validators/contract_required/pc/requiredValidator.js'
 
 test('校验结果使用显式 valid，业务错误文本不会被当作 truthy 成功', async () => {
   assert.deepEqual(await validateCustomValue(defineCustomValidator(() => true), 0), {

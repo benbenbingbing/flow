@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const testDir = path.dirname(fileURLToPath(import.meta.url))
-const projectDir = path.resolve(testDir, '../src/pc')
+const projectDir = path.resolve(testDir, '../src/extensions')
 const repositoryDir = path.resolve(testDir, '../../../..')
 const bootstrapSource = readFileSync(
   path.join(
@@ -16,14 +16,14 @@ const bootstrapSource = readFileSync(
 )
 
 const expectedComponents = [
-  'forms/ProjectExtensionAcceptanceForm.vue',
-  'lists/ProjectAcceptanceBoardList.vue',
-  'fields/ProjectAcceptanceScoreField.vue',
-  'fields/ProjectAcceptanceLevelField.vue',
-  'fields/ProjectAcceptanceSummaryField.vue',
-  'list-cells/ProjectAcceptanceScoreCell.vue',
-  'buttons/ProjectAcceptanceInspectButton.vue',
-  'rules/ProjectAcceptanceRuleCondition.vue'
+  'forms/ProjectExtensionAcceptanceForm/pc/ProjectExtensionAcceptanceForm.vue',
+  'lists/ProjectAcceptanceBoardList/pc/ProjectAcceptanceBoardList.vue',
+  'fields/project_acceptance_score/pc/ProjectAcceptanceScoreField.vue',
+  'fields/project_acceptance_level/pc/ProjectAcceptanceLevelField.vue',
+  'fields/ProjectAcceptanceSummaryNode/pc/ProjectAcceptanceSummaryField.vue',
+  'list-cells/ProjectAcceptanceScoreCell/pc/ProjectAcceptanceScoreCell.vue',
+  'list-buttons/ProjectAcceptanceInspectButton/pc/ProjectAcceptanceInspectButton.vue',
+  'action-conditions/PROJECT-CUSTOM_CONDITION/pc/ProjectAcceptanceRuleCondition.vue'
 ]
 
 expectedComponents.forEach(relativePath => {
@@ -41,7 +41,7 @@ expectedComponents.forEach(relativePath => {
 })
 
 const inspectButtonSource = readFileSync(
-  path.join(projectDir, 'buttons/ProjectAcceptanceInspectButton.vue'),
+  path.join(projectDir, 'list-buttons/ProjectAcceptanceInspectButton/pc/ProjectAcceptanceInspectButton.vue'),
   'utf8'
 )
 assert.match(inspectButtonSource, /:disabled="disabled"/)
@@ -50,7 +50,7 @@ assert.match(inspectButtonSource, /if \(props\.disabled\)/)
 const scoreFieldSource = readFileSync(
   path.join(
     projectDir,
-    'fields/ProjectAcceptanceScoreField.vue'
+    'fields/project_acceptance_score/pc/ProjectAcceptanceScoreField.vue'
   ),
   'utf8'
 )
@@ -66,7 +66,7 @@ assert.ok(
 const levelFieldSource = readFileSync(
   path.join(
     projectDir,
-    'fields/ProjectAcceptanceLevelField.vue'
+    'fields/project_acceptance_level/pc/ProjectAcceptanceLevelField.vue'
   ),
   'utf8'
 )

@@ -8,6 +8,11 @@ export function workflowBoundaryPlugin(platform, options = {}) {
   const forbidden = platform === 'mobile'
     ? /(?:^|[/\\])(?:workflow-web|element-plus|@element-plus)(?:[/\\]|$)/
     : /(?:^|[/\\])(?:workflow-mobile|workflow-mobile-ui)(?:[/\\]|$)/
+  // 产品扩展迁入共享包后，应用目录名已不能识别其中的端专属实现。
+  const wrongPlatform = id => {
+    const target = context.classify(id)
+    return target.platform && target.platform !== platform
+  }
   return {
     name: `flow-${platform}-boundary`,
     buildStart() {
@@ -15,7 +20,7 @@ export function workflowBoundaryPlugin(platform, options = {}) {
       if (result.errors.length) this.error(`前端业务依赖边界检查失败：\n${result.errors.join('\n')}`)
     },
     async resolveId(source, importer) {
-      if (forbidden.test(source)) this.error(`${platform} 入口不允许导入 ${source}（来自 ${importer || 'entry'}）`)
+      if (forbidden.test(source) || wrongPlatform(source)) this.error(`${platform} 入口不允许导入 ${source}（来自 ${importer || 'entry'}）`)
       if (!importer) return null
       const directError = inspectBusinessDependency(context, importer, source)
       if (directError) this.error(directError)
@@ -31,7 +36,7 @@ export function workflowBoundaryPlugin(platform, options = {}) {
     },
     generateBundle() {
       const modules = [...this.getModuleIds()]
-      const invalid = modules.filter(id => forbidden.test(id))
+      const invalid = modules.filter(id => forbidden.test(id) || wrongPlatform(id))
       if (invalid.length) this.error(`平台依赖越界：\n${invalid.join('\n')}`)
       const enabledModules = resolveEnabledModules({
         repositoryRoot: context.root, enabledModules: options.enabledModules

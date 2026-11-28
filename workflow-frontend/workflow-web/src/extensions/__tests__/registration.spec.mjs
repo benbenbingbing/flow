@@ -35,21 +35,27 @@ test('现有清单覆盖十类，保留业务名称和 Demo 开关；生成字�
   assert.equal(getDefaultFormFieldComponentType('DEPT'), 'reference')
 })
 
-test('新模块只增加实现和 JSON 就能被发现，具名导出生成明确 import', () => {
+test('同目录的业务实现和清单无需 package exports，并为每个扩展生成自己的导入', () => {
   const fixture = mkdtempSync(path.join(tmpdir(), 'flow-extensions-'))
   try {
-    mkdirSync(path.join(fixture, 'custom/biz-new/src/pc'), { recursive: true })
-    writeFileSync(path.join(fixture, 'custom/biz-new/package.json'), JSON.stringify({ name: '@flow/biz-new', exports: { './pc/Field': './dist/pc/Field.js' } }))
-    mkdirSync(path.join(fixture, 'custom/biz-new/manifests/fields'), { recursive: true })
-    writeFileSync(path.join(fixture, 'custom/biz-new/src/pc/Field.js'), 'export const Field = { name: "new-field" }')
-    const manifest = { schemaVersion: 1, type: 'FIELD', name: 'new_field', label: '新字段', version: 1, implementation: { package: '@flow/biz-new/pc/Field', export: 'Field', kind: 'COMPONENT' } }
-    writeFileSync(path.join(fixture, 'custom/biz-new/manifests/fields/field.extension.json'), JSON.stringify(manifest))
+    const fields = path.join(fixture, 'custom/biz-new/src/extensions/fields')
+    mkdirSync(path.join(fields, 'new_field/pc'), { recursive: true })
+    writeFileSync(path.join(fixture, 'custom/biz-new/package.json'), JSON.stringify({ name: '@flow/biz-new' }))
+    for (const name of ['new_field', 'other_field']) {
+      const directory = path.join(fields, name)
+      mkdirSync(path.join(directory, 'pc'), { recursive: true })
+      writeFileSync(path.join(directory, 'pc/Field.js'), 'export const Field = { name: "new-field" }')
+      const manifest = { schemaVersion: 1, type: 'FIELD', name, label: '新字段', version: 1,
+        implementation: { path: './pc/Field.js', export: 'Field', kind: 'COMPONENT' } }
+      writeFileSync(path.join(directory, `${name}.extension.json`), JSON.stringify(manifest))
+    }
     const appRoot = path.join(fixture, 'workflow-web')
     mkdirSync(path.join(fixture, 'packages/workflow-extensions/manifests'), { recursive: true })
     const discovered = discoverExtensions(appRoot, { enabledModules: ['biz-new'], repositoryRoot: fixture })
-    assert.equal(discovered.length, 1)
+    assert.equal(discovered.length, 2)
     assert.equal(discovered[0].module, 'biz-new')
     assert.match(generateExtensionModule(discovered, appRoot), /import \{ Field as implementation0 \}/)
+    assert.match(generateExtensionModule(discovered, appRoot), /import \{ Field as implementation1 \}.*other_field\/pc\/Field\.js/)
   } finally { rmSync(fixture, { recursive: true, force: true }) }
 })
 
@@ -57,6 +63,8 @@ test('错拼配置、越界路径、错误类型、冲突别名和同版本覆�
   const invalid = modify => { const value = copy(sample); delete value.origin; delete value.module; delete value.sourceFile; modify(value); return value }
   assert.throws(() => validateManifest(invalid(v => v.metadtaa = {}), root, 'bad.json'), /未知属性/)
   assert.throws(() => validateManifest(invalid(v => { delete v.implementation.package; v.implementation.path = 'src/../outside.js' }), root, 'bad.json'), /实现路径/)
+  assert.throws(() => validateManifest(invalid(v => { v.implementation.path = './pc/../shared/other.js' }), root, 'bad.extension.json'), /清单同目录/)
+  assert.throws(() => validateManifest(invalid(v => { v.implementation.path = './mobile/Field.vue' }), root, 'bad.extension.json'), /清单同目录/)
   assert.throws(() => validateManifest(invalid(v => v.implementation.kind = 'FUNCTION'), root, 'bad.json'), /需要 COMPONENT/)
   assert.throws(() => validateManifest(invalid(v => v.metadata.configSchema.push(v.metadata.configSchema[0])), root, 'bad.json'), /key 重复/)
   assert.doesNotThrow(() => validateCollisions([sample, { ...sample, version: 2 }]))

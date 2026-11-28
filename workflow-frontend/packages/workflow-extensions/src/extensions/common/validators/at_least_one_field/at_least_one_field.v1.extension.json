@@ -1,0 +1,49 @@
+{
+  "$schema": "../../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "VALIDATOR",
+  "name": "at_least_one_field",
+  "label": "多个字段至少填一项",
+  "description": "检查同一表单内指定的字段，至少有一项填写即通过。请绑定到用于显示错误的可见、可编辑字段。启用“值变化”后，已显示的提示会随关联字段的变化更新。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "./shared/atLeastOneFieldValidator.js",
+    "export": "AtLeastOneFieldValidator",
+    "kind": "CLASS"
+  },
+  "metadata": {
+    "supportedEntityCodes": ["*"],
+    "configSchema": [
+      {
+        "key": "fieldCodes",
+        "label": "参与校验的字段",
+        "type": "json",
+        "jsonShape": "array",
+        "required": true,
+        "example": ["mobile", "email"],
+        "description": "填写同一表单中至少两个不同的字段编码组成的 JSON 数组，例如 [\"mobile\", \"email\"]。需要检查绑定字段时，也将它的编码加入数组。"
+      },
+      {
+        "key": "message",
+        "label": "错误提示",
+        "type": "text",
+        "description": "全部为空时显示在绑定字段下方，留空使用默认提示。"
+      }
+    ]
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "./shared/atLeastOneFieldValidator.js",
+        "export": "AtLeastOneFieldValidator",
+        "kind": "CLASS"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
+  }
+}

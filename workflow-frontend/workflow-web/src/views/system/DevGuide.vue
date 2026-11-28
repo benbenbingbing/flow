@@ -86,7 +86,7 @@ Content-Type: application/json
   "label": "risk-matrix",
   "version": 3,
   "implementation": {
-    "path": "src/extensions/common/fields/RiskMatrixField.vue",
+    "path": "./pc/RiskMatrixField.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -332,7 +332,7 @@ return Map.of(
   "label": "风险等级",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/list-cells/RiskBadgeCell.vue",
+    "path": "./pc/RiskBadgeCell.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -380,8 +380,8 @@ const props = defineProps({
           <h3>14. 可运行 Demo</h3>
           <p>仓库已经提供真实注册示例，不需要从文档片段重新拼装：</p>
           <ul class="check-list">
-            <li>`src/extensions/examples/demo/list-fields/DemoRiskProgressCell.vue`：读取 `value / row / field / config / context`，展示风险进度和等级。</li>
-            <li>`packages/workflow-extensions/manifests/examples/demo/`：以 `DemoRiskProgressCell` 注册组件，并声明数值字段类型与四项可视化参数。</li>
+            <li>`packages/workflow-extensions/src/extensions/examples/demo/list-cells/DemoRiskProgressCell/pc/DemoRiskProgressCell.vue`：读取 `value / row / field / config / context`，展示风险进度和等级。</li>
+            <li>`packages/workflow-extensions/src/extensions/examples/demo/`：以 `DemoRiskProgressCell` 注册组件，并声明数值字段类型与四项可视化参数。</li>
             <li>`scripts/real-dynamic-extension-demo.mjs`：创建实体、动态列、定制列表、定制表单和流程，验证配置真实生效。</li>
             <li>执行 `npm run test:demo:real`；最近一次结果保存在 `docs/dynamic-extension-demo/latest.json`。</li>
           </ul>

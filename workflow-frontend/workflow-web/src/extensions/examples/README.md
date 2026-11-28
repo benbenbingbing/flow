@@ -1,6 +1,6 @@
 # 扩展示例使用说明
 
-`demo/` 展示项目表单、卡片列表与风险单元格；`contracts/` 展示契约调用、校验器、动作和节点配置升级。注册示例全部位于 `manifests/examples/`，本说明统一覆盖这些子目录。
+`demo/` 展示项目表单、卡片列表与风险单元格；`contracts/` 展示契约调用、校验器、动作和节点配置升级。注册示例全部位于 `packages/workflow-extensions/src/extensions/examples/`，本说明统一覆盖这些子目录。
 
 ## 启用方式
 
@@ -16,9 +16,9 @@ VITE_ENABLE_DEMO_EXTENSIONS=true npm run build
 
 | 实现文件 | 设计器选择及参数 | 查看效果 |
 | --- | --- | --- |
-| demo/forms/DemoProjectForm.vue | 整表单选择 DemoProjectForm；subtitle、accentColor、showRiskHint | 自定义布局、只读/联动、表单校验 |
-| demo/lists/DemoProjectCardList.vue | 整列表选择 DemoProjectCardList；columns、compact、showDescription、searchPlaceholder | 卡片布局、查询、分页与宿主动作 |
-| demo/list-fields/DemoRiskProgressCell.vue | 数值列选择 DemoRiskProgressCell；warningAt=40、dangerAt=70、showText、showLevel | 数值变化时的风险等级和进度条 |
+| demo/forms/DemoProjectForm/pc/DemoProjectForm.vue | 整表单选择 DemoProjectForm；subtitle、accentColor、showRiskHint | 自定义布局、只读/联动、表单校验 |
+| demo/lists/DemoProjectCardList/pc/DemoProjectCardList.vue | 整列表选择 DemoProjectCardList；columns、compact、showDescription、searchPlaceholder | 卡片布局、查询、分页与宿主动作 |
+| demo/list-cells/DemoRiskProgressCell/pc/DemoRiskProgressCell.vue | 数值列选择 DemoRiskProgressCell；warningAt=40、dangerAt=70、showText、showLevel | 数值变化时的风险等级和进度条 |
 
 先绑定已有实体的表单/列表配置，再保存预览。组件不会创建实体或数据，审批、删除等操作仍由宿主和后端控制。
 
@@ -26,28 +26,26 @@ VITE_ENABLE_DEMO_EXTENSIONS=true npm run build
 
 | 文件 | 用法 |
 | --- | --- |
-| contracts/AmountValidator.js | 导入 AmountValidator 或 requiredValidator；前者复用通用类，后者演示对象校验 |
-| contracts/ValidatedAmountForm.vue | 导入到自己的 Vue 页面并挂载，直接体验 Element Plus 校验；独立组件不自动加入实体设计器 |
-| contracts/validatorFactory.js | 导入 createTextLengthValidator，或启用 contract_text_length 的 FACTORY 清单 |
-| contracts/refreshAction.js | 启用 contractExampleRefresh 清单，列表按钮设为自定义/函数，处理器填该名称 |
-| contracts/permissions.js | 启用 contractExamplePermissionOptions 清单，权限编辑器查询当前上下文时调用候选提供器 |
+| contracts/validators/contract_required/pc/requiredValidator.js | 导入 AmountValidator 或 requiredValidator；前者复用通用类，后者演示对象校验 |
+| contracts/validators/contract_required/pc/ValidatedAmountForm.vue | 导入到自己的 Vue 页面并挂载，直接体验 Element Plus 校验；独立组件不自动加入实体设计器 |
+| contracts/validators/contract_text_length/pc/validatorFactory.js | 导入 createTextLengthValidator，或启用 contract_text_length 的 FACTORY 清单 |
+| contracts/list-actions/contractExampleRefresh/pc/refreshAction.js | 启用 contractExampleRefresh 清单，列表按钮设为自定义/函数，处理器填该名称 |
+| contracts/permission-providers/contractExamplePermissionOptions/pc/permissions.js | 启用 contractExamplePermissionOptions 清单，权限编辑器查询当前上下文时调用候选提供器 |
 
-例如在项目 JS 模块中直接体验工厂与迁移：
+例如在 `contract_text_length/` 目录的 JS 模块中直接体验工厂：
 
 ```js
-import { createTextLengthValidator } from '@/extensions/examples/contracts/validatorFactory.js'
+import { createTextLengthValidator } from './pc/validatorFactory.js'
 
 const validator = createTextLengthValidator({ services: {} })
 const result = validator.validate('你好世界', { params: { maxLength: 3 } })
 // result 为“文本不能超过 3 个字符”；实际提交用 validateCustomValue 归一化。
-const next = migrateSummaryConfig({ fromVersion: 1, toVersion: 2, config: { fieldCode: 'amount' } })
-// next 为 { fieldCodes: ['amount'] }，旧配置不被修改。
 ```
 
 启用 `ContractExampleRelatedForm` 或 `ContractExampleRelatedList` 后，只能在关联内容的自定义呈现中选择，不能当作普通整表单/列表使用；这些清单声明 RELATED_CONTENT 契约。
 
 ## 复制到正式模块与验证
 
-业务实现复制到前端工作区根目录 `custom/biz-<module>/src/pc/`，通过 SDK 替换应用私有导入；对应清单放入 `custom/biz-<module>/manifests/`，使用公开 `implementation.package` 入口。通用实现仍可放 common。修改 name、label、范围和参数，并设置 enabled=true。正式业务清单不依赖 Demo 开关；不要与原示例使用相同的活动注册名。
+业务实现和清单一起复制到 `custom/biz-<module>/src/extensions/<类型>/<注册名>/`，通过 SDK 替换应用私有导入。清单使用相对实现路径。通用实现仍可放 common。修改 name、label、范围和参数，并设置 enabled=true。正式业务清单不依赖 Demo 开关；不要与原示例使用相同的活动注册名。
 
 从 `workflow-frontend/workflow-web/` 执行 `npm run extensions:check`、`npm run test:extension-contracts`。`npm run test:extensions:browser` 验证 Demo 开关和真实注册；需要验证校验交互时运行 `npm run test:custom-validators:browser`。

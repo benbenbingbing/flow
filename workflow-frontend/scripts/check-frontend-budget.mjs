@@ -31,11 +31,19 @@ function walk(folder) {
 const baselineHasFrontend = frontendPrefix && git(['ls-tree', '--name-only', base, '--', `${frontendPrefix}/package.json`]).trim()
 const baselinePath = file => baselineHasFrontend ? `${frontendPrefix}/${file}` : file
 const previousFiles = new Set(git(['ls-tree', '-r', '--name-only', base, '--', ...paths.map(baselinePath)]).trim().split('\n'))
+// 子表字段随扩展清单一起搬迁。旧基线仍以原文件的行数计价，不能通过移动获得增长额度。
+const relocated = new Map([[
+  'packages/workflow-extensions/src/extensions/platform/fields/sub_form/pc/SubFormField.vue',
+  'workflow-web/src/extensions/builtin/fields/components/SubFormField.vue'
+]])
 let debt = 0, reduced = 0
 const issues = []
 for (const file of paths.flatMap(walk)) {
   const current = count(readFileSync(path.join(root, file), 'utf8'))
-  const previousFile = baselinePath(file)
+  const original = relocated.get(file)
+  const currentPath = baselinePath(file)
+  const previousFile = !previousFiles.has(currentPath) && original && !existsSync(path.join(root, original))
+    ? baselinePath(original) : currentPath
   const previous = previousFiles.has(previousFile) ? count(git(['show', `${base}:${previousFile}`])) : 0
   const limit = Math.max(defaultLimit, previous)
   if (current > defaultLimit) debt += 1

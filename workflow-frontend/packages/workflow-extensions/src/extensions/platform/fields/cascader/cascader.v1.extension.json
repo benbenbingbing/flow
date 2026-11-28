@@ -1,0 +1,84 @@
+{
+  "$schema": "../../../../../schemas/extension.schema.json",
+  "$comment": "用途：级联选择。name=cascader 是业务配置的稳定引用，移动文件时保持注册名。 在表单设计器的字段组件中选择 name；实例参数由 field.componentProps 传入。 实现入口相对于本清单目录。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "cascader",
+  "label": "级联选择",
+  "version": 1,
+  "implementation": {
+    "path": "./pc/CascaderField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "STRING",
+      "MULTI_SELECT"
+    ],
+    "configSchema": [
+      {
+        "key": "cascaderSource",
+        "label": "数据来源",
+        "type": "select",
+        "options": [
+          {
+            "value": "STATIC",
+            "label": "静态选项"
+          },
+          {
+            "value": "INTERFACE",
+            "label": "数据接口"
+          }
+        ],
+        "description": "选择数据接口后，在“级联选择配置”中选择级联数据接口。PC 和移动端使用同一配置。",
+        "defaultValue": "STATIC"
+      },
+      {
+        "key": "cascaderLoadMode",
+        "label": "接口加载方式",
+        "type": "select",
+        "visibleWhen": {
+          "cascaderSource": "INTERFACE"
+        },
+        "options": [
+          {
+            "value": "ALL",
+            "label": "一次加载全部数据"
+          },
+          {
+            "value": "CHILDREN",
+            "label": "逐级加载下一级"
+          }
+        ],
+        "description": "全部加载返回完整树；逐级加载根据当前路径请求直接下级，每个节点须返回 leaf 表明是否末级。编辑已保存值时自动沿路径补齐名称。",
+        "defaultValue": "ALL"
+      },
+      {
+        "key": "cascaderOptions",
+        "label": "级联选项",
+        "type": "json",
+        "jsonShape": "array",
+        "helpKey": "entityForm.cascaderOptions",
+        "example": [
+          {
+            "value": "china",
+            "label": "中国",
+            "children": [
+              {
+                "value": "beijing",
+                "label": "北京"
+              }
+            ]
+          }
+        ],
+        "description": "静态树形数组，使用 value、label、children；可用 disabled 禁用节点。未配置时显示空列表。选择结果为完整路径编码数组。",
+        "visibleWhen": {
+          "cascaderSource": "STATIC"
+        }
+      }
+    ]
+  },
+  "aliases": [],
+  "defaultForFieldTypes": []
+}

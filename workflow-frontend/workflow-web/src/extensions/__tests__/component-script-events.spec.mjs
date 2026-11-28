@@ -20,7 +20,7 @@ test('真实 TextField 经压缩构建后保留静态事件，安装器与目录
   const fixture = mkdtempSync(path.join(root, '.script-metadata-test-'))
   try {
     await build({ configFile: false, root, logLevel: 'silent', plugins: [vue()], build: {
-      minify: true, outDir: fixture, lib: { entry: path.join(root, 'src/extensions/builtin/fields/components/TextField.vue'), formats: ['es'], fileName: () => 'TextField.mjs' },
+      minify: true, outDir: fixture, lib: { entry: path.join(root, '../packages/workflow-extensions/src/extensions/platform/fields/input/pc/TextField.vue'), formats: ['es'], fileName: () => 'TextField.mjs' },
       rollupOptions: { external: id => id === 'vue' || id.startsWith('@flow/') }
     } })
     const { default: component } = await import(pathToFileURL(path.join(fixture, 'TextField.mjs')))
@@ -43,7 +43,7 @@ test('真实 TextField 经压缩构建后保留静态事件，安装器与目录
 
 test('真实函数清单静态加载，精确版本注册且发布前检查缺失函数', async () => {
   const entries = discoverExtensions(root).filter(entry => entry.type === 'FIELD_EVENT_HANDLER')
-  const plan = await Promise.all(entries.map(async descriptor => ({ descriptor, implementation:(await import(pathToFileURL(resolveImplementation(root, descriptor.implementation, { moduleId: descriptor.module }))))[descriptor.implementation.export] })))
+  const plan = await Promise.all(entries.map(async descriptor => ({ descriptor, implementation:(await import(pathToFileURL(resolveImplementation(root, descriptor.implementation, { moduleId: descriptor.module, sourceFile: descriptor.sourceFile }))))[descriptor.implementation.export] })))
   createExtensionInstaller(extensionAdapters)(plan)
   const trim = getFieldEventHandler('trimText',1)
   assert.equal(typeof trim.handler,'function')

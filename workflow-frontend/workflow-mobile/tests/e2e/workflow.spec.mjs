@@ -429,6 +429,41 @@ test('移动端水平标签统一左对齐，顶部配置与富文本附件布�
   expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
 })
 
+test('通用日期范围和至少填一项校验拦截审批，修正后允许提交', async ({ page }) => {
+  const withValidator = (node, name, params) => ({
+    ...node,
+    rules: { validation: { customValidators: { version: 1, rules: [{ name, version: 1, params, triggers: ['CHANGE'] }] } } }
+  })
+  const form = { ...simpleForm(), nodes: [
+    withValidator(field('plannedDate', '', '计划日期', { fieldType: 'DATE', componentType: 'date' }), 'date_range', { maxDate: '2026-06-29' }),
+    withValidator(field('phone', '', '手机'), 'at_least_one_field', { fieldCodes: ['phone', 'email'], message: '手机和邮箱至少填写一项' }),
+    field('email', '', '邮箱')
+  ] }
+  const record = { id: 'record-test', name: '测试流程', entityCode: 'test', plannedDate: '2026-06-30', phone: '', email: '' }
+  const state = await fixture(page, { form, record })
+  await detail(page)
+  await submit(page)
+  const dateError = page.locator('[data-field-code="plannedDate"]').getByText('日期不能晚于 2026-06-29')
+  const contactError = page.locator('[data-field-code="phone"]').getByText('手机和邮箱至少填写一项')
+  await expect(dateError).toBeVisible()
+  await expect(contactError).toBeVisible()
+  expect(state.writes).toHaveLength(0)
+
+  await page.getByPlaceholder('请输入邮箱').fill('user@example.com')
+  await expect(contactError).toHaveCount(0)
+  await page.getByPlaceholder('请选择计划日期').click()
+  const popup = page.locator('.van-popup:visible')
+  await popup.getByText('29', { exact: true }).click()
+  await popup.getByText('确定', { exact: true }).click()
+  await expect(dateError).toHaveCount(0)
+  await submit(page)
+  await expect(page).toHaveURL(/inbox\/todo/)
+  expect(state.writes).toHaveLength(1)
+  expect(state.writes[0].body.formData).toMatchObject({ plannedDate: '2026-06-29', email: 'user@example.com' })
+  expect(state.unexpected).toEqual([])
+  expect(state.errors).toEqual([])
+})
+
 test('第一层 Tab 与流程页签并列，嵌套 Tab 保留折叠；跨页签校验保留填写内容和发布坐标', async ({ page }) => {
   const form = { ...simpleForm(), nodes: [{ id: 'tabs', nodeType: 'TAB_SET' }, { id: 'first', parentId: 'tabs', nodeType: 'TAB', props: { label: '主要信息' } }, { id: 'second', parentId: 'tabs', nodeType: 'TAB', props: { label: '补充信息' } }, { id: 'nested', parentId: 'second', nodeType: 'TAB_SET' }, { id: 'notes', parentId: 'nested', nodeType: 'TAB', props: { label: '备注分组' } }, { id: 'checks', parentId: 'nested', nodeType: 'TAB', props: { label: '校验分组' } }, field('name', 'first', '事项名称'), field('note', 'notes', '备注'), field('required', 'checks', '补充说明', { required: true })] }
   const state = await fixture(page, { form })

@@ -83,7 +83,7 @@ test('清单编辑器 Schema 路径可解析；业务实现没有第二套注册
     const file = path.join(root, item.sourceFile)
     const manifest = JSON.parse(readFileSync(file, 'utf8'))
     assert.equal(path.resolve(path.dirname(file), manifest.$schema), path.resolve(root, '../packages/workflow-extensions/schemas/extension.schema.json'))
-    const source = readFileSync(resolveImplementation(root, item.implementation, { moduleId: item.module, platform: 'pc' }), 'utf8')
+    const source = readFileSync(resolveImplementation(root, item.implementation, { moduleId: item.module, platform: 'pc', sourceFile: item.sourceFile }), 'utf8')
     assert.doesNotMatch(source, /\bregister(?:CustomFormComponent|CustomListComponent|FormFieldComponent|FormNodeComponent|CellComponent|ListButtonComponent|ListToolbarAction|ListRowAction|CustomValidator|EntityActionRuleCondition|EntityPermissionOptionProvider)\s*\(/)
   }
   for (const old of ['src/project', 'src/demo', 'src/contracts', 'src/components/form-fields', 'src/components/list-cells']) assert.equal(existsSync(path.join(root, old)), false, old)

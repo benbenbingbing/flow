@@ -218,7 +218,7 @@ import { resolveRuntimeNodeField, isFormNodeVisible } from '@flow/workflow-core/
 import { computed, defineComponent, defineAsyncComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import ConfiguredFormFieldItem from '@/components/ConfiguredFormFieldItem.vue'
-import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
+import SectionField from '../../../packages/workflow-extensions/src/extensions/platform/fields/section/pc/SectionField.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import { buildRuntimeFieldRules, getFieldKey } from '@flow/workflow-core/form-runtime'

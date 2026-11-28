@@ -72,7 +72,7 @@
         "path": {
           "type": "string",
           "minLength": 1,
-          "description": "相对目标应用的 src/ 本地源码路径；只用于 platform/common/examples，业务使用 package。"
+          "description": "相对本清单目录的实现路径，使用 ./pc/、./mobile/ 或 ./shared/。旧产品清单兼容相对应用的 src/ 路径。"
         },
         "export": {
           "type": "string",
@@ -92,7 +92,7 @@
         "package": {
           "type": "string",
           "minLength": 1,
-          "description": "同名 @flow/biz-* workspace 包公开的 pc/ 或 mobile/ 子入口；与 path 二选一，不能引用 src、dist 或其他业务包。"
+          "description": "旧业务清单兼容同名 @flow/biz-* 包公开的 pc/ 或 mobile/ 子入口。新扩展使用相对清单的 path。"
         }
       },
       "oneOf": [

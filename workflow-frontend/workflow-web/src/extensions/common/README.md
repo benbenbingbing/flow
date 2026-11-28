@@ -1,6 +1,6 @@
 # 通用扩展实现
 
-存放不依赖某个业务实体的实现。当前已有 [金额校验器](#通用校验器)；其安装声明位于 `manifests/common/validators/`。
+存放不依赖某个业务实体的实现。当前已有 [金额校验器](#通用校验器)；其安装声明位于 `packages/workflow-extensions/src/extensions/common/validators/amount/`。
 
 ## 如何复用已有实现
 
@@ -10,12 +10,12 @@
 
 ## 如何新增通用扩展
 
-1. 根据类型创建目录，例如 `common/fields/` 或 `common/validators/`，组件从 [模板](../templates/README.md) 复制。
-2. 新增 `manifests/common/<类型>/<名称>.v1.extension.json`；`implementation.path` 指向刚创建的文件。
+1. 根据类型与注册名创建扩展目录，例如 `common/validators/amount/`，组件从 [模板](../../../../packages/workflow-extensions/templates/README.md) 复制。
+2. 在扩展目录创建清单与实现，例如 `amount.v1.extension.json` 与 `shared/AmountValidator.js`。
 3. 用 `configSchema` 声明变化参数，避免在代码中固定某个实体编码、字段名或业务额度。确有范围要求则声明 `supportedEntityCodes`。
 4. 从 `workflow-frontend/workflow-web/` 执行 `npm run extensions:check`、`npm run test:extensions`、`npm run build`，然后在两个不同实体配置不同参数验证复用行为。
 
-CLASS、OBJECT、FACTORY 的选择和清单示例见 [通用清单说明](../../../../packages/workflow-extensions/manifests/README.md)。
+CLASS、OBJECT、FACTORY 的选择和清单示例见 [通用清单说明](../../../../packages/workflow-extensions/src/extensions/README.md)。
 
 ## 通用校验器
 
@@ -45,11 +45,11 @@ SUBMIT 会执行全部已绑定规则，`triggers` 只控制输入时的反馈�
 
 ### 在独立代码中调用
 
-下面代码可放在项目 JS 模块中；别名 `@` 由 Vite 解析：
+以下示例使用本扩展目录内的相对路径。
 
 ```js
-import { AmountValidator } from '@/extensions/common/validators/AmountValidator.js'
-import { validateCustomValue } from '@/extensions/contracts/validation.js'
+import { AmountValidator } from './shared/AmountValidator.js'
+import { validateCustomValue } from '@flow/workflow-extensions/contracts/validation'
 
 const result = await validateCustomValue(new AmountValidator(), 1001, {
   params: { maxAmount: 1000 }
@@ -57,7 +57,7 @@ const result = await validateCustomValue(new AmountValidator(), 1001, {
 // result 为 { valid: false, message: '金额不能超过 1000' }
 ```
 
-不要用 `if (validator.validate(...))` 判断成功，因为错误文本也是 truthy。Element Plus 页面可使用 `createElementPlusValidator`，完整示例见 [ValidatedAmountForm.vue](../examples/contracts/ValidatedAmountForm.vue)。
+不要用 `if (validator.validate(...))` 判断成功，因为错误文本也是 truthy。Element Plus 页面可使用 `createElementPlusValidator`，完整示例见 [ValidatedAmountForm.vue](../../../../packages/workflow-extensions/src/extensions/examples/contracts/validators/contract_required/pc/ValidatedAmountForm.vue)。
 
 ### 新增规则与验证
 

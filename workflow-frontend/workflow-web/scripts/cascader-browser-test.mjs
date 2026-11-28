@@ -12,7 +12,7 @@ import { createApp, h, reactive, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import 'vant/lib/index.css'
-import PcField from '/src/extensions/builtin/fields/components/CascaderField.vue'
+import PcField from '/@fs${path.resolve('../packages/workflow-extensions/src/extensions/platform/fields/cascader/pc/CascaderField.vue').split(path.sep).join('/')}'
 import MobileField from '/@fs/${path.resolve('../packages/workflow-mobile-ui/src/fields/MobileCascaderField.vue')}'
 const state=reactive({values:{pc:[],mobile:[]},requests:[],changes:[],failure:false,delayed:false,dependency:0,disabled:false,version:0,mode:'CHILDREN'})
 const pending=[]

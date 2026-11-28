@@ -9,11 +9,11 @@ import path from 'node:path'
 // 用真实注册入口和 Vue 组件验证 JSON 链路；测试不登录、不调用业务接口。
 const root = fileURLToPath(new URL('..', import.meta.url))
 const fixture = mkdtempSync(path.join(root, '.extension-browser-'))
-const implementationFolder = mkdtempSync(path.join(root, 'src/extensions/examples/.browser-'))
-const manifestFolder = mkdtempSync(path.join(root, '../packages/workflow-extensions/manifests/common/.browser-'))
+const manifestFolder = mkdtempSync(path.join(root, '../packages/workflow-extensions/src/extensions/common/.browser-'))
+const implementationFolder = path.join(manifestFolder, 'pc')
+mkdirSync(implementationFolder)
 const profile = mkdtempSync(path.join(tmpdir(), 'extension-chrome-'))
 const manifestPath = path.join(manifestFolder, 'temporary.extension.json')
-const relative = filename => path.relative(root, filename).split(path.sep).join('/')
 const harness = `
 import { createApp, h } from 'vue'
 import ElementPlus from 'element-plus'
@@ -132,7 +132,7 @@ try {
   // 新增实现和 JSON，完全不更改注册入口；校验 add/change/unlink 三类真实文件监听。
   const implementationPath = path.join(implementationFolder, 'TemporaryCell.vue')
   writeFileSync(implementationPath, '<template><span>JSON 自动发现组件</span></template>')
-  const manifest = { schemaVersion: 1, type: 'LIST_CELL', name: 'BrowserTemporaryCell', label: '临时组件', version: 1, implementation: { path: relative(implementationPath), export: 'default', kind: 'COMPONENT' } }
+  const manifest = { schemaVersion: 1, type: 'LIST_CELL', name: 'BrowserTemporaryCell', label: '临时组件', version: 1, implementation: { path: './pc/TemporaryCell.vue', export: 'default', kind: 'COMPONENT' } }
   let boot = await evaluate('extensionTest.boot')
   writeFileSync(manifestPath, JSON.stringify(manifest)); await ready(boot)
   assert.equal(await evaluate('document.querySelector("#added").textContent'), 'JSON 自动发现组件')
@@ -150,5 +150,5 @@ try {
 } finally {
   ws?.close(); browser?.kill(); await server?.close()
   await sleep(200)
-  for (const directory of [fixture, implementationFolder, manifestFolder, profile]) rmSync(directory, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 })
+  for (const directory of [fixture, manifestFolder, profile]) rmSync(directory, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 })
 }

@@ -17,7 +17,7 @@ export function generateMobileExtensions(options = {}) {
     if (!['FIELD', 'FORM', 'VALIDATOR', 'FIELD_EVENT_HANDLER'].includes(entry.type)) throw new Error(`尚不支持的移动扩展类型：${entry.type}`)
     const kinds = entry.type === 'VALIDATOR' ? ['OBJECT', 'CLASS', 'FACTORY'] : entry.type === 'FIELD_EVENT_HANDLER' ? ['FUNCTION'] : ['COMPONENT']
     if (!kinds.includes(implementation.kind)) throw new Error(`移动扩展实现类型不符：${entry.name}`)
-    const filename = implementationImport(root, implementation)
+    const filename = implementationImport(root, implementation, entry.sourceFile)
     const variable = `extension${index}`
     imports.push(`import ${implementation.export === 'default' ? variable : `{ ${implementation.export} as ${variable} }`} from ${JSON.stringify(filename)}`)
     if (entry.type === 'FIELD_EVENT_HANDLER') {
@@ -48,7 +48,9 @@ export function mobileExtensionsPlugin(options = {}) {
       const implementationRoot = path.join(options.repositoryRoot || repository, 'workflow-mobile')
       const readFieldImplementations = () => new Set(discoverExtensions(implementationRoot, { ...options, platform: 'mobile', implementationRoot })
         .filter(entry => entry.type === 'FIELD' && entry.platforms?.mobile)
-        .flatMap(entry => implementationWatchFiles(implementationRoot, entry.platforms.mobile.implementation, { ...options, moduleId: entry.module, platform: 'mobile' })))
+        .flatMap(entry => implementationWatchFiles(implementationRoot, entry.platforms.mobile.implementation, {
+          ...options, moduleId: entry.module, platform: 'mobile', sourceFile: entry.sourceFile
+        })))
       let fieldImplementations = readFieldImplementations()
       server.watcher.add(extensionWatchDirectories(options))
       server.watcher.add(configFile)

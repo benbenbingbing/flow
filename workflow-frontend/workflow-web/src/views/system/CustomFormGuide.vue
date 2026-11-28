@@ -114,7 +114,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
   "label": "评分",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/fields/RatingField.vue",
+    "path": "./pc/RatingField.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -148,7 +148,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
   "label": "risk-matrix",
   "version": 3,
   "implementation": {
-    "path": "src/extensions/common/fields/RiskMatrixField.vue",
+    "path": "./pc/RiskMatrixField.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -213,7 +213,7 @@ const emit = defineEmits([
   "label": "项目分步表单",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/forms/ProjectWizardForm.vue",
+    "path": "./pc/ProjectWizardForm.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -376,8 +376,8 @@ defineExpose({ validate })
         <section id="demo" class="guide-section">
           <h3>13. 可运行 Demo</h3>
           <ul class="check-list">
-            <li>`src/extensions/examples/demo/forms/DemoProjectForm.vue`：统一业务字段对象、四种模式、字段级显隐/只读、联动状态和异步 `validate`。</li>
-            <li>`packages/workflow-extensions/manifests/examples/demo/`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
+            <li>`packages/workflow-extensions/src/extensions/examples/demo/forms/DemoProjectForm/pc/DemoProjectForm.vue`：统一业务字段对象、四种模式、字段级显隐/只读、联动状态和异步 `validate`。</li>
+            <li>`packages/workflow-extensions/src/extensions/examples/demo/`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
             <li>真实验证流程把该表单同时配置为新增默认表单和审批节点表单，审批后将风险评分从 58 回写为 35。</li>
             <li>执行 `npm run test:demo:real`；实体、流程、表单和数据 ID 记录在 `docs/dynamic-extension-demo/latest.json`。</li>
           </ul>

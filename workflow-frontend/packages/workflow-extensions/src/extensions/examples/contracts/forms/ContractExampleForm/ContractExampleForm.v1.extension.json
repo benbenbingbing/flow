@@ -1,0 +1,38 @@
+{
+  "$schema": "../../../../../../schemas/extension.schema.json",
+  "$comment": "用途：契约示例·整表单。name=ContractExampleForm 是业务配置的稳定引用，移动文件时保持注册名。 在实体表单中选择 name，实例参数由 viewConfig.customComponentProps 传入 config。 实现入口相对于本清单目录。 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。 usageContexts=PAGE 用于普通页面；关联内容组件必须使用独立契约。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
+  "schemaVersion": 1,
+  "type": "FORM",
+  "name": "ContractExampleForm",
+  "label": "契约示例·整表单",
+  "description": "",
+  "version": 1,
+  "enabled": false,
+  "implementation": {
+    "path": "./pc/CustomFormTemplate.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedModes": [
+      "create",
+      "edit",
+      "approve",
+      "view"
+    ],
+    "capabilities": {
+      "exposesValidate": true
+    },
+    "configSchema": [
+      {
+        "key": "title",
+        "label": "标题",
+        "type": "text",
+        "description": "当前组件实例显示的标题；只改变展示文案，不修改实体或表单的业务名称。"
+      }
+    ],
+    "usageContexts": [
+      "PAGE"
+    ]
+  }
+}

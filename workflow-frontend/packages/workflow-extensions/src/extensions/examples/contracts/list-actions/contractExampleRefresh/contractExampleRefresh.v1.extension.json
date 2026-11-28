@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../../../schemas/extension.schema.json",
+  "$comment": "用途：contractExampleRefresh。name=contractExampleRefresh 是业务配置的稳定引用，移动文件时保持注册名。 在列表按钮 customHandler 或选择回调 selectionHandler 中填写 name；处理器在交互时收到 context，启动时不会执行。 实现入口相对于本清单目录。 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。 targets=TOOLBAR,ROW 决定安装到工具栏或行动作表；双位置共享同一函数。",
+  "schemaVersion": 1,
+  "type": "LIST_ACTION",
+  "name": "contractExampleRefresh",
+  "label": "contractExampleRefresh",
+  "description": "",
+  "version": 1,
+  "enabled": false,
+  "implementation": {
+    "path": "./pc/refreshAction.js",
+    "export": "refreshAction",
+    "kind": "FUNCTION"
+  },
+  "metadata": {},
+  "targets": [
+    "TOOLBAR",
+    "ROW"
+  ]
+}

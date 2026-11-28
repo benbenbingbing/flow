@@ -14,7 +14,8 @@ export function flowExtensionsPlugin(options = {}) {
   let fieldImplementations = new Set()
   const refresh = () => {
     const entries = discoverExtensions(root, options)
-    fieldImplementations = new Set(entries.filter(entry => entry.type === 'FIELD').flatMap(entry => implementationWatchFiles(root, entry.implementation, { ...options, moduleId: entry.module })))
+    fieldImplementations = new Set(entries.filter(entry => entry.type === 'FIELD').flatMap(entry =>
+      implementationWatchFiles(root, entry.implementation, { ...options, moduleId: entry.module, sourceFile: entry.sourceFile })))
     writeFieldDefinitions(entries, root)
     return entries
   }

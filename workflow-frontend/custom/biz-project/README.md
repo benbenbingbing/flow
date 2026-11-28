@@ -3,22 +3,9 @@
 `@flow/biz-project` 包含项目成员变更、项目验收以及相关列表、字段和动作。
 项目专属实现、扩展清单和测试均在本目录维护。
 
-| 目录 | 职责 |
-| --- | --- |
-| `src/shared` | PC 和移动端共用的成员变更、验收模型 |
-| `src/api` | 使用宿主请求能力组装业务查询 |
-| `src/pc` | PC/Embed 表单、字段、列表、按钮和动作 |
-| `src/mobile` | 移动表单和字段 |
-| `manifests` | 稳定注册名、版本、参数声明及两端实现入口 |
-| `tests` | 业务模型与接入约束回归 |
+`src/extensions/<类型>/<注册名>/` 包含同一扩展的 JSON、各端实现及专属测试。PC 与 Embed 在 `pc/`，移动端在 `mobile/`，扩展自己的跨端逻辑在 `shared/`。跨扩展的验收用例在模块根的 `tests/`。
 
-清单顶层 `implementation.package` 指向 `@flow/biz-project/pc/...`；
-移动端实现由同一清单的 `platforms.mobile.implementation.package` 指向 `/mobile/...`。
-只在 PC 提供的扩展不声明移动实现，不会被移动端加载。
-
-新增内部辅助组件无需编写清单；需要让设计器或运行时选择的扩展才新增声明。
-按需要更新本包 `exports`，通过 `@flow/workflow-extensions/contracts/*` 与 `/host`
-使用产品契约及宿主能力，不访问应用私有源码。
+清单使用相对目录的 `implementation.path`，移动端使用 `platforms.mobile.implementation.path`。运行依赖写在本包的 `package.json`，业务实现按需使用 `@flow/workflow-extensions/contracts/*` 和 `/host`。
 
 在前端根目录 `workflow-frontend/` 执行：
 
@@ -34,5 +21,5 @@ FLOW_FRONTEND_MODULES=none npm run build
 注册名、版本及制品摘要校验遵循原协议；仅移动目录不要求修改业务参数结构。
 
 - [业务模块开发](../../../docs/frontend-business-modules.md)
-- [清单配置手册](../../packages/workflow-extensions/manifests/README.md)
+- [清单配置手册](../../packages/workflow-extensions/src/extensions/README.md)
 - [项目业务验收](../../../docs/project-extension-acceptance/README.md)

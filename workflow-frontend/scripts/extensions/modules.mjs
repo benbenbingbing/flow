@@ -12,10 +12,12 @@ export const businessModulePattern = /^biz-[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 export function extensionLayout(options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('模块选项必须为对象；不再接受旧清单目录参数')
   const root = path.resolve(options.repositoryRoot || frontendRoot)
+  const product = path.join(root, 'packages/workflow-extensions')
+  const extensions = path.join(product, 'src/extensions')
   return {
     root,
     customDirectory: path.join(root, 'custom'),
-    manifestDirectory: options.manifestDirectory || path.join(root, 'packages/workflow-extensions/manifests'),
+    manifestDirectory: options.manifestDirectory || (existsSync(extensions) ? extensions : path.join(product, 'manifests')),
     moduleConfigFile: options.moduleConfigFile || path.join(root, 'config/frontend-modules.json')
   }
 }
@@ -27,7 +29,7 @@ export function extensionLayout(options = {}) {
  */
 export function discoverBusinessModules(options = {}) {
   const { root, customDirectory: directory } = extensionLayout(options)
-  if (existsSync(path.join(root, 'extensions/manifests'))) throw new Error('旧扩展目录 extensions/manifests 已停用；产品清单放 packages/workflow-extensions/manifests，业务清单放 custom/biz-*/manifests')
+  if (existsSync(path.join(root, 'extensions/manifests'))) throw new Error('旧扩展目录 extensions/manifests 已停用；请随所属产品包或业务包维护扩展')
   const packages = path.join(root, 'packages')
   if (existsSync(packages)) {
     for (const entry of readdirSync(packages, { withFileTypes: true })) {
@@ -47,8 +49,13 @@ export function discoverBusinessModules(options = {}) {
     const descriptor = JSON.parse(readFileSync(packageFile, 'utf8'))
     const name = `@flow/${entry.name}`
     if (descriptor.name !== name) throw new Error(`业务包名称不匹配：custom/${entry.name} 必须声明 ${name}`)
-    const manifests = path.join(moduleDirectory, 'manifests')
-    if (!statSync(manifests).isDirectory() || realpathSync(manifests) !== path.join(realpathSync(moduleDirectory), 'manifests')) throw new Error(`业务清单目录必须属于本模块：${manifests}`)
+    const extensions = path.join(moduleDirectory, 'src/extensions')
+    const legacy = path.join(moduleDirectory, 'manifests')
+    // 已接入的第三方包可以按模块迁移，同一个包只能使用一个清单根。
+    if (existsSync(extensions) && existsSync(legacy)) throw new Error(`业务模块只能使用一个扩展目录：${moduleDirectory}`)
+    const manifests = existsSync(extensions) ? extensions : legacy
+    const expected = path.join(realpathSync(moduleDirectory), path.relative(moduleDirectory, manifests))
+    if (!statSync(manifests).isDirectory() || realpathSync(manifests) !== expected) throw new Error(`业务清单目录必须属于本模块：${manifests}`)
     modules.set(entry.name, { id: entry.name, name, directory: moduleDirectory, manifestDirectory: manifests })
   }
   return modules

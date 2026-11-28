@@ -1,0 +1,73 @@
+{
+  "$schema": "../../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "VALIDATOR",
+  "name": "date_range",
+  "label": "日期范围",
+  "description": "校验当前字段的日历日期。至少配置一个边界，每个边界可选固定日期或相对今天的天数。日期时间按日期部分判断，空值由必填规则处理。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "./shared/dateRangeValidator.js",
+    "export": "DateRangeValidator",
+    "kind": "CLASS"
+  },
+  "metadata": {
+    "supportedEntityCodes": ["*"],
+    "supportedFieldTypes": ["DATE", "DATETIME"],
+    "configSchema": [
+      {
+        "key": "minDate",
+        "label": "最早日期",
+        "type": "text",
+        "description": "固定下限，格式为 YYYY-MM-DD。设置此项时请留空下限偏移。"
+      },
+      {
+        "key": "minDaysFromToday",
+        "label": "下限偏移",
+        "type": "number",
+        "description": "从设备当天起算的整数日历天数。-7 为七天前，0 为今天。"
+      },
+      {
+        "key": "includeMin",
+        "label": "包含下限",
+        "type": "boolean",
+        "defaultValue": true,
+        "description": "开启时允许选择最早日期当天。"
+      },
+      {
+        "key": "maxDate",
+        "label": "最晚日期",
+        "type": "text",
+        "description": "固定上限，格式为 YYYY-MM-DD。设置此项时请留空上限偏移。"
+      },
+      {
+        "key": "maxDaysFromToday",
+        "label": "上限偏移",
+        "type": "number",
+        "description": "从设备当天起算的整数日历天数。0 为今天，7 为七天后。"
+      },
+      {
+        "key": "includeMax",
+        "label": "包含上限",
+        "type": "boolean",
+        "defaultValue": true,
+        "description": "开启时允许选择最晚日期当天。"
+      }
+    ]
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "./shared/dateRangeValidator.js",
+        "export": "DateRangeValidator",
+        "kind": "CLASS"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
+  }
+}

@@ -7,9 +7,9 @@ import path from 'node:path'
 
 // 挂载真实设计器和节点树运行时；全部接口走内存适配器，不读取或改写业务配置。
 const summary = JSON.parse(readFileSync('../custom/biz-project/manifests/fields/ProjectAcceptanceSummaryNode.v1.extension.json', 'utf8'))
-const password = JSON.parse(readFileSync('../packages/workflow-extensions/manifests/platform/fields/password.v1.extension.json', 'utf8'))
+const password = JSON.parse(readFileSync('../packages/workflow-extensions/src/extensions/platform/fields/password/password.v1.extension.json', 'utf8'))
 const additionalComponents = ['data_picker', 'cascader', 'reference', 'multi_reference'].map(name =>
- JSON.parse(readFileSync(`../packages/workflow-extensions/manifests/platform/fields/${name}.v1.extension.json`, 'utf8')))
+ JSON.parse(readFileSync(`../packages/workflow-extensions/src/extensions/platform/fields/${name}/${name}.v1.extension.json`, 'utf8')))
 const harness = `
 import {createApp,h,reactive,nextTick} from 'vue'
 import {createPinia} from 'pinia'
@@ -18,7 +18,7 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import Designer from '/src/views/EntityFormDesignByEntity.vue'
 import Runtime from '/src/components/FormPreviewLinkage.vue'
-import TextField from '/src/extensions/builtin/fields/components/TextField.vue'
+import TextField from '/@fs${path.resolve('../packages/workflow-extensions/src/extensions/platform/fields/input/pc/TextField.vue').split(path.sep).join('/')}'
 import MobileField from '/@fs/${path.resolve('../packages/workflow-mobile-ui/src/fields/MobileFieldRenderer.vue')}'
 import 'vant/lib/index.css'
 import Summary from '@flow/biz-project/pc/fields/ProjectAcceptanceSummaryField'

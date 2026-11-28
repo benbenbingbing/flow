@@ -19,7 +19,7 @@
     "build:mobile": "npm run build:packages && npm run build --workspace workflow-mobile",
     "build": "npm run build:packages && npm run build --workspace workflow-web && npm run build --workspace workflow-mobile",
     "test:web": "npm run build:packages && npm run test --workspace workflow-web",
-    "test:packages": "node --test packages/*/tests/*.test.mjs",
+    "test:packages": "node --test packages/*/tests/*.test.mjs 'packages/workflow-extensions/src/extensions/common/validators/**/tests/*.test.mjs'",
     "test:mobile": "npm run test --workspace workflow-mobile",
     "dev:web": "node scripts/dev-workspace.mjs web",
     "dev:mobile": "node scripts/dev-workspace.mjs mobile",

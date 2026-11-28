@@ -41,9 +41,9 @@ npm run build
 | --- | --- |
 | `workflow-mobile/src/pages` | 登录、列表、详情与审批编排 |
 | `workflow-mobile/src/adapters` | 会话、Vant 提示、字段事件、上传和受控候选查询 |
-| `workflow-mobile/src/extensions` | 通用扩展与产品 Demo |
-| `custom/biz-project/src/mobile` | 项目验收、成员变更等移动业务扩展 |
-| `custom/biz-project/src/shared`、`src/api` | 项目专属跨端规则与接口组装 |
+| `packages/workflow-extensions/src/extensions` | 系统扩展和 Demo 的移动实现，与清单同目录 |
+| `custom/biz-project/src/extensions/<类型>/<注册名>/mobile` | 项目验收、成员变更等移动业务扩展 |
+| `custom/biz-project/src/extensions/<类型>/<注册名>/shared` | 单个扩展的跨端规则及接口组装 |
 | `packages/workflow-extensions/src` | 产品公开契约及按应用隔离的宿主能力 |
 | `packages/workflow-mobile-ui/src` | 表单、字段、子表、附件、选择器、审批面板和主题 |
 | `packages/workflow-core/src` | 发布模型、校验、联动、参数、流程规则及无 UI composables |
@@ -59,14 +59,14 @@ PC 引入移动 UI 会构建失败；产物中的 `module-boundary.json` 可检�
 ## 扩展和能力限制
 
 扩展身份仍使用原 manifest 的 `type + name + version`。在
-`custom/biz-project/manifests/` 的对应清单中声明移动业务实现：
+`custom/biz-project/src/extensions/forms/ProjectMemberChangeForm/` 的同一份清单中声明移动业务实现：
 
 ```json
 {
   "platforms": {
     "mobile": {
       "implementation": {
-        "package": "@flow/biz-project/mobile/forms/ProjectMemberChangeForm",
+        "path": "./mobile/ProjectMemberChangeForm.vue",
         "export": "default",
         "kind": "COMPONENT"
       },
@@ -76,10 +76,9 @@ PC 引入移动 UI 会构建失败；产物中的 `module-boundary.json` 可检�
 }
 ```
 
-业务使用包的公开 `package` 入口；产品内置/通用扩展继续使用应用内 `path`，
-移动 path 相对 `workflow-mobile`，PC path 相对 `workflow-web`。
+产品和业务扩展的 `implementation.path` 都相对清单。移动端读取 `./mobile/` 或清单明确共用的 `./shared/` 实现。
 `scripts/mobile-extensions.mjs` 只生成移动实现的静态导入，缺少实现不回退到 PC。
-通用校验器放入 core；业务专属校验留在 `biz-*`，各平台通过清单装配。新增关键业务逻辑需要中文意图注释。
+产品通用校验器放在 `common/validators/`，业务专属校验归业务包，执行契约由核心包提供。新增关键业务逻辑需要中文意图注释。
 模块选择使用前端工作区的 `config/frontend-modules.json`，`FLOW_FRONTEND_MODULES=none` 构建基础产品；
 完整规则见 [前端业务模块开发](../../docs/frontend-business-modules.md)。
 

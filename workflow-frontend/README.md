@@ -18,14 +18,13 @@ workflow-frontend/
 │   ├── workflow-extensions/
 │   │   ├── src/contracts/              # 运行时契约
 │   │   ├── src/host/                   # 宿主能力注入
-│   │   ├── manifests/                  # platform/common/examples 产品清单
+│   │   ├── src/extensions/             # platform/common/examples 清单和实现
 │   │   └── schemas/                    # 所有清单共用的格式规范
 │   └── workflow-mobile-ui/
 ├── custom/                             # 自定义业务的唯一开发目录
 │   └── biz-project/
 │       ├── package.json
-│       ├── src/                        # shared/api/pc/mobile
-│       ├── manifests/                  # 同一业务的 PC/移动声明
+│       ├── src/extensions/             # 按类型和注册名聚合清单、PC/移动实现与测试
 │       ├── tests/
 │       └── README.md
 ├── config/frontend-modules.json        # 交付业务模块选择
@@ -35,7 +34,7 @@ workflow-frontend/
 
 仓库根的 `start.sh`、`.env`、`deploy/`、`.github/`、`docs/` 继续负责前后端启动、
 部署、CI 和仓库文档。前端 workspace 内的路径以本目录为基准；
-`implementation.path` 仍相对对应应用，`implementation.package` 仍使用包公开入口。
+`implementation.path` 相对同目录的扩展清单。PC/Embed 使用 `pc/`，移动端使用 `mobile/`，共用 JavaScript 可放入 `shared/`。
 
 ## 开发与构建
 
@@ -112,7 +111,7 @@ Docker daemon 未运行，未执行实际镜像构建；构建上下文、离线
 ## 开发文档
 
 - [业务模块、SDK、依赖边界与模块选择](../docs/frontend-business-modules.md)
-- [扩展注册声明手册](packages/workflow-extensions/manifests/README.md)
+- [扩展注册声明手册](packages/workflow-extensions/src/extensions/README.md)
 - [PC 扩展中心和模板](workflow-web/src/extensions/README.md)
 - [移动工作台](workflow-mobile/README.md)
 - [Embed 本地集成示例](examples/embed-local-demo/README.md)

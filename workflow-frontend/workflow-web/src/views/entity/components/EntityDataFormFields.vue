@@ -132,7 +132,7 @@ import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCros
 import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
 import { CROSS_FIELD_ERROR_CODE } from '@flow/workflow-core/form-cross-field-validation'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
-import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
+import SectionField from '../../../../../packages/workflow-extensions/src/extensions/platform/fields/section/pc/SectionField.vue'
 import { formRuleContext, LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
 import {

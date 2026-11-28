@@ -92,7 +92,7 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
           </CodeCard>
 
           <h4>2.4 注册：让设计器能选到</h4>
-          <p>业务模块在 <code>custom/biz-*/</code> 内同时提供实现与 <code>manifests/</code>；产品清单位于 <code>packages/workflow-extensions/manifests/</code>。平台构建自动发现并注册，新增组件不修改入口。examples 清单仅在开发环境或 <code>VITE_ENABLE_DEMO_EXTENSIONS=true</code> 时启用。</p>
+          <p>业务模块在 <code>custom/biz-*/src/extensions/</code> 内按类型和注册名聚合清单与实现；产品清单位于 <code>packages/workflow-extensions/src/extensions/</code>。平台构建自动发现并注册，新增组件不修改入口。examples 清单仅在开发环境或 <code>VITE_ENABLE_DEMO_EXTENSIONS=true</code> 时启用。</p>
           <CodeCard title="LIST_CELL JSON 清单" language="JSON">
             <pre v-pre><code>{
   "schemaVersion": 1,
@@ -101,7 +101,7 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
   "label": "风险进度",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/list-cells/RiskProgressCell.vue",
+    "path": "./pc/RiskProgressCell.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -166,7 +166,7 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
   "label": "普通文本",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/list-cells/PlainTextCell.vue",
+    "path": "./pc/PlainTextCell.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -180,7 +180,7 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
   "label": "报销风险",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/list-cells/ExpenseRiskCell.vue",
+    "path": "./pc/ExpenseRiskCell.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -198,7 +198,7 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
   "label": "金额条",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/list-cells/AmountBarCell.vue",
+    "path": "./pc/AmountBarCell.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -423,7 +423,7 @@ function reloadList() {
   "label": "风险进度",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/common/list-cells/RiskProgressCell.vue",
+    "path": "./pc/RiskProgressCell.vue",
     "export": "default",
     "kind": "COMPONENT"
   },

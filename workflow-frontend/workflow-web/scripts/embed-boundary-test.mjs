@@ -62,7 +62,7 @@ const sharedRequestSource = await source('src/shared/request/index.js') + await 
 const embedMainSource = await source('src/embed/embed-main.js')
 const adminMainSource = await source('src/main.js')
 const extensionEntrySource = await source('src/extensions/register.js')
-const projectFieldManifest = JSON.parse(await source('../custom/biz-project/manifests/fields/project_acceptance_score.v1.extension.json'))
+const projectFieldManifest = JSON.parse(await source('../custom/biz-project/src/extensions/fields/project_acceptance_score/project_acceptance_score.v1.extension.json'))
 const entityDialogSource = await source(
   'src/views/entity/components/EntityDataFormDialog.vue'
 )
@@ -80,11 +80,11 @@ const fieldRegistrySource = await source('src/extensions/core/registries/formFie
 const formPreviewSource = await source('src/components/FormPreviewLinkage.vue')
 const formNodeRuntimeSource = await source('src/components/FormNodeRuntimeItem.vue')
 const canonicalFieldSources = await Promise.all([
-  'DateField.vue',
-  'SelectField.vue',
-  'SwitchField.vue',
-  'RichTextField.vue'
-].map(filename => source(`src/extensions/builtin/fields/components/${filename}`)))
+  'date/pc/DateField.vue',
+  'select/pc/SelectField.vue',
+  'switch/pc/SwitchField.vue',
+  'rich_text/pc/RichTextField.vue'
+].map(filename => source(`../packages/workflow-extensions/src/extensions/platform/fields/${filename}`)))
 const bootstrapNormalizerSource = await source(
   'src/embed/projection/normalizeEmbedSchema.js'
 )
@@ -232,7 +232,7 @@ assert.match(embedMainSource, /registerApplicationExtensions/)
 assert.match(extensionEntrySource, /virtual:flow-extension-manifest/)
 assert.equal(projectFieldManifest.type, 'FIELD')
 assert.equal(projectFieldManifest.name, 'project_acceptance_score')
-assert.equal(projectFieldManifest.implementation.package, '@flow/biz-project/pc/fields/ProjectAcceptanceScoreField')
+assert.equal(projectFieldManifest.implementation.path, './pc/ProjectAcceptanceScoreField.vue')
 assert.match(fieldRegistrySource, /export function registerFormFieldComponent/)
 assert.match(fieldRegistrySource, /export function resolveFieldComponent/)
 assert.match(fieldRegistrySource, /getFormFieldComponentDescriptor\(componentType, field\?\.componentVersion\)/,

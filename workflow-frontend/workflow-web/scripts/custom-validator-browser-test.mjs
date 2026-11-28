@@ -13,11 +13,11 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import Preview from '/src/components/FormPreviewLinkage.vue'
 import Editor from '/src/components/FormCustomValidatorEditor.vue'
-import SubRow from '/src/extensions/builtin/fields/components/SubFormRowRuntime.vue'
+import SubRow from '/@fs${path.resolve('../packages/workflow-extensions/src/extensions/platform/fields/sub_form/pc/SubFormRowRuntime.vue').split(path.sep).join('/')}'
 import DataFields from '/src/views/entity/components/EntityDataFormFields.vue'
 import { registerApplicationExtensions } from '/src/extensions/register.js'
-import { AmountValidator } from '/src/extensions/common/validators/AmountValidator.js'
-import { registerCustomValidator } from '/src/extensions/core/registries/validatorRegistry.js'
+import { AmountValidator } from '/@fs${path.resolve('../packages/workflow-extensions/src/extensions/common/validators/amount/shared/AmountValidator.js').split(path.sep).join('/')}'
+import { registerCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
 import { registerCustomFormComponent } from '/src/extensions/core/registries/customComponentRegistry.js'
 import request from '/src/utils/request.js'
 request.defaults.adapter = async config => {
@@ -35,6 +35,11 @@ const config = (name='amount',params={maxAmount:1000}) => ({version:1,rules:[{na
 const amount = {id:'amount-node',fieldCode:'amount',fieldLabel:'金额',fieldType:'DECIMAL',componentType:'number',validationRules:{customValidators:config()}}
 const childField = {...amount,validationRules:{customValidators:config('childOnly',{})}}
 const blurField = {id:'blur-amount',fieldCode:'amount',fieldLabel:'数据名称',fieldType:'STRING',componentType:'input',validationRules:{customValidators:{version:1,rules:[{name:'blurAmount',version:1,params:{},triggers:['BLUR']}]}}}
+const dateField = {id:'date',fieldCode:'plannedDate',fieldLabel:'计划日期',fieldType:'DATE',componentType:'date',validationRules:{customValidators:config('date_range',{maxDate:'2026-06-30'})}}
+const phoneField = {id:'phone',fieldCode:'phone',fieldLabel:'手机',fieldType:'STRING',componentType:'input',validationRules:{customValidators:config('at_least_one_field',{fieldCodes:['phone','email','plannedDate'],message:'手机和邮箱至少填写一项'})}}
+const emailField = {id:'email',fieldCode:'email',fieldLabel:'邮箱',fieldType:'STRING',componentType:'input'}
+const commonForm = reactive({id:'common-form',fields:[dateField,phoneField,emailField]})
+const commonRecord = ref({plannedDate:'2026-07-01',phone:'',email:''})
 const amountNode = field => ({id:'amount-node',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'amount',propsDocument:{fieldCode:'amount',fieldType:'DECIMAL',componentType:'number',label:'金额'},rulesDocument:{validation:field.validationRules}})
 const state=reactive({entityCode:'expense',record:{amount:1200},readonly:false,custom:false,nodeTree:true,mode:'edit',form:{formName:'自定义校验',layoutType:'vertical',fields:[amount],nodes:[
 {id:'tabs',nodeType:'TAB_SET',propsDocument:{}},{id:'first',parentId:'tabs',nodeType:'TAB_PANE',propsDocument:{label:'基本'}},{id:'second',parentId:'tabs',nodeType:'TAB_PANE',propsDocument:{label:'金额'}},{...amountNode(amount),parentId:'second'}]}, childRecord:{amount:20}, childEntity:'child', childField, childNodes:[amountNode(childField)],
@@ -42,16 +47,18 @@ const state=reactive({entityCode:'expense',record:{amount:1200},readonly:false,c
  dataRecord:{data:{amount:1200}}, dataForm:{customComponent:'TestCustom',fields:[amount]},
  blurRecord:{amount:''},blurForm:{id:'blur-form',fields:[blurField]}
 })
-const preview=ref(),child=ref(),legacy=ref(),data=ref(),blurPreview=ref()
+const preview=ref(),child=ref(),legacy=ref(),data=ref(),blurPreview=ref(),commonPreview=ref()
 createApp({setup:()=>()=>h('main',{style:'padding:24px;max-width:900px'},[
  h('section',{id:'blur-runtime'},[h(Preview,{ref:blurPreview,form:state.blurForm,entityCode:'expense',mode:'edit',modelValue:state.blurRecord,'onUpdate:modelValue':v=>state.blurRecord=v}),h('button',{id:'blur-sink'},'下一项')]),
  h('section',{id:'editor'},[h(Editor,{field:state.form.fields[0],entityCode:state.entityCode,modelValue:state.form.fields[0].validationRules.customValidators,'onUpdate:modelValue':v=>{state.form.fields[0].validationRules.customValidators=v;state.form.nodes[3].rulesDocument.validation.customValidators=v}})]),
  h('section',{id:'runtime'},[h(Preview,{ref:preview,form:{...state.form,nodes:state.nodeTree?state.form.nodes:[],customComponent:state.custom?'TestCustom':undefined},entityCode:state.entityCode,mode:state.mode,readonly:state.readonly,modelValue:state.record,'onUpdate:modelValue':v=>state.record=v})]),
  h('section',{id:'child'},[h(SubRow,{ref:child,form:{},fields:[state.childField],nodes:state.childNodes,row:state.childRecord,mode:'edit',context:{entityCode:state.childEntity},'onUpdate:modelValue':v=>state.childRecord=v})]),
  h('section',{id:'legacy'},[h(Preview,{ref:legacy,form:state.legacyForm,entityCode:'expense',mode:'edit',modelValue:state.legacyRecord,'onUpdate:modelValue':v=>state.legacyRecord=v})]),
- h('section',{id:'data'},[h(DataFields,{ref:data,defaultForm:state.dataForm,entityCode:'expense',entityDefinition:{},entityFields:[amount],isEdit:false,skipDataSourcePrevalidation:true,formData:state.dataRecord,'onUpdate:formData':v=>state.dataRecord=v})])
+ h('section',{id:'data'},[h(DataFields,{ref:data,defaultForm:state.dataForm,entityCode:'expense',entityDefinition:{},entityFields:[amount],isEdit:false,skipDataSourcePrevalidation:true,formData:state.dataRecord,'onUpdate:formData':v=>state.dataRecord=v})]),
+ h('section',{id:'common-editor'},[h(Editor,{field:commonForm.fields[1],entityCode:'expense',modelValue:commonForm.fields[1].validationRules.customValidators,'onUpdate:modelValue':v=>commonForm.fields[1].validationRules.customValidators=v})]),
+ h('section',{id:'common-runtime'},[h(Preview,{ref:commonPreview,form:commonForm,entityCode:'expense',mode:'edit',modelValue:commonRecord.value,'onUpdate:modelValue':v=>commonRecord.value=v})])
 ])}).use(createPinia()).use(ElementPlus).mount('#app')
-window.customTest={state,getBlurCalls:()=>blurCalls,validateBlur:()=>blurPreview.value.validate(),validate:()=>preview.value.validate(),validateChild:()=>child.value.validate(),validateLegacy:()=>legacy.value.validate(),validateData:()=>data.value.validate(),async settle(){await nextTick();await new Promise(resolve=>setTimeout(resolve,150));await nextTick()}}
+window.customTest={state,commonForm,commonRecord,getBlurCalls:()=>blurCalls,validateBlur:()=>blurPreview.value.validate(),validate:()=>preview.value.validate(),validateChild:()=>child.value.validate(),validateLegacy:()=>legacy.value.validate(),validateData:()=>data.value.validate(),validateCommon:()=>commonPreview.value.validate(),async settle(){await nextTick();await new Promise(resolve=>setTimeout(resolve,150));await nextTick()}}
 `
 const fixture = mkdtempSync(path.resolve('.custom-validator-fixture-'))
 writeFileSync(path.join(fixture,'index.html'), '<html><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>')
@@ -168,8 +175,27 @@ try {
   assert.deepEqual(await evaluate('JSON.parse(JSON.stringify(customTest.state.form.fields[0].validationRules.customValidators))'),{version:1,rules:[]})
   await evaluate("[...document.querySelectorAll('#editor button')].find(b=>b.textContent.includes('添加校验器')).click();customTest.settle()")
   assert.equal(await evaluate('customTest.state.form.fields[0].validationRules.customValidators.rules[0].params.maxAmount'),1000)
+  await evaluate(`(() => {
+    const input = document.querySelector('#common-editor textarea')
+    input.value = '["phone", "email"]'
+    input.dispatchEvent(new Event('input', {bubbles:true}))
+    input.dispatchEvent(new Event('change', {bubbles:true}))
+  })();customTest.settle()`)
+  assert.deepEqual(await evaluate('JSON.parse(JSON.stringify(customTest.commonForm.fields[1].validationRules.customValidators.rules[0].params.fieldCodes))'), ['phone', 'email'])
+  assert.equal(await evaluate('customTest.validateCommon()'), false)
+  await evaluate('customTest.settle()')
+  const commonErrors = '[...document.querySelectorAll("#common-runtime .custom-validation-error")].map(el => el.textContent.trim())'
+  assert.deepEqual(await evaluate(commonErrors), ['日期不能晚于 2026-06-30', '手机和邮箱至少填写一项'])
+  await evaluate("document.querySelectorAll('#common-runtime input')[2].focus()")
+  await send('Input.insertText', { text: 'user@example.com' })
+  await evaluate('customTest.settle()')
+  assert.equal(await evaluate('customTest.commonRecord.value.email'), 'user@example.com')
+  assert.deepEqual(await evaluate(commonErrors), ['日期不能晚于 2026-06-30'], '修改另一字段后清除绑定字段上的组合校验错误')
+  await evaluate("customTest.commonRecord.value.plannedDate='2026-06-30';customTest.settle()")
+  assert.equal(await evaluate('customTest.validateCommon()'), true)
+  assert.deepEqual(await evaluate(commonErrors), [])
   assert.deepEqual(browserErrors,[])
-  console.log('custom validator browser acceptance passed: strict BLUR after validation/submit while typing, delayed CHANGE, inline errors only, correction, editor, tab reveal, flat/custom forms, child scope, legacy child submission, create/edit host, approve, readonly, hidden, explicit removal')
+  console.log('custom validator browser acceptance passed: strict BLUR after validation/submit while typing, delayed CHANGE, inline errors only, correction, editor, tab reveal, flat/custom forms, child scope, legacy child submission, create/edit host, approve, readonly, hidden, explicit removal, date range and at least one field')
 } finally {
   ws?.close();browser?.kill();await server?.close()
   await sleep(200)

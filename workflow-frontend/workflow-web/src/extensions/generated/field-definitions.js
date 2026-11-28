@@ -1,4 +1,4 @@
-/** 自动生成：仅修改 manifests/platform/fields/*.extension.json，然后运行 npm run extensions:generate。 */
+/** 自动生成：修改平台字段扩展目录中的清单后，运行 npm run extensions:generate。 */
 export default [
   {
     "name": "cascader",

@@ -18,18 +18,16 @@ flow/workflow-frontend/
 │   └── workflow-extensions/
 │       ├── src/contracts/              # 公开运行时契约
 │       ├── src/host/                   # 按应用隔离的宿主能力
-│       ├── manifests/                  # platform/common/examples
+│       ├── src/extensions/             # platform/common/examples，声明和实现按扩展聚合
 │       ├── schemas/                    # 共用清单 Schema
 │       └── tests/
 ├── custom/                             # 自定义模块，不混入产品源码
 │   └── biz-project/
 │       ├── package.json                # 显式依赖及各端公开入口
 │       ├── src/
-│       │   ├── shared/                 # 跨端业务模型
-│       │   ├── api/                    # 项目 API 组装
-│       │   ├── pc/                     # PC 表单、字段、列表、动作
-│       │   └── mobile/                 # 移动表单和字段
-│       ├── manifests/                  # 该业务全部扩展声明
+│       │   ├── extensions/             # 类型/注册名/清单、pc、mobile、shared、tests
+│       │   ├── shared/                 # 多个扩展共享的业务模型，按需创建
+│       │   └── api/                    # 多个扩展共用的 API，按需创建
 │       ├── tests/
 │       └── README.md
 ├── workflow-web/src/adapters/extensionHost.js
@@ -41,9 +39,9 @@ flow/workflow-frontend/
 ```
 
 业务实现与清单统一放在 `custom/biz-project/`，新业务同样使用 `custom/biz-名称/`。
-业务开发只维护自己模块的实现、公开入口和清单，并在交付配置中选择模块。
-`packages/workflow-extensions` 合并原 SDK、产品清单和 Schema；产品组件实现仍留在所属产品包或应用。
-运行时入口只导出契约和宿主能力，构建器单独读取 `manifests` 和 `schemas`，导入契约不会注册产品扩展。
+新增已有类型的业务扩展只维护本模块的清单、实现及专属测试。首次接入模块时在交付配置中选择模块。
+`packages/workflow-extensions` 合并原 SDK、产品清单和 Schema；系统扩展的专属实现随清单放在同一目录。
+运行时入口只导出契约和宿主能力，构建器单独读取扩展目录与 `schemas`，导入契约不会注册产品扩展。
 
 PC 与移动端扫描同一份业务清单：PC/Embed 使用顶层 `implementation`，移动端仅使用
 `platforms.mobile.implementation`。未声明移动实现时不会加载 PC 组件，目录搬迁不改变这一规则。
@@ -133,43 +131,24 @@ PC/Embed 宿主提供 `entityDataApi`、`uiEventBindingApi`、`showRequestError`
 
 ## 新增业务扩展
 
-1. 创建 `custom/biz-order/package.json` 和 `manifests/`，命名为 `@flow/biz-order`；workspace 已覆盖 `custom/*`，声明实际依赖，
-   在 `exports` 中分别公开 `./shared/*`、`./api/*`、`./pc/*`、`./mobile/*` 中需要接入的具体入口。
-2. 在 `src` 中实现业务。可从产品扩展模板复制，复制后将应用私有导入替换为 SDK 契约/宿主能力。
-   业务模块不自行注册，不修改产品注册表或产品页面。
-3. 在 `custom/biz-order/manifests/<类型>/` 新增清单。业务实现使用 `implementation.package`：
+1. 创建 `custom/biz-order/package.json`，命名为 `@flow/biz-order`，并声明模块需要的运行依赖。首次接入时把该模块加入交付配置并更新工作区锁文件。
+2. 创建 `custom/biz-order/src/extensions/fields/OrderNoteField/`，把清单和实现放在一起。
 
-```json
-{
-  "implementation": {
-    "package": "@flow/biz-order/pc/fields/OrderNoteField",
-    "export": "default",
-    "kind": "COMPONENT"
-  },
-  "platforms": {
-    "mobile": {
-      "implementation": {
-        "package": "@flow/biz-order/mobile/fields/OrderNoteField",
-        "export": "default",
-        "kind": "COMPONENT"
-      }
-    }
-  }
-}
+```text
+OrderNoteField/
+├── OrderNoteField.v1.extension.json
+├── pc/OrderNoteField.vue
+├── mobile/OrderNoteField.vue
+└── tests/
 ```
 
-上面只展示实现入口，完整清单仍需要 `schemaVersion/type/name/version/metadata` 等字段，见
-[清单手册](../workflow-frontend/packages/workflow-extensions/manifests/README.md)。`package` 和应用内 `path` 二选一；
-业务入口必须属于同名业务包，路径和平台受校验。未实现移动端时不声明 `platforms.mobile`，不会回退加载 PC。
+顶层 `implementation.path` 写 `./pc/OrderNoteField.vue`，`platforms.mobile.implementation.path` 写 `./mobile/OrderNoteField.vue`。两端共用的 JavaScript 可从同一份清单分别指向 `./shared/` 中的实现。构建器直接加载这些入口，业务包的 `exports` 用于确实需要给其他模块使用的接口。完整字段见 [清单手册](../workflow-frontend/packages/workflow-extensions/src/extensions/README.md)。
 
-4. 将 `biz-order` 加入启用配置，完成 workspace 安装和构建；在设计器中绑定稳定注册名、填写参数、发布。
-5. 验证新增、编辑、只读、审批和校验行为，以及禁用该模块后的基础产品构建。业务名、版本、配置参数
-   不能因为文件搬迁而随意更改，历史表单继续依赖这些稳定标识。
+3. 在设计器中绑定稳定注册名、配置参数并发布，按实际支持的平台验证。已发布表单继续按注册名、版本和制品摘要查找。
 
 ## 项目业务样板
 
-成员变更/验收模型在 `src/shared`，项目查询组装在 `src/api/memberChange.js`；
-PC 和移动表单各自维护视图，使用同一套模型和 API。PC 还提供评分单元格、项目看板、检查按钮、
+成员变更和项目验收分别在 `src/extensions/forms/` 下。每张表单的 PC 和移动实现共用该表单目录中的模型及接口。PC 还提供评分单元格、项目看板、检查按钮、
 列表动作、操作条件和权限候选项。内部辅助组件无需单独编写 JSON，只对需要注册的入口写清单。
 
 既有名称保留，包括 `ProjectMemberChangeForm`、`ProjectExtensionAcceptanceForm`、
@@ -183,8 +162,8 @@ PC 和移动表单各自维护视图，使用同一套模型和 API。PC 还提�
 FORM/LIST 的自动 `artifactDigest` 包含组件函数和组件属性，源码搬迁或构建变化可能改变摘要，
 它不是只由名称/版本计算的标识。普通表单/列表的名称和版本绑定与显式锁定制品摘要的配置应区别处理。
 
-本次未在正式环境使用这些项目自定义表单/列表，因此不增加旧摘要兼容映射，也不修改数据库快照。
-本地测试中若关联内容或自定义表单按钮保存了旧 `artifactDigest`，需在新构建的设计器中
+部署迁移后的构建时，应在目标环境验证锁定了自动摘要的已发布配置。
+若关联内容或自定义表单按钮保存了不再匹配的 `artifactDigest`，需在新构建的设计器中
 重新选择对应组件（必要时先清空再选择）并重新发布，使草稿与发布快照锁定新制品；不要手工清空
 发布配置中的摘要。关联内容配置在已有摘要非空时不会自动替换它，单纯打开并保存不会完成更新。
 

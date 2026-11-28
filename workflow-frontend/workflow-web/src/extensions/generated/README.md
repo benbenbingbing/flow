@@ -4,7 +4,7 @@
 
 ## 如何更新
 
-1. 修改 `manifests/platform/fields/*.extension.json` 中对应字段的别名、兼容类型或默认映射。
+1. 修改 `packages/workflow-extensions/src/extensions/platform/fields/<注册名>/*.extension.json` 中对应字段的别名、兼容类型或默认映射。
 2. 在 `workflow-frontend/workflow-web/` 执行：
 
 ```sh

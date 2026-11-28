@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../../schemas/extension.schema.json",
+  "$comment": "用途：默认文本。name=DefaultText 是业务配置的稳定引用，移动文件时保持注册名。 在列表列的 renderComponent 中选择 name；该列 renderConfig 作为 config 传入。 实现入口相对于本清单目录。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "DefaultText",
+  "label": "默认文本",
+  "description": "文本、数字和通用值的安全兜底显示。",
+  "version": 1,
+  "implementation": {
+    "path": "./pc/DefaultText.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "configSchema": [
+      {
+        "key": "emptyText",
+        "label": "空值文本",
+        "type": "text",
+        "defaultValue": "-",
+        "description": "没有展示值时显示的占位文字，不修改记录中的原值。"
+      }
+    ]
+  }
+}
