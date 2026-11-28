@@ -106,14 +106,14 @@ class FormContextDefaultsTest {
         EntityFormNode note = field("note", "currentDate");
         note.setPropsDocument("""
                 {"fieldCode":"note","fieldType":"STRING","componentProps":{"linkageRules":{"disabledConditionConfig":{"version":1,
-                  "root":{"type":"GROUP","logic":"AND","children":[{"type":"CONDITION","property":"ctx.currentTask.nodeKey",
-                    "operator":"==","value":"review"}]}}}}}
+                  "root":{"type":"GROUP","logic":"AND","children":[{"type":"CONDITION","property":"ctx.currentProcessNode.code",
+                    "operator":"==","value":"finance_review"}]}}}}}
                 """);
         EntityForm form = form(amount, result, note);
         var mapper = new ObjectMapper();
         var rules = new FormContextRules(new JsonDocumentCodec(mapper), new PublishedFormConditionEvaluator(mapper), mock(EntityFieldMapper.class));
         var entry = UiRuntimeResolutionContext.activeTask("release", "review", "todo-1", "flow-1", "expense", "record-1")
-                .withFormValues(Map.of("currentTask.nodeKey", "review"));
+                .withFormValues(Map.of("currentTask.nodeKey", "review", "currentProcessNode.code", "finance_review"));
         var values = defaults.runtime(form, entry, "approve");
         rules.validate(form);
         var submission = rules.new Submission(form, "approve", values, Map.of("note", "原值"), Map.of());

@@ -329,28 +329,31 @@ class NextApproverPublishValidationTest {
     }
 
     @Test
-    void rejectsVersionTwoMultiInstanceExpressionAssignment() {
+    void rejectsRemovedSourceEvenWithoutNextApproverConfiguration() {
         String config = """
                 {"assignmentConfigVersion":2,
                 "assigneeType":"expression",
-                "assigneeValue":"${owner}",
-                "candidateUsers":"${reviewers}",
-                "nextApproverSelection":{"version":1,
-                "visible":true,"editable":true,
-                "source":{"type":"NODE_ASSIGNMENT"}}}
+                "assigneeValue":"${owner}"}
                 """;
-        String loop = "<bpmn:multiInstanceLoopCharacteristics "
-                + "flowable:collection=\"${_wfMultiInstanceUsers_review}\" "
-                + "flowable:elementVariable=\"approver\" />";
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> sanitizer.sanitize(
-                        wrap(userTask("review", config, loop)),
+                        wrap(userTask("review", config, "")),
                         "runtime_process"));
 
-        assertTrue(error.getMessage().contains("多实例"));
-        assertTrue(error.getMessage().contains("表达式"));
+        assertTrue(error.getMessage().contains("不支持的办理人来源"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"assignee,${reviewer}", "candidateUsers,${reviewers}", "candidateGroups,#{groupCode}"})
+    void rejectsRawAssignmentExpressionsOnOrdinaryTasks(String attribute, String value) {
+        String task = "<bpmn:userTask id=\"review\" flowable:%s=\"%s\" />".formatted(attribute, value);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> sanitizer.sanitize(wrap(task), "runtime_process"));
+
+        assertTrue(error.getMessage().contains("办理人表达式 " + attribute));
     }
 
     @Test

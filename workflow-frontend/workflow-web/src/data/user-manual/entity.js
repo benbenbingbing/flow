@@ -805,7 +805,7 @@ export default {
                 { field: '正则', meaning: 'STRING、TEXT 字段的自定义正则表达式校验。', defaultLimit: '最多 500 字符；输入表达式本体，不添加 / 包裹；空值不执行。', effect: '字段失焦和表单提交时校验文本格式。', publish: '使用 JavaScript/Java 通用语法；完整匹配需自行添加 ^ 和 $。' },
                 { field: '新增 create', meaning: '新增记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制新增表单字段。', publish: '关键创建字段不可隐藏或只读。' },
                 { field: '编辑 edit', meaning: '编辑记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制编辑页面字段。', publish: '编码、流程字段等通常应只读。' },
-                { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示默认 true；可编辑默认 false。', effect: '字段在审批办理时的默认编辑权限。', publish: '流程节点开启“强制整表只读”后，可编辑配置不生效。' },
+                { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示默认 true；可编辑默认 false。', effect: '字段在审批办理时的默认编辑权限。', publish: '流程节点开启“强制只读”后，可编辑配置不生效。' },
                 { field: '查看 view', meaning: '查看详情模式。', defaultLimit: '固定只读，仅允许配置是否显示。', effect: '控制详情可见性，不能授予编辑权限。', publish: '敏感字段需要关闭 visible，而不仅是只读。' }
               ]
             }

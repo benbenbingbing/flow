@@ -71,6 +71,11 @@ public class ProcessFormRuntimeDTO {
          * 是否显示审批备注
          */
         private Boolean showComment;
+
+        /**
+         * 选择该审批操作时是否要求填写可见备注，用于办理表单标记必填并校验提交。
+         */
+        private Boolean remarkRequired;
     }
 
     /**

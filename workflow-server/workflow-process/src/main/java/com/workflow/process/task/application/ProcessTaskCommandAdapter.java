@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.flowable.engine.*;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import java.util.*;
 import java.util.function.Supplier;
 
@@ -303,7 +304,7 @@ public class ProcessTaskCommandAdapter {
             if (portCall) forms.requireForPort(taskId, source, submission.formReference());
             else forms.require(taskId, source, submission.formReference());
         }
-        requirePublishedAction(source, normalized);
+        requirePublishedAction(source, normalized, submission.comment());
         boolean selected = submission.nextApprovers() != null && !submission.nextApprovers().nodes().isEmpty();
         if ((local || addSigns.isAddSignSourceTask(taskId) || "transfer".equals(normalized)) && selected) {
             throw new IllegalArgumentException("加签或转办不能指定下一节点审批人");
@@ -359,9 +360,15 @@ public class ProcessTaskCommandAdapter {
                 && runtime.getVariable(source.getProcessInstanceId(), "entityDataId") == null;
     }
 
-    /** 仅已发布自定义按钮值可作为审批动作；显示文本不参与授权或路由。 */
-    private void requirePublishedAction(Task task, String action) {
-        if (Set.of("approve", "reject", "transfer", "resubmit").contains(action)) return;
+    /**
+     * 使用任务部署版本校验动作和备注。自定义动作必须存在于已启用的审批配置中，
+     * 通过和驳回仅在对应选项显示备注且标记必填时要求提供内容。
+     */
+    private void requirePublishedAction(Task task, String action, String comment) {
+        if ("transfer".equals(action) || "resubmit".equals(action)) return;
+        boolean builtIn = "approve".equals(action) || "reject".equals(action);
+        boolean hasComment = StringUtils.hasText(comment);
+        if (builtIn && hasComment) return;
         var model = repository.getBpmnModel(task.getProcessDefinitionId());
         var element = model == null ? null : model.getFlowElement(task.getTaskDefinitionKey());
         String configuration = ConfiguredTaskPropertyReader.read(element, "approvalConfig");
@@ -370,14 +377,23 @@ public class ProcessTaskCommandAdapter {
                 var config = json.readTree(configuration);
                 if (config.path("enabled").asBoolean(true)) {
                     for (var option : config.path("options")) {
-                        if (action.equals(option.path("value").asText())) return;
+                        if (!action.equals(option.path("value").asText())) continue;
+                        if (!hasComment && option.path("showComment").asBoolean(true)
+                                && option.path("remarkRequired").asBoolean(false)) {
+                            String label = config.path("commentLabel").asText();
+                            throw new ProcessOperationException("APPROVAL_COMMENT_REQUIRED",
+                                    "请填写" + (StringUtils.hasText(label) ? label : "审批意见"), task.getId());
+                        }
+                        return;
                     }
                 }
             } catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
+                // 旧节点的内置动作仍可办理，自定义动作需要可解析的发布配置。
+                if (builtIn) return;
                 throw new IllegalStateException("已发布审批动作配置无法解析", failure);
             }
         }
-        throw denied(task.getId(), "当前发布节点未开放该审批动作");
+        if (!builtIn) throw denied(task.getId(), "当前发布节点未开放该审批动作");
     }
 
     /** 回执重放发生在重新读取活动任务之前，任务已经完成也能返回原成功结果。 */

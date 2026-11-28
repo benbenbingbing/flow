@@ -1054,10 +1054,10 @@ const submitApprove = async () => {
       nodes: approvalNormalForm.value?.nodes || []
     })
     await ensureNextApproverPreviewCurrent()
-    const nextApproverValidation = approvalDecisionRef.value?.validate?.()
+    const decisionValidation = approvalDecisionRef.value?.validate?.()
       || { valid: true, message: '' }
-    if (!nextApproverValidation.valid) {
-      ElMessage.warning(nextApproverValidation.message)
+    if (!decisionValidation.valid) {
+      ElMessage.warning(decisionValidation.message)
       return
     }
     const changedSelections =

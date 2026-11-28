@@ -11,10 +11,11 @@ export const formContextParameters = [
   { key: 'currentProcessInstance.id', label: '当前流程实例 ID', type: 'STRING', sample: '56001', taskOnly: true },
   { key: 'currentProcessInstance.starterUserId', label: '当前流程发起人 ID', type: 'USER', sample: '10008', taskOnly: true },
   { key: 'currentProcessInstance.starterName', label: '当前流程发起人名称', type: 'STRING', sample: '李四', taskOnly: true },
-  { key: 'currentProcessNode.key', label: '当前流程节点编码', type: 'STRING', sample: 'finance_review' },
+  { key: 'currentProcessNode.key', label: '当前流程节点 ID', type: 'STRING', sample: 'Activity_12yea1s' },
+  { key: 'currentProcessNode.code', label: '当前流程节点编码', type: 'STRING', sample: 'finance_review' },
   { key: 'currentProcessNode.name', label: '当前流程节点名称', type: 'STRING', sample: '财务复核' },
   { key: 'currentTask.id', label: '当前待办 ID', type: 'STRING', sample: '78001', taskOnly: true },
-  { key: 'currentTask.nodeKey', label: '当前待办节点编码', type: 'STRING', sample: 'finance_review', taskOnly: true },
+  { key: 'currentTask.nodeKey', label: '当前待办节点 ID', type: 'STRING', sample: 'Activity_12yea1s', taskOnly: true },
   { key: 'currentTask.nodeName', label: '当前待办节点名称', type: 'STRING', sample: '财务复核', taskOnly: true },
   { key: 'currentTask.assigneeUserId', label: '当前待办被指派人 ID', type: 'USER', sample: '10015', taskOnly: true },
   { key: 'form.currentMode', label: '当前表单运行模式', type: 'STRING', sample: 'create', options: [

@@ -390,7 +390,10 @@ class ProcessProgressRuntimeServiceTest {
                       <bpmn:extensionElements>
                         <flowable:properties>
                           <flowable:property name="approvalConfig"
-                            value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;旧版审批意见&quot;,&quot;options&quot;:[{&quot;value&quot;:&quot;legacyApprove&quot;,&quot;label&quot;:&quot;旧版通过&quot;}]}" />
+                            value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;旧版审批意见&quot;,&quot;options&quot;:[
+                              {&quot;value&quot;:&quot;legacyApprove&quot;,&quot;label&quot;:&quot;旧版通过&quot;},
+                              {&quot;value&quot;:&quot;reject&quot;,&quot;remarkRequired&quot;:true}
+                            ]}" />
                         </flowable:properties>
                       </bpmn:extensionElements>
                     </bpmn:userTask>
@@ -409,6 +412,8 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals(
                 "legacyApprove",
                 progress.getApprovalConfig().getOptions().get(0).getValue());
+        assertEquals(Boolean.FALSE, progress.getApprovalConfig().getOptions().get(0).getRemarkRequired());
+        assertTrue(progress.getApprovalConfig().getOptions().get(1).getRemarkRequired());
         verify(fixture.snapshotService).getVersionByProcessDefinitionId("pd-1");
     }
 

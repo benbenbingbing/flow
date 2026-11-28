@@ -867,8 +867,6 @@ export function buildAssigneeConfig(form) {
     }
   } else if (type === 'group' || type === 'role') {
     assigneeValue = form.candidateGroups || ''
-  } else if (type === 'expression') {
-    assigneeValue = form.candidateUsers || form.candidateGroups || ''
   }
 
   const nextApproverSelection = createNextApproverSelectionConfig(

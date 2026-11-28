@@ -1,25 +1,22 @@
 <template>
   <div class="user-relation-path">
-    <el-popover v-model:visible="visible" trigger="click" placement="bottom-start"
-      width="min(520px, calc(100vw - 32px))" :tabindex="-1" :trigger-keys="[]"
-      :hide-after="0" @after-enter="focusTree">
-      <template #reference>
-        <div class="path-trigger" :class="{ 'is-open': visible, 'is-error': error }">
-          <button ref="trigger" type="button" class="path-input" role="combobox"
-            aria-label="用户关系路径" aria-haspopup="tree" :aria-expanded="visible"
-            :aria-busy="loading" :title="displayPath" @keydown.down.prevent="visible = true"
-            @keydown.esc.stop.prevent="closePicker">
-            <span class="path-value" :class="{ 'is-placeholder': !displayPath }">{{ displayPath || '请选择用户关系路径' }}</span>
-            <el-icon :class="{ 'is-loading': loading }"><Loading v-if="loading" /><ArrowDown v-else /></el-icon>
-          </button>
-          <button v-if="steps.length" type="button" class="path-clear" aria-label="清空用户关系路径"
-            @click.stop="selectPath([])"><el-icon><CircleClose /></el-icon></button>
-        </div>
-      </template>
-      <div v-loading="loading" class="path-tree-panel" @keydown.capture="handleTreeKeydown"
-        @keydown.esc.stop.prevent="closePicker">
-        <p class="path-hint">展开关系查看下级，点击用户关系完成选择。</p>
-        <el-alert v-if="treeError" :title="treeError" type="error" :closable="false" show-icon />
+    <div class="path-trigger" :class="{ 'is-open': visible, 'is-error': error }">
+      <button ref="trigger" type="button" class="path-input"
+        :aria-label="displayPath ? `选择关系路径，当前为${displayPath}` : '选择关系路径'"
+        aria-haspopup="dialog" :aria-expanded="visible" :aria-busy="loading" :title="displayPath"
+        @click="openPicker">
+        <span class="path-value" :class="{ 'is-placeholder': !displayPath }">{{ displayPath || '请选择关系路径' }}</span>
+        <el-icon :class="{ 'is-loading': loading }"><Loading v-if="loading" /><Search v-else /></el-icon>
+      </button>
+      <button v-if="steps.length" type="button" class="path-clear" aria-label="清空关系路径"
+        @click="selectPath([])"><el-icon><CircleClose /></el-icon></button>
+    </div>
+    <el-dialog v-model="visible" title="选择关系路径" width="min(620px, calc(100vw - 32px))"
+      append-to-body align-center destroy-on-close :close-on-click-modal="false"
+      @opened="focusTree" @closed="trigger?.focus()">
+      <div v-loading="loading" class="path-tree-panel" @keydown.capture="handleTreeKeydown">
+        <p class="path-hint">展开关系查看下级，点击指向用户的关系完成选择。</p>
+        <el-alert v-if="treeError || error" :title="treeError || error" type="error" :closable="false" show-icon />
         <el-tree v-if="visible && !loading && processId && entityCode" ref="tree" node-key="key" lazy :load="loadChildren"
           :props="treeProps" :default-expanded-keys="expandedKeys" :current-node-key="pathKey(steps)"
           :expand-on-click-node="false" :indent="20" highlight-current
@@ -35,14 +32,17 @@
         </el-tree>
         <el-button v-if="error || treeError" text type="primary" :disabled="loading" @click="load">重新加载关系</el-button>
       </div>
-    </el-popover>
-    <el-alert v-if="error" class="path-error" :title="error" type="error" :closable="false" show-icon />
+      <template #footer>
+        <el-button @click="visible = false">取消</el-button>
+      </template>
+    </el-dialog>
+    <el-alert v-if="error && !visible" class="path-error" :title="error" type="error" :closable="false" show-icon />
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowDown, Check, CircleClose, Loading } from '@element-plus/icons-vue'
+import { Check, CircleClose, Loading, Search } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
 const props = defineProps({
@@ -71,12 +71,12 @@ const pathKey = path => JSON.stringify(path.map(stepKey))
 const displayPath = computed(() => labels.value.join(' → '))
 const expandedKeys = computed(() => steps.value.slice(0, -1).map((_, index) => pathKey(steps.value.slice(0, index + 1))))
 
-function closePicker() {
-  visible.value = false
+function openPicker() {
   trigger.value?.focus()
+  visible.value = true
 }
 
-/** 弹层打开后将焦点交给树，保留方向键导航和 Enter 选择能力。 */
+/** 弹窗打开后优先定位已选用户，方向键继续在关系树中导航。 */
 async function focusTree() {
   await nextTick()
   const element = tree.value?.$el
@@ -104,7 +104,7 @@ function handleTreeKeydown(event) {
 
 /** 仅确认用户终点或主动清空时更新配置，浏览其他分支不改变已保存的路径。 */
 function selectPath(path) {
-  closePicker()
+  visible.value = false
   // 重选同一路径不会触发 model 的 watcher，因此不能先把校验状态改成加载中。
   if (props.modelValue.schemaVersion === 2 && JSON.stringify(path) === JSON.stringify(steps.value)) return
   emit('state', { valid: false, loading: true, multiple: false })
@@ -218,7 +218,7 @@ onBeforeUnmount(() => { sequence++ })
 .path-clear { display: flex; align-items: center; padding: 6px 10px 6px 0; color: var(--el-text-color-placeholder); }
 .path-clear:hover { color: var(--el-text-color-secondary); }
 .path-tree-panel { min-height: 64px; }
-.path-tree-panel :deep(.el-tree) { max-height: 320px; overflow: auto; }
+.path-tree-panel :deep(.el-tree) { max-height: min(440px, 55vh); overflow: auto; }
 .path-tree-panel :deep(.el-tree-node__content) { min-height: 34px; height: auto; }
 .path-hint { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; margin: 0 0 8px; }
 .relation-node { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 5px 8px 5px 0; line-height: 24px; }

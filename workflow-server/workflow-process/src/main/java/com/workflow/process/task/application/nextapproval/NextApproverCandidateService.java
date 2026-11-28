@@ -371,11 +371,6 @@ public class NextApproverCandidateService {
                 config.get("assigneeType"));
         boolean multiInstance = "MULTI_INSTANCE".equals(
                 target.selectionPolicy().assignmentMode());
-        if ("expression".equals(type)) {
-            throw new IllegalArgumentException(
-                    "表达式办理人无法安全枚举: "
-                            + target.userTask().getId());
-        }
         if ("node_reference".equals(type)
                 || "nodereference".equals(type)) {
             throw new IllegalArgumentException(

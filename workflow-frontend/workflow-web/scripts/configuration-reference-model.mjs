@@ -454,8 +454,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
       ['entity_user_reference', '实体用户关系字段', '沿流程绑定实体的用户关系路径查找办理人。'],
       ['relative_position', '相对组织职务', '按组织查找规则取得所选职务的所有任职人。'],
       ['node_reference', '使用其他节点审批人', '按同一流程中被引用 UserTask 的审批人规则解析，不复制名单。'],
-      ['expression', '表达式', '在抢占方式下从流程变量解析用户或用户组。'],
-      ['interface', '接口动态', '调用已注册人员解析器计算办理人。']
+      ['interface', '接口动态', '调用已注册人员解析器计算办理人。顺序办理按接口返回顺序创建任务。']
     ]
   },
   {
@@ -464,7 +463,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
     source: 'src/components/NodeConfigPanel.vue',
     values: [
       ['CLAIM', '抢占', '默认方式。一人直接办理，多人共享一条任务。'],
-      ['SEQUENTIAL', '顺序', '固定人员依次办理，全部通过后继续，任一人驳回即结束本节点。'],
+      ['SEQUENTIAL', '顺序', '按固定人员列表或人员接口返回的顺序依次办理，全部通过后继续，任一人驳回即结束本节点。'],
       ['COUNTERSIGN', '会签', '每位办理人同时收到各自的任务，按通过率和等待规则判定结果。']
     ]
   },
@@ -790,10 +789,11 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/ProcessList.vue', '^publishForm\\.', '流程配置-流程-发布'),
 
   locationRule('src/components/NodeConfigPanel.vue', '^statusForm\\.', '流程配置-流程-设计-连线属性-常用-实体状态'),
-  locationRule('src/components/NodeConfigPanel.vue', '^formConfig\\.', '流程配置-流程-设计-节点属性-常用-办理表单'),
+  locationRule('src/components/NodeConfigPanel.vue', '^formConfig\\.', '流程配置-流程-设计-节点属性-常用-基本配置'),
   locationRule('src/components/NodeConfigPanel.vue', '^(approvalForm\\.|option\\.)', '流程配置-流程-设计-用户任务属性-常用-审批设置'),
   locationRule('src/components/NodeConfigPanel.vue', '^(ccForm\\.|rule\\.)', '流程配置-流程-设计-节点属性-协同-知会配置'),
   locationRule('src/components/NodeConfigPanel.vue', '^assigneeForm\\.emptyAssigneeStrategy$', '流程配置-流程-设计-用户任务属性-高级-空办理人策略'),
+  locationRule('src/components/NodeConfigPanel.vue', '^assigneeForm\\.nextApproverSelection$', '流程配置-流程-设计-用户任务属性-常用-下一节点审批人'),
   locationRule('src/components/NodeConfigPanel.vue', '^assigneeForm\\.', '流程配置-流程-设计-用户任务属性-常用-办理人配置'),
   locationRule('src/components/NodeConfigPanel.vue', '^(serviceForm\\.|restForm\\.)', '流程配置-流程-设计-服务任务属性-常用-服务调用'),
   locationRule('src/components/NodeConfigPanel.vue', '^sendForm\\.', '流程配置-流程-设计-发送任务属性-常用-发送消息'),
@@ -806,7 +806,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/NodeConfigPanel.vue', '^conditionInterfaceForm\\.', '流程配置-流程-设计-连线属性-常用-流转条件'),
   locationRule('src/components/node-config/NodeSlaEditor.vue', '^slaForm\\.', '流程配置-流程-设计-用户任务属性-高级-任务 SLA'),
   locationRule('src/components/NodeConfigPanel.vue', '^advancedForm\\.(skipExpression|skipMode)$', '流程配置-流程-设计-用户任务属性-高级-自动跳过'),
-  locationRule('src/components/NodeConfigPanel.vue', '^basicForm\\.', '流程配置-流程-设计-节点属性-常用-标识与备注'),
+  locationRule('src/components/NodeConfigPanel.vue', '^basicForm\\.', '流程配置-流程-设计-节点属性-常用-基本配置'),
 
   locationRule('src/components/FlowActionConfigPanel.vue', '.*', '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作'),
   locationRule('src/components/ui-config/EventBindingEditor.vue', '^step\\.(clientPrevalidate|sideEffectFree)$', '实体配置-表单-编辑-表单设置-表单事件-提交前处理'),
@@ -976,7 +976,7 @@ export const STRUCTURED_CONFIGURATIONS = Object.freeze([
     ['edit.editable', '编辑时可编辑', true, '编辑表单允许修改该字段。'],
     ['view.visible', '查看时显示', true, '查看表单显示该字段，但始终只读。'],
     ['approve.visible', '审批时显示', true, '审批办理表单显示该字段。'],
-    ['approve.editable', '审批时可编辑', false, '审批时字段保持只读；节点强制整表只读仍具有更高优先级。']
+    ['approve.editable', '审批时可编辑', false, '审批时字段保持只读；节点强制只读仍具有更高优先级。']
   ].map(([pathValue, label, example, expectedEffect]) => structured({
     id: `structured-mode-access-${pathValue}`,
     domain: '实体配置',
@@ -1156,7 +1156,7 @@ const KEY_GUIDANCE = Object.freeze({
   versionDescription: ['描述本次发布变更。', '增加财务复核节点', '版本历史记录该说明，便于审计和回滚判断。'],
   markForExport: ['标记版本是否纳入迁移导出。', true, '开启后版本可进入配置迁移包候选范围。'],
   migrationTag: ['设置跨环境迁移批次标签。', 'REL-20260801-001', '导入导出和审计可按该标签关联同一发布批次。'],
-  assigneeType: ['选择任务办理人的解析方式。', 'role', '运行时按固定用户、用户组、角色、表达式或受控解析器确定候选人。'],
+  assigneeType: ['选择任务办理人的解析方式。', 'role', '节点进入时按选定的人员来源确定可办理人员。'],
   resolverCode: ['选择已注册的受管理解析器。', 'projectManagerResolver', '运行时调用该解析器计算人员、目标记录或通知对象。'],
   completionCondition: ['设置多实例任务完成条件。', '${nrOfCompletedInstances/nrOfInstances >= 0.5}', '满足表达式后结束剩余多实例任务。'],
   implementationType: ['选择服务任务的受控实现方式。', 'delegateExpression', '决定引擎调用 Java 类、表达式或 REST 配置。'],
@@ -1213,8 +1213,6 @@ const KEY_GUIDANCE = Object.freeze({
   candidateRoleIds: ['分页选择角色。', ['finance_manager'], '使用拥有角色的启用用户作为办理人。'],
   referencedNodeId: ['选择同一 BPMN Process 中要复用审批人规则的其他用户任务节点。', 'UserTask_ManagerReview', '运行时只按该稳定节点 ID 定位被引用规则；禁止引用自身、已删除节点、跨 Process 或形成引用环，引用链最多 16 层。'],
   referencedNodeName: ['记录被引用用户任务的显示名称。', '经理审批', '仅用于设计器回显和审计；运行时不以名称定位节点。'],
-  candidateUsers: ['设置返回办理人员的流程表达式。', '${deptManagers}', '节点进入时将结果纳入抢占办理范围。'],
-  candidateGroups: ['设置返回用户组编码的流程表达式。', '${departmentCode}_manager', '节点进入时展开组内启用用户。'],
   extraParamsText: ['为受管理人员或知会解析器提供额外 JSON 参数。', '{"level":2}', '运行时把参数连同流程、任务和实体上下文传给已注册解析器；多人办理要求解析器支持 MULTI_INSTANCE 用途。'],
   implementation: ['设置非 REST 服务任务的 Java 类名、表达式或 Spring Bean 表达式。', '${budgetCheckDelegate}', '服务任务按所选实现类型解析并执行该受管理实现。'],
   contentType: ['设置 REST 服务任务请求正文的媒体类型。', 'application/json', '当前运行时按 JSON 序列化请求体并发送 Content-Type 头。'],
@@ -1420,7 +1418,7 @@ const CONTROL_OVERRIDES = Object.freeze({
   },
   // 关系选择器保存完整路径，模板无法推导结构化示例；示例须与 V2 办理人解析契约一致。
   'src/components/NodeConfigPanel.vue:assigneeForm.entityUserReference': {
-    label: '用户关系路径',
+    label: '关系路径',
     meaning: '从流程绑定的实体记录出发，沿所选实体关系逐级查找办理人；路径最后一级必须指向用户，最多支持 8 级。',
     example: {
       schemaVersion: 2,
@@ -1429,7 +1427,7 @@ const CONTROL_OVERRIDES = Object.freeze({
         { type: 'REFERENCE_FIELD', code: 'applicants', sourceEntityCode: 'expense', targetEntityCode: 'sys_user' }
       ]
     },
-    configureWhen: '办理人需要取自当前报销记录的申请人等用户关系字段时，先绑定流程实体，再选择以用户为终点的关系路径。',
+    configureWhen: '办理人需要取自当前报销记录的申请人等用户关系字段时，先绑定流程实体，再从弹窗的关系树中选择以用户为终点的路径。',
     skipWhen: '使用指定用户、角色、相对岗位或其他办理人方式时无需配置。',
     expectedEffect: '节点进入时读取记录的最新关系值；示例取报销记录的申请人。多值关系在普通任务中形成候选人集合，在多实例任务中为每位用户生成任务。'
   },
@@ -1644,13 +1642,16 @@ const CONTROL_OVERRIDES = Object.freeze({
     "skipWhen": "其他层级查找方式不使用此筛选。",
     "expectedEffect": "仅符合所选类型的单位可以成为最终任职人查找目标。"
   },
+  "formConfig.isReadonly": {
+    "label": "强制只读"
+  },
   "assigneeForm.handlingMode": {
     "label": "办理方式",
     "meaning": "设置已选人员如何办理任务。",
     "example": "CLAIM",
-    "configureWhen": "需要固定顺序办理或多人同时办理时选择对应方式。",
+    "configureWhen": "需要依次办理或多人同时办理时选择对应方式。",
     "skipWhen": "一人直接办理或多人任一人办理时保留默认抢占。",
-    "expectedEffect": "抢占生成一个任务，顺序为固定人员依次生成任务，会签为所有人同时生成任务。"
+    "expectedEffect": "抢占生成一个任务，顺序按固定人员列表或接口结果依次生成任务，会签为所有人同时生成任务。"
   },
   "assigneeForm.multiInstanceCompletionRate": {
     "label": "通过率阈值",
@@ -1840,6 +1841,14 @@ const CONTROL_OVERRIDES = Object.freeze({
     meaning: '设置 BPMN 节点面向设计者和办理人的显示名称。',
     example: '财务审批',
     expectedEffect: '流程图、待办标题、轨迹和节点配置引用中显示该名称。'
+  },
+  'src/components/NodeConfigPanel.vue:basicForm.code': {
+    label: '节点编码',
+    meaning: '表单条件使用的业务编码，同一流程内唯一。',
+    configureWhen: '需要让共用表单根据当前节点判断显隐、编辑权限或必填时填写。',
+    skipWhen: '表单无需按节点编码判断时可留空。',
+    example: 'finance_review',
+    expectedEffect: '表单通过 ${ctx.currentProcessNode.code} 读取当前待办所属发布版本的编码。'
   },
   'src/components/NodeConfigPanel.vue:basicForm.id': {
     label: 'BPMN 节点 ID',

@@ -5,68 +5,177 @@
     </div>
 
     <div v-if="element" class="config-tabs">
-      <div class="config-tab-nav" role="tablist" aria-label="节点配置分类">
-        <button
-          type="button"
-          role="tab"
-          class="config-tab-button"
-          :class="{ active: activeTab === 'basic' }"
-          :aria-selected="activeTab === 'basic'"
-          @click="activeTab = 'basic'"
-        >
-          常用
-        </button>
-        <button
-          v-if="isCcConfigurable"
-          type="button"
-          role="tab"
-          class="config-tab-button"
-          :class="{ active: activeTab === 'collaboration' }"
-          :aria-selected="activeTab === 'collaboration'"
-          @click="activeTab = 'collaboration'"
-        >
-          协同
-        </button>
-        <button
-          v-if="hasAdvancedConfig"
-          type="button"
-          role="tab"
-          class="config-tab-button"
-          :class="{ active: activeTab === 'advanced' }"
-          :aria-selected="activeTab === 'advanced'"
-          @click="activeTab = 'advanced'"
-        >
-          高级
-        </button>
-        <button
-          v-if="isActionConfigurable"
-          type="button"
-          role="tab"
-          class="config-tab-button"
-          :class="{ active: activeTab === 'actions' }"
-          :aria-selected="activeTab === 'actions'"
-          @click="activeTab = 'actions'"
-        >
-          流程动作
-        </button>
+      <div class="config-tab-nav">
+        <div class="config-tab-list" role="tablist" aria-label="节点配置分类">
+          <button
+            type="button"
+            role="tab"
+            class="config-tab-button"
+            :class="{ active: activeTab === 'basic' }"
+            :aria-selected="activeTab === 'basic'"
+            @click="activeTab = 'basic'"
+          >
+            常用
+          </button>
+          <button
+            v-if="isCcConfigurable"
+            type="button"
+            role="tab"
+            class="config-tab-button"
+            :class="{ active: activeTab === 'collaboration' }"
+            :aria-selected="activeTab === 'collaboration'"
+            @click="activeTab = 'collaboration'"
+          >
+            协同
+          </button>
+          <button
+            v-if="isUserTask"
+            type="button"
+            role="tab"
+            class="config-tab-button"
+            :class="{ active: activeTab === 'advanced' }"
+            :aria-selected="activeTab === 'advanced'"
+            @click="activeTab = 'advanced'"
+          >
+            高级
+          </button>
+          <button
+            v-if="isActionConfigurable"
+            type="button"
+            role="tab"
+            class="config-tab-button"
+            :class="{ active: activeTab === 'actions' }"
+            :aria-selected="activeTab === 'actions'"
+            @click="activeTab = 'actions'"
+          >
+            流程动作
+          </button>
+        </div>
+        <el-popover placement="bottom-end" :trigger="['hover', 'focus']" :width="280">
+          <template #reference>
+            <el-tag class="config-node-type" :type="getNodeTypeTag(element.type)" tabindex="0">
+              {{ getNodeTypeText(element.type) }}
+            </el-tag>
+          </template>
+          <div class="node-type-info">
+            <div class="node-type-info__title">{{ nodeTypeDescription.title }}</div>
+            <div class="node-type-info__description">{{ nodeTypeDescription.desc }}</div>
+            <div class="node-type-info__scene">
+              <el-tag size="small" type="warning">场景</el-tag>
+              {{ nodeTypeDescription.scene }}
+            </div>
+          </div>
+        </el-popover>
       </div>
 
-      <div class="config-tab-content">
-      <!-- ========== 基本信息（所有节点都有） ========== -->
+      <!-- 切换选中节点时重新应用各分组的默认展开状态。 -->
+      <div :key="element.id" class="config-tab-content">
+      <!-- ========== 基本配置（所有节点都有） ========== -->
       <section v-show="activeTab === 'basic'" class="config-section">
-        <el-form :model="basicForm" label-width="100px" size="small">
-          <el-form-item label="节点名称">
-            <el-input 
-              v-model="basicForm.name" 
-              :placeholder="getNamePlaceholder()"
-            />
-          </el-form-item>
-          
-          <SettingsSection
-            v-if="!hasAdvancedConfig"
-            title="标识与备注"
-            description="节点标识与设计备注，通常无需频繁修改"
-          >
+        <SettingsSection title="基本配置" :default-expanded="true">
+          <el-form :model="basicForm" label-width="100px" size="small">
+            <el-form-item label="节点名称">
+              <el-input v-model="basicForm.name" :placeholder="getNamePlaceholder()" />
+            </el-form-item>
+
+            <el-form-item v-if="supportsNodeCode" label="节点编码">
+              <template #label>
+                <ConfigHelpLabel label="节点编码" content="供表单规则识别当前节点。同一流程内唯一，留空时表单读取空值。" />
+              </template>
+              <el-input v-model.trim="basicForm.code" placeholder="例如：finance_review" maxlength="64" clearable />
+            </el-form-item>
+
+            <template v-if="isUserTask">
+              <el-alert
+                v-if="unresolvedNodeFormBinding"
+                class="legacy-form-binding-alert"
+                type="warning"
+                :closable="false"
+                show-icon
+              >
+                <template #title>检测到无法识别的历史节点表单绑定</template>
+                {{ unresolvedNodeFormBindingMessage }}。当前值将原样保留；只有主动选择“使用实体默认表单”或具体表单后才会清理。
+              </el-alert>
+
+              <el-form-item label="节点表单" class="node-form-item">
+                <template #label>
+                  <ConfigHelpLabel label="节点表单" content="默认模式应用时绑定当前默认表单，发布时锁定其版本快照。自定义组件表单仍通过实体表单定义统一绑定。" />
+                </template>
+                <div class="node-form-controls">
+                  <el-select
+                    v-model="formConfig.entityFormId"
+                    placeholder="请选择节点表单"
+                    aria-label="节点表单"
+                    class="node-form-select"
+                    filterable
+                    :loading="nodeFormInitializing || entityFormsLoading"
+                    :disabled="!boundEntity"
+                    @change="onEntityFormChange"
+                  >
+                    <el-option :label="defaultEntityFormOptionLabel" :value="DEFAULT_NODE_FORM_VALUE">
+                      <div class="form-option">
+                        <span class="form-name">{{ defaultEntityFormOptionLabel }}</span>
+                        <el-tag v-if="defaultEntityForm?.customComponent" size="small" type="warning">
+                          自定义组件
+                        </el-tag>
+                      </div>
+                    </el-option>
+                    <el-option
+                      v-if="unresolvedNodeFormBinding"
+                      :label="unresolvedNodeFormBindingOptionLabel"
+                      :value="unresolvedNodeFormBinding.selectionValue"
+                      disabled
+                    />
+                    <el-option
+                      v-for="form in entityFormOptions"
+                      :key="form.id"
+                      :label="formatNodeFormOptionLabel(form)"
+                      :value="String(form.id)"
+                    >
+                      <div class="form-option">
+                        <span class="form-name">{{ formatNodeFormOptionLabel(form) }}</span>
+                        <el-tag v-if="form.customComponent" size="small" type="warning">自定义组件</el-tag>
+                        <el-tag v-if="Array.isArray(form.fields)" size="small" type="info">
+                          {{ form.fields.length }}个字段
+                        </el-tag>
+                      </div>
+                    </el-option>
+                  </el-select>
+                  <el-tooltip
+                    v-if="hasResolvedEntityFormSelection"
+                    content="开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。"
+                    :trigger="['hover', 'focus']"
+                    placement="top"
+                  >
+                    <el-switch
+                      v-model="formConfig.isReadonly"
+                      aria-label="强制只读"
+                      inline-prompt
+                      active-text="强制只读"
+                      inactive-text="强制只读"
+                      :width="72"
+                    />
+                  </el-tooltip>
+                </div>
+                <div
+                  v-if="boundEntity && !entityFormsLoading && entityFormOptions.length === 0"
+                  class="form-status"
+                >
+                  暂无可用表单，请先
+                  <el-button type="primary" link size="small" @click="goToFormDesign">创建表单</el-button>
+                </div>
+                <div class="form-status" v-if="!boundEntity">
+                  当前流程未绑定实体，无法指定实体表单
+                </div>
+                <div v-if="selectedEntityForm?.customComponent" class="custom-component-form-status">
+                  <el-tag size="small" type="warning">自定义组件表单</el-tag>
+                  <span>
+                    渲染组件：{{ selectedEntityForm.customComponent }}
+                  </span>
+                </div>
+              </el-form-item>
+            </template>
+
             <el-form-item label="节点ID">
               <el-input v-model="basicForm.id" disabled />
             </el-form-item>
@@ -79,16 +188,15 @@
                 placeholder="记录节点设计说明..."
               />
             </el-form-item>
-          </SettingsSection>
-        </el-form>
+          </el-form>
+        </SettingsSection>
       </section>
-      
+
       <!-- ========== 状态配置（仅连线） ========== -->
       <section v-if="isSequenceFlow && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="实体状态"
           description="实际经过此连线时更新业务状态；未配置则保持原值，流程结束不会自动改为通过"
-          :default-expanded="!!statusForm.entityStatusCode"
         >
           <template #summary>
             <el-tag size="small" :type="statusForm.entityStatusCode ? 'success' : 'info'">
@@ -173,7 +281,6 @@
         <SettingsSection
           title="办理人配置"
           description="选择人员来源，并设置这些人员如何办理节点任务"
-          :collapsible="false"
           primary
         >
           <el-form :model="assigneeForm" label-width="100px" size="small">
@@ -181,10 +288,10 @@
             <template #label>
               <ConfigHelpLabel label="办理方式" :content="handlingModeDescription" />
             </template>
-            <el-radio-group v-model="assigneeForm.handlingMode" @change="onHandlingModeChange">
+            <el-radio-group v-model="assigneeForm.handlingMode">
               <el-radio-button value="CLAIM">抢占</el-radio-button>
-              <el-radio-button value="SEQUENTIAL">顺序</el-radio-button>
               <el-radio-button value="COUNTERSIGN">会签</el-radio-button>
+              <el-radio-button value="SEQUENTIAL">顺序</el-radio-button>
             </el-radio-group>
           </el-form-item>
 
@@ -197,9 +304,8 @@
                 <el-option label="实体用户关系字段" value="entity_user_reference" />
                 <el-option label="相对组织职务" value="relative_position" />
                 <el-option label="使用其他节点审批人" value="node_reference" />
-                <el-option label="表达式" value="expression" :disabled="isMultiInstance" />
-                <el-option label="接口动态" value="interface" />
               </template>
+              <el-option label="接口动态" value="interface" />
             </el-select>
           </el-form-item>
 
@@ -308,9 +414,9 @@
 
           <!-- 实体字段是设计器语义类型，保存时投影为受控人员解析器。 -->
           <template v-if="assigneeForm.assigneeType === 'entity_user_reference'">
-            <el-form-item label="用户关系路径" required>
+            <el-form-item label="关系路径" required>
               <template #label>
-                <ConfigHelpLabel label="用户关系路径" content="从流程绑定记录出发，逐级选择实体关系，最后一级须为用户。用户关系也可继续展开；任意一级为多值时，最终可能返回多人。节点进入时读取最新记录值，最多支持 8 级。" />
+                <ConfigHelpLabel label="关系路径" content="从流程绑定记录出发，在弹窗中展开实体关系，最后一级须为用户。用户关系也可继续展开；任意一级为多值时，最终可能返回多人。节点进入时读取最新记录值，最多支持 8 级。" />
               </template>
               <EntityUserRelationPathSelector
                 v-model="assigneeForm.entityUserReference"
@@ -551,34 +657,7 @@
               </template>
             </el-dialog>
           </template>
-          
-          <!-- 表达式 -->
-          <template v-if="assigneeForm.assigneeType === 'expression'">
-            <el-form-item label="用户表达式">
-              <template #label>
-                <ConfigHelpLabel label="用户表达式" content="返回用户ID列表的表达式" />
-              </template>
-              <el-input 
-                v-model="assigneeForm.candidateUsers" 
-                type="textarea"
-                :rows="2"
-                placeholder="如：${deptManagers}"
-              />
-            </el-form-item>
-            
-            <el-form-item label="用户组表达式">
-              <template #label>
-                <ConfigHelpLabel label="用户组表达式" content="返回组编码的表达式" />
-              </template>
-              <el-input 
-                v-model="assigneeForm.candidateGroups" 
-                type="textarea"
-                :rows="2"
-                placeholder="如：${deptCode}_manager"
-              />
-            </el-form-item>
-          </template>
-          
+
           <!-- 接口动态 -->
           <template v-if="assigneeForm.assigneeType === 'interface'">
             <el-form-item label="人员接口" required>
@@ -592,9 +671,7 @@
               <ExtensionCapabilityPicker
                 v-model="assigneeForm.resolverCode"
                 capability-type="PERSON_RESOLVER"
-                :placeholder="isMultiInstance
-                  ? '输入名称或编码搜索会签人员接口'
-                  : '输入名称或编码搜索办理人接口'"
+                placeholder="输入名称或编码搜索人员接口"
                 :context-params="assigneeResolverContext"
                 :current-option="assigneeResolverCurrentOption"
                 @selected="onAssigneeResolverSelected"
@@ -621,7 +698,6 @@
             v-if="assigneeForm.handlingMode === 'COUNTERSIGN'"
             title="会签规则"
             description="设置通过率和结束时机"
-            :default-expanded="true"
           >
             <el-form-item label="通过率阈值">
               <el-input-number
@@ -644,13 +720,6 @@
               <el-switch v-model="assigneeForm.multiInstanceNeedAllApprovers" />
             </el-form-item>
           </SettingsSection>
-          <NextApproverConfigEditor
-            :allow-editing="assigneeForm.handlingMode !== 'SEQUENTIAL'"
-            ref="nextApproverConfigEditorRef"
-            :process-id="processId"
-            :entity-code="boundEntity?.entityCode || ''"
-            v-model="assigneeForm.nextApproverSelection"
-          />
           </el-form>
         </SettingsSection>
       </section>
@@ -660,7 +729,6 @@
         <SettingsSection
           title="操作权限"
           description="控制当前节点是否允许转办、加签、终止和发起人撤回"
-          :collapsible="false"
         >
           <NodeOperationPermissions v-model="assigneeForm" />
         </SettingsSection>
@@ -671,7 +739,6 @@
         <SettingsSection
           title="服务调用"
           description="执行 Java、Spring Bean、表达式或 REST 请求"
-          :collapsible="false"
           primary
         >
           <el-form :model="serviceForm" label-width="100px" size="small">
@@ -779,7 +846,6 @@
             <SettingsSection
               title="可靠性与结果"
               description="超时、重试、错误策略和响应变量映射"
-              :default-expanded="restForm.retryCount > 0 || restForm.errorHandling !== 'throw' || !!restForm.resultMapping"
             >
               <template #summary>
                 <el-tag size="small" type="info">
@@ -843,7 +909,6 @@
         <SettingsSection
           title="发送消息"
           description="配置消息渠道、接收人和内容模板"
-          :collapsible="false"
           primary
         >
           <el-form :model="sendForm" label-width="100px" size="small">
@@ -895,7 +960,6 @@
         <SettingsSection
           title="接收消息"
           description="等待外部系统或事件触发后继续流程"
-          :collapsible="false"
           primary
         >
           <el-form :model="receiveForm" label-width="100px" size="small">
@@ -939,7 +1003,6 @@
         <SettingsSection
           title="线下任务"
           description="记录需要在流程系统外完成的工作"
-          :collapsible="false"
           primary
         >
           <el-form :model="manualForm" label-width="100px" size="small">
@@ -984,7 +1047,6 @@
         <SettingsSection
           title="业务规则"
           description="执行 DMN 决策并映射输入输出变量"
-          :collapsible="false"
           primary
         >
           <el-form :model="ruleForm" label-width="100px" size="small">
@@ -1045,7 +1107,7 @@
       </section>
       
       <section v-if="isSubProcess && activeTab === 'basic'" class="config-section">
-        <SettingsSection title="子流程来源" :collapsible="false" primary>
+        <SettingsSection title="子流程来源" primary>
           <el-radio-group v-model="subProcessSource">
             <el-radio value="embedded">当前内嵌子流程</el-radio>
             <el-radio value="existing">调用已有流程</el-radio>
@@ -1059,7 +1121,6 @@
         <SettingsSection
           title="调用流程"
           description="调用另一个独立流程并配置参数映射"
-          :collapsible="false"
           primary
         >
           <el-form :model="callForm" label-width="100px" size="small">
@@ -1109,7 +1170,6 @@
           <SettingsSection
             title="参数传递"
             description="父流程与子流程之间的变量和业务键映射"
-            :default-expanded="!!callForm.inputParameters || !!callForm.outputParameters || !!callForm.businessKey"
           >
             <template #summary>
               <el-tag size="small" type="info">
@@ -1163,7 +1223,6 @@
         <SettingsSection
           title="流转条件"
           description="设置无条件、条件表达式、业务接口或默认连线"
-          :collapsible="false"
           primary
         >
           <el-form :model="conditionForm" label-width="100px" size="small">
@@ -1270,123 +1329,24 @@
         </SettingsSection>
       </section>
       
-      <!-- ========== 表单配置（仅用户任务） ========== -->
-      <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
-        <SettingsSection
-          title="办理表单"
-          description="使用实体默认表单，或为当前节点指定一个实体表单"
-          :collapsible="false"
-          primary
-        >
-          <el-form :model="formConfig" label-width="100px" size="small">
-          <!-- 显示绑定的实体信息 -->
-          <el-form-item label="所属实体">
-            <el-tag v-if="boundEntity" type="success" size="large">
-              {{ boundEntity.entityName }} ({{ boundEntity.entityCode }})
-            </el-tag>
-            <el-tag v-else type="warning" size="large">该流程未绑定实体</el-tag>
-          </el-form-item>
-
-          <el-alert
-            v-if="unresolvedNodeFormBinding"
-            class="legacy-form-binding-alert"
-            type="warning"
-            :closable="false"
-            show-icon
-          >
-            <template #title>检测到无法识别的历史节点表单绑定</template>
-            {{ unresolvedNodeFormBindingMessage }}。当前值将原样保留；只有主动选择“使用实体默认表单”或具体表单后才会清理。
-          </el-alert>
-
-          <el-form-item label="节点表单">
-              <template #label>
-                <ConfigHelpLabel label="节点表单" content="默认模式应用时绑定当前默认表单，发布时锁定其版本快照。自定义组件表单仍通过实体表单定义统一绑定。" />
-              </template>
-              <el-select
-                v-model="formConfig.entityFormId"
-                placeholder="请选择节点表单"
-                style="width: 100%"
-                filterable
-                :loading="nodeFormInitializing || entityFormsLoading"
-                :disabled="!boundEntity"
-                @change="onEntityFormChange"
-              >
-                <el-option :label="defaultEntityFormOptionLabel" :value="DEFAULT_NODE_FORM_VALUE">
-                  <div class="form-option">
-                    <span class="form-name">{{ defaultEntityFormOptionLabel }}</span>
-                    <el-tag v-if="defaultEntityForm?.customComponent" size="small" type="warning">
-                      自定义组件
-                    </el-tag>
-                  </div>
-                </el-option>
-                <el-option
-                  v-if="unresolvedNodeFormBinding"
-                  :label="unresolvedNodeFormBindingOptionLabel"
-                  :value="unresolvedNodeFormBinding.selectionValue"
-                  disabled
-                />
-                <el-option
-                  v-for="form in entityFormOptions"
-                  :key="form.id"
-                  :label="form.formName"
-                  :value="String(form.id)"
-                >
-                  <div class="form-option">
-                    <span class="form-name">{{ form.formName }}</span>
-                    <span class="form-key">({{ form.formKey }})</span>
-                    <el-tag v-if="form.customComponent" size="small" type="warning">自定义组件</el-tag>
-                    <el-tag v-if="Array.isArray(form.fields)" size="small" type="info">
-                      {{ form.fields.length }}个字段
-                    </el-tag>
-                  </div>
-                </el-option>
-              </el-select>
-              <div
-                v-if="boundEntity && !entityFormsLoading && entityFormOptions.length === 0"
-                class="form-status"
-              >
-                暂无可用表单，请先
-                <el-button type="primary" link size="small" @click="goToFormDesign">创建表单</el-button>
-              </div>
-              <div class="form-status" v-if="!boundEntity">
-                当前流程未绑定实体，无法指定实体表单
-              </div>
-              <div v-if="selectedEntityForm?.customComponent" class="custom-component-form-status">
-                <el-tag size="small" type="warning">自定义组件表单</el-tag>
-                <span>
-                  渲染组件：{{ selectedEntityForm.customComponent }}
-                </span>
-              </div>
-          </el-form-item>
-
-          <el-form-item v-if="hasResolvedEntityFormSelection" label="强制整表只读">
-            <template #label>
-              <ConfigHelpLabel label="强制整表只读" content="开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。" />
-            </template>
-            <el-switch v-model="formConfig.isReadonly" />
-          </el-form-item>
-          </el-form>
-        </SettingsSection>
-      </section>
-      
       <!-- ========== 审批配置（仅用户任务） ========== -->
       <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="审批设置"
           description="配置审批意见和用户可选择的审批操作"
-          :collapsible="false"
           primary
         >
-          <el-form :model="approvalForm" label-width="120px" size="small">
-          <el-form-item label="启用审批意见">
-            <el-switch v-model="approvalForm.enabled" />
-          </el-form-item>
-          
-          <template v-if="approvalForm.enabled">
-            <el-form-item label="审批意见名称">
+          <el-form :model="approvalForm" size="small">
+          <div class="approval-settings-row">
+            <el-form-item label="启用审批">
+              <el-switch v-model="approvalForm.enabled" aria-label="启用审批" />
+            </el-form-item>
+            <el-form-item v-if="approvalForm.enabled" label="审批意见名称">
               <el-input v-model="approvalForm.commentLabel" placeholder="如：审批意见、审批备注" />
             </el-form-item>
-            
+          </div>
+
+          <template v-if="approvalForm.enabled">
             <el-divider>审批选项</el-divider>
             
             <div class="approval-options-list">
@@ -1412,6 +1372,7 @@
                     <el-tooltip v-if="option.showComment" content="备注必填" placement="top">
                       <el-button
                         :type="option.remarkRequired ? 'danger' : ''"
+                        :aria-pressed="!!option.remarkRequired"
                         link
                         size="small" aria-label="切换备注必填" title="切换备注必填"
                         @click="option.remarkRequired = !option.remarkRequired"
@@ -1442,6 +1403,19 @@
         </SettingsSection>
       </section>
       
+      <!-- ========== 下一节点审批人（仅用户任务） ========== -->
+      <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
+        <el-form :model="assigneeForm" label-width="100px" size="small">
+          <NextApproverConfigEditor
+            ref="nextApproverConfigEditorRef"
+            v-model="assigneeForm.nextApproverSelection"
+            :process-id="processId"
+            :entity-code="boundEntity?.entityCode || ''"
+            :allow-editing="assigneeForm.handlingMode !== 'SEQUENTIAL'"
+          />
+        </el-form>
+      </section>
+
       <!-- ========== 知会配置 ========== -->
       <section v-if="isCcConfigurable && activeTab === 'collaboration'" class="config-section">
         <SettingsSection
@@ -1597,10 +1571,9 @@
       </section>
 
       <!-- ========== 高级配置 ========== -->
-      <section v-if="hasAdvancedConfig && activeTab === 'advanced'" class="config-section">
+      <section v-if="isUserTask && activeTab === 'advanced'" class="config-section">
         <el-form :model="advancedForm" label-width="120px" size="small">
           <SettingsSection
-            v-if="isUserTask"
             title="自动跳过"
             description="用户任务到达后按规则直接继续流转，不生成待办停留"
             :default-expanded="advancedForm.skipMode !== AUTO_SKIP_MODE.OFF"
@@ -1622,7 +1595,7 @@
               <template #label>
                 <ConfigHelpLabel
                   label="跳过方式"
-                  content="始终跳过会直接进入后续流转，不创建待办，也不写入当前节点审批结果或意见。条件跳过在表达式为 true 时跳过，为 false 时正常等待办理。条件组可选择实体字段并组合条件；为保证发布安全，仅提供比较操作符。"
+                  content="始终跳过会直接进入后续流转，不创建待办，也不写入当前节点审批结果或意见。满足条件时跳过，否则正常等待办理。可选择实体字段进行比较、判断为空或不为空。"
                 />
               </template>
               <el-radio-group
@@ -1671,7 +1644,7 @@
             </template>
           </SettingsSection>
 
-          <SettingsSection v-if="isUserTask" title="选择节点回退"
+          <SettingsSection title="选择节点回退"
             description="回退范围随流程版本发布">
             <template #summary>
               <el-tag size="small" type="info">{{ taskReturnSummary }}</el-tag>
@@ -1693,29 +1666,11 @@
             </el-form-item>
           </SettingsSection>
 
-          <NodeSlaEditor v-if="isUserTask" v-model="slaForm"
+          <NodeSlaEditor v-model="slaForm"
             :sla-policy-options="slaPolicyOptions" :work-calendar-options="workCalendarOptions"
             :entity-fields="entityFields" />
-          
-          <SettingsSection
-            title="标识与备注"
-            description="节点技术标识和设计说明"
-          >
-            <el-form-item label="节点ID">
-              <el-input v-model="basicForm.id" disabled />
-            </el-form-item>
-            <el-form-item label="设计备注" class="doc-item">
-              <el-input
-                v-model="basicForm.documentation"
-                type="textarea"
-                :rows="3"
-                placeholder="记录节点设计说明..."
-              />
-            </el-form-item>
-          </SettingsSection>
 
           <SettingsSection
-            v-if="isUserTask"
             title="空办理人策略"
             description="设置无可用办理人时的处理方式"
           >
@@ -1754,6 +1709,7 @@ import { deleteStatusMappings, getStatusMappings, saveStatusMappings } from '@/a
 import { processApi } from '@/api/process'
 import { readCalledProcessConfig, validateCalledProcessConfig, replaceWithCalledProcess } from './node-config/calledProcessConfig'
 import request from '@/utils/request'
+import { createApprovalConfig } from '@/utils/userTaskDefaults'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   buildNodeScopedMultiInstanceCollection,
@@ -1767,6 +1723,9 @@ import {
   normalizeRelativeOrgPositionConfig,
   MULTI_INSTANCE_DECISION_COUNTERSIGN,
   buildUserTaskReferenceOptions,
+  getNodeTypeDescription,
+  getNodeTypeTag,
+  getNodeTypeText,
   getProcessConditionFieldCode,
   getProcessConditionFieldType,
   MAX_NODE_REFERENCE_DEPTH,
@@ -1829,6 +1788,7 @@ import {
 import {
   AUTO_SKIP_MODE,
   AUTO_SKIP_OPERATOR_OPTIONS,
+  buildAutoSkipExpression,
   createAutoSkipForm,
   resolveAutoSkipConditionRoot,
   serializeAutoSkipForm,
@@ -1846,6 +1806,7 @@ const props = defineProps({
 
 const emit = defineEmits(['save', 'update-status-mapping', 'action-changed'])
 const activeTab = ref('basic')
+const nodeTypeDescription = computed(() => getNodeTypeDescription(props.element?.type))
 
 // ========== 节点类型判断 ==========
 // 自动跳过只对具备人工待办语义的 UserTask 开放，其他节点不展示也不写入该配置。
@@ -1862,9 +1823,9 @@ const isCallActivity = computed(() => props.element?.type === 'bpmn:CallActivity
 const isSubProcess = computed(() => props.element?.type === 'bpmn:SubProcess')
 const isTask = computed(() => props.element?.type?.includes('Task') || props.element?.type?.includes('Activity'))
 const isSequenceFlow = computed(() => props.element?.type === 'bpmn:SequenceFlow')
+const supportsNodeCode = computed(() => props.element?.businessObject?.$instanceOf('bpmn:FlowNode'))
 const isActionConfigurable = computed(() => Boolean(props.element?.id) && props.element?.type !== 'bpmn:Process')
 const isGateway = computed(() => props.element?.type?.includes('Gateway'))
-const hasAdvancedConfig = computed(() => isTask.value || isGateway.value)
 
 // 字段类型标签
 function getFieldTypeLabel(type) {
@@ -1921,7 +1882,7 @@ const SERVICE_EXAMPLES = {
 }
 
 // ========== 表单数据 ==========
-const basicForm = ref({ id: '', name: '', documentation: '' })
+const basicForm = ref({ id: '', name: '', code: '', documentation: '' })
 const nextApproverConfigEditorRef = ref()
 
 function createRelativePositionForm(value = {}) {
@@ -1956,7 +1917,7 @@ const assigneeForm = ref({
   handlingMode: 'CLAIM',
   multiInstanceCompletionRate: 100,
   multiInstanceNeedAllApprovers: true,
-  assigneeType: 'user', // user/group/role/entity_user_reference/relative_position/node_reference/expression/interface
+  assigneeType: 'user',
   referencedNodeId: '',
   referencedNodeName: '',
   resolverCode: '',
@@ -2008,9 +1969,10 @@ watch(
 )
 onBeforeUnmount(() => bindReferenceOptionsEventBus(null))
 const isMultiInstance = computed(() => assigneeForm.value.handlingMode !== 'CLAIM')
+const SEQUENTIAL_ASSIGNEE_TYPES = ['user', 'interface']
 const handlingModeDescription = computed(() => ({
   CLAIM: '一人直接办理，多人共享一个任务，任意一人即可办理。',
-  SEQUENTIAL: '按固定人员列表从上到下依次办理，全部通过后继续，任一人驳回即结束本节点。',
+  SEQUENTIAL: '按固定人员列表或人员接口返回的顺序依次办理，全部通过后继续，任一人驳回即结束本节点。',
   COUNTERSIGN: '所有人员同时收到各自的任务，按通过率和等待规则决定结果。'
 })[assigneeForm.value.handlingMode])
 
@@ -2215,14 +2177,7 @@ const ccForm = ref({
 })
 
 // 审批配置
-const approvalForm = ref({
-  enabled: true,
-  commentLabel: '审批意见',
-  options: [
-    { value: 'approve', label: '通过', type: 'primary', showComment: true },
-    { value: 'reject', label: '驳回', type: 'danger', showComment: true }
-  ]
-})
+const approvalForm = ref(createApprovalConfig())
 
 function addApprovalOption() {
   approvalForm.value.options.push({ value: '', label: '', type: 'primary', showComment: true, remarkRequired: false })
@@ -2356,8 +2311,12 @@ const selectedEntityForm = computed(() => {
 const hasResolvedEntityFormSelection = computed(() =>
   Boolean(selectedEntityForm.value) && !unresolvedNodeFormBinding.value
 )
+function formatNodeFormOptionLabel(form) {
+  return form.formKey ? `${form.formName} (${form.formKey})` : form.formName
+}
+
 const defaultEntityFormOptionLabel = computed(() => defaultEntityForm.value
-  ? `使用实体默认表单（${defaultEntityForm.value.formName}）`
+  ? `使用实体默认表单（${formatNodeFormOptionLabel(defaultEntityForm.value)}）`
   : '使用实体默认表单（尚未设置默认表单）'
 )
 const unresolvedNodeFormBindingOptionLabel = computed(() => {
@@ -2672,7 +2631,9 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
     
     console.log('加载节点配置:', bo.id, bo.name, '扩展属性:', extProps)
     
-    basicForm.value = { id: bo.id || '', name: bo.name || '', documentation: bo.documentation?.[0]?.text || '' }
+    basicForm.value = {
+      id: bo.id || '', name: bo.name || '', code: extProps.nodeCode || '', documentation: bo.documentation?.[0]?.text || ''
+    }
     
     if (isUserTask.value) {
       const loop = bo.loopCharacteristics
@@ -2740,7 +2701,7 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
         allowAddSign: operationPermissions.allowAddSign,
         allowTerminate: operationPermissions.allowTerminate,
         allowWithdraw: operationPermissions.allowWithdraw,
-        candidateUsers: rawCandidateUsers || (authoringType === 'expression' ? rawAssignee : ''),
+        candidateUsers: rawCandidateUsers,
         candidateGroups,
         candidateUserIds,
         candidateGroupIds: assigneeConfig.groupTags ? candidateGroups.split(',').filter(Boolean) : getGroupIdsFromCodes(candidateGroups),
@@ -2779,27 +2740,13 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
           console.error('解析 approvalConfig 失败:', e)
         }
       }
-      if (approvalConfig) {
-        approvalForm.value = {
-          enabled: approvalConfig.enabled !== false,
-          commentLabel: approvalConfig.commentLabel || '审批意见',
-          options: Array.isArray(approvalConfig.options) && approvalConfig.options.length > 0
-            ? approvalConfig.options.map(opt => ({ ...opt, remarkRequired: opt.remarkRequired !== undefined ? opt.remarkRequired : false }))
-            : [
-                { value: 'approve', label: '通过', type: 'primary', showComment: true, remarkRequired: false },
-                { value: 'reject', label: '驳回', type: 'danger', showComment: true, remarkRequired: false }
-              ]
-        }
-      } else {
-        // 重置为默认值
-        approvalForm.value = {
-          enabled: true,
-          commentLabel: '审批意见',
-          options: [
-            { value: 'approve', label: '通过', type: 'primary', showComment: true, remarkRequired: false },
-            { value: 'reject', label: '驳回', type: 'danger', showComment: true, remarkRequired: false }
-          ]
-        }
+      const approvalDefaults = createApprovalConfig()
+      approvalForm.value = {
+        enabled: approvalConfig?.enabled !== false,
+        commentLabel: approvalConfig?.commentLabel || approvalDefaults.commentLabel,
+        options: Array.isArray(approvalConfig?.options) && approvalConfig.options.length > 0
+          ? approvalConfig.options.map(opt => ({ remarkRequired: false, ...opt }))
+          : approvalDefaults.options
       }
       if (extProps.slaConfig) {
         try {
@@ -3097,8 +3044,18 @@ function updateDocumentation() {
   modeling.updateProperties(toRaw(props.element), { documentation: docs })
 }
 
-/** 切换方式时重选不适用的来源；同一份固定人员列表可直接用于三种方式。 */
-function onHandlingModeChange(mode) {
+watch(
+  [assigneeForm, () => assigneeForm.value.handlingMode],
+  ([form, mode], [previousForm, previousMode]) => {
+    // 切换节点会回填整份表单，只有编辑当前表单的办理方式时才调整其来源。
+    if (form === previousForm && mode !== previousMode) {
+      onHandlingModeChange(mode, previousMode)
+    }
+  }
+)
+
+/** 切换方式时仅重选不适用的来源或用途发生变化的接口。 */
+function onHandlingModeChange(mode, previousMode) {
   const form = assigneeForm.value
   if (mode === 'SEQUENTIAL') {
     form.nextApproverSelection = createNextApproverSelectionConfig({
@@ -3107,12 +3064,12 @@ function onHandlingModeChange(mode) {
       source: { type: 'NODE_ASSIGNMENT' }
     })
   }
-  if ((mode === 'SEQUENTIAL' && form.assigneeType !== 'user')
-      || (mode === 'COUNTERSIGN' && form.assigneeType === 'expression')) {
+  if (mode === 'SEQUENTIAL' && !SEQUENTIAL_ASSIGNEE_TYPES.includes(form.assigneeType)) {
     form.assigneeType = 'user'
     onAssigneeTypeChange('user')
-  } else if (form.assigneeType === 'interface') {
-    // 平台按办理用途筛选接口，普通任务与会签切换时需重新确认接口能力。
+  } else if (form.assigneeType === 'interface'
+      && (mode === 'CLAIM' || previousMode === 'CLAIM')) {
+    // 顺序和会签均使用 MULTI_INSTANCE，跨抢占切换时才需重选接口。
     form.resolverCode = ''
     form.resolverDisplayName = ''
     form.interfaceName = ''
@@ -3334,13 +3291,13 @@ function getSkipExpressionPreview() {
   if (!skipConditionDirty.value && skipConditionOriginalExpression.value) {
     return skipConditionOriginalExpression.value
   }
-  return buildFlowConditionExpression(skipConditionRoot.value, getFieldType)
+  return buildAutoSkipExpression(skipConditionRoot.value, getFieldType)
 }
 
 function updateSkipCondition() {
   skipConditionDirty.value = true
   skipConditionParseWarning.value = ''
-  advancedForm.value.skipExpression = buildFlowConditionExpression(
+  advancedForm.value.skipExpression = buildAutoSkipExpression(
     skipConditionRoot.value,
     getFieldType
   )
@@ -3354,32 +3311,34 @@ function resetSkipConditionGroups() {
   advancedForm.value.skipExpression = ''
 }
 
-function updateAutoSkipConfig() {
-  if (!isUserTask.value) return true
+/** 在各分组写入画布前校验跳过条件，避免未填完的条件导致节点配置只应用一部分。 */
+function validateAndSerializeAutoSkipConfig() {
+  let expression = advancedForm.value.skipExpression
+  if (advancedForm.value.skipMode === AUTO_SKIP_MODE.CONDITIONAL) {
+    expression = getSkipExpressionPreview()
+    if (!expression) {
+      ElMessage.warning('请补齐自动跳过条件')
+      return null
+    }
+    const validation = validateAutoSkipExpression(expression)
+    if (!validation.valid) {
+      ElMessage.warning(validation.message)
+      return null
+    }
+  }
+
+  return serializeAutoSkipForm({
+    ...advancedForm.value,
+    skipExpression: expression
+  })
+}
+
+function updateAutoSkipConfig(config) {
   const modeling = getModeling()
   if (!modeling) {
     ElMessage.warning('模型未初始化')
     return false
   }
-
-  let expression = advancedForm.value.skipExpression
-  if (advancedForm.value.skipMode === AUTO_SKIP_MODE.CONDITIONAL) {
-    expression = getSkipExpressionPreview()
-    if (!expression) {
-      ElMessage.warning('请至少配置一条完整的自动跳过条件')
-      return false
-    }
-    const validation = validateAutoSkipExpression(expression)
-    if (!validation.valid) {
-      ElMessage.warning(validation.message)
-      return false
-    }
-  }
-
-  const config = serializeAutoSkipForm({
-    ...advancedForm.value,
-    skipExpression: expression
-  })
 
   // skipExpression 在 flowable moddle 描述中是 String 属性，不能写 FormalExpression 对象。
   advancedForm.value.skipExpression = config.skipExpression || ''
@@ -3773,11 +3732,11 @@ function getConfigurationSections() {
   if (isCallActivity.value) sections.push('call')
   if (isSequenceFlow.value) sections.push('condition')
   if (isCcConfigurable.value) sections.push('cc')
-  if (hasAdvancedConfig.value) sections.push('advanced')
+  if (isUserTask.value) sections.push('advanced')
   return sections
 }
 
-function applyConfigurationSection(section) {
+function applyConfigurationSection(section, autoSkipConfig) {
   try {
     // 检查 element 是否有效
     if (!props.element || !props.element.businessObject) {
@@ -3789,6 +3748,10 @@ function applyConfigurationSection(section) {
       case 'basic':
         updateProperty('name', basicForm.value.name)
         updateDocumentation()
+        if (supportsNodeCode.value) {
+          const savedCode = getExtensionProperties(toRaw(props.element).businessObject).nodeCode || ''
+          if (basicForm.value.code !== savedCode) updateExtensionProperty('nodeCode', basicForm.value.code)
+        }
         break
       case 'assignee': {
         const emptyPolicyError = validateEmptyAssigneeStrategy(assigneeForm.value.emptyAssigneeStrategy)
@@ -3811,8 +3774,9 @@ function applyConfigurationSection(section) {
           return false
         }
         const type = assigneeForm.value.assigneeType
-        if (assigneeForm.value.handlingMode === 'SEQUENTIAL' && type !== 'user') {
-          ElMessage.warning('顺序办理仅支持固定人员，请重新选择办理人来源')
+        if (assigneeForm.value.handlingMode === 'SEQUENTIAL'
+            && !SEQUENTIAL_ASSIGNEE_TYPES.includes(type)) {
+          ElMessage.warning('顺序办理请选择固定人员或接口动态')
           return false
         }
 
@@ -3856,11 +3820,6 @@ function applyConfigurationSection(section) {
           assigneeForm.value.candidateGroups = roleCodes
             .map(code => `ROLE_${code}`)
             .join(',')
-        } else if (type === 'expression') {
-          if (isMultiInstance.value) {
-            ElMessage.warning('会签不支持表达式来源，请选择其他办理人来源')
-            return false
-          }
         } else if (type === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
           if (!boundEntity.value?.entityCode) {
             ElMessage.warning('当前流程尚未绑定实体，无法配置实体用户关系字段')
@@ -3897,9 +3856,7 @@ function applyConfigurationSection(section) {
           assigneeForm.value.extraParamsText = projected.extraParamsText
         } else if (type === 'interface') {
           if (!assigneeForm.value.resolverCode) {
-            ElMessage.warning(isMultiInstance.value
-              ? '请选择支持会签的人员接口'
-              : '请选择支持抢占的人员接口')
+            ElMessage.warning('请选择支持当前办理方式的人员接口')
             return false
           }
           try {
@@ -3943,10 +3900,6 @@ function applyConfigurationSection(section) {
         } else if (type === 'group' || type === 'role') {
           updates.assignee = null
           updates.candidateUsers = null
-          updates.candidateGroups = assigneeForm.value.candidateGroups || null
-        } else if (type === 'expression') {
-          updates.assignee = null
-          updates.candidateUsers = assigneeForm.value.candidateUsers || null
           updates.candidateGroups = assigneeForm.value.candidateGroups || null
         } else if (type === NODE_REFERENCE_ASSIGNEE_TYPE) {
           updates.assignee = null
@@ -4186,7 +4139,7 @@ function applyConfigurationSection(section) {
         break
       }
       case 'advanced':
-        if (!updateAutoSkipConfig()) return false
+        if (!updateAutoSkipConfig(autoSkipConfig)) return false
         if (isUserTask.value) {
           if (!updateSlaConfig()) return false
           if (taskReturnEdited.value) {
@@ -4211,6 +4164,8 @@ function applyConfigurationSection(section) {
 }
 
 async function applyNodeConfiguration() {
+  const codeError = validateNodeCode()
+  if (codeError) { ElMessage.warning(codeError); return }
   if (isCallActivity.value || (isSubProcess.value && subProcessSource.value === 'existing')) {
     const validation = validateCalledProcessConfig(callForm.value)
     if (validation) { ElMessage.warning(validation); return }
@@ -4233,8 +4188,10 @@ async function applyNodeConfiguration() {
       return
     }
   }
+  const autoSkipConfig = isUserTask.value ? validateAndSerializeAutoSkipConfig() : null
+  if (isUserTask.value && !autoSkipConfig) return
   for (const section of getConfigurationSections()) {
-    if (!applyConfigurationSection(section)) return
+    if (!applyConfigurationSection(section, autoSkipConfig)) return
   }
   if (isSubProcess.value && subProcessSource.value === 'existing') {
     const modeler = toRaw(props.element)._modeler
@@ -4252,6 +4209,30 @@ async function applyNodeConfiguration() {
   // 节点配置仅写入 bpmn-js 内存模型，尚未落库；落库由顶部“保存草稿”统一完成。
   ElMessage.success('已应用到画布，请点击「保存草稿」完成保存')
   emit('save')
+}
+
+/** 从流程模型检查重复编码，覆盖收起的子流程内部节点。 */
+function validateNodeCode() {
+  if (!supportsNodeCode.value) return ''
+  const code = basicForm.value.code.trim()
+  basicForm.value.code = code
+  if (!code) return ''
+  if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(code)) {
+    return '节点编码须以英文字母开头，仅包含英文字母、数字和下划线，最长 64 个字符'
+  }
+  const node = toRaw(props.element).businessObject
+  let process = node
+  while (process.$parent && process.$type !== 'bpmn:Process') process = process.$parent
+  const flowElements = [...(process.flowElements || [])]
+  while (flowElements.length) {
+    const candidate = flowElements.pop()
+    if (candidate !== node && candidate.$instanceOf('bpmn:FlowNode')
+        && getExtensionProperties(candidate).nodeCode?.trim() === code) {
+      return `节点编码「${code}」已在当前流程中使用`
+    }
+    if (candidate.flowElements?.length) flowElements.push(...candidate.flowElements)
+  }
+  return ''
 }
 
 // ========== 连线状态配置相关方法 ==========
@@ -4491,11 +4472,44 @@ async function saveStatusConfig() {
 .config-tab-nav {
   display: flex;
   flex-shrink: 0;
-  overflow-x: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 0 12px;
   border-bottom: 1px solid #dcdfe6;
   background: #fff;
+}
+
+.config-tab-list {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
   scrollbar-width: thin;
+}
+
+.config-node-type {
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.node-type-info {
+  line-height: 1.6;
+}
+
+.node-type-info__title {
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+
+.node-type-info__description {
+  margin-bottom: 8px;
+  color: #606266;
+}
+
+.node-type-info__scene {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .config-tab-button {
@@ -4533,6 +4547,18 @@ async function saveStatusConfig() {
 .config-tab-button:focus-visible {
   outline: 2px solid #409eff;
   outline-offset: -2px;
+}
+
+@media (max-width: 440px) {
+  .config-tab-nav {
+    padding-inline: 8px;
+  }
+
+  .config-tab-button {
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: nowrap;
+  }
 }
 
 .config-tab-content {
@@ -4611,9 +4637,34 @@ async function saveStatusConfig() {
 .action-param-actions { display: flex; justify-content: flex-end; }
 
 /* 表单选择相关样式 */
+.node-form-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.node-form-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.node-form-controls > .el-switch {
+  flex-shrink: 0;
+}
+
+@media (max-width: 360px) {
+  .node-form-item {
+    display: block;
+  }
+
+  .node-form-item :deep(.el-form-item__label) {
+    justify-content: flex-start;
+  }
+}
+
 .form-option { display: flex; align-items: center; gap: 8px; }
 .form-name { font-weight: 500; }
-.form-key { color: #909399; font-size: 12px; }
 
 
 .preview-field { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background-color: #fff; border-radius: 3px; border: 1px solid #e4e7ed; }
@@ -4735,6 +4786,22 @@ async function saveStatusConfig() {
 }
 
 /* 审批配置样式 */
+.approval-settings-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 16px;
+}
+
+@media (max-width: 360px) {
+  .approval-settings-row :deep(.el-form-item) {
+    display: block;
+  }
+
+  .approval-settings-row :deep(.el-form-item__label) {
+    padding-right: 0;
+  }
+}
+
 .approval-options-list {
   display: flex;
   flex-direction: column;

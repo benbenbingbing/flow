@@ -25,7 +25,6 @@ public class AssigneeConfigDTO {
      * ROLE: 指定角色
      * DEPT: 指定部门
      * LEADER: 上级领导
-     * EXPRESSION: 表达式
      */
     private AssigneeConfig.AssigneeType assigneeType;
 

@@ -1,3 +1,5 @@
+import { buildFlowConditionExpression } from '@flow/workflow-core/utils/flowConditionGroups'
+
 export const AUTO_SKIP_MODE = Object.freeze({
   OFF: 'OFF',
   ALWAYS: 'ALWAYS',
@@ -10,7 +12,9 @@ export const AUTO_SKIP_OPERATOR_OPTIONS = Object.freeze([
   { label: '大于 (>)', value: '>' },
   { label: '小于 (<)', value: '<' },
   { label: '大于等于 (>=)', value: '>=' },
-  { label: '小于等于 (<=)', value: '<=' }
+  { label: '小于等于 (<=)', value: '<=' },
+  { label: '为空', value: 'empty' },
+  { label: '不为空', value: 'notEmpty' }
 ])
 
 const AUTO_SKIP_MODES = new Set(Object.values(AUTO_SKIP_MODE))
@@ -104,9 +108,17 @@ export function serializeAutoSkipForm(form = {}) {
   return { skipNode: null, skipExpression: null }
 }
 
+/** 全部条件填完整后再生成跳过表达式，避免漏掉未完成的条件而扩大跳过范围。 */
+export function buildAutoSkipExpression(root, getFieldType) {
+  return buildFlowConditionExpression(root, getFieldType, {
+    requireComplete: true,
+    useFlowableEmptyCheck: true
+  })
+}
+
 /**
  * 按发布端的受控数据表达式边界做前置校验，避免设计器生成带属性访问、
- * 方法调用或脚本符号的可执行表达式。字符串字面量内容不参与符号检查。
+ * 动态调用或脚本符号的表达式。只允许按固定变量名调用 Flowable 的空值检查。
  */
 export function validateAutoSkipExpression(expression) {
   const source = normalizeSkipExpression(expression)
@@ -118,7 +130,12 @@ export function validateAutoSkipExpression(expression) {
   if (!body.trim()) {
     return { valid: false, message: '条件表达式不能为空' }
   }
-  const stripped = stripQuotedLiterals(body)
+  // 将两个内置空值检查按布尔字面量校验，跳过完整字符串以免误识别其内容。
+  const withEmptyChecksReplaced = body.replace(
+    /(?<![\w.])var:is(?:Not)?Empty\('[A-Za-z_]\w*'\)|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/gs,
+    token => token.startsWith('var:') ? 'true' : token
+  )
+  const stripped = stripQuotedLiterals(withEmptyChecksReplaced)
   if (stripped == null) {
     return { valid: false, message: '条件表达式中的字符串引号未闭合' }
   }
@@ -130,7 +147,7 @@ export function validateAutoSkipExpression(expression) {
       || !/^[A-Za-z0-9_\s=!<>&|()+\-*/%]*$/.test(withoutDecimals)) {
     return {
       valid: false,
-      message: '条件表达式仅支持变量、比较、算术及 AND/OR 组合，不支持赋值、属性访问、Lambda 或动态调用'
+      message: '条件表达式仅支持变量、比较、空值判断、算术及 AND/OR 组合'
     }
   }
   return { valid: true, message: '' }

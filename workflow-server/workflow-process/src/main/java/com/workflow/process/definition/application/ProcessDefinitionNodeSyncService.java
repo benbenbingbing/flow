@@ -628,8 +628,10 @@ public class ProcessDefinitionNodeSyncService {
 
             // 兜底：从 BPMN 属性解析（兼容旧数据/普通节点）
             Matcher assigneeMatcher = Pattern.compile("flowable:assignee=\"([^\"]+)\"").matcher(content);
-            if (assigneeMatcher.find()) {
-                priority = saveAssignee(nodeConfigId, assigneeMatcher.group(1), priority);
+            // 多实例任务的循环元素由引擎绑定，不写入固定办理人快照。
+            if (assigneeMatcher.find() && !assigneeMatcher.group(1).contains("${")
+                    && !assigneeMatcher.group(1).contains("#{")) {
+                priority = saveUserAssignee(nodeConfigId, assigneeMatcher.group(1), priority);
             }
 
             Matcher candidateUsersMatcher = Pattern.compile("flowable:candidateUsers=\"([^\"]+)\"").matcher(content);
@@ -637,7 +639,7 @@ public class ProcessDefinitionNodeSyncService {
                 for (String user : candidateUsersMatcher.group(1).split(",")) {
                     String value = user.trim();
                     if (!value.isEmpty()) {
-                        priority = saveAssignee(nodeConfigId, value, priority);
+                        priority = saveUserAssignee(nodeConfigId, value, priority);
                     }
                 }
             }
@@ -706,15 +708,6 @@ public class ProcessDefinitionNodeSyncService {
             for (String value : values) {
                 priority = saveRoleAssignee(
                         nodeConfigId, value, priority);
-            }
-            return;
-        }
-        if ("expression".equals(type)) {
-            String expression = config.path("assigneeValue")
-                    .asText("")
-                    .trim();
-            if (!expression.isEmpty()) {
-                saveAssignee(nodeConfigId, expression, priority);
             }
         }
     }
@@ -800,28 +793,6 @@ public class ProcessDefinitionNodeSyncService {
         assignee.setNodeConfigId(nodeConfigId);
         assignee.setAssigneeType(AssigneeConfig.AssigneeType.ROLE);
         assignee.setAssigneeValue(value);
-        assignee.setPriority(priority);
-        assigneeMapper.insert(assignee);
-        return priority + 1;
-    }
-
-    /**
-     * 保存办理人；后续读取或执行将使用更新后的状态。
-     *
-     * @param nodeConfigId 节点配置ID，后续用于保存办理人时定位或关联目标
-     * @param assigneeValue 办理人值，作为 {@code assignee.setAssigneeValue} 的输入影响后续处理
-     * @param priority 优先级，作为 {@code assignee.setPriority} 的输入影响后续处理
-     * @return 保存后的办理人结果，供调用方继续处理
-     */
-    private int saveAssignee(String nodeConfigId, String assigneeValue, int priority) {
-        AssigneeConfig assignee = new AssigneeConfig();
-        assignee.setNodeConfigId(nodeConfigId);
-        if (assigneeValue.startsWith("${") && assigneeValue.endsWith("}")) {
-            assignee.setAssigneeType(AssigneeConfig.AssigneeType.EXPRESSION);
-        } else {
-            assignee.setAssigneeType(AssigneeConfig.AssigneeType.USER);
-        }
-        assignee.setAssigneeValue(assigneeValue);
         assignee.setPriority(priority);
         assigneeMapper.insert(assignee);
         return priority + 1;

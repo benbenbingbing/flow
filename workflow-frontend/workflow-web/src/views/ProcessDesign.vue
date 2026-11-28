@@ -112,51 +112,13 @@
         @command-stack-changed="onCommandStackChanged"
         @imported="onImported"
       />
-      <el-button
-        v-if="selectedElement && !nodeConfigVisible"
-        class="node-config-trigger"
-        type="primary"
-        plain
-        @click="openNodeConfig"
-      >
-        <el-icon><Setting /></el-icon>
-        节点配置
-      </el-button>
-      <aside v-if="nodeConfigVisible && selectedElement" class="node-config-panel">
-        <div class="node-config-panel__header">
-          <div class="node-config-panel__heading">
-            <strong>{{ nodeConfigDrawerTitle }}</strong>
-            <div class="node-config-panel__meta">
-              <el-tag :type="nodeConfigTypeTag">
-                {{ nodeConfigTypeText }}
-              </el-tag>
-              <el-popover placement="bottom" trigger="hover" :width="280">
-                <template #reference>
-                  <el-icon class="node-config-panel__info"><InfoFilled /></el-icon>
-                </template>
-                <div class="node-type-info">
-                  <div class="info-title">{{ nodeConfigTypeDesc.title }}</div>
-                  <div class="info-desc">{{ nodeConfigTypeDesc.desc }}</div>
-                  <div class="info-scene">
-                    <el-tag size="small" type="warning">场景</el-tag>
-                    {{ nodeConfigTypeDesc.scene }}
-                  </div>
-                </div>
-              </el-popover>
-            </div>
-          </div>
-          <el-button text circle aria-label="关闭节点配置" title="关闭节点配置" @click="closeNodeConfig">
-            <el-icon><Close /></el-icon>
-          </el-button>
-        </div>
-        <div class="node-config-panel__body">
-          <NodeConfigPanel
-            :element="selectedElement"
-            :process-id="processId"
-            @save="handleNodeConfigSave"
-            @action-changed="refreshActionCounts"
-          />
-        </div>
+      <aside v-if="selectedElement" class="node-config-panel" aria-label="节点配置">
+        <NodeConfigPanel
+          :element="selectedElement"
+          :process-id="processId"
+          @save="handleNodeConfigSave"
+          @action-changed="refreshActionCounts"
+        />
       </aside>
     </div>
   </div>
@@ -186,9 +148,9 @@ import { computed, ref, onMounted, onUnmounted, nextTick, toRaw, watch } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Document, Check, Back, Right, Setting, Close, InfoFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Document, Check, Back, Right, Setting } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
-import { getNodeTypeDescription, getNodeTypeTag, getNodeTypeText, normalizeEmptyAssigneeStrategy, validateEmptyAssigneeStrategy } from '@/shared/process-config'
+import { normalizeEmptyAssigneeStrategy, validateEmptyAssigneeStrategy } from '@/shared/process-config'
 import { ensureBpmnLayout, hasCompleteBpmnDi } from '@/utils/bpmnLayout'
 import formatXML from 'xml-formatter'
 import NodeConfigPanel from '@/components/NodeConfigPanel.vue'
@@ -243,17 +205,8 @@ const designerRef = ref()
 const processData = ref({})
 const loadError = ref('')
 const selectedElement = ref(null)
-const selectedElementName = ref('')
-const nodeConfigVisible = ref(false)
 const globalActionVisible = ref(false)
 const globalActionCount = ref(0)
-const nodeConfigDrawerTitle = computed(() => {
-  const name = selectedElementName.value.trim()
-  return `节点配置 · ${name || '未命名节点'}`
-})
-const nodeConfigTypeText = computed(() => getNodeTypeText(selectedElement.value?.type))
-const nodeConfigTypeTag = computed(() => getNodeTypeTag(selectedElement.value?.type))
-const nodeConfigTypeDesc = computed(() => getNodeTypeDescription(selectedElement.value?.type))
 
 // 撤销/重做状态
 const canUndo = ref(false)
@@ -325,21 +278,11 @@ const handleKeydown = (e) => {
 }
 
 const onElementClick = (element) => {
+  // 点击画布空白或不可配置的元素会清空选择并关闭面板。
   selectedElement.value = element || null
-  selectedElementName.value = element?.businessObject?.name || ''
-  // 数据对象、参与者等建模元素没有平台属性面板，点击后应同步关闭旧节点配置。
-  nodeConfigVisible.value = Boolean(element)
 }
 
-const openNodeConfig = () => {
-  nodeConfigVisible.value = true
-}
-
-const closeNodeConfig = () => {
-  nodeConfigVisible.value = false
-}
-
-watch(nodeConfigVisible, async () => {
+watch(() => Boolean(selectedElement.value), async () => {
   await nextTick()
   designerRef.value?.resizeAndFocus(selectedElement.value?.id)
 })
@@ -358,11 +301,8 @@ const onCommandStackChanged = ({ canUndo: undo, canRedo: redo, historyToken }) =
       selectedElement.value = current
     } else if (!current && modeler) {
       selectedElement.value = null
-      nodeConfigVisible.value = false
     }
   }
-  // bpmn-js 修改的是 Vue 响应式系统外的原始对象；显式同步标题。
-  selectedElementName.value = selectedElement.value?.businessObject?.name || ''
 }
 
 const onImported = ({ historyToken } = {}) => {
@@ -610,7 +550,6 @@ const handleNodeConfigSave = () => {
   // 节点配置只写入了 bpmn-js 内存模型，未落库。
   // 仅标记脏状态，不弹提示，避免一次保存弹出多个 toast。
   // 真正落库由顶部“保存草稿”按钮完成，落库成功后才提示。
-  selectedElementName.value = selectedElement.value?.businessObject?.name || ''
   hasUnsavedNodeChanges.value = true
 }
 
@@ -671,14 +610,8 @@ onUnmounted(() => {
   flex: 1;
   background: #f5f5f5;
   overflow: auto;
-}
-
-.node-config-trigger {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 5;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+  /* 画布工具的层级限定在画布内，避免覆盖窄屏配置面板。 */
+  isolation: isolate;
 }
 
 /* 限定设计器外层面板；子组件根节点同名，不能继承这里的布局定位。 */
@@ -692,81 +625,6 @@ onUnmounted(() => {
   overflow: hidden;
   background: #fff;
   border-left: 1px solid #e4e7ed;
-}
-
-.node-config-panel__header {
-  flex-shrink: 0;
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 16px;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.node-config-panel__heading {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.node-config-panel__heading strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.node-config-panel__meta {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.node-config-panel__info {
-  color: #909399;
-  cursor: pointer;
-  font-size: 16px;
-}
-
-.node-config-panel__info:hover {
-  color: #409eff;
-}
-
-.node-type-info {
-  line-height: 1.6;
-}
-
-.info-title {
-  margin-bottom: 5px;
-  font-weight: 600;
-}
-
-.info-desc {
-  margin-bottom: 8px;
-  color: #606266;
-}
-
-.info-scene {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.node-config-panel__body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.node-config-panel__body :deep(.node-config-panel) {
-  flex: 1;
-  min-height: 0;
 }
 
 /* 历史操作按钮组 */
@@ -858,13 +716,15 @@ onUnmounted(() => {
     flex-wrap: wrap;
   }
 
+  /* 窄屏面板保持全宽，顶部露出画布供点击空白处关闭。 */
   .design-container > .node-config-panel {
     position: absolute;
-    inset: 0;
+    inset: 44px 0 0;
     z-index: 8;
     width: 100%;
     min-width: 0;
     border-left: 0;
+    border-top: 1px solid #e4e7ed;
   }
 }
 </style>

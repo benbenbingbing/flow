@@ -36,7 +36,6 @@ public class AssigneeConfig {
      * ROLE: 指定角色（如：部门经理）
      * DEPT: 指定部门（如：财务部）
      * LEADER: 上级领导（动态获取申请人上级）
-     * EXPRESSION: 表达式（如：${manager}）
      */
     @TableField("assignee_type")
     private AssigneeType assigneeType;
@@ -48,7 +47,6 @@ public class AssigneeConfig {
      * ROLE类型存储角色编码
      * DEPT类型存储部门ID
      * LEADER类型存储层级（如：1表示直属上级）
-     * EXPRESSION类型存储表达式
      */
     @TableField("assignee_value")
     private String assigneeValue;
@@ -90,8 +88,6 @@ public class AssigneeConfig {
         /** 指定部门 */
         DEPT,
         /** 上级领导（动态计算） */
-        LEADER,
-        /** 表达式（SpEL） */
-        EXPRESSION
+        LEADER
     }
 }

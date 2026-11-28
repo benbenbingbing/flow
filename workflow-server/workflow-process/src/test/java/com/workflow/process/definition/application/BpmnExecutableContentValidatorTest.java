@@ -47,6 +47,21 @@ class BpmnExecutableContentValidatorTest {
     }
 
     @Test
+    void onlySkipExpressionsAllowNativeEmptyChecksOnLiteralVariableNames() {
+        String expression = "${var:isEmpty('reviewer') && (var:isNotEmpty('comment') || amount > 10)}";
+        assertTrue(BpmnExecutableContentValidator.isSafeSkipExpression(expression));
+        assertFalse(safe(expression));
+        assertTrue(BpmnExecutableContentValidator.isSafeSkipExpression(
+                "${comment == \"var:isEmpty('reviewer')\"}"));
+        assertFalse(BpmnExecutableContentValidator.isSafeSkipExpression("${var:isEmpty(reviewer)}"));
+        assertFalse(BpmnExecutableContentValidator.isSafeSkipExpression("${var:isEmpty('reviewer.name')}"));
+        assertFalse(BpmnExecutableContentValidator.isSafeSkipExpression("${var:get('reviewer')}"));
+        assertFalse(BpmnExecutableContentValidator.isSafeSkipExpression(
+                "${var:isEmpty('reviewer') || remark.contains('urgent')}"));
+        assertNull(DeployedSkipExpressionSafety.firstUnsafeElementId(modelWithSkip("review", expression)));
+    }
+
+    @Test
     void deployedSafetyUsesTheSameHardenedGrammar() {
         BpmnModel safeModel = modelWithSkip(
                 "safe-review", "${amount >= 100}");

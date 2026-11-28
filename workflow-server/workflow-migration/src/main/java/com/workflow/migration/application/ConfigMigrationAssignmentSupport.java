@@ -2,13 +2,13 @@ package com.workflow.migration.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.process.definition.application.BpmnExecutableContentValidator;
 import org.springframework.util.StringUtils;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
-import org.flowable.common.engine.impl.de.odysseus.el.tree.impl.Builder;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -203,7 +203,7 @@ final class ConfigMigrationAssignmentSupport {
             case "group" -> field(config, "assigneeValue", "GROUP_OR_ROLE", context, mapper);
             case "role" -> field(config, "assigneeValue", "ROLE_VALUES", context, mapper);
             case "dept" -> field(config, "assigneeValue", "DEPT", context, mapper);
-            default -> { /* 表达式、节点引用及动态接口不提前计算人员。 */ }
+            default -> { /* 节点引用和动态接口在运行时解析。 */ }
         }
         if (Set.of("user", "candidate", "group", "role", "").contains(type)) {
             field(config, "candidateUsers", "USER", context, mapper);
@@ -405,7 +405,7 @@ final class ConfigMigrationAssignmentSupport {
     }
 
     /**
-     * 导入时检查同流程节点引用图及表达式语法，不读取任何运行时变量或执行表达式。
+     * 导入时检查办理人来源和同流程节点引用图。
      * 固定编码的存在性由依赖清单校验；节点 ID 是包内坐标，不做跨环境映射。
      *
      * @param xml XML，作为 {@code parseXml} 的输入影响后续处理
@@ -421,20 +421,16 @@ final class ConfigMigrationAssignmentSupport {
                 Element task = (Element) tasks.item(i);
                 String nodeId = task.getAttribute("id");
                 nodes.add(nodeId);
+                BpmnExecutableContentValidator.validateTaskAssignmentAttributes(task);
                 for (String namespace : EXTENSIONS) {
-                    for (String name : List.of("assignee", "candidateUsers", "candidateGroups")) {
-                        validateExpression(task.getAttributeNS(namespace, name));
-                    }
                     NodeList properties = task.getElementsByTagNameNS(namespace, "property");
                     for (int j = 0; j < properties.getLength(); j++) {
                         Element property = (Element) properties.item(j);
                         if (!"assigneeConfig".equals(property.getAttribute("name"))) continue;
                         Map<String, Object> config = read(property.getAttribute("value"));
+                        BpmnExecutableContentValidator.validateAssignmentSource(nodeId, JSON.valueToTree(config));
                         if ("node_reference".equals(config.get("assigneeType"))) {
                             references.put(nodeId, text(config.get("referencedNodeId")));
-                        }
-                        for (String name : List.of("assigneeValue", "candidateUsers", "candidateGroups")) {
-                            validateExpression(text(config.get(name)));
                         }
                     }
                 }
@@ -452,19 +448,7 @@ final class ConfigMigrationAssignmentSupport {
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new IllegalArgumentException("人员规则结构或表达式无效: " + exception.getMessage(), exception);
-        }
-    }
-
-    /**
-     * 校验表达式；不满足约束时阻止后续处理。
-     *
-     * @param expression 表达式，供本方法校验表达式时使用
-     */
-    private static void validateExpression(String expression) {
-        if (expression.contains("${") || expression.contains("#{")) {
-            // 只建语法树，不绑定函数/Bean；运行期提供的函数不能因分析上下文为空而被误报。
-            new Builder(Builder.Feature.METHOD_INVOCATIONS, Builder.Feature.VARARGS).build(expression);
+            throw new IllegalArgumentException("人员规则结构无效: " + exception.getMessage(), exception);
         }
     }
 

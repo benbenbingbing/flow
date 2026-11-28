@@ -50,6 +50,7 @@
             <el-form-item
               v-if="selectedOption?.showComment !== false"
               :label="approvalConfig.commentLabel || '审批备注'"
+              :required="remarkRequired"
             >
               <el-input
                 :model-value="comment"
@@ -131,10 +132,14 @@ const nextApproverSectionRef = ref()
 const selectedOption = computed(() =>
   props.approvalConfig.options?.find(option => option.value === props.action)
 )
+const remarkRequired = computed(() => props.approvalConfig.enabled !== false
+  && selectedOption.value?.showComment !== false
+  && selectedOption.value?.remarkRequired === true)
 
 function validate() {
-  const result = nextApproverSectionRef.value?.validate?.()
-    || { valid: true, message: '' }
+  const result = remarkRequired.value && !props.comment?.trim()
+    ? { valid: false, message: `请填写${props.approvalConfig.commentLabel || '审批备注'}` }
+    : nextApproverSectionRef.value?.validate?.() || { valid: true, message: '' }
   // 折叠状态下若校验失败，应恢复内容区，让办理人能直接看到并修正问题。
   if (!result.valid && !props.expanded) {
     emit('update:expanded', true)

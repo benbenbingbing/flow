@@ -69,9 +69,9 @@ class ProcessDefinitionAssignmentPreflightTest {
         process.setProcessName("费用审批");
     }
 
-    /** 普通任务覆盖面板全部八种指定方式，JSON 与原生属性采用前端实际保存形式。 */
+    /** 普通任务覆盖面板全部七种办理人来源，JSON 与原生属性采用前端实际保存形式。 */
     @ParameterizedTest
-    @ValueSource(strings = {"user", "group", "role", "expression", "interface",
+    @ValueSource(strings = {"user", "group", "role", "interface",
             "entity_user_reference", "relative_position", "node_reference"})
     void acceptsEveryDesignerAssignmentMode(String mode) throws Exception {
         Map<String, Object> config = designerConfig(mode);
@@ -80,7 +80,7 @@ class ProcessDefinitionAssignmentPreflightTest {
         assertPublishable(service.preview(process));
     }
 
-    /** 会签/或签复用七种可枚举来源，表达式在设计器中禁止用于多人办理。 */
+    /** 会签复用同一组办理人来源。 */
     @ParameterizedTest
     @ValueSource(strings = {"user", "group", "role", "interface",
             "entity_user_reference", "relative_position", "node_reference"})
@@ -100,7 +100,7 @@ class ProcessDefinitionAssignmentPreflightTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"user", "group", "role", "expression", "interface", "node_reference"})
+    @ValueSource(strings = {"user", "group", "role", "interface", "node_reference"})
     void staleResolverAndDisplayNamesCannotSatisfyAnotherAssignmentType(String mode) throws Exception {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("assignmentConfigVersion", 2);
@@ -297,7 +297,6 @@ class ProcessDefinitionAssignmentPreflightTest {
         switch (mode) {
             case "user" -> config.put("candidateUsers", "alice,bob");
             case "group", "role" -> config.put("assigneeValue", "finance");
-            case "expression" -> config.put("assigneeValue", "${approvers}");
             case "node_reference" -> config.put("referencedNodeId", "SourceTask");
             default -> {
                 // 两种内置业务来源由前端投影成统一 interface 契约。
@@ -318,7 +317,6 @@ class ProcessDefinitionAssignmentPreflightTest {
             case "user" -> "flowable:candidateUsers=\"alice,bob\"";
             case "group" -> "flowable:candidateGroups=\"finance\"";
             case "role" -> "flowable:candidateGroups=\"ROLE_finance\"";
-            case "expression" -> "flowable:assignee=\"${approver}\"";
             default -> "";
         };
     }

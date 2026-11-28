@@ -3,17 +3,20 @@ package com.workflow.process.publish;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.process.form.application.ProcessFormContextValues;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.ProcessDefinition;
+import org.flowable.task.api.Task;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -124,5 +127,50 @@ class ProcessPublishedSnapshotServiceTest {
         assertEquals("release-7", nodeForms.get(0).getFormReleaseId());
         assertEquals(7, nodeForms.get(0).getFormReleaseVersion());
         assertEquals(history, resolved);
+    }
+
+    @Test
+    void formNodeCodeFollowsTheTaskDeploymentAndSupportsDefaultForms() {
+        var mapper = mock(ProcessVersionHistoryMapper.class);
+        var repository = mock(RepositoryService.class);
+        var snapshots = new ProcessPublishedSnapshotService(mapper, new ObjectMapper(), repository);
+        var oldDefinition = mock(ProcessDefinition.class);
+        var newDefinition = mock(ProcessDefinition.class);
+        when(repository.getProcessDefinition("pd-v1")).thenReturn(oldDefinition);
+        when(repository.getProcessDefinition("pd-v2")).thenReturn(newDefinition);
+        when(oldDefinition.getDeploymentId()).thenReturn("deployment-v1");
+        when(newDefinition.getDeploymentId()).thenReturn("deployment-v2");
+        var oldHistory = new ProcessVersionHistory();
+        oldHistory.setBpmnXml(designWithNodeCode("finance_review"));
+        var newHistory = new ProcessVersionHistory();
+        newHistory.setBpmnXml(designWithNodeCode("final_review"));
+        when(mapper.findByDeploymentId("deployment-v1")).thenReturn(Optional.of(oldHistory));
+        when(mapper.findByDeploymentId("deployment-v2")).thenReturn(Optional.of(newHistory));
+
+        var task = mock(Task.class);
+        when(task.getTaskDefinitionKey()).thenReturn("Activity_1");
+        var binding = new ProcessNodeForm();
+        binding.setNodeId("Activity_1");
+        var oldValues = ProcessFormContextValues.task(
+                snapshots.getVersionByProcessDefinitionId("pd-v1"), binding, task, "task-1", null, null);
+        assertEquals("Activity_1", oldValues.get("currentProcessNode.key"));
+        assertEquals("finance_review", oldValues.get("currentProcessNode.code"));
+        var newValues = ProcessFormContextValues.task(
+                snapshots.getVersionByProcessDefinitionId("pd-v2"), null, task, "task-2", null, null);
+        assertEquals("final_review", newValues.get("currentProcessNode.code"));
+        assertEquals("finance_review", ProcessFormContextValues.start(oldHistory, binding).get("currentProcessNode.code"));
+        assertFalse(ProcessFormContextValues.start(oldHistory, null).containsKey("currentProcessNode.code"));
+        assertFalse(ProcessFormContextValues.start(new ProcessVersionHistory(), binding)
+                .containsKey("currentProcessNode.code"));
+    }
+
+    private static String designWithNodeCode(String code) {
+        return """
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:flowable="http://flowable.org/bpmn">
+                  <process id="expense_flow"><userTask id="Activity_1"><extensionElements><flowable:properties>
+                    <flowable:property name="nodeCode" value="%s"/>
+                  </flowable:properties></extensionElements></userTask></process>
+                </definitions>
+                """.formatted(code);
     }
 }

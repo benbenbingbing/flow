@@ -408,7 +408,7 @@ public class EmptyAssigneePolicyBpmnValidator {
          * @return 动态条件成立时为 true，否则为 false
          */
         private static boolean dynamic(String type) {
-            return java.util.Set.of("resolver", "interface", "expression", "node_reference")
+            return java.util.Set.of("resolver", "interface", "node_reference")
                     .contains(type == null ? "" : type.toLowerCase(Locale.ROOT));
         }
     }

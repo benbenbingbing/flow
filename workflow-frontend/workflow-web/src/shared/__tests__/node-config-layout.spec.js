@@ -23,7 +23,7 @@ assert.match(
 )
 
 const multiInstanceStart = nodeConfigPanelSource.indexOf('title="会签规则"')
-const multiInstanceEnd = nodeConfigPanelSource.indexOf('<NextApproverConfigEditor', multiInstanceStart)
+const multiInstanceEnd = nodeConfigPanelSource.indexOf('</SettingsSection>', multiInstanceStart)
 assert.ok(multiInstanceStart >= 0 && multiInstanceEnd > multiInstanceStart, '办理人配置应包含会签规则分组')
 const multiInstanceSource = nodeConfigPanelSource.slice(multiInstanceStart, multiInstanceEnd)
 
@@ -64,14 +64,33 @@ for (const permission of ['allowTransfer', 'allowAddSign', 'allowTerminate', 'al
   )
 }
 
-for (const label of ['抢占', '顺序', '会签']) {
-  assert.ok(nodeConfigPanelSource.includes(`>${label}</el-radio-button>`))
-}
+const handlingModeOptions = nodeConfigPanelSource.matchAll(
+  /<el-radio-button value="(?:CLAIM|COUNTERSIGN|SEQUENTIAL)">([^<]+)<\/el-radio-button>/g
+)
+assert.deepEqual([...handlingModeOptions].map(([, label]) => label), ['抢占', '会签', '顺序'])
 for (const label of ['启用多实例', '任务分配', '多人命中', '集合变量', '元素变量']) {
   assert.ok(!nodeConfigPanelSource.includes(`label="${label}"`))
 }
 assert.match(multiInstanceSource, /v-model="assigneeForm.multiInstanceCompletionRate"/)
 assert.match(multiInstanceSource, /v-model="assigneeForm.multiInstanceNeedAllApprovers"/)
 assert.match(nodeConfigPanelSource, /:ordered="assigneeForm.handlingMode === 'SEQUENTIAL'"/)
+
+const lastBasicSection = nodeConfigPanelSource.lastIndexOf("activeTab === 'basic'")
+const lastBasicSectionEnd = nodeConfigPanelSource.indexOf('</section>', lastBasicSection)
+const firstBasicSection = nodeConfigPanelSource.indexOf('<section v-show="activeTab')
+const basicSections = nodeConfigPanelSource.slice(firstBasicSection, lastBasicSectionEnd)
+assert.doesNotMatch(basicSections, /:collapsible="false"/, '常用各分组都应允许折叠')
+const defaultExpandedGroups = [...basicSections.matchAll(
+  /<SettingsSection\b[^>]*title="([^"]+)"[^>]*:default-expanded="([^"]+)"/g
+)].map(([, title, expanded]) => [title, expanded])
+assert.deepEqual(defaultExpandedGroups, [['基本配置', 'true']], '常用仅基本配置默认展开')
+const nextApproverEditorSource = readFileSync(new URL('../../components/NextApproverConfigEditor.vue', import.meta.url), 'utf8')
+assert.doesNotMatch(nextApproverEditorSource, /:default-expanded=/, '已配置展示时下一节点审批人也应默认折叠')
+assert.ok(lastBasicSection > nodeConfigPanelSource.indexOf('title="审批设置"'))
+assert.match(
+  nodeConfigPanelSource.slice(lastBasicSection, lastBasicSectionEnd),
+  /<NextApproverConfigEditor\b/,
+  '下一节点审批人应作为常用页签的最后一个独立分组'
+)
 
 console.log('node config layout contract passed')

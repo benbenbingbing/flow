@@ -1,5 +1,6 @@
 package com.workflow.process.form.application;
 
+import com.workflow.process.definition.application.ProcessNodeCodes;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import org.flowable.task.api.Task;
@@ -13,6 +14,11 @@ public final class ProcessFormContextValues {
     private ProcessFormContextValues() { }
 
     public static Map<String, String> start(ProcessVersionHistory history, ProcessNodeForm binding) {
+        return nodeValues(history, binding, binding == null ? null : binding.getNodeId());
+    }
+
+    private static Map<String, String> nodeValues(
+            ProcessVersionHistory history, ProcessNodeForm binding, String nodeId) {
         Map<String, String> values = new LinkedHashMap<>();
         if (history != null) {
             put(values, "processDefinition.key", history.getProcessKey());
@@ -22,13 +28,14 @@ public final class ProcessFormContextValues {
             put(values, "currentProcessNode.key", binding.getNodeId());
             put(values, "currentProcessNode.name", binding.getNodeName());
         }
+        put(values, "currentProcessNode.code", ProcessNodeCodes.forPublishedNode(history, nodeId));
         return values;
     }
 
     /** 本地加签使用独立的待办 ID 和办理人，节点则沿用其源任务的发布绑定。 */
     public static Map<String, String> task(ProcessVersionHistory history, ProcessNodeForm binding, Task task,
             String taskId, String assignee, String starter) {
-        Map<String, String> values = start(history, binding);
+        Map<String, String> values = nodeValues(history, binding, task.getTaskDefinitionKey());
         put(values, "currentProcessInstance.id", task.getProcessInstanceId());
         put(values, "currentProcessInstance.starterUserId", starter);
         put(values, "currentTask.id", taskId);

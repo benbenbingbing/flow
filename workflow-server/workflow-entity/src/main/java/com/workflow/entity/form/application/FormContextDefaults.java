@@ -46,7 +46,7 @@ public class FormContextDefaults {
             "currentProcessInstance.id", STARTER, STARTER_NAME,
             "currentTask.id", "currentTask.nodeKey", "currentTask.nodeName", "currentTask.assigneeUserId");
     private static final Set<String> GENERAL_KEYS = Set.of(DATE, TIME, MODE, "processDefinition.key",
-            "processDefinition.name", "currentProcessNode.key", "currentProcessNode.name");
+            "processDefinition.name", "currentProcessNode.key", "currentProcessNode.code", "currentProcessNode.name");
 
     private final CurrentActorPort currentActor;
     private final SysUserPort users;

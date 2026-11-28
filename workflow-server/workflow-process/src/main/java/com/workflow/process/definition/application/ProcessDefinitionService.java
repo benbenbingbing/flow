@@ -281,6 +281,7 @@ public class ProcessDefinitionService {
         ProcessDefinitionConfig config = convertToEntity(dto);
         config.setBpmnXml(ProcessReturnPolicyBpmn.withDefault(
                 ProcessBpmnSynchronousExecutionNormalizer.normalize(config.getBpmnXml()), automaticReturn));
+        ProcessNodeCodes.read(config.getBpmnXml());
         config.setVersion(0); // 初始版本为0，表示从未发布
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
         config.setDraftRevision(1L);
@@ -331,6 +332,7 @@ public class ProcessDefinitionService {
         String normalizedBpmnXml = ProcessReturnPolicyBpmn.preserveDefault(existing.getBpmnXml(),
                 ProcessBpmnSynchronousExecutionNormalizer.normalize(
                         dto.getBpmnXml()));
+        ProcessNodeCodes.read(normalizedBpmnXml);
         String nextDraftHash = ProcessDraftHashSupport.hash(
                 existing.getProcessKey(),
                 dto.getProcessName(),
@@ -548,6 +550,7 @@ public class ProcessDefinitionService {
         String designBpmnXml =
                 ProcessBpmnSynchronousExecutionNormalizer.normalize(
                         config.getBpmnXml());
+        ProcessNodeCodes.read(designBpmnXml);
         // 发布时回写归一化后的设计 XML，避免存量异步属性进入版本历史或后续回滚。
         config.setBpmnXml(designBpmnXml);
         

@@ -132,11 +132,6 @@ class MultiInstanceAssignmentResolver {
             String processInstanceId,
             String processDefinitionId) {
         String type = normalizeAssignmentType(config.get("assigneeType"));
-        if ("expression".equals(type)) {
-            throw new IllegalArgumentException(
-                    "v2 多实例不支持无法安全枚举的表达式办理人: "
-                            + nodeId);
-        }
         if ("resolver".equals(type)) {
             return resolveWithResolver(
                     processConfigId,

@@ -61,10 +61,11 @@ export function parseFlowConditionConfig(value) {
   }
 }
 
-export function buildFlowConditionExpression(root, getFieldType = () => 'string') {
+/** 跳过条件要求整组可执行，并使用 Flowable 的变量空值检查；表单条件沿用本地表达式。 */
+export function buildFlowConditionExpression(root, getFieldType = () => 'string', options = {}) {
   const normalized = normalizeFlowConditionRoot(root)
   if (hasSelectionRoutingCondition(normalized) && !isNodeComplete(normalized)) return ''
-  const body = buildNode(normalized, getFieldType, true)
+  const body = buildNode(normalized, getFieldType, options, true)
   return body ? `\${${body}}` : ''
 }
 
@@ -202,30 +203,31 @@ function normalizeOperator(value) {
   ].includes(normalized) ? normalized : '=='
 }
 
-function buildNode(node, getFieldType, root = false) {
+function buildNode(node, getFieldType, options, root = false) {
   if (!node) return ''
   if (node.type === 'CONDITION') {
-    return buildCondition(node, getFieldType)
+    return buildCondition(node, getFieldType, options.useFlowableEmptyCheck)
   }
-  const parts = (node.children || [])
-    .map(child => buildNode(child, getFieldType, false))
-    .filter(Boolean)
+  const expressions = node.children.map(child => buildNode(child, getFieldType, options))
+  if (options.requireComplete && expressions.some(expression => !expression)) return ''
+  const parts = expressions.filter(Boolean)
   if (!parts.length) return ''
   const body = parts.join(node.logic === 'OR' ? ' || ' : ' && ')
   return root || parts.length === 1 ? body : `(${body})`
 }
 
-function buildCondition(condition, getFieldType) {
+function buildCondition(condition, getFieldType, useFlowableEmptyCheck) {
   if (!condition.property || !condition.operator) return ''
   if (selectionOperators.has(condition.operator)) {
     if (!validSelectionCondition(condition)) return ''
     return `_wfSelectionCondition.matches(execution, '${condition.property}', '${condition.operator}', '${selectionConditionCodes(condition.value).join(',')}')`
   }
-  if (condition.operator === 'empty') {
-    return `empty(${condition.property})`
-  }
-  if (condition.operator === 'notEmpty') {
-    return `notEmpty(${condition.property})`
+  if (condition.operator === 'empty' || condition.operator === 'notEmpty') {
+    if (!useFlowableEmptyCheck) return `${condition.operator}(${condition.property})`
+    // 按变量名读取，字段未设置时也能判断；直接引用未定义变量会导致引擎求值失败。
+    if (!/^[A-Za-z_]\w*$/.test(condition.property)) return ''
+    const functionName = condition.operator === 'empty' ? 'isEmpty' : 'isNotEmpty'
+    return `var:${functionName}('${condition.property}')`
   }
   if (condition.value == null || condition.value === '') return ''
 
@@ -280,6 +282,15 @@ function parseCondition(expression) {
   if (selectionMatch) {
     const node = { type: 'CONDITION', property: selectionMatch[1], operator: selectionMatch[2], value: selectionMatch[3] }
     return validSelectionCondition(node) ? node : null
+  }
+  const flowableEmptyMatch = source.match(/^var:is(Not)?Empty\('([A-Za-z_]\w*)'\)$/)
+  if (flowableEmptyMatch) {
+    return {
+      type: 'CONDITION',
+      property: flowableEmptyMatch[2],
+      operator: flowableEmptyMatch[1] ? 'notEmpty' : 'empty',
+      value: ''
+    }
   }
   const emptyMatch = source.match(/^(empty|notEmpty)\(([A-Za-z_][\w.]*)\)$/)
   if (emptyMatch) {

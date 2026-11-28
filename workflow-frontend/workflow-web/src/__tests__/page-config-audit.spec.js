@@ -1146,7 +1146,7 @@ assert.match(formDesigner, /if \(persistNodes\) \{[\s\S]*?validateNodeDataSource
 ;[
   ':disabled="modeOption.editable === false"',
   "{ value: 'view', label: '查看', editable: false }",
-  '审批可编辑：字段在审批办理时的默认编辑权限，流程节点开启“强制整表只读”后本配置不生效。',
+  '审批可编辑：字段在审批办理时的默认编辑权限，流程节点开启“强制只读”后本配置不生效。',
   '查看模式固定只读，仅控制字段是否显示。'
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单模式权限缺少只读主从规则: ${marker}`)
@@ -1828,16 +1828,9 @@ assert.match(processDesign, /全局(?:流程)?动作[\s\S]*scope-type="PROCESS"/
   assert.ok(processDesign.includes(marker), `流程设计器顶部缺少直接可见的工具操作: ${marker}`)
 })
 assert.equal(processDesign.includes('handleAdvancedCommand'), false, '流程设计器不应再通过“高级”下拉隐藏全局动作和 XML')
-;[
-  'class="node-config-panel"',
-  'nodeConfigVisible && selectedElement',
-  'class="node-config-trigger"',
-  '@click="openNodeConfig"'
-].forEach((marker) => {
-  assert.ok(processDesign.includes(marker), `流程节点配置缺少点击节点打开且保留状态的停靠面板: ${marker}`)
-})
+assert.match(processDesign, /<aside v-if="selectedElement" class="node-config-panel"/, '流程设计器应按画布选择显示节点配置')
+assert.doesNotMatch(processDesign, /node-config-panel__header|node-config-trigger|关闭节点配置/, '节点配置通过画布选择打开和关闭')
 assert.equal(processDesign.includes('class="config-panel"'), false, '流程设计器不应继续保留固定节点配置栏')
-assert.ok(processDesign.includes("name || '未命名节点'"), '流程节点面板不应使用技术 ID 作为未命名节点标题')
 const nodeConfigPanelSource = readFileSync(path.join(root, 'src/components/NodeConfigPanel.vue'), 'utf8')
 ;[
   'min-height: 0',
@@ -1898,28 +1891,34 @@ assert.equal(nodeConfigPanel.includes('<span class="node-id">'), false, '流程�
 ;['FlowConditionGroupEditor', 'conditionGroupConfig', 'conditionRoot', 'buildFlowConditionExpression'].forEach((marker) => {
   assert.ok(nodeConfigPanel.includes(marker), `流程条件配置缺少条件组能力: ${marker}`)
 })
-;[
-  'title="标识与备注"',
-  "import SettingsSection from '@/components/SettingsSection.vue'"
-].forEach((marker) => {
-  assert.ok(nodeConfigPanel.includes(marker), `流程节点设置缺少标识与备注分组: ${marker}`)
-})
+const basicNodeSection = nodeConfigPanel.match(/<section v-show="activeTab === 'basic'"[^>]*>([\s\S]*?)<\/section>/)?.[1] || ''
+for (const marker of [
+  'title="基本配置"',
+  'v-model="basicForm.name"',
+  'v-model.trim="basicForm.code"',
+  'v-model="formConfig.entityFormId"',
+  'v-model="formConfig.isReadonly"',
+  'v-model="basicForm.id" disabled',
+  'v-model="basicForm.documentation"'
+]) {
+  assert.ok(basicNodeSection.includes(marker), `节点基本配置缺少 ${marker}`)
+}
+assert.doesNotMatch(nodeConfigPanel, /title="(?:办理表单|标识与备注)"/)
 assert.equal(nodeConfigPanel.includes('node-config-summary'), false, '流程节点配置不应展示占用首屏空间的摘要卡片')
+const nodeFormControls = basicNodeSection.match(/<div class="node-form-controls">([\s\S]*?<\/el-tooltip>)\s*<\/div>/)?.[1] || ''
+assert.match(nodeFormControls, /<el-select\s+v-model="formConfig\.entityFormId"/, '节点表单选择框应与强制只读开关同排')
+assert.match(
+  nodeFormControls,
+  /<el-switch\s+v-model="formConfig\.isReadonly"[^>]*inline-prompt[^>]*active-text="强制只读"\s+inactive-text="强制只读"/,
+  '强制只读开关应在打开和关闭时都显示内嵌文字'
+)
 assert.ok(
-  nodeConfigPanel.includes('label="强制整表只读"')
-    && nodeConfigPanel.includes('开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。'),
-  '流程节点应明确使用强制整表只读覆盖字段审批编辑权限'
+  nodeFormControls.includes('开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。'),
+  '流程节点应明确使用强制只读覆盖字段审批编辑权限'
 )
 assert.equal(nodeConfigPanel.includes('label="只读模式"'), false, '流程节点不应继续使用含义模糊的“只读模式”')
-;[
-  'class="node-config-panel__meta"',
-  'nodeConfigTypeText',
-  'nodeConfigTypeDesc',
-  'getNodeTypeText',
-  'getNodeTypeDescription'
-].forEach((marker) => {
-  assert.ok(processDesign.includes(marker), `流程节点类型应展示在顶部标题栏: ${marker}`)
-})
+assert.match(nodeConfigPanel, /class="config-tab-nav"[\s\S]*?role="tablist"[\s\S]*?class="config-node-type"[\s\S]*?getNodeTypeText\(element\.type\)/,
+  '流程节点类型应在标签页同一行展示')
 const nodeTabPatterns = [
   ['常用', />\s*常用\s*<\/button>/],
   ['协同', />\s*协同\s*<\/button>/],
@@ -1937,10 +1936,10 @@ assert.deepEqual(
   '流程节点页签应按常用、协同、高级、流程动作排序'
 )
 assert.ok(nodeConfigPanel.includes("v-if=\"isCcConfigurable\""), '协同页签只应在支持知会的节点显示')
-assert.ok(nodeConfigPanel.includes("v-if=\"hasAdvancedConfig\""), '高级页签只应在任务或网关显示')
+assert.match(nodeConfigPanel, /<button\s+v-if="isUserTask"[^>]*>\s*高级\s*<\/button>/, '高级页签只应在用户任务显示')
 ;[
+  'title="基本配置"',
   'title="办理人配置"',
-  'title="办理表单"',
   'title="审批设置"',
   'title="实体状态"',
   'title="流转条件"'
@@ -1984,6 +1983,11 @@ assert.match(
   nodeConfigPanel,
   /label="实体用户关系字段" value="entity_user_reference"/,
   '审批人指定方式必须提供稳定的实体用户关系语义类型'
+)
+assert.match(
+  nodeConfigPanel,
+  /assigneeForm\.assigneeType === 'entity_user_reference'[^>]*>\s*<el-form-item label="关系路径" required>[\s\S]*?<EntityUserRelationPathSelector\s+v-model="assigneeForm\.entityUserReference"/,
+  '实体用户关系字段应通过关系路径选择器配置'
 )
 assert.match(
   nodeConfigPanel,
@@ -2403,9 +2407,9 @@ const configurationArchitectureExpectations = {
   'src/data/user-manual/process.js': [
     '节点配置页签与首屏原则',
     '点击节点打开属性抽屉',
-    '关闭抽屉不会取消当前选择',
+    '点击画布空白处关闭面板',
     '常用、协同、高级、流程动作',
-    '标识与备注',
+    '基本配置',
     '按节点适用',
     '发布后迁移默认折叠'
   ],

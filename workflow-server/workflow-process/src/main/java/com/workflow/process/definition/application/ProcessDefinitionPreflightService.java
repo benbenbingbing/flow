@@ -149,6 +149,14 @@ public class ProcessDefinitionPreflightService {
                         "请修复 XML 结构或重新保存流程图", config.getId());
             }
 
+            try {
+                ProcessNodeCodes.read(bpmnXml);
+            } catch (IllegalArgumentException exception) {
+                addIssue(issues, stableCode(exception, "NODE_CODE_INVALID"), Severity.BLOCKER,
+                        elementIdFrom(exception), null, safeMessage(exception),
+                        "请在节点的基本配置中检查节点编码", config.getId());
+            }
+
             // 可执行扩展白名单与发布净化器必须在预检阶段运行，防止部署时才暴露安全或依赖问题。
             try {
                 BpmnExecutableContentValidator.validate(bpmnXml);

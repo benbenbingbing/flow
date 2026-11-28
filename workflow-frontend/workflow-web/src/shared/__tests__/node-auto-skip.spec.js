@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import BpmnModdle from 'bpmn-moddle'
+import { createFlowCondition, createFlowConditionGroup, parseFlowConditionExpression } from '@flow/workflow-core/utils/flowConditionGroups'
 import {
   AUTO_SKIP_MODE,
   AUTO_SKIP_OPERATOR_OPTIONS,
+  buildAutoSkipExpression,
   createAutoSkipForm,
   isAlwaysSkipExpression,
   normalizeSkipExpression,
@@ -107,9 +109,30 @@ assert.deepEqual(
 
 assert.deepEqual(
   AUTO_SKIP_OPERATOR_OPTIONS.map(option => option.value),
-  ['==', '!=', '>', '<', '>=', '<='],
-  '自动跳过构建器不能提供会生成方法调用的操作符'
+  ['==', '!=', '>', '<', '>=', '<=', 'empty', 'notEmpty']
 )
+const emptyCondition = (property, operator) => ({ ...createFlowCondition(), property, operator })
+const emptyGroup = createFlowConditionGroup('AND', [
+  emptyCondition('reviewer', 'empty'),
+  createFlowConditionGroup('OR', [
+    emptyCondition('comment', 'notEmpty'),
+    { ...createFlowCondition(), property: 'amount', operator: '>', value: '10' }
+  ])
+])
+const getFieldType = property => property === 'amount' ? 'number' : 'string'
+const emptyExpression = buildAutoSkipExpression(emptyGroup, getFieldType)
+assert.equal(emptyExpression, "${var:isEmpty('reviewer') && (var:isNotEmpty('comment') || amount > 10)}")
+assert.equal(validateAutoSkipExpression(emptyExpression).valid, true)
+assert.deepEqual(parseFlowConditionExpression(emptyExpression), emptyGroup)
+assert.equal(buildAutoSkipExpression(createFlowConditionGroup()), '')
+assert.equal(buildAutoSkipExpression(createFlowConditionGroup('AND', [...emptyGroup.children, createFlowCondition()])), '')
+assert.equal(buildAutoSkipExpression(createFlowConditionGroup('OR', [
+  emptyCondition('reviewer', 'empty'),
+  { ...createFlowCondition(), property: 'amount', operator: '>', value: 'abc' }
+]), getFieldType), '')
+assert.equal(validateAutoSkipExpression("${var:isEmpty(reviewer)}").valid, false)
+assert.equal(validateAutoSkipExpression("${var:get('reviewer')}").valid, false)
+assert.equal(validateAutoSkipExpression("${var:isEmpty('reviewer') || remark.contains('urgent')}").valid, false)
 assert.equal(validateAutoSkipExpression('${amount >= 100 && urgent == true}').valid, true)
 assert.equal(validateAutoSkipExpression("${remark == 'a.b'}").valid, true)
 assert.equal(validateAutoSkipExpression('${customer.level == 2}').valid, false)
@@ -151,7 +174,7 @@ assert.doesNotMatch(panelSource, /function (?:onAsyncChange|updateAsync)\b/)
 assert.doesNotMatch(panelSource, /bpmn:FormalExpression[\s\S]{0,160}skipExpression/)
 assert.match(
   panelSource,
-  /<SettingsSection\s+v-if="isUserTask"[\s\S]*?title="自动跳过"/,
+  /<section v-if="isUserTask && activeTab === 'advanced'"[^>]*>\s*<el-form[^>]*>\s*<SettingsSection\s+title="自动跳过"/,
   '自动跳过只能对受支持的用户任务显示'
 )
 assert.match(panelSource, /:group="skipConditionRoot"/)
@@ -180,7 +203,7 @@ const mockE2eSource = readFileSync(new URL(
   '../../../scripts/e2e-mock-pages.mjs',
   import.meta.url
 ), 'utf8')
-assert.match(mockE2eSource, /advancedTab = \{ label: '高级', marker: '标识与备注' \}/)
+assert.match(mockE2eSource, /advancedTab = \{ label: '高级', marker: '自动跳过' \}/)
 assert.doesNotMatch(mockE2eSource, /marker: '异步执行'/)
 
 console.log('node auto skip contract passed')

@@ -94,104 +94,88 @@ const bpmnXml = `<?xml version="1.0" encoding="UTF-8"?>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`
 
-const commonTab = { label: '常用', marker: '节点名称' }
+const commonTab = { label: '常用', marker: '基本配置' }
 const collaborationTab = { label: '协同', marker: '启用知会' }
 const actionTab = { label: '流程动作', marker: '添加动作' }
-const advancedTab = { label: '高级', marker: '标识与备注' }
+const advancedTab = { label: '高级', marker: '自动跳过' }
 const processNodePanelPlans = [
   {
     id: 'StartEvent_1',
-    name: '开始事件',
     type: '开始事件',
     tabs: [commonTab, actionTab]
   },
   {
     id: 'EndEvent_1',
-    name: '结束事件',
     type: '结束事件',
     tabs: [commonTab, actionTab]
   },
   {
     id: 'UserTask_1',
-    name: '用户审批',
     type: '用户任务',
     tabs: [commonTab, collaborationTab, advancedTab, actionTab]
   },
   {
     id: 'ServiceTask_1',
-    name: '服务任务',
     type: '服务任务',
-    tabs: [commonTab, collaborationTab, advancedTab, actionTab]
+    tabs: [commonTab, collaborationTab, actionTab]
   },
   {
     id: 'SendTask_1',
-    name: '发送任务',
     type: '发送任务',
-    tabs: [commonTab, collaborationTab, advancedTab, actionTab]
+    tabs: [commonTab, collaborationTab, actionTab]
   },
   {
     id: 'ReceiveTask_1',
-    name: '接收任务',
     type: '接收任务',
-    tabs: [commonTab, advancedTab, actionTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'ManualTask_1',
-    name: '手动任务',
     type: '手动任务',
-    tabs: [commonTab, advancedTab, actionTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'BusinessRuleTask_1',
-    name: '业务规则任务',
     type: '业务规则任务',
-    tabs: [commonTab, advancedTab, actionTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'ScriptTask_1',
-    name: '脚本任务',
     type: '脚本任务（已禁用）',
-    tabs: [commonTab, advancedTab, actionTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'CallActivity_1',
-    name: '调用活动',
     type: '调用活动',
-    tabs: [commonTab, advancedTab, actionTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'SubProcess_1',
-    name: '内嵌子流程',
     type: '子流程',
     tabs: [commonTab, actionTab]
   },
   {
     id: 'ExclusiveGateway_1',
-    name: '排他网关',
     type: '排他网关',
-    tabs: [commonTab, actionTab, advancedTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'ParallelGateway_1',
-    name: '并行网关',
     type: '并行网关',
-    tabs: [commonTab, actionTab, advancedTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'InclusiveGateway_1',
-    name: '包容网关',
     type: '包容网关',
-    tabs: [commonTab, actionTab, advancedTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'EventBasedGateway_1',
-    name: '事件网关',
     type: '事件网关',
-    tabs: [commonTab, actionTab, advancedTab]
+    tabs: [commonTab, actionTab]
   },
   {
     id: 'SequenceFlow_1',
-    name: '审批连线',
     type: '顺序流',
     tabs: [commonTab, actionTab]
   }
@@ -443,9 +427,16 @@ function apiData(pathname) {
   return []
 }
 
-function mockApiResponse(requestUrl) {
+function mockApiResponse(requestUrl, signedIn) {
   const url = new URL(requestUrl)
   const pathname = url.pathname.replace(/^\/api/, '') || '/'
+  if (pathname === '/auth/refresh' && signedIn) {
+    return { code: 0, data: {
+      ...apiData('/auth/current'),
+      token: 'mock-token',
+      tokenExpiresAt: new Date(Date.now() + 3600000).toISOString()
+    }, message: 'ok' }
+  }
   return { code: 0, data: apiData(pathname), message: 'ok' }
 }
 
@@ -729,13 +720,21 @@ async function runProcessNodePanelChecks(client, routePath) {
       expression: `(() => {
         const normalize = (value) => (value || '').replace(/\\s+/g, '').trim();
         const panel = document.querySelector('aside.node-config-panel');
-        const header = panel?.querySelector('.node-config-panel__header strong')?.textContent || '';
-        const type = panel?.querySelector('.node-config-panel__meta .el-tag')?.textContent || '';
+        const nav = panel?.querySelector('.config-tab-nav');
+        const tabList = nav?.querySelector('[role="tablist"]');
+        const badge = nav?.querySelector('.config-node-type');
+        const navBounds = nav?.getBoundingClientRect();
+        const badgeBounds = badge?.getBoundingClientRect();
+        const panelBounds = panel?.getBoundingClientRect();
+        const topTabs = Boolean(navBounds && Math.abs(navBounds.top - panelBounds.top - panel.clientTop) <= 1);
+        const typeAtRight = Boolean(badgeBounds && tabList
+          && badgeBounds.left >= tabList.getBoundingClientRect().right
+          && navBounds.right - badgeBounds.right <= 16
+          && Math.abs((badgeBounds.top + badgeBounds.bottom) - (navBounds.top + navBounds.bottom)) <= 2);
+        const hasHeaderControls = Boolean(panel?.querySelector('.node-config-panel__header, [aria-label="关闭节点配置"]'));
         const selected = document.querySelector('.djs-element.selected')?.getAttribute('data-element-id') || '';
-        const tabs = panel
-          ? [...panel.querySelectorAll('.config-tabs > .config-tab-nav [role="tab"]')].map(el => normalize(el.textContent))
-          : [];
-        return { exists: Boolean(panel), header: normalize(header), type: normalize(type), selected, tabs };
+        const tabs = [...(tabList?.querySelectorAll('[role="tab"]') || [])].map(el => normalize(el.textContent));
+        return { exists: Boolean(panel), topTabs, typeAtRight, hasHeaderControls, type: normalize(badge?.textContent), selected, tabs };
       })()`,
       returnByValue: true
     })
@@ -746,7 +745,9 @@ async function runProcessNodePanelChecks(client, routePath) {
     const selectionPassed = Boolean(clickResult.result.value?.clicked)
       && panel.exists
       && panel.selected === plan.id
-      && panel.header === `节点配置·${plan.name}`
+      && panel.topTabs
+      && panel.typeAtRight
+      && !panel.hasHeaderControls
       && panel.type === plan.type
       && missingTabs.length === 0
       && unexpectedTabs.length === 0
@@ -757,7 +758,9 @@ async function runProcessNodePanelChecks(client, routePath) {
         id: plan.id,
         clicked: clickResult.result.value?.clicked,
         selected: panel.selected,
-        header: panel.header,
+        topTabs: panel.topTabs,
+        typeAtRight: panel.typeAtRight,
+        hasHeaderControls: panel.hasHeaderControls,
         type: panel.type,
         tabs: panel.tabs,
         missingTabs,
@@ -813,22 +816,6 @@ async function runProcessNodePanelChecks(client, routePath) {
       })
 
       if (plan.id === 'UserTask_1' && tab.label === '常用') {
-        const toggleResult = await client.send('Runtime.evaluate', {
-          expression: `(() => {
-            const normalize = (value) => (value || '').replace(/\\s+/g, '').trim();
-            const panel = document.querySelector('aside.node-config-panel');
-            const content = panel?.querySelector('.config-tabs > .config-tab-content');
-            const label = content
-              ? [...content.querySelectorAll('.el-form-item__label')]
-                .find(el => normalize(el.textContent) === '启用多实例')
-              : null;
-            const control = label?.closest('.el-form-item')?.querySelector('.el-switch');
-            if (control && !control.classList.contains('is-checked')) control.click();
-            return { found: Boolean(control) };
-          })()`,
-          returnByValue: true
-        })
-        await delay(300)
         const scrollResult = await client.send('Runtime.evaluate', {
           expression: `(() => {
             const normalize = (value) => (value || '').replace(/\\s+/g, '').trim();
@@ -839,10 +826,13 @@ async function runProcessNodePanelChecks(client, routePath) {
               flex: content.style.flex,
               height: content.style.height
             };
+            const previousScrollTop = content.scrollTop;
             content.style.flex = '0 0 320px';
             content.style.height = '320px';
             const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
             content.scrollTop = maxScroll;
+            const lastSection = [...content.querySelectorAll(':scope > section')]
+              .filter(section => section.getClientRects().length > 0).at(-1);
             const result = {
               exists: true,
               clientHeight: content.clientHeight,
@@ -850,10 +840,11 @@ async function runProcessNodePanelChecks(client, routePath) {
               maxScroll,
               scrollTop: content.scrollTop,
               overflowY: getComputedStyle(content).overflowY,
-              lowerConfigRendered: normalize(content.textContent).includes('元素变量')
+              lowerConfigRendered: normalize(lastSection?.textContent).includes('下一节点审批人')
             };
             content.style.flex = previousStyles.flex;
             content.style.height = previousStyles.height;
+            content.scrollTop = previousScrollTop;
             return result;
           })()`,
           returnByValue: true
@@ -861,16 +852,12 @@ async function runProcessNodePanelChecks(client, routePath) {
         const scrollState = scrollResult.result.value || {}
         checks.push({
           name: '用户任务·常用纵向滚动',
-          passed: Boolean(toggleResult.result.value?.found)
-            && scrollState.exists
+          passed: scrollState.exists
             && scrollState.maxScroll > 0
             && scrollState.scrollTop > 0
             && ['auto', 'scroll'].includes(scrollState.overflowY)
             && scrollState.lowerConfigRendered,
-          detail: JSON.stringify({
-            toggleFound: toggleResult.result.value?.found,
-            ...scrollState
-          })
+          detail: JSON.stringify(scrollState)
         })
       }
 
@@ -887,6 +874,34 @@ async function runProcessNodePanelChecks(client, routePath) {
       }
     }
   }
+
+  // 通过实际坐标点击露出的画布，覆盖窄屏面板占据画布大部分区域的布局。
+  const blankResult = await client.send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.querySelector('.design-container > .canvas .djs-container > svg');
+      if (!canvas || !document.querySelector('aside.node-config-panel')) return null;
+      const bounds = canvas.getBoundingClientRect();
+      const y = Math.round(bounds.top + 20);
+      for (const offset of [24, 64, 108]) {
+        const x = Math.round(bounds.right - offset);
+        const hit = document.elementFromPoint(x, y);
+        if (hit && canvas.contains(hit) && !hit.closest('.djs-element')) return { x, y };
+      }
+      return null;
+    })()`,
+    returnByValue: true
+  })
+  const blank = blankResult.result.value
+  if (blank) {
+    await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...blank, button: 'left', clickCount: 1 })
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...blank, button: 'left', clickCount: 1 })
+    await delay(180)
+  }
+  const closed = await client.send('Runtime.evaluate', {
+    expression: "!document.querySelector('aside.node-config-panel')",
+    returnByValue: true
+  })
+  checks.push({ name: '点击画布空白处关闭节点配置', passed: Boolean(blank && closed.result.value) })
   return checks
 }
 
@@ -914,7 +929,7 @@ async function createPage(chrome, routePath) {
     if (params.request?.url?.includes('/src/main.js')) scriptRequests++
   })
   client.on('Fetch.requestPaused', async (params) => {
-    const body = Buffer.from(JSON.stringify(mockApiResponse(params.request.url))).toString('base64')
+    const body = Buffer.from(JSON.stringify(mockApiResponse(params.request.url, routePath !== '/login'))).toString('base64')
     await client.send('Fetch.fulfillRequest', {
       requestId: params.requestId,
       responseCode: 200,
@@ -935,7 +950,10 @@ async function createPage(chrome, routePath) {
   await client.send('Fetch.enable', { patterns: [{ urlPattern: '*://*/api/*' }] })
   if (routePath !== '/login') {
     await client.send('Page.addScriptToEvaluateOnNewDocument', {
-      source: `localStorage.setItem('token','mock-token');localStorage.setItem('userInfo',JSON.stringify({id:'u1',username:'admin',nickname:'管理员',roles:['admin']}));localStorage.setItem('permissions',JSON.stringify(['*','entity:add','entity:view','entity:edit','entity:delete']));localStorage.setItem('disabled_menu_paths','[]');`
+      source: `
+        localStorage.setItem('permissions', JSON.stringify(['*','entity:add','entity:view','entity:edit','entity:delete']));
+        localStorage.setItem('disabled_menu_paths', '[]');
+      `
     })
   }
   const loadPromise = new Promise((resolve) => client.on('Page.loadEventFired', resolve))

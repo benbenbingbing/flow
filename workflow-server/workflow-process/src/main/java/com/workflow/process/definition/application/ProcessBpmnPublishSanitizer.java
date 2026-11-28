@@ -48,6 +48,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.workflow.process.definition.application.BpmnExecutableContentValidator.containsExpression;
+
 /**
  * 发布前 BPMN 归一化处理器
  * 负责在流程发布前对 BPMN XML 进行清洗、转换与补全：
@@ -682,6 +684,7 @@ public class ProcessBpmnPublishSanitizer {
                             element, assigneeConfig);
                     validateAssignmentConfigVersion(
                             element.id(), assigneeConfig);
+                    BpmnExecutableContentValidator.validateAssignmentSource(element.id(), assigneeConfig);
                     boolean multiInstance = element.content()
                             .toLowerCase(Locale.ROOT)
                             .contains("multiinstanceloopcharacteristics");
@@ -1105,10 +1108,6 @@ public class ProcessBpmnPublishSanitizer {
                 }
                 // 目标存在性、类型、环和终端规则由整张部署图统一校验。
             }
-            case "expression" -> throw nextApproverConfigError(
-                    element.id(),
-                    (outputMultiInstance ? "多实例" : "NODE_ASSIGNMENT")
-                            + "不支持无法安全枚举的表达式办理人");
             case "" -> {
                 rejectAssignmentExpressions(
                         element,
@@ -1290,39 +1289,6 @@ public class ProcessBpmnPublishSanitizer {
                     element.id(),
                     "BPMN 办理人属性包含无法安全枚举的表达式");
         }
-    }
-
-    /**
-     * 判断是否包含表达式；判断结果决定调用方的后续分支。
-     *
-     * @param value 待判断是否包含表达式的原始输入，结果供调用方继续使用
-     * @return 表达式条件成立时为 true，否则为 false
-     */
-    private boolean containsExpression(
-            com.fasterxml.jackson.databind.JsonNode value) {
-        if (value == null || value.isMissingNode() || value.isNull()) {
-            return false;
-        }
-        if (value.isArray()) {
-            for (var item : value) {
-                if (containsExpression(item)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        return containsExpression(value.asText(""));
-    }
-
-    /**
-     * 判断是否包含表达式；判断结果决定调用方的后续分支。
-     *
-     * @param value 待判断是否包含表达式的原始输入，结果供调用方继续使用
-     * @return 表达式条件成立时为 true，否则为 false
-     */
-    private boolean containsExpression(String value) {
-        return StringUtils.hasText(value)
-                && (value.contains("${") || value.contains("#{"));
     }
 
     /**
@@ -1834,11 +1800,15 @@ public class ProcessBpmnPublishSanitizer {
                 || !waitForAll.isBoolean()) {
             throw new IllegalArgumentException("节点 %s 的通过率或等待规则无效".formatted(node.id()));
         }
-        if (sequential && (!"user".equals(config.get("assigneeType"))
-                || rate.asInt() != 100 || waitForAll.asBoolean()
+        if (sequential && !Set.of("user", "interface", "resolver")
+                .contains(assignment.path("assigneeType").asText(""))) {
+            throw new IllegalArgumentException(
+                    "节点 %s 的顺序办理必须使用固定人员或接口动态".formatted(node.id()));
+        }
+        if (sequential && (rate.asInt() != 100 || waitForAll.asBoolean()
                 || assignment.path("nextApproverSelection").path("editable").asBoolean())) {
             throw new IllegalArgumentException(
-                    "节点 %s 的顺序办理必须使用固定人员，全部通过且驳回时立即结束".formatted(node.id()));
+                    "节点 %s 的顺序办理需要全部通过、驳回时立即结束，且禁止前序任务修改名单".formatted(node.id()));
         }
     }
 
@@ -2008,8 +1978,7 @@ public class ProcessBpmnPublishSanitizer {
             String value = flowableAttribute(
                     terminal.element(), attribute);
             if ("assignee".equals(attribute)
-                    && isTechnicalMultiInstanceAssignee(
-                    terminal, value)) {
+                    && BpmnExecutableContentValidator.isLoopElementAssignee(terminal.element(), value)) {
                 continue;
             }
             if (StringUtils.hasText(value)) {
@@ -2025,37 +1994,6 @@ public class ProcessBpmnPublishSanitizer {
                 ? "<multiInstanceLoopCharacteristics/>" : "";
         return new ConfiguredElement(
                 "", "userTask", startTag.toString(), content, current.id());
-    }
-
-    /**
-     * 仅忽略源 MI 节点绑定 elementVariable 的 Flowable 技术 assignee。
-     *
-     * @param source 待判断是否{@code technical}多实例办理人的原始输入，结果供调用方继续使用
-     * @param assignee 办理人，供本方法判断是否{@code technical}多实例办理人时使用
-     * @return {@code technical}多实例办理人条件成立时为 true，否则为 false
-     */
-    private boolean isTechnicalMultiInstanceAssignee(
-            PublishedAssignmentNode source,
-            String assignee) {
-        if (!source.multiInstance() || !StringUtils.hasText(assignee)) {
-            return false;
-        }
-        NodeList loops = source.element().getElementsByTagNameNS(
-                "*", "multiInstanceLoopCharacteristics");
-        if (loops.getLength() == 0) {
-            return false;
-        }
-        Element loop = (Element) loops.item(0);
-        String variable = flowableAttribute(loop, "elementVariable");
-        if (!StringUtils.hasText(variable)) {
-            variable = loop.getAttribute("elementVariable");
-        }
-        if (!StringUtils.hasText(variable)) {
-            return false;
-        }
-        String normalized = assignee.trim();
-        return normalized.equals("${" + variable.trim() + "}")
-                || normalized.equals("#{" + variable.trim() + "}");
     }
 
     /**
@@ -3883,9 +3821,9 @@ public class ProcessBpmnPublishSanitizer {
             java.util.regex.Matcher evMatcher = java.util.regex.Pattern
                     .compile("(?i)(?:flowable:)?elementVariable=\"([^\"]*)\"")
                     .matcher(content);
-            String elementVar = evMatcher.find() ? evMatcher.group(1) : "assignee";
             String newStartTag = startTag;
-            if (!newStartTag.toLowerCase().contains("flowable:assignee=")) {
+            if (!newStartTag.toLowerCase().contains("flowable:assignee=") && evMatcher.find()) {
+                String elementVar = evMatcher.group(1);
                 newStartTag = newStartTag.replace(">", " flowable:assignee=\"${" + elementVar + "}\">");
             }
 

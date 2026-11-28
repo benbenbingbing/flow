@@ -65,8 +65,9 @@ public class ExpenseRouteCondition implements SequenceFlowConditionProvider {
 
 接口可用 `request.extraParams().get("nodeIds")` 读取列表、用
 `request.extraParams().get("expectedAction")` 读取期望动作。以上键名均为业务示例，
-只有接口实现主动读取后才生效，平台不会自动汇总审批记录。节点标识从画布“标识与备注”
-取得，不使用节点名称。没有额外参数时填写 `{}`，不需要再包一层 `extraParams`。
+只有接口实现主动读取后才生效，平台不会自动汇总审批记录。
+`nodeIds` 填写节点 ID，可在节点的“常用 → 基本配置”中查看。
+没有额外参数时填写 `{}`，不需要再包一层 `extraParams`。
 流程实例等上下文由平台传入；参数不执行 `${变量名}` 替换，动态变量由接口通过
 `request.variables().get("变量名")` 读取。
 

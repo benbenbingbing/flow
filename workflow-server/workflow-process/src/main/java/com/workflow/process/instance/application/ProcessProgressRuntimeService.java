@@ -961,7 +961,8 @@ public class ProcessProgressRuntimeService {
                     option.setValue(optNode.has("value") ? optNode.get("value").asText() : "");
                     option.setLabel(optNode.has("label") ? optNode.get("label").asText() : "");
                     option.setType(optNode.has("type") ? optNode.get("type").asText() : "primary");
-                    option.setShowComment(optNode.has("showComment") ? optNode.get("showComment").asBoolean() : true);
+                    option.setShowComment(optNode.path("showComment").asBoolean(true));
+                    option.setRemarkRequired(optNode.path("remarkRequired").asBoolean(false));
                     options.add(option);
                 }
                 approvalConfig.setOptions(options);

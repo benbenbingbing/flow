@@ -485,7 +485,6 @@ assert.equal(getNodeTypeTag('bpmn:StartEvent'), 'success')
 assert.equal(getNodeTypeTag('bpmn:ExclusiveGateway'), 'warning')
 assert.equal(buildAssigneeConfig({ assigneeType: 'user', assignee: 'zhangsan', candidateUsers: 'lisi' }).assigneeValue, 'zhangsan')
 assert.equal(buildAssigneeConfig({ assigneeType: 'group', candidateGroups: 'finance' }).assigneeValue, 'finance')
-assert.equal(buildAssigneeConfig({ assigneeType: 'expression', candidateUsers: '${starter}' }).assigneeValue, '${starter}')
 
 const nodeOperationPolicy = {
   version: 1,
@@ -885,11 +884,11 @@ assert.match(
 )
 const processDesignElementClickBlock = processDesignSource.slice(
   processDesignSource.indexOf('const onElementClick'),
-  processDesignSource.indexOf('const openNodeConfig')
+  processDesignSource.indexOf('const onCommandStackChanged')
 )
 assert.match(
   processDesignElementClickBlock,
-  /selectedElement\.value = element \|\| null[\s\S]*?nodeConfigVisible\.value = Boolean\(element\)/,
+  /selectedElement\.value = element \|\| null/,
   '流程设计页应在元素不可配置时清空选择并关闭属性面板'
 )
 

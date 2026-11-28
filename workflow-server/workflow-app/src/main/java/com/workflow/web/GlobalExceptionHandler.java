@@ -61,7 +61,8 @@ public class GlobalExceptionHandler {
                 "TASK_STATE_CHANGED", "TASK_ALREADY_COMPLETED", "TASK_ALREADY_CLAIMED", "PROCESS_ALREADY_ENDED",
                 "IDEMPOTENCY_CONFLICT", "COMMAND_IN_PROGRESS", "COMMAND_REENTRANT").contains(code)) status = 409;
         else if (java.util.Set.of("PROCESS_INVALID_ARGUMENT", "VARIABLE_NOT_WRITABLE", "VARIABLE_SCOPE_UNSUPPORTED",
-                "ACTION_NOT_ALLOWED", "TASK_ACTION_NOT_ALLOWED", "NEXT_APPROVER_SELECTION_INVALID").contains(code)) status = 400;
+                "ACTION_NOT_ALLOWED", "TASK_ACTION_NOT_ALLOWED", "NEXT_APPROVER_SELECTION_INVALID",
+                "APPROVAL_COMMENT_REQUIRED").contains(code)) status = 400;
         else status = 500;
         log.error("流程操作失败: errorCode={}, targetId={}", code, error.getTargetId(), error);
         return ResponseEntity.status(status).body(ApiResponse.error(status, code, error.getMessage()));

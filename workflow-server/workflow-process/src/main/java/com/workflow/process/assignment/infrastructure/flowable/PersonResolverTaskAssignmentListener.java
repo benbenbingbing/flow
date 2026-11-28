@@ -476,11 +476,6 @@ public class PersonResolverTaskAssignmentListener
                     mapValue(config.get("extraParams")),
                     variables);
         }
-        if ("expression".equals(type)) {
-            throw new IllegalArgumentException(
-                    "被引用节点使用无法安全枚举的表达式办理人: "
-                            + sourceTask.getId());
-        }
         if (NodeAssignmentReferenceResolver.isNodeReference(config)) {
             throw new IllegalArgumentException(
                     "被引用节点引用链未完全解析: " + sourceTask.getId());

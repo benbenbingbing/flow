@@ -180,17 +180,17 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '点击节点打开属性抽屉',
-              text: '流程画布默认保留完整宽度。点击节点、连线或动作数量徽标时，右侧约 440px 的节点配置抽屉自动打开；关闭抽屉不会取消当前选择，也不会销毁尚未保存的面板状态。关闭后可通过画布右上角“节点配置”按钮重新打开。'
+              text: '点击节点、连线或动作数量徽标会打开右侧配置面板。顶部标签页右侧显示当前节点类型，悬停可查看类型说明。点击画布空白处关闭面板，再次选择节点即可打开。'
             },
             {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用包含办理人配置、办理表单和审批设置。', notes: '知会在协同页签，自动跳过、选择节点回退、SLA 和标识备注在高级页签。' },
-                { option: '服务任务 / 发送任务', meaning: '显示“常用、协同、高级、流程动作”。常用展示任务主配置，协同展示知会。', notes: 'REST 可靠性、结果映射等仍在常用内按低频分组折叠。' },
-                { option: '其他任务、调用活动与网关', meaning: '显示“常用、高级、流程动作”。常用展示类型专属配置。', notes: '页面不会为不支持的能力显示空页签。' },
+                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用包含基本配置、办理人配置和审批设置等。', notes: '知会在协同页签，自动跳过、选择节点回退、SLA 和空办理人策略在高级页签。' },
+                { option: '服务任务 / 发送任务', meaning: '显示“常用、协同、流程动作”。常用展示任务主配置，协同展示知会。', notes: 'REST 可靠性、结果映射等仍在常用内按低频分组折叠。' },
+                { option: '其他任务、调用活动与网关', meaning: '显示“常用、流程动作”。常用展示类型专属配置。', notes: '页面不会为不支持的能力显示空页签。' },
                 { option: '开始、结束事件与连线', meaning: '开始、结束事件显示适用的基础配置和流程动作；连线条件与连线实体状态并入常用。', notes: '开始事件暂不支持节点表单配置；连线实体状态是常用内的折叠配置区。' },
-                { option: '标识与备注', meaning: '节点 ID、设计备注统一使用“标识与备注”名称。', notes: '有高级页签时放在高级中；没有高级页签时折叠放在常用底部。' }
+                { option: '基本配置', meaning: '位于常用顶部并默认展开，包含节点名称、节点 ID 和设计备注。', notes: '用户任务还可以在此选择节点表单并设置强制只读。其他分组默认折叠，点击标题展开。' }
               ]
             },
             {
@@ -203,15 +203,16 @@ export default {
         },
         {
           id: 'process-basic-config',
-          title: '常用信息与标识备注',
+          title: '基本配置',
           blocks: [
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
                 { field: '节点名称', meaning: '图上显示的业务名称。', defaultLimit: '可选但强烈建议填写；不同节点有示例占位。', effect: '显示在流程图、待办、动作上下文和版本节点。', publish: '同一流程内建议语义唯一，例如“部门经理审批”。' },
-                { field: '节点 ID', meaning: 'BPMN 元素技术标识，位于“标识与备注”折叠区。', defaultLimit: '只读，由设计器生成。', effect: '用于节点表单、审批配置、状态映射、动作绑定和日志。', publish: '发布后删除重建会产生新 ID，历史配置不会自动迁移。' },
-                { field: '说明文档', meaning: 'BPMN documentation，位于“标识与备注”折叠区。', defaultLimit: '可选多行。', effect: '写入 XML，供设计审计。', publish: '建议记录进入条件、处理要求、输出和异常路径。' }
+                { field: '节点编码', meaning: '表单条件用于识别当前节点的业务编码，例如 finance_review。', defaultLimit: '可选，同一流程内唯一。以英文字母开头，只能使用英文字母、数字和下划线，最长 64 个字符。', effect: '表单可通过“当前流程节点编码”配置条件显示、条件编辑或禁用和条件必填。', publish: '编码随流程版本发布，办理待办时取该实例所属版本的值。' },
+                { field: '节点 ID', meaning: 'BPMN 元素技术标识，位于“常用 → 基本配置”。', defaultLimit: '只读，由设计器生成。', effect: '用于节点表单、审批配置、状态映射、动作绑定和日志。', publish: '发布后删除重建会产生新 ID，历史配置不会自动迁移。' },
+                { field: '设计备注', meaning: 'BPMN documentation，位于“常用 → 基本配置”。', defaultLimit: '可选多行。', effect: '写入 XML，供设计审计。', publish: '建议记录进入条件、处理要求、输出和异常路径。' }
               ]
             }
           ]
@@ -320,11 +321,10 @@ export default {
                 { option: '固定人员', meaning: '分页选择一名或多名办理人员。', notes: '顺序办理使用列表从上到下的顺序，可用上移和下移调整。' },
                 { option: '用户组', meaning: '分页选择用户组，将组内启用成员纳入办理范围。', notes: '可点击“配置”按成员标签筛选。' },
                 { option: '角色', meaning: '分页选择角色，将持有所选角色的启用用户纳入办理范围。' },
-                { option: '实体用户关系字段', meaning: '从流程绑定记录出发，按用户关系路径查找办理人。' },
+                { option: '实体用户关系字段', meaning: '从流程绑定记录出发，按关系路径查找办理人。', notes: '点击“关系路径”打开关系树，展开各级关系并点击指向用户的节点完成选择。' },
                 { option: '相对组织职务', meaning: '以相对人的部门或组织为锚点，查找所选职务的所有任职人。', notes: '点击职务后的“配置”设置查找层级并试算。' },
                 { option: '使用其他节点审批人', meaning: '复用同一流程中另一个用户任务的人员规则。', notes: '引用链最多 16 层，且不能成环。' },
-                { option: '表达式', meaning: '通过流程变量解析用户或用户组。', notes: '抢占可使用表达式，例如 ${deptManagers}。' },
-                { option: '接口动态', meaning: '调用受控人员接口解析办理人。', notes: '选择支持当前办理方式的人员接口，可按接口契约填写 extraParams。' }
+                { option: '接口动态', meaning: '调用受控人员接口解析办理人。', notes: '顺序和会签使用支持 MULTI_INSTANCE 的接口。顺序办理按有效人员在结果中首次出现的顺序分配任务。可按接口契约填写 extraParams。' }
               ]
             }
           ]
@@ -338,7 +338,7 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: '抢占', meaning: '节点只生成一条任务。一人直接办理，多人共享待办。', notes: '默认方式。共享待办可直接办理，也可先认领。' },
-                { option: '顺序', meaning: '固定人员依次办理，全部通过后继续，任一人驳回即结束本节点。', notes: '在节点中确定人员和顺序。前序审批可以展示这份名单。' },
+                { option: '顺序', meaning: '按固定人员列表或人员接口返回的顺序依次办理，全部通过后继续，任一人驳回即结束本节点。', notes: '前序审批可以展示这份名单，人员和顺序由办理人来源确定。' },
                 { option: '会签', meaning: '每位办理人同时收到各自的任务。', notes: '默认等待全部办理，通过率阈值为 100%。' }
               ]
             },
@@ -358,7 +358,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '配置在目标审批节点',
-              text: '在需要被展示或改选的用户任务上开启“下一节点审批人”。前序审批时，系统按当前审批操作和本次可编辑表单值计算实际命中的下一人工节点，并以目标节点名称作为标签；排他、包容和并行分支可能同时展示多行。未配置的旧流程默认不展示。'
+              text: '在目标用户任务的“常用”页签底部，打开“下一节点审批人”分组并开启“审批时展示”。前序审批时，系统根据当前审批操作和本次可编辑表单值确定下一人工节点，并以目标节点名称作为标签。排他、包容和并行分支可能同时展示多行。默认关闭。'
             },
             {
               type: 'table',
@@ -617,10 +617,8 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '所属实体', meaning: '显示当前流程绑定实体。', defaultLimit: '只读；未绑定时显示警告。', effect: '决定可选实体表单和实体字段条件。', publish: '先在实体管理绑定流程。' },
-                { field: '表单使用方式', meaning: '选择使用实体默认表单或指定实体表单。', defaultLimit: '默认 DEFAULT。', effect: '写入 entityFormBindingMode；DEFAULT 和 SPECIFIC 应用后都会得到明确的 entityFormId。', publish: '两种方式都把解析后的实体表单纳入流程发布快照。' },
-                { field: '选择表单', meaning: '指定实体表单时单选一个实体表单。', defaultLimit: '仅“指定实体表单”时出现。', effect: '运行节点只展示该表单。', publish: '应用可以引用草稿表单；流程发布前该表单必须具有 ACTIVE release。' },
-                { field: '强制整表只读', meaning: '开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。', defaultLimit: '默认关闭。', effect: '写入 entityFormReadonly，作为节点级强制只读覆盖。', publish: '关闭时按表单字段的审批模式权限执行。' },
+                { field: '节点表单', meaning: '在“常用 → 基本配置”中使用实体默认表单或指定一个实体表单，选项和选中值同时显示名称与编码。', defaultLimit: '默认使用实体默认表单；流程绑定实体后可选。', effect: '应用时写入 entityFormBindingMode 和解析后的 entityFormId。', publish: '流程发布时锁定表单版本，该表单必须具有 ACTIVE release。' },
+                { field: '强制只读', meaning: '在节点表单旁开启此开关后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。', defaultLimit: '默认关闭。', effect: '写入 entityFormReadonly，作为节点级强制只读覆盖。', publish: '关闭时按表单字段的审批模式权限执行。' },
               ]
             },
             {
@@ -667,12 +665,12 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '启用审批意见', meaning: '是否显示审批操作和备注区域。', defaultLimit: '默认开启。', effect: '关闭后节点不使用自定义审批项配置。', publish: '审批节点通常保持开启。' },
+                { field: '启用审批', meaning: '是否显示审批操作和备注区域。', defaultLimit: '默认开启。', effect: '关闭后节点不使用自定义审批项配置。', publish: '审批节点通常保持开启。' },
                 { field: '审批意见名称', meaning: '备注输入区标签。', defaultLimit: '默认“审批意见”。', effect: '可改为审批备注、处理说明等。', publish: '与业务术语一致。' },
                 { field: '选项名称 label', meaning: '用户看到的按钮文字。', defaultLimit: '默认通过、驳回。', effect: '显示为审批按钮。', publish: '可以改文案而不改 value。' },
                 { field: '选项值 value', meaning: '流程变量和分支判断使用的稳定值。', defaultLimit: '默认 approve、reject；新增项默认空。', effect: '提交后写入审批结果，连线条件读取。', publish: '发布后不要随意修改已使用 value。' },
                 { field: '显示备注', meaning: '该操作是否显示备注输入。', defaultLimit: '默认开启。', effect: '允许用户填写意见。', publish: '不显示备注时 remarkRequired 无意义。' },
-                { field: '备注必填', meaning: '选择该操作时必须填写备注。', defaultLimit: '默认关闭。', effect: '阻止空备注提交。', publish: '驳回、终止等建议必填。' },
+                { field: '备注必填', meaning: '选择该操作时必须填写备注。', defaultLimit: '新节点的驳回默认必填，通过默认选填。', effect: '阻止提交空备注。', publish: '随节点的审批配置发布。' },
                 { field: '删除 / 添加选项', meaning: '维护审批动作集合。', defaultLimit: '至少保留 1 个；删除需确认。', effect: '改变运行时按钮和 approved 可选值。', publish: '同步维护所有出线条件、通知和流程动作。' }
               ]
             }
@@ -690,7 +688,7 @@ export default {
                 { key: 'result', label: '运行结果' }
               ],
               rows: [
-                { layer: '节点强制整表只读', scope: '当前用户任务使用的实体表单。', result: '开启后整张节点表单不可编辑，并覆盖字段的审批可编辑配置。' },
+                { layer: '节点强制只读', scope: '当前用户任务使用的实体表单。', result: '开启后整张节点表单不可编辑，并覆盖字段的审批可编辑配置。' },
                 { layer: '表单字段 isReadonly', scope: '该字段在所有模式。', result: '字段显示但不可编辑。' },
                 { layer: '表单运行模式 editable', scope: 'create/edit/approve/view 之一。', result: '对应模式关闭后字段不可编辑。' },
                 { layer: '表单运行模式 visible', scope: 'create/edit/approve/view 之一。', result: '对应模式关闭后字段隐藏。' },
@@ -916,7 +914,7 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '跳过方式', meaning: '选择不跳过、始终跳过或满足条件时跳过。', defaultLimit: '默认不跳过；仅用户任务支持。', effect: '始终跳过会直接继续流转；条件跳过仅在表达式结果为 true 时继续流转。', publish: '命中后不创建待办，也不会写入当前节点审批结果或意见。' },
-                { field: '条件表达式', meaning: '通过条件组设置自动跳过的 Flowable 表达式。', defaultLimit: '仅“满足条件时跳过”显示且必填；只提供安全的比较操作符。', effect: '结果为 true 时跳过，结果为 false 时正常创建待办。', publish: '引用的实体字段必须在令牌到达用户任务前有值。' },
+                { field: '条件表达式', meaning: '通过条件组设置自动跳过规则，支持比较和“为空／不为空”。', defaultLimit: '“满足条件时跳过”须填写完整的条件组。空值判断无需填写比较值。', effect: '未设置、null、空字符串和空集合属于空值。条件满足时跳过，否则正常创建待办。', publish: '普通比较所引用的实体字段应在流程到达用户任务前赋值。' },
                 { field: '选择节点回退', meaning: '可为用户任务设置自动、仅指定节点或禁用。显式设置优先。', defaultLimit: '新建流程默认自动，已有流程默认禁用。可选目标需在实例已实际办理的同一段单执行路径内。', effect: '有权办理且存在目标时，审批详情左下角的三个点显示回退入口。选中目标并填写意见后，按目标节点已有的办理规则生成待办。', publish: '发布固化候选。回退拓扑与设置相同的版本复用清单。并行、包容、多实例、事件及子流程边界限制候选。' }
               ]
             },
@@ -1075,7 +1073,7 @@ export default {
                 { symptom: '普通表单发布后发起返回 409', checks: '检查 errorCode 是否 PROCESS_FORM_RELEASE_STALE；这是流程仍钉定旧 release 的保护，需重新发布流程，不能在客户端绕过。' },
                 { symptom: '热修复发布返回 409', checks: 'HOTFIX_PREVIEW_REQUIRED 表示未先预检；HOTFIX_IMPACT_CHANGED 表示草稿、ACTIVE release 或目标实例集合变化；重新预检并使用新的 impactToken。' },
                 { symptom: '热修复无法撤回', checks: '检查是否存在发布时间更晚的 HOTFIX；必须先撤回最新版本。HOTFIX_ROLLBACK_ORDER_CONFLICT 不允许跳序恢复。' },
-                { symptom: '任务无人办理', checks: '固定用户是否停用；组/角色是否有成员；表达式变量是否存在；接口返回是否为空或格式错误；多实例集合是否为空。' },
+                { symptom: '任务无人办理', checks: '固定用户是否停用；组/角色是否有成员；实体关系是否指向有效用户；接口返回是否为空或格式错误；多实例集合是否为空。' },
                 { symptom: '网关无路可走', checks: '条件组完整表达式；字段类型和值；approved value；是否有且仅有一条默认流。' },
                 { symptom: '表单为空或不可编辑', checks: '流程是否绑定实体；表单是否启用和保存字段；节点来源是否 entity；节点只读、字段只读、模式 editable、联动 disabled 是否叠加。' },
                 { symptom: '实体状态未变化', checks: '是否配置在实际被选中的连线上；状态编码是否存在；流程发布时是否同步；绑定实体和流程实例业务键是否正确。' },

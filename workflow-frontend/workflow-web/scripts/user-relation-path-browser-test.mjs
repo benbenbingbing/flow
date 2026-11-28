@@ -27,7 +27,7 @@ window.pathTest={state,settle:async()=>{await nextTick();await new Promise(r=>se
  return {terminal:true,multiple:prefix.some(s=>s.code==='applicants')}
 }}
 createApp({setup:()=>()=>h('main',{style:'max-width:560px;margin:36px auto'},[
- h('h2','流程用户关系路径'),h(Selector,{modelValue:state.value,processId:'process-1',entityCode:'expense',
+ h('h2','流程关系路径'),h(Selector,{modelValue:state.value,processId:'process-1',entityCode:'expense',
  'onUpdate:modelValue':value=>state.value=value,onState:value=>state.status=value})
 ])}).use(ElementPlus).mount('#app')
 `
@@ -50,14 +50,16 @@ async function openPicker(){
  await evaluate("document.querySelector('.path-input').click()")
  await sleep(450)
  assert.equal(await evaluate("document.querySelector('.path-input').getAttribute('aria-expanded')"),'true')
+ assert.equal(await evaluate("document.querySelector('[role=dialog][aria-modal=true][aria-label=选择关系路径]')?.querySelectorAll('[role=tree]').length"),1)
 }
 async function nodeAction(label,expand=false,occurrence=0){
  await evaluate(`(()=>{const label=[...document.querySelectorAll('.relation-label')].filter(${visible}).filter(e=>e.textContent.trim()===${JSON.stringify(label)}).at(${occurrence});if(!label)throw Error('missing tree node: '+${JSON.stringify(label)});const target=${expand}?label.closest('[role="treeitem"]').querySelector('.el-tree-node__expand-icon'):label;target.click()})()`)
  await evaluate('pathTest.settle()')
 }
 async function closePicker(){
- await evaluate("document.querySelector('.path-tree-panel').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
- await sleep(200)
+ await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'})
+ await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'})
+ await sleep(400)
  assert.equal(await evaluate("document.querySelector('.path-input').getAttribute('aria-expanded')"),'false')
 }
 
@@ -77,6 +79,7 @@ try{
  await evaluate('pathTest.settle()')
  assert.deepEqual(await evaluate('pathTest.state.requests.slice()'),[''],'initial load only fetches root relations')
  assert.equal(await evaluate("document.querySelectorAll('.path-input').length"),1)
+ assert.equal(await evaluate("document.querySelector('.path-input').getAttribute('aria-haspopup')"),'dialog')
  assert.equal(await evaluate("document.querySelectorAll('.path-level, .el-select').length"),0)
  await openPicker()
  await nodeAction('已停用关系')
@@ -106,6 +109,12 @@ try{
  await closePicker()
  assert.deepEqual(await evaluate('pathTest.state.value.path.map(s=>s.code)'),['applicants','dept_id','create_by'])
  assert.equal(await evaluate('pathTest.state.status.valid'),true)
+ await openPicker()
+ await nodeAction('业务部门')
+ await evaluate("document.querySelector('.el-dialog__footer button').click()")
+ assert.equal(await evaluate("document.querySelector('.path-input').getAttribute('aria-expanded')"),'false')
+ assert.deepEqual(await evaluate('pathTest.state.value.path.map(s=>s.code)'),['applicants','dept_id','create_by'])
+ await sleep(400)
  await openPicker()
  await nodeAction('申请用户')
  assert.equal(await evaluate('pathTest.state.value.path.length'),1)
@@ -170,5 +179,5 @@ try{
  assert.equal(await evaluate("document.querySelector('.path-value').textContent"),'申请用户')
  assert.equal(await evaluate("[...document.querySelectorAll('.relation-label')].filter(e=>e.textContent==='所属部门').length"),0)
  assert.deepEqual(errors,[])
- console.log('user relation path browser tests passed: lazy tree, selection/cancel, path display, cardinality, V1 restore, retry, depth limit, clear, invalid path retention, stale response isolation')
+ console.log('user relation path browser tests passed: tree dialog, lazy loading, selection/cancel, path display, cardinality, V1 restore, retry, depth limit, clear, invalid path retention, stale response isolation')
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}

@@ -34,14 +34,16 @@ class ConfigMigrationAssignmentSupportTest {
     }
 
     @Test
-    void mapsUsersGroupsAndRolesWithoutReplacingDocumentationOrExpressions() {
+    void mapsUsersGroupsAndRolesWithoutReplacingDocumentationOrLoopBinding() {
         String xml = bpmn("""
                 <bpmn:userTask id="review" flowable:assignee="source-login"
                     flowable:candidateUsers="source-login,other-login"
                     flowable:candidateGroups="finance,ROLE_manager">
                   <bpmn:documentation>source-login finance ROLE_manager</bpmn:documentation>
                 </bpmn:userTask>
-                <bpmn:userTask id="dynamic" flowable:assignee="${selector.pick('source-login')}" />
+                <bpmn:userTask id="joint" flowable:assignee="${participant}">
+                  <bpmn:multiInstanceLoopCharacteristics flowable:elementVariable="participant" />
+                </bpmn:userTask>
                 """);
         List<String> refs = new ArrayList<>();
         String mapped = ConfigMigrationAssignmentSupport.rewriteBpmn(xml, "approval", (type, key, context) -> {
@@ -51,10 +53,11 @@ class ConfigMigrationAssignmentSupportTest {
         assertTrue(mapped.contains("assignee=\"target-source-login\""));
         assertTrue(mapped.contains("target-finance,ROLE_target-manager"));
         assertTrue(mapped.contains(">source-login finance ROLE_manager</bpmn:documentation>"));
-        assertTrue(mapped.contains("${selector.pick('source-login')}"));
+        assertTrue(mapped.contains("${participant}"));
+        assertDoesNotThrow(() -> ConfigMigrationAssignmentSupport.validateBpmn(mapped));
         assertTrue(refs.containsAll(List.of("USER:source-login", "USER:other-login", "GROUP:finance", "ROLE:manager")));
         assertFalse(refs.contains("ROLE:finance"));
-        assertFalse(refs.stream().anyMatch(value -> value.contains("selector")));
+        assertFalse(refs.contains("USER:participant"));
     }
 
     @Test
@@ -114,13 +117,11 @@ class ConfigMigrationAssignmentSupportTest {
     }
 
     @Test
-    void validatesExpressionSyntaxWithoutExecutingIt() {
-        assertDoesNotThrow(() -> ConfigMigrationAssignmentSupport.validateBpmn(
-                bpmn("<bpmn:userTask id=\"a\" flowable:assignee=\"${unknownService.neverExecute()}\" />")));
-        assertDoesNotThrow(() -> ConfigMigrationAssignmentSupport.validateBpmn(
-                bpmn("<bpmn:userTask id=\"a\" flowable:assignee=\"${runtime:findUser('admin')}\" />")));
+    void rejectsDynamicAssignmentOnImport() {
         assertThrows(IllegalArgumentException.class, () -> ConfigMigrationAssignmentSupport.validateBpmn(
-                bpmn("<bpmn:userTask id=\"a\" flowable:assignee=\"${broken(}\" />")));
+                bpmn("<bpmn:userTask id=\"a\" flowable:assignee=\"${owner}\" />")));
+        assertThrows(IllegalArgumentException.class, () -> ConfigMigrationAssignmentSupport.validateBpmn(
+                bpmn(task("a", Map.of("assigneeType", "expression", "assigneeValue", "${owner}"), false))));
     }
 
     @Test

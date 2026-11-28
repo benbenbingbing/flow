@@ -635,16 +635,11 @@ assert.match(
   /const assigneeResolverContext = computed\(\(\) => \(\{[\s\S]*?isMultiInstance[\s\S]*?'MULTI_INSTANCE'[\s\S]*?'ASSIGNEE'/,
   '统一人员接口选择器必须随普通/多实例模式切换受控 resolver usage'
 )
-assert.match(
-  nodeConfigPanelSource,
-  /type === 'expression'[\s\S]*?isMultiInstance[\s\S]*?会签不支持表达式来源/,
-  '保存 v2 多实例时必须明确拒绝无法枚举的表达式人员来源'
+const assignmentSourceSelect = nodeConfigPanelSource.match(
+  /<el-select v-model="assigneeForm\.assigneeType"[\s\S]*?<\/el-select>/
 )
-assert.match(
-  nodeConfigPanelSource,
-  /mode === 'COUNTERSIGN' && form\.assigneeType === 'expression'\)\)[\s\S]*?onAssigneeTypeChange\('user'\)/,
-  '切换会签时必须将表达式来源切换为可用来源'
-)
+assert.ok(assignmentSourceSelect)
+assert.doesNotMatch(assignmentSourceSelect[0], /value="expression"/)
 assert.match(
   nodeConfigPanelSource,
   /组内启用用户分别收到自己的会签任务/,

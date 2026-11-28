@@ -1,5 +1,6 @@
 package com.workflow.process.definition.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -9,12 +10,27 @@ import org.xml.sax.InputSource;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Fail-closed validator for Flowable executable extension points.
  */
 public final class BpmnExecutableContentValidator {
+
+    private static final Pattern SKIP_EXPRESSION_TOKENS = Pattern.compile(
+            "(?<![\\w.])var:is(?:Not)?Empty\\('[A-Za-z_]\\w*'\\)"
+                    + "|'(?:\\\\.|[^'\\\\])*'|\"(?:\\\\.|[^\"\\\\])*\"",
+            Pattern.DOTALL);
+
+    private static final Pattern LOOP_ELEMENT_VARIABLE = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+    private static final Set<String> TASK_ASSIGNMENT_ATTRIBUTES = Set.of("assignee", "candidateUsers", "candidateGroups");
+    private static final Set<String> ASSIGNMENT_SOURCE_TYPES = Set.of(
+            "", "user", "candidate", "group", "role", "dept", "leader",
+            "resolver", "interface", "node_reference", "nodereference");
 
     private static final Set<String> ALLOWED_DELEGATE_EXPRESSIONS = Set.of(
             "${ccNotificationDelegate}",
@@ -59,6 +75,9 @@ public final class BpmnExecutableContentValidator {
      * @param element 元素，作为 {@code rejected} 的输入影响后续处理
      */
     private static void validateElement(Element element) {
+        if ("userTask".equals(element.getLocalName())) {
+            validateTaskAssignmentAttributes(element);
+        }
         for (int index = 0; index < element.getAttributes().getLength(); index++) {
             Node attribute = element.getAttributes().item(index);
             String localName = attribute.getLocalName() == null
@@ -89,6 +108,93 @@ public final class BpmnExecutableContentValidator {
     }
 
     /**
+     * 校验原生办理人属性，避免导入或发布的 XML 绕过人员来源配置。
+     *
+     * @param task 待导入或发布的用户任务元素
+     * @throws IllegalArgumentException 办理人属性包含可执行表达式，循环元素绑定除外
+     */
+    public static void validateTaskAssignmentAttributes(Element task) {
+        for (int index = 0; index < task.getAttributes().getLength(); index++) {
+            Node attribute = task.getAttributes().item(index);
+            String name = attribute.getLocalName() == null ? attribute.getNodeName() : attribute.getLocalName();
+            String value = attribute.getNodeValue();
+            if (TASK_ASSIGNMENT_ATTRIBUTES.contains(name) && containsExpression(value)
+                    && !("assignee".equals(name) && isLoopElementAssignee(task, value))) {
+                throw rejected(task, "办理人表达式 " + name);
+            }
+        }
+    }
+
+    /**
+     * 校验节点办理人配置，覆盖关闭下一审批人展示的任务和迁移包中的用户任务。
+     *
+     * @param nodeId 节点 ID，用于定位配置错误
+     * @param config 待校验的办理人配置，人员或组字段使用字面量标识
+     * @throws IllegalArgumentException 来源类型或人员标识不受支持
+     */
+    public static void validateAssignmentSource(String nodeId, JsonNode config) {
+        String type = config.path("assigneeType").asText("").trim().toLowerCase(Locale.ROOT);
+        if (!ASSIGNMENT_SOURCE_TYPES.contains(type)) {
+            throw new IllegalArgumentException("ASSIGNEE_SOURCE_INVALID: 不支持的办理人来源 "
+                    + type + ", element=" + nodeId);
+        }
+        for (String field : List.of("assigneeValue", "candidateUsers", "candidateGroups")) {
+            if (containsExpression(config.path(field))) {
+                throw new IllegalArgumentException("ASSIGNEE_SOURCE_INVALID: 办理人配置应使用字面量标识 "
+                        + field + ", element=" + nodeId);
+            }
+        }
+    }
+
+    /** 检查人员标识的文本或数组，数组元素使用相同的字面量约束。 */
+    static boolean containsExpression(JsonNode value) {
+        if (value == null) {
+            return false;
+        }
+        if (value.isArray()) {
+            for (JsonNode item : value) {
+                if (containsExpression(item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return containsExpression(value.asText(""));
+    }
+
+    static boolean containsExpression(String value) {
+        return value != null && (value.contains("${") || value.contains("#{"));
+    }
+
+    /**
+     * 判断 assignee 是否只绑定当前任务的循环元素变量。Flowable 通过此绑定分配每条会签或顺序任务。
+     *
+     * @param task 持有循环特征的用户任务
+     * @param assignee 任务的原生 assignee 属性
+     * @return 属性严格引用当前循环声明的简单变量时返回 true
+     */
+    static boolean isLoopElementAssignee(Element task, String assignee) {
+        if (assignee == null || assignee.isBlank()) {
+            return false;
+        }
+        for (Node child = task.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child instanceof Element loop && "multiInstanceLoopCharacteristics".equals(loop.getLocalName())) {
+                String variable = loop.getAttributeNS("http://flowable.org/bpmn", "elementVariable");
+                if (variable.isBlank()) {
+                    variable = loop.getAttributeNS("http://camunda.org/schema/1.0/bpmn", "elementVariable");
+                }
+                if (variable.isBlank()) {
+                    variable = loop.getAttribute("elementVariable");
+                }
+                String value = assignee.trim();
+                return LOOP_ELEMENT_VARIABLE.matcher(variable).matches()
+                        && (value.equals("${" + variable + "}") || value.equals("#{" + variable + "}"));
+            }
+        }
+        return false;
+    }
+
+    /**
      * 校验数据表达式；不满足约束时阻止后续处理。
      *
      * @param expression 表达式，供本方法校验数据表达式时使用
@@ -104,7 +210,10 @@ public final class BpmnExecutableContentValidator {
                 && element.getParentNode() instanceof Element flow
                 && "sequenceFlow".equals(flow.getLocalName())
                 && isConfiguredInterfaceExpression(expression, flow)) return;
-        if (!isSafeDataExpression(expression)) {
+        boolean safe = "skipExpression".equals(feature)
+                ? isSafeSkipExpression(expression)
+                : isSafeDataExpression(expression);
+        if (!safe) {
             throw rejected(element, feature);
         }
     }
@@ -124,12 +233,21 @@ public final class BpmnExecutableContentValidator {
     }
 
     /**
-     * 与历史部署运行时安全闸共用的受控数据表达式语法。
+     * 校验顺序流及路由预览用的数据表达式。
      *
      * @param expression 表达式，作为 {@code expression.substring} 的输入影响后续处理
      * @return 安全数据表达式条件成立时为 true，否则为 false
      */
     public static boolean isSafeDataExpression(String expression) {
+        return isSafeDataExpression(expression, false);
+    }
+
+    /** 校验设计器的跳过表达式。仅跳过表达式允许针对固定变量名的 Flowable 原生空值判断。 */
+    static boolean isSafeSkipExpression(String expression) {
+        return isSafeDataExpression(expression, true);
+    }
+
+    private static boolean isSafeDataExpression(String expression, boolean allowEmptyCheck) {
         if (expression == null || !expression.startsWith("${")
                 || !expression.endsWith("}") || expression.length() > 1002) {
             return false;
@@ -141,6 +259,11 @@ public final class BpmnExecutableContentValidator {
         }
         String body;
         try {
+            // 空值调用返回布尔值。用常量代换精确调用后继续检查组合表达式，保留字符串字面量原样。
+            if (allowEmptyCheck) {
+                rawBody = SKIP_EXPRESSION_TOKENS.matcher(rawBody).replaceAll(token ->
+                        token.group().startsWith("var:") ? "true" : Matcher.quoteReplacement(token.group()));
+            }
             body = stripQuotedLiterals(com.workflow.process.condition.application.WorkflowSelectionCondition
                     .substitute(rawBody, null));
         } catch (IllegalArgumentException exception) {

@@ -862,26 +862,6 @@ class NextApprovalRouteServiceTest {
     }
 
     @Test
-    void visibleDynamicAssigneeDefersInsteadOfBlockingDefaultResolution() {
-        org.flowable.bpmn.model.Process process = process();
-        UserTask current = node(new UserTask(), "current-review");
-        UserTask next = node(new UserTask(), "dynamic-review");
-        next.setAssignee("${managerUsername}");
-        add(process, current, next);
-        connect(process, current, next, "to-next", null);
-        when(repositoryService.getBpmnModel("definition-7"))
-                .thenReturn(model(process));
-
-        NextApprovalResolution resolution = service.resolve(
-                task, request("approve", 2000), true);
-
-        assertEquals(NextApprovalPreviewStatus.DEFERRED,
-                resolution.status());
-        assertEquals(List.of(), resolution.targets());
-        assertEquals(null, resolution.scopeKey());
-    }
-
-    @Test
     void unfinishedMultiInstanceIsDeferred() {
         org.flowable.bpmn.model.Process process = process();
         UserTask current = node(new UserTask(), "current-review");

@@ -277,15 +277,6 @@ public class NextApprovalRouteService {
                     List.of(),
                     variables);
         }
-        if (targets.stream().anyMatch(this::hasUnpredictableAssignment)) {
-            return result(
-                    task,
-                    NextApprovalPreviewStatus.DEFERRED,
-                    "下一用户任务使用动态办理人表达式，需等待引擎运行后确定",
-                    null,
-                    List.of(),
-                    variables);
-        }
         Set<String> projectedSubmittedFields = submittedEditableFields;
         boolean submittedFieldAffectsAssignee =
                 !projectedSubmittedFields.isEmpty()
@@ -314,31 +305,6 @@ public class NextApprovalRouteService {
                 scopeKey,
                 targets,
                 variables);
-    }
-
-    /**
-     * 判断是否具有{@code unpredictable}分配；判断结果决定调用方的后续分支。
-     *
-     * @param target 目标，供本方法判断是否具有{@code unpredictable}分配时使用
-     * @return {@code unpredictable}分配条件成立时为 true，否则为 false
-     */
-    private boolean hasUnpredictableAssignment(
-            NextApprovalTarget target) {
-        if (!target.selectionPolicy().visible()
-                || "MULTI_INSTANCE".equals(
-                target.selectionPolicy().assignmentMode())) {
-            return false;
-        }
-        UserTask userTask = target.assignmentSourceTask();
-        if (dynamicExpression(userTask.getAssignee())) {
-            return true;
-        }
-        return (userTask.getCandidateUsers() != null
-                && userTask.getCandidateUsers().stream()
-                .anyMatch(this::dynamicExpression))
-                || (userTask.getCandidateGroups() != null
-                && userTask.getCandidateGroups().stream()
-                .anyMatch(this::dynamicExpression));
     }
 
     /**
@@ -406,17 +372,6 @@ public class NextApprovalRouteService {
         return left.equals(right)
                 || left.replace("_", "").equalsIgnoreCase(
                 right.replace("_", ""));
-    }
-
-    /**
-     * 判断动态表达式条件是否成立，供调用方选择后续分支。
-     *
-     * @param value 待处理动态表达式的原始输入，结果供调用方继续使用
-     * @return 动态表达式条件成立时为 true，否则为 false
-     */
-    private boolean dynamicExpression(String value) {
-        return StringUtils.hasText(value)
-                && (value.contains("${") || value.contains("#{"));
     }
 
     /**

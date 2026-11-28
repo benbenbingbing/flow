@@ -122,7 +122,7 @@ public class NextApproverSelectionPolicyReader {
             throw invalid(userTask, "可修改时必须同时允许展示");
         }
         if (editable && "SEQUENTIAL".equals(currentConfig.get("handlingMode"))) {
-            throw invalid(userTask, "顺序办理使用节点配置的固定人员和顺序");
+            throw invalid(userTask, "顺序办理的人员和顺序由节点的办理人来源确定");
         }
 
         NextApproverSelectionPolicy.SourceType sourceType = sourceType(

@@ -6,7 +6,8 @@ import {
   readFieldStateConditions,
   updateFieldStateCondition
 } from '../form-field-state-conditions.js'
-import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
+import { formContextConditionFields } from '../form-context-parameters.js'
+import { LinkageEngine, withFormContext } from '@flow/workflow-core/utils/linkageEngine'
 import { createFlowConditionConfig, createFlowConditionGroup } from '@flow/workflow-core/utils/flowConditionGroups'
 import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
 
@@ -56,6 +57,26 @@ assert.equal(LinkageEngine.shouldDisableField(field, { amount: 100 }), true)
 assert.equal(LinkageEngine.shouldRequireField(field, { name: '' }), true)
 assert.equal(LinkageEngine.shouldRequireField({ ...field, isRequired: 1 }, { name: 'a' }), true)
 assert.equal(getFieldStateConditionError(field), '')
+
+const nodeCodeField = formContextConditionFields.find(field => field.fieldName === '当前流程节点编码')
+assert.equal(nodeCodeField?.fieldCode, 'ctx.currentProcessNode.code')
+assert.equal(formContextConditionFields.find(field => field.fieldCode === 'ctx.currentProcessNode.key')?.fieldName, '当前流程节点 ID')
+const nodeCodeCondition = createFlowConditionConfig(createFlowConditionGroup('AND', [
+  condition(nodeCodeField.fieldCode, '==', 'finance_review')
+]))
+const reviewComment = { componentProps: { linkageRules: {
+  visibilityConditionConfig: nodeCodeCondition,
+  enabledConditionConfig: nodeCodeCondition,
+  requiredConditionConfig: nodeCodeCondition
+} } }
+const financeReview = withFormContext({}, { 'currentProcessNode.key': 'Activity_1', 'currentProcessNode.code': 'finance_review' })
+assert.equal(LinkageEngine.shouldShowField(reviewComment, financeReview), true)
+assert.equal(LinkageEngine.shouldDisableField(reviewComment, financeReview), false)
+assert.equal(LinkageEngine.shouldRequireField(reviewComment, financeReview), true)
+const missingCode = withFormContext({}, { 'currentProcessNode.key': 'finance_review' })
+assert.equal(LinkageEngine.shouldShowField(reviewComment, missingCode), false)
+assert.equal(LinkageEngine.shouldDisableField(reviewComment, missingCode), true)
+assert.equal(LinkageEngine.shouldRequireField(reviewComment, missingCode), false)
 
 states.visibility.enabled = false
 updateFieldStateCondition(field, 'visibility', states.visibility, fieldType)

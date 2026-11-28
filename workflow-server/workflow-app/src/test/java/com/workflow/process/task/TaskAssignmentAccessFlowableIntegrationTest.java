@@ -6,16 +6,24 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.record.S
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.port.entity.EntityProcessStatePort;
+import com.workflow.port.system.ProcessCandidateMemberPort;
 import com.workflow.port.system.model.identity.IdentityUser;
 import com.workflow.port.system.SysUserLookupPort;
+import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.cc.application.ProcessCcService;
+import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.task.application.MultiInstanceOutcomeService;
@@ -34,11 +42,14 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -253,19 +264,84 @@ class TaskAssignmentAccessFlowableIntegrationTest {
                 .processInstanceId(instance.getId()).singleResult());
     }
 
+    /** 真实发布和运行路径应按接口顺序逐个派发，且重复用户只办理一次。 */
+    @Test
+    void sequentialReviewUsesResolverOrder() {
+        ObjectMapper json = new ObjectMapper();
+        PersonResolverProvider provider = mock(PersonResolverProvider.class);
+        when(provider.descriptor()).thenReturn(new PersonResolverDescriptor(
+                "orderedReviewers", "按业务顺序审批", "", 1, 1,
+                Set.of(PersonResolveUsage.MULTI_INSTANCE), Map.of(), false));
+        when(provider.resolve(any())).thenReturn(
+                PersonResolveResult.users(List.of("bob", "alice", "bob", "zara")));
+        ProcessCandidateMemberPort memberships = mock(ProcessCandidateMemberPort.class);
+        when(memberships.users(any())).thenAnswer(call -> call.getArgument(0));
+        PersonResolverRuntimeService resolver = new PersonResolverRuntimeService(
+                List.of(provider), memberships, "orderedReviewers"::equals);
+        SysUserMapper users = mock(SysUserMapper.class);
+        List<String> expectedOrder = List.of("bob", "alice", "zara");
+        for (String username : expectedOrder) {
+            SysUser user = new SysUser();
+            user.setUsername(username);
+            user.setStatus(SysUser.Status.ENABLED.getValue());
+            user.setDeleted(0);
+            when(users.selectByUsername(username)).thenReturn(user);
+        }
+        String taskXml = """
+                <bpmn:userTask id="review" flowable:assignee="${assignee}">
+                  <bpmn:extensionElements><flowable:properties>
+                    <flowable:property name="assigneeConfig" value="%s" />
+                  </flowable:properties></bpmn:extensionElements>
+                  <bpmn:multiInstanceLoopCharacteristics isSequential="true"
+                      flowable:collection="${_wfMultiInstanceUsers_review}" flowable:elementVariable="assignee">
+                    <bpmn:completionCondition>${_wf_mi_approved_count_review * 100 &gt;= nrOfInstances * 100
+                        || (_wf_mi_approved_count_review + nrOfInstances - nrOfCompletedInstances) * 100 &lt; nrOfInstances * 100}</bpmn:completionCondition>
+                  </bpmn:multiInstanceLoopCharacteristics>
+                </bpmn:userTask>
+                """.formatted(escape("""
+                {"assignmentConfigVersion":2,"handlingMode":"SEQUENTIAL","assigneeType":"interface",
+                 "resolverCode":"orderedReviewers","multiInstanceDecision":"countersign",
+                 "multiInstanceCompletionRate":100,"multiInstanceNeedAllApprovers":false}
+                """));
+        var sanitizer = new ProcessBpmnPublishSanitizer(json);
+        ReflectionTestUtils.setField(sanitizer, "personResolverRuntimeService", resolver);
+        String processKey = "sequential_resolver_review";
+        String publishedXml = sanitizer.sanitize(processXml(processKey, taskXml, ""), processKey);
+        var repository = engine.getRepositoryService();
+        var deployment = repository.createDeployment().addString(processKey + ".bpmn20.xml", publishedXml).deploy();
+        var definition = repository.createProcessDefinitionQuery().deploymentId(deployment.getId()).singleResult();
+
+        var listener = new MultiInstanceCollectionListener();
+        ReflectionTestUtils.setField(listener, "repositoryService", repository);
+        ReflectionTestUtils.setField(listener, "processVersionMapper", mock(ProcessVersionHistoryMapper.class));
+        ReflectionTestUtils.setField(listener, "objectMapper", json);
+        ReflectionTestUtils.setField(listener, "userMapper", users);
+        ReflectionTestUtils.setField(listener, "personResolverRuntimeService", resolver);
+        Map<String, Object> variables = new HashMap<>();
+        listener.prepareVariables(definition.getId(), variables);
+        assertEquals(expectedOrder, variables.get("_wfMultiInstanceUsers_review"));
+        ProcessInstance instance = engine.getRuntimeService().startProcessInstanceById(definition.getId(), variables);
+        for (String username : expectedOrder) {
+            Task task = engine.getTaskService().createTaskQuery()
+                    .processInstanceId(instance.getId()).singleResult();
+            assertNotNull(task);
+            assertEquals(username, task.getAssignee());
+            UserContext.setCurrentUser(username + "-id", username);
+            taskActionService.completeTask(task.getId(), username, "approve", "同意", null, null);
+        }
+        assertNull(engine.getRuntimeService().createProcessInstanceQuery()
+                .processInstanceId(instance.getId()).singleResult());
+    }
+
     private static Stream<Arguments> assignmentModes() {
         Stream.Builder<AssignmentMode> modes = Stream.builder();
-        modes.add(staticMode("固定用户 username", "assignee", "alice", "alice", false));
-        modes.add(staticMode("固定用户 ID", "assignee", "alice-id", "alice-id", false));
-        modes.add(staticMode("固定候选 username", "candidateUsers", "alice", null, false));
-        modes.add(staticMode("固定候选 ID", "candidateUsers", "alice-id", null, false));
+        modes.add(staticMode("固定用户 username", "assignee", "alice", "alice"));
+        modes.add(staticMode("固定用户 ID", "assignee", "alice-id", "alice-id"));
+        modes.add(staticMode("固定候选 username", "candidateUsers", "alice", null));
+        modes.add(staticMode("固定候选 ID", "candidateUsers", "alice-id", null));
         for (String group : List.of("reviewers", "review-group-id", "ROLE_reviewer", "ROLE_review-role-id")) {
-            modes.add(staticMode("组或角色 " + group, "candidateGroups", group, null, false));
+            modes.add(staticMode("组或角色 " + group, "candidateGroups", group, null));
         }
-        modes.add(staticMode("表达式直接办理", "assignee", "alice", "alice", true));
-        modes.add(staticMode("表达式候选人员", "candidateUsers", "alice", null, true));
-        modes.add(staticMode("表达式用户组", "candidateGroups", "reviewers", null, true));
-        modes.add(staticMode("表达式角色", "candidateGroups", "ROLE_reviewer", null, true));
         for (String resolver : List.of("customAssigneeResolver", "entityUserReferenceField", "relativeOrgPosition")) {
             for (String mode : List.of("DIRECT", "CANDIDATE")) {
                 String config = "{\"assigneeType\":\"interface\",\"resolverCode\":\"" + resolver
@@ -304,13 +380,10 @@ class TaskAssignmentAccessFlowableIntegrationTest {
         return modes.build().flatMap(mode -> Stream.of(Arguments.of(mode, true), Arguments.of(mode, false)));
     }
 
-    private static AssignmentMode staticMode(String name, String attribute, String value,
-                                             String assignee, boolean expression) {
-        String configuredValue = expression ? "${selectedApprovers}" : value;
-        String config = expression ? "{\"assigneeType\":\"expression\"}" : "";
+    private static AssignmentMode staticMode(String name, String attribute, String value, String assignee) {
         return new AssignmentMode(name,
-                task("flowable:" + attribute + "=\"" + configuredValue + "\"", config),
-                "", expression ? Map.of("selectedApprovers", value) : Map.of(), assignee,
+                task("flowable:" + attribute + "=\"" + value + "\"", ""),
+                "", Map.of(), assignee,
                 "candidateUsers".equals(attribute) ? Set.of(value) : Set.of(),
                 "candidateGroups".equals(attribute) ? Set.of(value) : Set.of());
     }
@@ -327,10 +400,16 @@ class TaskAssignmentAccessFlowableIntegrationTest {
 
     private ProcessInstance deployAndStart(String taskXml, String sourceXml, Map<String, Object> variables) {
         String key = "assignment_access_" + UUID.randomUUID().toString().replace("-", "");
+        engine.getRepositoryService().createDeployment()
+                .addString(key + ".bpmn20.xml", processXml(key, taskXml, sourceXml)).deploy();
+        return engine.getRuntimeService().startProcessInstanceByKey(key, variables);
+    }
+
+    private static String processXml(String key, String taskXml, String sourceXml) {
         String sourceFlow = sourceXml.isEmpty() ? "" : """
                 <bpmn:sequenceFlow id="sourceToReview" sourceRef="source" targetRef="review" />
                 """;
-        String xml = """
+        return """
                 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:flowable="http://flowable.org/bpmn" targetNamespace="http://workflow.test/process">
                   <bpmn:process id="%s" isExecutable="true">
@@ -341,8 +420,6 @@ class TaskAssignmentAccessFlowableIntegrationTest {
                   </bpmn:process>
                 </bpmn:definitions>
                 """.formatted(key, sourceXml, taskXml, sourceXml.isEmpty() ? "review" : "source", sourceFlow);
-        engine.getRepositoryService().createDeployment().addString(key + ".bpmn20.xml", xml).deploy();
-        return engine.getRuntimeService().startProcessInstanceByKey(key, variables);
     }
 
     private Set<String> candidateValues(Task task, boolean groups) {

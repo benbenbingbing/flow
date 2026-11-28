@@ -18,7 +18,9 @@ import com.workflow.port.process.model.ProcessSort;
 import com.workflow.port.process.model.ProcessEndType;
 import com.workflow.port.process.model.ProcessLifecycle;
 import com.workflow.port.process.model.query.*;
+import com.workflow.port.process.model.task.CompleteTaskCommand;
 import com.workflow.port.process.model.task.SkipTaskCommand;
+import com.workflow.port.process.model.task.TaskSubmission;
 import com.workflow.port.process.model.variable.*;
 import com.workflow.port.system.SysUserLookupPort;
 import com.workflow.core.error.ForbiddenException;
@@ -1139,6 +1141,50 @@ class ProcessProgrammingVariableIntegrationTest {
         assertEquals(2, tasks().size());
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM process_command_receipt", Integer.class));
     }
+
+    @Test
+    void publishedRejectRequiresRemarkBeforeCompletingTask() {
+        engine.getRepositoryService().createDeployment().addString("approval-remark.bpmn20.xml", """
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:flowable="http://flowable.org/bpmn" targetNamespace="programming-test">
+                  <process id="approvalRemark" isExecutable="true">
+                    <startEvent id="start"/>
+                    <sequenceFlow id="s1" sourceRef="start" targetRef="review"/>
+                    <userTask id="review" flowable:assignee="alice">
+                      <extensionElements><flowable:properties>
+                        <flowable:property name="approvalConfig" value='{"enabled":true,"commentLabel":"处理说明",
+                          "options":[{"value":"approve","showComment":true,"remarkRequired":false},
+                                     {"value":"reject","showComment":true,"remarkRequired":true}]}'/>
+                      </flowable:properties></extensionElements>
+                    </userTask>
+                    <sequenceFlow id="s2" sourceRef="review" targetRef="end"/>
+                    <endEvent id="end"/>
+                  </process>
+                </definitions>
+                """).deploy();
+        var port = taskCommands(mock(com.workflow.process.task.application.TaskSubmissionGuard.class));
+        var runtime = engine.getRuntimeService();
+        var taskService = engine.getTaskService();
+        var rejected = runtime.startProcessInstanceByKey("approvalRemark").getId();
+        var rejectTask = taskService.createTaskQuery().processInstanceId(rejected).singleResult();
+        var meta = new CommandMeta("reject-with-remark");
+
+        var failure = assertThrows(ProcessOperationException.class, () -> port.complete(
+                new CompleteTaskCommand(meta, rejectTask.getId(), "reject", TaskSubmission.comment(" \t "))));
+        assertEquals("APPROVAL_COMMENT_REQUIRED", failure.getErrorCode());
+        assertEquals("请填写处理说明", failure.getMessage());
+        assertEquals(1, taskService.createTaskQuery().taskId(rejectTask.getId()).count());
+        assertEquals(0, receiptCount());
+
+        port.complete(new CompleteTaskCommand(meta, rejectTask.getId(), "reject", TaskSubmission.comment("请补充材料")));
+        assertEquals(0, taskService.createTaskQuery().taskId(rejectTask.getId()).count());
+
+        var approved = runtime.startProcessInstanceByKey("approvalRemark").getId();
+        var approveTask = taskService.createTaskQuery().processInstanceId(approved).singleResult();
+        port.complete(new CompleteTaskCommand(new CommandMeta("approve-without-remark"), approveTask.getId(), "approve", null));
+        assertEquals(0, taskService.createTaskQuery().taskId(approveTask.getId()).count());
+    }
+
     @Test
     void concurrentDifferentCompletionsAdvanceTaskOnlyOnceAndRollbackLosingReceipt() throws Exception {
         var guard = mock(com.workflow.process.task.application.TaskSubmissionGuard.class);

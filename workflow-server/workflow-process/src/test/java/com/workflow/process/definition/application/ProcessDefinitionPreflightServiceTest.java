@@ -110,6 +110,29 @@ class ProcessDefinitionPreflightServiceTest {
                 .validate(process.getBpmnXml());
     }
 
+    @Test
+    void rejectsInvalidAndDuplicateNodeCodesAtPublishPreflight() {
+        String extension = """
+                <bpmn:extensionElements><flowable:properties>
+                  <flowable:property name="nodeCode" value="%s"/>
+                </flowable:properties></bpmn:extensionElements>
+                """;
+        String xml = validXml().replace("<bpmn:userTask id=\"ApproveTask\" flowable:assignee=\"admin\"/>",
+                "<bpmn:userTask id=\"ApproveTask\" flowable:assignee=\"admin\">"
+                        + extension.formatted("finance_review") + "</bpmn:userTask>");
+        process.setBpmnXml(xml);
+        assertTrue(service.preview(process).publishable());
+
+        process.setBpmnXml(xml.replace("finance_review", "9-review"));
+        assertTrue(service.preview(process).issues().stream().anyMatch(issue -> issue.blocking()
+                && "NODE_CODE_INVALID".equals(issue.code()) && "ApproveTask".equals(issue.elementId())));
+
+        process.setBpmnXml(xml.replace("<bpmn:startEvent id=\"Start\"/>",
+                "<bpmn:startEvent id=\"Start\">" + extension.formatted("finance_review") + "</bpmn:startEvent>"));
+        assertTrue(service.preview(process).issues().stream().anyMatch(issue -> issue.blocking()
+                && "NODE_CODE_DUPLICATE".equals(issue.code()) && "ApproveTask".equals(issue.elementId())));
+    }
+
     /** 独立预检需开启可加行锁的事务，避免表单依赖检查因只读事务而误报发布阻断。 */
     @Test
     void previewByIdLocksNodeFormsInWritableTransaction() throws Exception {

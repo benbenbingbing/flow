@@ -59,7 +59,7 @@ public final class DeployedSkipExpressionSafety {
             String expression = skipExpression(element);
             if (StringUtils.hasText(expression)
                     && !BpmnExecutableContentValidator
-                            .isSafeDataExpression(expression.trim())) {
+                            .isSafeSkipExpression(expression.trim())) {
                 return StringUtils.hasText(element.getId())
                         ? element.getId() : "<unknown>";
             }

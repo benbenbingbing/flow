@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +82,42 @@ class NativeSkipExpressionRuntimeTest {
             assertNull(task(engine, instance.getId(), "after-review"));
             assertNull(engine.getRuntimeService().getVariable(
                     instance.getId(), "approved"));
+        } finally {
+            engine.close();
+        }
+    }
+
+    @Test
+    void nativeEmptyChecksWorkAfterPublishingEvenWhenTheFieldWasNeverSet() {
+        ProcessEngine engine = buildEngine();
+        try {
+            engine.getRuntimeService().addEventListener(new WorkflowAutoSkipService(
+                    engine.getRuntimeService(), engine.getRepositoryService()));
+            var sanitizer = new ProcessBpmnPublishSanitizer(new ObjectMapper());
+            record FieldCase(Map<String, Object> variables, boolean empty) {}
+            var fieldCases = List.of(
+                    new FieldCase(Map.of(), true),
+                    new FieldCase(Collections.singletonMap("reviewer", null), true),
+                    new FieldCase(Map.of("reviewer", ""), true),
+                    new FieldCase(Map.of("reviewer", List.of()), true),
+                    new FieldCase(Map.of("reviewer", "alice"), false),
+                    new FieldCase(Map.of("reviewer", List.of("alice")), false),
+                    new FieldCase(Map.of("reviewer", false), false),
+                    new FieldCase(Map.of("reviewer", 0), false));
+
+            for (boolean skipIfEmpty : List.of(true, false)) {
+                String functionName = skipIfEmpty ? "isEmpty" : "isNotEmpty";
+                String expression = "${var:" + functionName + "('reviewer')}";
+                String xml = conditionalSkipBpmn().replace("${shouldSkip}", expression);
+                deploy(engine, functionName + ".bpmn20.xml", sanitizer.sanitize(xml, "conditional_skip"));
+                for (FieldCase fieldCase : fieldCases) {
+                    var instance = engine.getRuntimeService().startProcessInstanceByKey(
+                            "conditional_skip", fieldCase.variables());
+                    String expectedTask = fieldCase.empty() == skipIfEmpty ? "after-review" : "conditional-review";
+                    assertNotNull(task(engine, instance.getId(), expectedTask),
+                            () -> functionName + ": " + fieldCase.variables());
+                }
+            }
         } finally {
             engine.close();
         }

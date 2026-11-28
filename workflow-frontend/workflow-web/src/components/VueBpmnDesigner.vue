@@ -4,7 +4,7 @@ import BpmnModeler from 'bpmn-js/lib/Modeler'
 import flowableModdle from '@/assets/flowable.json'
 import { translate as customTranslate } from '@/utils/bpmn-i18n'
 import { clearCopiedTaskReturnConfiguration } from './node-config/taskReturnConfiguration.js'
-import { initializeNewUserTaskPermissions } from '@/utils/nodeOperationDefaults'
+import { initializeNewUserTaskDefaults } from '@/utils/userTaskDefaults'
 
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
@@ -68,10 +68,10 @@ const initModeler = () => {
     moddleExtensions: { flowable: flowableModdle }
   })
 
-  // 覆盖拖拽、追加、类型替换等创建入口，未打开节点设置也会持久化安全默认值。
+  // 拖拽、追加和类型替换生成的用户任务，即使未打开配置面板也会保存默认配置。
   modeler.value.on('commandStack.shape.create.preExecute', event => {
     clearCopiedTaskReturnConfiguration(event.context.shape)
-    initializeNewUserTaskPermissions(event.context.shape, modeler.value.get('moddle'))
+    initializeNewUserTaskDefaults(event.context.shape, modeler.value.get('moddle'))
   })
 
   try {

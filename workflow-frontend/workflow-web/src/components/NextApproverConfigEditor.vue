@@ -2,7 +2,6 @@
   <SettingsSection
     title="下一节点审批人"
     description="当前节点流转到本节点时，是否展示本节点审批人并允许发起选择"
-    :default-expanded="localConfig.visible"
   >
     <template #summary>
       <el-tag :type="localConfig.visible ? 'success' : 'info'" size="small">
@@ -66,7 +65,7 @@
           />
         </el-form-item>
 
-        <el-form-item v-if="localConfig.source.resolverCode === 'entityUserReferenceField'" label="用户关系路径">
+        <el-form-item v-if="localConfig.source.resolverCode === 'entityUserReferenceField'" label="关系路径">
           <EntityUserRelationPathSelector
             v-model="localConfig.source.extraParams"
             :process-id="processId"
