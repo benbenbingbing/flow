@@ -15,7 +15,7 @@
     "@flow/workflow-api": "1.0.0",
     "@flow/workflow-mobile-ui": "1.0.0",
     "vue": "^3.4.0",
-    "vue-router": "^4.2.0",
+    "vue-router": "^5.4.0",
     "pinia": "^2.1.0",
     "vant": "^4.9.0",
     "bpmn-js": "^17.0.0",
